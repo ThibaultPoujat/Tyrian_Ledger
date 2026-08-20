@@ -1,4 +1,4 @@
-# GW2 Trading Post Analyst - Qwen/MTPLX Development Package
+# Tyrian Ledger - Qwen/MTPLX Development Package
 
 This repository is the complete planning and development package for a local, read-only Guild Wars 2 Trading Post analysis application.
 
@@ -35,10 +35,11 @@ Visual Studio for Mac was retired on August 31, 2024. On macOS use Visual Studio
 - `docs/workflow/ai-development-workflow.md` - development workflow for Qwen via MTPLX.
 - `docs/adr/` - Architecture Decision Records (ADRs).
 - `docs/milestones/` - milestone definitions and completion criteria.
-- `docs/context/` - lightweight context files intended for Qwen.
+- `docs/context/` - lightweight context files intended for Qwen, including Git/PR delivery rules.
 - `docs/tickets/` - implementation tickets.
 - `docs/prompts/` - one execution prompt per ticket.
 - `config/` - repository configuration templates.
+- `.github/pull_request_template.md` - standard ticket PR structure.
 
 ## How to use this package
 
@@ -50,6 +51,7 @@ Visual Studio for Mac was retired on August 31, 2024. On macOS use Visual Studio
 6. Require tests for every behavior change.
 7. Do not let Qwen silently change architectural decisions. If a ticket exposes a real architectural issue, update or create an ADR first.
 8. Keep the application fully read-only and local until a future scope explicitly changes that decision.
+9. For every ticket, use a dedicated branch, prefix every ticket commit with `[TICKET_NAME]`, create a GitHub PR titled `[TICKET_NAME] Short title`, include exact specification references in the PR body, and never merge the PR as Qwen.
 
 ## Normative language
 

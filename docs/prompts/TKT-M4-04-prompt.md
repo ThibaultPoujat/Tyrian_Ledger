@@ -1,4 +1,4 @@
-You are the implementation agent for the GW2 Trading Post Analyst project.
+You are the implementation agent for the Tyrian Ledger project.
 
 Read first:
 - docs/context/permanent-context.md
@@ -39,3 +39,13 @@ Ticket-specific acceptance criteria:
 
 Ticket-specific non-goals:
 - Precise execution-time prediction.
+
+
+Delivery protocol (mandatory for every ticket):
+- Create/use a dedicated branch named `ticket/<TKT-M4-04>-<short-kebab-title>`.
+- Every commit for this ticket MUST start with `[TKT-M4-04]`.
+- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M4-04] Short title`.
+- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
+- Verify that the PR actually exists and report its URL. Never invent a PR URL.
+- Do not merge the PR. Human review and merge are required.
+- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.

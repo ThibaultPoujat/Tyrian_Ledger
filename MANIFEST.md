@@ -1,6 +1,6 @@
 # Package manifest
 
-- `GW2_Trading_Post_Analyst_Project_Package.pdf`
+- `Tyrian_Ledger_Development_Package.pdf`
 - `README.md`
 - `config/.editorconfig`
 - `config/.gitignore`
@@ -27,6 +27,7 @@
 - `docs/context/milestone-context-M7.md`
 - `docs/context/milestone-context-M8.md`
 - `docs/context/permanent-context.md`
+- `docs/context/qwen-git-context.md`
 - `docs/milestones/INDEX.md`
 - `docs/milestones/M0.md`
 - `docs/milestones/M1.md`
@@ -116,3 +117,4 @@
 - `docs/tickets/TKT-M8-04.md`
 - `docs/ux/ux.md`
 - `docs/workflow/ai-development-workflow.md`
+- `.github/pull_request_template.md`

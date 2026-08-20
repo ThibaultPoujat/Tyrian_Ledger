@@ -1,4 +1,4 @@
-# Project Specification - GW2 Trading Post Analyst
+# Project Specification - Tyrian Ledger
 
 ## 1. Product statement
 
