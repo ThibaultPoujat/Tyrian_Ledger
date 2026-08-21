@@ -44,3 +44,21 @@ MTPLX is MLX-native. The raw `unsloth/Qwen3.8-27B-GGUF` model is not assumed to 
 When uncertain, mark `VERIFY` and avoid inventing facts.
 
 Prefer small, reversible changes.
+
+## VERIFY register
+
+`docs/verification/VERIFY-REGISTER.md` is the authoritative project-level
+index of unresolved verification items.
+
+Every ticket must:
+
+- review relevant existing VERIFY items before implementation;
+- add newly discovered VERIFY items;
+- update existing items affected by new evidence;
+- mark items RESOLVED only when sufficient evidence is recorded in the ticket
+  or another authoritative project document;
+- preserve resolved entries for audit/history;
+- reference relevant VERIFY IDs in the ticket.
+
+The register is an index. Detailed evidence remains in the ticket or other
+authoritative project document.
