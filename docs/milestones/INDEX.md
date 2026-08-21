@@ -2,7 +2,7 @@
 
 | Milestone | Name | Tickets |
 |---|---|---|
-| M0 | Discovery and external-contract validation | TKT-M0-01, TKT-M0-02, TKT-M0-03, TKT-M0-04 |
+| M0 | Discovery and external-contract validation | TKT-M0-01, TKT-M0-02, TKT-M0-03, TKT-M0-04, TKT-M0-SETUP-01 |
 | M1 | Repository and development foundation | TKT-M1-01, TKT-M1-02, TKT-M1-03, TKT-M1-04 |
 | M2 | GW2 data gateway and caching | TKT-M2-01, TKT-M2-02, TKT-M2-03, TKT-M2-04 |
 | M3 | Deterministic market engine | TKT-M3-01, TKT-M3-02, TKT-M3-03, TKT-M3-04 |

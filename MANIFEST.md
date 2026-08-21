@@ -42,6 +42,7 @@
 - `docs/prompts/TKT-M0-02-prompt.md`
 - `docs/prompts/TKT-M0-03-prompt.md`
 - `docs/prompts/TKT-M0-04-prompt.md`
+- `docs/prompts/TKT-M0-SETUP-01-prompt.md`
 - `docs/prompts/TKT-M1-01-prompt.md`
 - `docs/prompts/TKT-M1-02-prompt.md`
 - `docs/prompts/TKT-M1-03-prompt.md`
@@ -83,6 +84,7 @@
 - `docs/tickets/TKT-M0-02.md`
 - `docs/tickets/TKT-M0-03.md`
 - `docs/tickets/TKT-M0-04.md`
+- `docs/tickets/TKT-M0-SETUP-01.md`
 - `docs/tickets/TKT-M1-01.md`
 - `docs/tickets/TKT-M1-02.md`
 - `docs/tickets/TKT-M1-03.md`
@@ -116,5 +118,6 @@
 - `docs/tickets/TKT-M8-03.md`
 - `docs/tickets/TKT-M8-04.md`
 - `docs/ux/ux.md`
+- `docs/verification/VERIFY-REGISTER.md`
 - `docs/workflow/ai-development-workflow.md`
 - `.github/pull_request_template.md`

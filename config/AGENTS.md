@@ -6,6 +6,8 @@ Then read only the current milestone context, assigned ticket, and that ticket's
 
 For ticket execution, also follow `docs/workflow/ai-development-workflow.md` and `docs/context/qwen-git-context.md`.
 
+Before starting any ticket, review `docs/verification/VERIFY-REGISTER.md`.
+
 Never:
 
 - invent GW2 API fields;
@@ -24,6 +26,7 @@ Always:
 - preserve money-as-copper semantics;
 - keep external API DTOs separate from domain models;
 - report assumptions and unresolved verification items;
+- maintain `docs/verification/VERIFY-REGISTER.md`: add new VERIFY items discovered during the assigned ticket, update affected existing items, and mark items RESOLVED only when the ticket contains sufficient supporting evidence;
 - run the smallest relevant test suite before broader validation.
 
 
