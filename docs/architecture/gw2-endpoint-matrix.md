@@ -14,7 +14,8 @@ being added to this table.
 - Facts below that the wiki states explicitly are recorded as-is.
 - Facts the wiki does not state, or that may have changed since the last
   review, are marked **VERIFY**. Quota and error-handling policy details
-  belong to TKT-M0-03; terms/legal scope belongs to TKT-M0-04.
+  belong to `docs/rate-limiting/rate-limit-policy.md` (TKT-M0-03);
+  terms/legal scope belongs to TKT-M0-04.
 - Per `docs/specs/project-spec.md` §8 and
   `docs/specs/verified-external-notes.md`, the exact contract MUST be
   revalidated before release (re-run this review in M8).
@@ -40,11 +41,12 @@ being added to this table.
   server-side secret store (ADR-006); the key is never sent to the browser.
 - Errors: 403 invalid key or missing permission; 404 unknown endpoint or all
   IDs invalid; 429 rate limit exceeded (per-IP token bucket, community
-  documented max burst 300, refill 5/s — **VERIFY** exact values and policy in
-  TKT-M0-03); 502/503/504 upstream failures.
-- Rate limiting is **per IP** per the wiki best-practices page. **VERIFY**
-  whether it is per-IP only or also per-IP+key; do not hard-code a quota
-  (TKT-M0-03).
+  documented max burst 300, refill 5/s — **VERIFY-006**; handling policy in
+  `docs/rate-limiting/rate-limit-policy.md`); 502/503/504 upstream failures.
+- Rate limiting is **per IP** per the wiki best-practices page. **VERIFY-006**
+  whether it is per-IP only or also per-IP+key; do not hard-code a quota —
+  use the configurable scheduler parameters defined in
+  `docs/rate-limiting/rate-limit-policy.md` §2.
 - Read-only: all endpoints in this table are GET. No write/mutation endpoint
   is used (ADR-007).
 
