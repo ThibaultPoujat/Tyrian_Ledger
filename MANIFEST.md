@@ -16,6 +16,7 @@
 - `docs/adr/ADR-006-secrets.md`
 - `docs/adr/ADR-007-read-only-boundary.md`
 - `docs/architecture/architecture.md`
+- `docs/architecture/gw2-endpoint-matrix.md`
 - `docs/context/context-template.md`
 - `docs/context/milestone-context-M0.md`
 - `docs/context/milestone-context-M1.md`
@@ -121,3 +122,5 @@
 - `docs/verification/VERIFY-REGISTER.md`
 - `docs/workflow/ai-development-workflow.md`
 - `.github/pull_request_template.md`
+- `tests/fixtures/gw2/commerce/prices.json`
+- `tests/fixtures/gw2/commerce/listings.json`
