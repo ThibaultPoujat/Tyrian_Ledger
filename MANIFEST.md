@@ -76,6 +76,7 @@
 - `docs/prompts/TKT-M8-02-prompt.md`
 - `docs/prompts/TKT-M8-03-prompt.md`
 - `docs/prompts/TKT-M8-04-prompt.md`
+- `docs/rate-limiting/rate-limit-policy.md`
 - `docs/roadmap.md`
 - `docs/security/security.md`
 - `docs/specs/project-spec.md`
@@ -124,3 +125,4 @@
 - `.github/pull_request_template.md`
 - `tests/fixtures/gw2/commerce/prices.json`
 - `tests/fixtures/gw2/commerce/listings.json`
+- `tests/fixtures/gw2/errors/429.json`
