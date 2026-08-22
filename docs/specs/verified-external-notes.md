@@ -28,7 +28,7 @@ The current project uses these references as the starting point for verification
 - https://wiki.guildwars2.com/wiki/API:2/commerce/prices
 - https://wiki.guildwars2.com/wiki/API:2/commerce/listings
 - https://wiki.guildwars2.com/wiki/API:2/tokeninfo
-- https://wiki.guildwars2.com/wiki/API_key
+- https://wiki.guildwars2.com/wiki/API:API_key
 - https://wiki.guildwars2.com/wiki/API:Best_practices
 - https://wiki.guildwars2.com/wiki/API:Terms_of_Use
 
