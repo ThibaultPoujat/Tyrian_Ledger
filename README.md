@@ -32,26 +32,29 @@ Visual Studio for Mac was retired on August 31, 2024. On macOS use Visual Studio
 - `docs/security/security.md` - security and French/EU data-protection baseline.
 - `docs/testing/testing-strategy.md` - test strategy and quality gates.
 - `docs/ux/ux.md` - UI/UX rules.
-- `docs/workflow/ai-development-workflow.md` - development workflow for Qwen via MTPLX.
+- `docs/workflow/ai-development-workflow.md` - human-readable Qwen workflow overview.
+- `docs/workflow/agent-execution-rules.md` - lightweight agent execution and anti-loop rules.
+- `docs/workflow/delivery-protocol.md` - Git/GitHub delivery rules.
 - `docs/adr/` - Architecture Decision Records (ADRs).
 - `docs/milestones/` - milestone definitions and completion criteria.
-- `docs/context/` - lightweight context files intended for Qwen, including Git/PR delivery rules.
+- `docs/context/` - lightweight context files intended for Qwen.
 - `docs/tickets/` - implementation tickets.
-- `docs/prompts/` - one execution prompt per ticket.
+- `docs/prompts/` - one lightweight execution prompt per ticket plus the canonical prompt template.
 - `config/` - repository configuration templates.
 - `.github/pull_request_template.md` - standard ticket PR structure.
 
 ## How to use this package
 
-1. Create an empty Git repository.
-2. Copy the contents of this package into it.
-3. Read `docs/specs/project-spec.md` once yourself.
-4. Load only `docs/context/permanent-context.md`, the current milestone context, and one ticket into Qwen at a time.
-5. Execute tickets in numerical order within each milestone unless an explicit dependency says otherwise.
-6. Require tests for every behavior change.
-7. Do not let Qwen silently change architectural decisions. If a ticket exposes a real architectural issue, update or create an ADR first.
-8. Keep the application fully read-only and local until a future scope explicitly changes that decision.
-9. For every ticket, use a dedicated branch, prefix every ticket commit with `[TICKET_NAME]`, create a GitHub PR titled `[TICKET_NAME] Short title`, include exact specification references in the PR body, and never merge the PR as Qwen.
+1. Create or clone the Git repository.
+2. Read `docs/specs/project-spec.md` once yourself.
+3. Start a **fresh Qwen session for each ticket**.
+4. Let `config/AGENTS.md` load the permanent context, current milestone, VERIFY register, ticket, and ticket prompt.
+5. Let Qwen load specialized documents only when the current ticket explicitly needs them.
+6. Execute tickets in dependency order within each milestone.
+7. Require tests for behavior changes and direct documentation validation for documentation-only tickets.
+8. Do not let Qwen silently change architectural decisions. If a ticket exposes a real architectural issue, update or create an ADR first.
+9. Keep the application fully read-only and local until a future scope explicitly changes that decision.
+10. For every ticket, use a dedicated branch, prefix ticket commits with `[TICKET_NAME]`, create the required GitHub PR, and never merge the PR as Qwen.
 
 ## Normative language
 
