@@ -3,49 +3,72 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M0.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M0-04.md
+- docs/security/security.md
+- docs/adr/ADR-006-secrets.md
+- docs/adr/ADR-007-read-only-boundary.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read only the endpoint matrix, architecture, or testing documents when a specific
+acceptance criterion requires them.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M0-04 only.
 
-Ticket-specific objective:
-Produce the release gate for terms, API-key handling, local security, and the strict read-only boundary.
+This is primarily a documentation and verification ticket. Consolidate the security,
+privacy, API-key, and strict read-only release gate without introducing new architecture.
 
-Ticket-specific acceptance criteria:
-- Document current API terms references.
-- Document personal-use GDPR/French security assumptions and what changes for public deployment.
-- Define minimum API-key permissions by feature.
-- Define explicit prohibited operations and a testable architecture rule preventing generic writes.
+Acceptance-critical work:
+- document authoritative current GW2 API terms/documentation references;
+- document local/personal-use French/EU privacy and security assumptions and public-deployment differences;
+- define minimum API-key permissions by feature, leaving unresolved mappings as VERIFY;
+- document prohibited operations and the no-generic-write architectural rule;
+- describe future runtime enforcement without claiming it already exists;
+- maintain the VERIFY register.
 
-Ticket-specific non-goals:
-- Legal advice beyond documenting requirements and assumptions.
+## Non-goals
 
+- legal advice;
+- GW2 API client/gateway implementation;
+- credential storage implementation;
+- runtime read-only enforcement;
+- executable regression tests for a gateway that does not yet exist;
+- application LLM integration.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M0-04>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M0-04]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M0-04] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Never invent GW2 API fields, permissions, quotas, endpoints, behavior, or legal requirements.
+- A missing external fact is VERIFY, not a reason to invent a value.
+- Stop only if a missing fact makes the requested work technically impossible or unsafe.
+- Do not falsely claim that runtime controls or tests already exist.
+- Minimize unrelated changes.
+
+## Execution
+
+1. Inspect the ticket, security document, ADR-006, ADR-007, and relevant VERIFY items.
+2. Make a maximum five-step plan.
+3. Update only the necessary security/release-gate documentation and VERIFY register.
+4. Cross-check external claims and label unresolved ones VERIFY.
+5. Validate every acceptance criterion and inspect the diff.
+6. Stop.
+
+Do not repeatedly reread the same document. Do not repeat the same legal/API investigation
+without new evidence. After two failed attempts to obtain evidence, record VERIFY and continue
+where safe.
+
+## Validation
+
+This is documentation validation, not runtime implementation. Check references, claim status,
+read-only wording, public-deployment distinctions, VERIFY IDs, and credential/token leakage.
+Do not create artificial unit tests merely to satisfy a generic testing rule.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.
