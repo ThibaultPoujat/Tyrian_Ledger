@@ -3,49 +3,58 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M1.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M1-04.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read the relevant local-security/HTTP configuration documents.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M1-04 only.
 
-Ticket-specific objective:
 Make loopback-only operation and safe HTTP defaults explicit.
 
-Ticket-specific acceptance criteria:
-- Default development server binds to loopback.
-- Add safe response headers compatible with the local app.
-- Validate inbound query/body values at API boundaries.
-- Document how to intentionally change the binding and why doing so is not recommended.
+Acceptance-critical work:
+- development server binds to loopback by default;
+- safe response headers compatible with the local app are applied;
+- inbound query/body values are validated at API boundaries;
+- document how to intentionally change binding and why that is not recommended.
 
-Ticket-specific non-goals:
-- LAN/public hosting support.
+## Non-goals
 
+- LAN/public hosting support;
+- unrelated network/security redesign.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M1-04>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M1-04]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M1-04] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Preserve local-first security defaults.
+- Do not silently enable public or LAN exposure.
+- Do not invent framework behavior; verify configuration semantics from project tooling.
+- Add focused tests for boundary behavior where applicable.
+
+## Execution
+
+1. Inspect the ticket and current server/configuration code.
+2. Make a maximum five-step plan.
+3. Implement the smallest secure change.
+4. Run focused tests/build checks.
+5. Inspect the diff and acceptance criteria.
+6. Stop.
+
+Do not repeatedly summarize or reread unchanged files. After two failed attempts at the same
+operation, report the blocker and stop.
+
+## Validation
+
+Verify default bind behavior, response headers, input validation, and relevant tests without
+requiring public/LAN exposure.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.
