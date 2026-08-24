@@ -1,31 +1,14 @@
-# Qwen Git and PR Context
+# Qwen Git Context
 
-This is a lightweight delivery context. Read it for every ticket.
+This file is retained as a compatibility reference for existing sessions.
 
-## Branch
+The authoritative Git/GitHub delivery rules are now in:
 
-Create one branch per ticket:
+`docs/workflow/delivery-protocol.md`
 
-`ticket/<TICKET_NAME>-<short-kebab-title>`
+New prompts should not duplicate the delivery protocol. They should instruct Qwen to
+follow that document.
 
-## Commits
+The authoritative execution rules are in:
 
-Every commit for the ticket MUST start with:
-
-`[TICKET_NAME]`
-
-Example: `[TKT-M0-01] Record MTPLX model compatibility decision`
-
-## Pull requests
-
-Every ticket MUST produce one GitHub pull request before it can be declared complete.
-
-PR title format:
-
-`[TICKET_NAME] Short title`
-
-The PR body must identify the ticket, milestone, exact specification/architecture/ADR/testing/security/UX references, summary, acceptance criteria, validation, decisions, VERIFY items, risks/limitations, and follow-up work.
-
-Qwen must verify the PR exists and report its URL. Never invent a PR URL. Never merge the PR; human review and merge are required.
-
-If GitHub remote access, authentication, permissions, or the required CLI are unavailable, stop at the delivery gate and report the blocker instead of declaring the ticket complete.
+`docs/workflow/agent-execution-rules.md`
