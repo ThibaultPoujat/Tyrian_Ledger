@@ -39,6 +39,7 @@
 - `docs/milestones/M6.md`
 - `docs/milestones/M7.md`
 - `docs/milestones/M8.md`
+- `docs/prompts/PROMPT-TEMPLATE.md`
 - `docs/prompts/TKT-M0-01-prompt.md`
 - `docs/prompts/TKT-M0-02-prompt.md`
 - `docs/prompts/TKT-M0-03-prompt.md`
@@ -121,7 +122,9 @@
 - `docs/tickets/TKT-M8-04.md`
 - `docs/ux/ux.md`
 - `docs/verification/VERIFY-REGISTER.md`
+- `docs/workflow/agent-execution-rules.md`
 - `docs/workflow/ai-development-workflow.md`
+- `docs/workflow/delivery-protocol.md`
 - `.github/pull_request_template.md`
 - `tests/fixtures/gw2/commerce/prices.json`
 - `tests/fixtures/gw2/commerce/listings.json`
