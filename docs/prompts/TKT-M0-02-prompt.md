@@ -3,49 +3,63 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M0.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M0-02.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read only `docs/architecture/gw2-endpoint-matrix.md` and authoritative endpoint sources
+required to resolve this ticket.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M0-02 only.
 
-Ticket-specific objective:
-Create the authoritative endpoint table used by the application.
+Create and maintain the authoritative endpoint table used by the application.
 
-Ticket-specific acceptance criteria:
-- List every MVP endpoint, purpose, required permission, batching capability, expected freshness, and cache policy.
-- Mark every uncertain fact VERIFY.
-- Include prices, listings, recipes/search, account tokeninfo, bank/materials, character crafting/recipes, and any other endpoint actually required.
-- No undocumented endpoint is added as a dependency.
+Acceptance-critical work:
+- list every MVP endpoint, purpose, required permission, batching capability, freshness,
+  and cache policy;
+- mark uncertain facts VERIFY;
+- include only endpoints actually required by the specification;
+- do not introduce undocumented endpoint dependencies;
+- maintain the synthetic fixture policy required by the ticket.
 
-Ticket-specific non-goals:
-- Implementing the HTTP client.
+## Non-goals
 
+- implementing the HTTP client;
+- changing application architecture;
+- inventing undocumented batching or permission behavior.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M0-02>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M0-02]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M0-02] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Never invent GW2 API fields, permissions, quotas, endpoints, or behavior.
+- Prefer authoritative documentation; if unavailable, use VERIFY.
+- Keep endpoint DTO/domain separation and single-gateway architecture intact.
+- Minimize unrelated changes.
+
+## Execution
+
+1. Inspect the ticket, matrix, VERIFY register, and relevant authoritative sources.
+2. Make a maximum five-step plan.
+3. Update the endpoint matrix/fixtures/register only as required.
+4. Cross-check each claim and register unresolved material facts.
+5. Validate the acceptance criteria and diff.
+6. Stop.
+
+Do not repeatedly reread unchanged sources. Do not retry the same failed fetch more than
+twice. If a required fact cannot be established, record VERIFY and continue where possible.
+
+## Validation
+
+Validate the matrix against the cited sources. Validate fixture JSON and ensure fixtures
+contain no real account data or credential/token values. No live API call is required unless
+the ticket explicitly demands one.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.
