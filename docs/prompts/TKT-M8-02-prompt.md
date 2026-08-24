@@ -3,50 +3,58 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M8.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M8-02.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read UX/accessibility requirements and the documented browser matrix relevant to this ticket.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M8-02 only.
 
-Ticket-specific objective:
 Validate the desktop UI across target browsers and accessibility basics.
 
-Ticket-specific acceptance criteria:
-- Keyboard navigation works for primary flows.
-- Focus states are visible.
-- Critical information meets the chosen contrast standard.
-- Loading/error/empty states are understandable.
-- Run smoke tests against the documented browser matrix.
+Acceptance-critical work:
+- keyboard navigation works for primary flows;
+- focus states are visible;
+- critical information meets the chosen contrast standard;
+- loading/error/empty states are understandable;
+- smoke tests run against the documented browser matrix.
 
-Ticket-specific non-goals:
-- Mobile-first redesign.
+## Non-goals
 
+- mobile-first redesign;
+- unrelated visual redesign.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M8-02>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M8-02]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M8-02] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Follow the project UX guidance rather than inventing a new design system.
+- Preserve read-only behavior.
+- Add focused browser/accessibility tests for critical flows.
+- Report unsupported browser behavior as a limitation rather than masking it.
+
+## Execution
+
+1. Inspect ticket, UX guidance, and browser-test setup.
+2. Make a maximum five-step plan.
+3. Implement only ticket-scoped fixes.
+4. Run focused browser/accessibility checks.
+5. Inspect the diff and acceptance criteria.
+6. Stop.
+
+Do not repeatedly reread unchanged files. After two failed attempts, report the blocker.
+
+## Validation
+
+Run the documented browser matrix or the closest supported subset and record exactly what was
+validated.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.
