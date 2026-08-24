@@ -3,49 +3,61 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M0.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M0-03.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read only `docs/rate-limiting/rate-limit-policy.md` and the authoritative sources
+needed by this ticket.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M0-03 only.
 
-Ticket-specific objective:
-Turn rate-limit and external-contract assumptions into measurable configuration requirements.
+Turn rate-limit and external-contract assumptions into measurable application policy.
 
-Ticket-specific acceptance criteria:
-- Document current rate-limit guidance from authoritative/community documentation.
-- Define application-level configurable scheduler parameters without hard-coding an unverified quota.
-- Document 429 handling and retry behavior.
-- Define which live verification is safe and how it will be performed without deliberately stressing the API.
+Acceptance-critical work:
+- document current authoritative/community guidance and its verification status;
+- define configurable scheduler parameters without pretending an unverified quota is fact;
+- document bounded 429 handling and retry behavior;
+- define safe live verification that does not deliberately stress the API.
 
-Ticket-specific non-goals:
-- Load testing the real GW2 API.
+## Non-goals
 
+- load/stress testing the live GW2 API;
+- inventing a hard-coded quota from an unverified source;
+- implementing the full HTTP client unless already required by the ticket.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M0-03>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M0-03]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M0-03] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Never invent GW2 API fields, quotas, endpoints, or behavior.
+- Use VERIFY for unresolved values.
+- Do not perform deliberate load testing.
+- Keep policy/configuration separate from later runtime implementation.
+- Minimize unrelated changes.
+
+## Execution
+
+1. Inspect the ticket, rate-limit policy, VERIFY register, and relevant sources.
+2. Make a maximum five-step plan.
+3. Update the policy and VERIFY register as required.
+4. Check that assumptions are clearly distinguished from verified facts.
+5. Validate the acceptance criteria and diff.
+6. Stop.
+
+Do not repeatedly investigate the same rate-limit fact. After two failed attempts to obtain
+evidence, register VERIFY and continue with safe work.
+
+## Validation
+
+Check the document for internally consistent retry/backoff terminology, explicit verification
+status, and safe live-verification instructions. Do not stress the real API.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.
