@@ -3,49 +3,57 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M7.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M7-03.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read historical-metrics and charting requirements relevant to this ticket.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M7-03 only.
 
-Ticket-specific objective:
-Compute percentiles, volatility, drawdown, spread persistence, and liquidity stability from local observations.
+Compute historical metrics from local observations without implying future prediction.
 
-Ticket-specific acceptance criteria:
-- Historical metrics are computed only from available local observations.
-- Sufficient sample checks prevent misleading statistics.
-- Charts/metrics disclose observation window and sample count.
-- No claim of future prediction is made.
+Acceptance-critical work:
+- compute percentiles, volatility, drawdown, spread persistence, and liquidity stability where specified;
+- require sufficient samples before presenting statistics as meaningful;
+- disclose observation window and sample count;
+- use only locally available observations.
 
-Ticket-specific non-goals:
-- Machine-learning price forecasts.
+## Non-goals
 
+- machine-learning price forecasts;
+- claims about future market direction.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M7-03>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M7-03]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M7-03] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Metrics must be deterministic.
+- Missing/insufficient data must be explicit.
+- Do not invent statistical definitions; use the project specification or VERIFY.
+- Add unit tests for metric formulas, insufficient samples, and edge cases.
+
+## Execution
+
+1. Inspect ticket, historical models, and metric specification.
+2. Make a maximum five-step plan.
+3. Implement the smallest pure metric services.
+4. Add focused tests.
+5. Run tests and inspect the diff.
+6. Stop.
+
+Do not repeatedly reread unchanged files. After two failed attempts, report the blocker.
+
+## Validation
+
+Use synthetic local observations. Verify sample counts/window metadata accompany metrics and no
+future prediction is implied.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.

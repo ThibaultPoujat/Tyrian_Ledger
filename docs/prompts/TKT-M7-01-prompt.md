@@ -3,49 +3,57 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M7.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M7-01.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read the historical-data specification and local persistence schema relevant to this ticket.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M7-01 only.
 
-Ticket-specific objective:
 Create the foundation for historical data without over-collecting.
 
-Ticket-specific acceptance criteria:
-- Store timestamped price/order-book snapshots with source freshness.
-- Define sampling policy by item class/watchlist.
-- Estimate local storage growth.
-- Allow future changes without corrupting existing history.
+Acceptance-critical work:
+- store timestamped price/order-book snapshots with source freshness;
+- define sampling policy by item class/watchlist;
+- estimate local storage growth;
+- allow future schema evolution without corrupting existing history.
 
-Ticket-specific non-goals:
-- Full-frequency capture of every item.
+## Non-goals
 
+- full-frequency capture of every item;
+- live collection of large datasets before policy is validated.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M7-01>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M7-01]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M7-01] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Keep historical collection bounded and API-efficient.
+- Do not invent source fields or freshness semantics.
+- Make retention/sampling assumptions explicit.
+- Add tests for schema mapping, retention/sampling decisions, and storage calculations.
+
+## Execution
+
+1. Inspect ticket, historical-data requirements, and persistence architecture.
+2. Make a maximum five-step plan.
+3. Implement the smallest history model/schema/policy.
+4. Add focused tests.
+5. Run tests and inspect the diff.
+6. Stop.
+
+Do not repeatedly reread unchanged files. After two failed attempts, report the blocker.
+
+## Validation
+
+Use synthetic snapshots. Confirm storage estimates and schema behavior are deterministic and
+that no unbounded collection is introduced.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.

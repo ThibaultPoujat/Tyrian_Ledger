@@ -3,51 +3,64 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M0.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M0-01.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read only the MTPLX/model documentation explicitly required by the ticket.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M0-01 only.
 
-Ticket-specific objective:
-Determine whether the user-provided Qwen3.8-27B-GGUF can be used directly, must be converted, or should be replaced by an MTPLX-compatible Qwen3.8 27B artifact.
+Determine whether the user-provided Qwen3.8-27B-GGUF can be used directly, must be
+converted, or should be replaced by an MTPLX-compatible Qwen3.8 27B artifact.
 
-Ticket-specific acceptance criteria:
-- Inspect current MTPLX documentation and model compatibility behavior.
-- Run the smallest safe model inspection/load command available on the Mac.
-- Document whether raw GGUF loads directly.
-- Document the chosen MTPLX-compatible artifact and provenance if conversion/catalog artifact is required.
-- Do not modify application code to couple it to MTPLX.
+Acceptance-critical work:
+- inspect current MTPLX compatibility behavior;
+- run the smallest safe model inspection/load command available;
+- document the raw GGUF result;
+- document the chosen compatible artifact and provenance when applicable;
+- keep MTPLX completely outside application architecture.
 
-Ticket-specific non-goals:
-- Changing the application architecture.
-- Training a model.
+## Non-goals
 
+- application code changes;
+- application LLM integration;
+- training a model;
+- redesigning the architecture.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M0-01>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M0-01]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M0-01] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Never invent model/runtime behavior.
+- Record unresolved external facts as VERIFY.
+- Do not claim a live runtime smoke occurred unless it actually did.
+- Preserve the application/runtime separation from MTPLX.
+- Minimize unrelated changes.
+
+## Execution
+
+1. Inspect the ticket and relevant MTPLX/model evidence.
+2. Make a maximum five-step plan.
+3. Perform the smallest safe inspection.
+4. Record the evidence and decision in the ticket or required ADR/document.
+5. Validate the acceptance criteria and inspect the diff.
+6. Stop.
+
+Do not repeatedly summarize the same evidence. Do not reread unchanged files more than
+twice. Do not retry the same failed command more than twice; report the exact blocker.
+
+## Validation
+
+Validate the documented command/result and ensure every unresolved external claim is
+marked VERIFY. Do not invent application tests for this documentation/runtime-selection
+ticket.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.

@@ -3,49 +3,59 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M8.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M8-03.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read performance/API-efficiency and crafting-search requirements relevant to this ticket.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M8-03 only.
 
-Ticket-specific objective:
-Ensure the MVP remains responsive and API-efficient.
+Verify that the MVP remains responsive and API-efficient.
 
-Ticket-specific acceptance criteria:
-- Benchmark representative analytical workloads with local fixtures.
-- Confirm candidate screening prevents unnecessary deep listings requests.
-- Confirm cache and request deduplication behavior.
-- Document any known computational limits for crafting search.
+Acceptance-critical work:
+- benchmark representative analytical workloads with local fixtures;
+- confirm candidate screening avoids unnecessary deep listings requests;
+- confirm cache and request deduplication behavior;
+- document known computational limits for crafting search.
 
-Ticket-specific non-goals:
-- Optimizing prematurely at the cost of correctness.
+## Non-goals
 
+- premature optimization that changes correctness;
+- live API load testing;
+- rewriting algorithms without evidence.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M8-03>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M8-03]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M8-03] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Benchmark locally with deterministic fixtures.
+- Do not infer live API performance from synthetic benchmarks.
+- Preserve correctness and API minimization.
+- Add performance regression checks only when they are stable and justified.
+
+## Execution
+
+1. Inspect ticket, performance requirements, and relevant code paths.
+2. Make a maximum five-step plan.
+3. Benchmark the defined workloads.
+4. Apply only evidence-backed optimizations in ticket scope.
+5. Validate and inspect the diff.
+6. Stop.
+
+Do not repeatedly rerun the same benchmark without changing the relevant condition. After two
+failed attempts, report the blocker.
+
+## Validation
+
+Record workload, environment, measurement method, and result. Confirm cache/dedup behavior and
+document computational limits rather than promising universal performance.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.

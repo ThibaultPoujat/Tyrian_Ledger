@@ -3,49 +3,57 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M3.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M3-01.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read ADR-005 and the financial rules required by this ticket.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M3-01 only.
 
-Ticket-specific objective:
-Create exact copper arithmetic and centralized transaction-fee policy.
+Create exact copper arithmetic and a centralized transaction-fee policy.
 
-Ticket-specific acceptance criteria:
-- Money is represented in integer copper.
-- No floating-point arithmetic is used for money calculations.
-- Fee policy is isolated and configurable.
-- Profit formulas document scenario semantics.
+Acceptance-critical work:
+- represent money as integer copper;
+- use no floating-point arithmetic for money calculations;
+- isolate the fee policy and keep it configurable where required;
+- document scenario semantics for profit formulas.
 
-Ticket-specific non-goals:
-- Hard-coding unexplained fee constants throughout the application.
+## Non-goals
 
+- unexplained fee constants scattered through the application;
+- changing unrelated financial models.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M3-01>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M3-01]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M3-01] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Preserve deterministic financial truth.
+- Do not invent fee rules; use verified project policy or VERIFY.
+- Add focused unit tests for arithmetic, fees, boundaries, and rounding semantics.
+- Never weaken an existing test.
+
+## Execution
+
+1. Inspect ticket, ADR-005, financial specification, and existing domain code.
+2. Make a maximum five-step plan.
+3. Implement the smallest coherent financial core.
+4. Add focused deterministic tests.
+5. Run narrow tests and inspect the diff.
+6. Stop.
+
+Do not repeatedly reread unchanged files. After two failed attempts, report the blocker.
+
+## Validation
+
+Run the relevant unit tests, including boundary/large-value cases. Confirm money remains integer
+copper throughout the calculation path.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.

@@ -3,49 +3,60 @@ You are the implementation agent for the Tyrian Ledger project.
 Read first:
 - docs/context/permanent-context.md
 - docs/context/milestone-context-M1.md
+- docs/verification/VERIFY-REGISTER.md
 - docs/tickets/TKT-M1-03.md
 
-Your job is to implement ONLY this ticket. Do not redesign the application or add an LLM feature.
+Then read `docs/testing/testing-strategy.md` and fixture guidance relevant to this ticket.
 
-Rules:
-- Never invent GW2 API fields, permissions, quotas, or behavior. Mark uncertain facts VERIFY.
-- Preserve the read-only boundary. Do not add gameplay or Trading Post automation.
-- Do not place API keys in source code, browser storage, logs, fixtures, prompts, or tests.
-- Keep money calculations in integer copper.
-- Keep external API DTOs separate from domain models.
-- Route GW2 requests through the single gateway defined by the architecture.
-- Add or update tests for every behavior change. Never weaken or delete a test just to make it pass.
-- Minimize unrelated file changes.
+## Mission
 
-Execution protocol:
-1. Inspect the current repository and relevant existing code.
-2. Restate the ticket acceptance criteria in implementation terms.
-3. Identify any real contradiction or missing dependency before coding. If one exists, stop and explain it rather than inventing a solution.
-4. Implement the smallest coherent change satisfying the ticket.
-5. Add/update unit, integration, or browser tests as appropriate.
-6. Run the narrow test set first, then the relevant broader test set.
-7. Check formatting/analyzers/build.
-8. Review the diff for accidental scope expansion and secret leakage.
-9. Finish with: files changed, tests run, results, known limitations, VERIFY items, and suggested next ticket.
+Complete TKT-M1-03 only.
 
-Ticket-specific objective:
-Create reusable test helpers and a fixture policy.
+Create reusable test helpers and a deterministic fixture policy.
 
-Ticket-specific acceptance criteria:
-- Create unit, integration, and browser-test projects or equivalent harnesses.
-- Create fixture folders and naming conventions.
-- Create deterministic clock/test data helpers where needed.
-- Document test commands.
+Acceptance-critical work:
+- create unit, integration, and browser test projects or equivalent harnesses;
+- create fixture folders and naming conventions;
+- create deterministic clock/test-data helpers where needed;
+- document test commands;
+- keep normal tests offline from the real GW2 API.
 
-Ticket-specific non-goals:
-- Real API calls in normal test execution.
+## Non-goals
 
+- real API calls during normal test execution;
+- application feature implementation;
+- unrelated test-framework changes.
 
-Delivery protocol (mandatory for every ticket):
-- Create/use a dedicated branch named `ticket/<TKT-M1-03>-<short-kebab-title>`.
-- Every commit for this ticket MUST start with `[TKT-M1-03]`.
-- Before declaring the ticket complete, push the branch and create a GitHub pull request titled `[TKT-M1-03] Short title`.
-- The PR body MUST identify the ticket and milestone and list the exact specification/architecture/ADR/testing/security/UX references implemented or validated, plus summary, acceptance-criteria status, validation, decisions, VERIFY items, risks/limitations, and follow-up.
-- Verify that the PR actually exists and report its URL. Never invent a PR URL.
-- Do not merge the PR. Human review and merge are required.
-- If GitHub CLI/authentication/permissions/remote access prevent PR creation, stop at the delivery gate and report the blocker; do not claim the ticket is complete.
+## Hard rules
+
+- Tests must be deterministic and reproducible.
+- No real credential/token values or account data in fixtures.
+- Never weaken a test to make it pass.
+- Keep fixture conventions compatible with the architecture and testing strategy.
+
+## Execution
+
+1. Inspect the ticket, testing strategy, and current test structure.
+2. Make a maximum five-step plan.
+3. Implement the smallest reusable harness/helpers.
+4. Run the narrow test suite and verify fixture safety.
+5. Inspect the diff and acceptance criteria.
+6. Stop.
+
+Do not repeatedly reread unchanged files. After two failed attempts at the same operation,
+report the exact blocker and stop.
+
+## Validation
+
+Run the new/affected test projects and confirm deterministic helpers and fixture loading work.
+Do not call the live GW2 API.
+
+## Delivery
+
+Follow `docs/workflow/delivery-protocol.md`.
+Do not merge the pull request.
+
+## Final report
+
+Return only files changed, acceptance-criteria status, validation/results, VERIFY items,
+known limitations/blockers, and the verified PR URL when complete.
