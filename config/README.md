@@ -1,7 +1,12 @@
-# Configuration templates
+# Configuration
 
-Copy or adapt these files into the repository root as appropriate.
+Repository-level build, SDK, editor, and ignore configuration is kept in the repository root so standard .NET, Git, and editor tooling discovers it automatically:
 
-`global.json` and `Directory.Build.props` are baseline templates; verify installed SDK availability on the development Mac before enforcing them.
+- `global.json`
+- `Directory.Build.props`
+- `.editorconfig`
+- `.gitignore`
 
-Do not put API keys in configuration files committed to Git.
+`config/AGENTS.md` remains the Qwen coding-agent entry point.
+
+Do not put API keys or other secrets in committed configuration files.
