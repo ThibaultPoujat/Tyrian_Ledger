@@ -15,19 +15,19 @@ architecture.
 - ADR-007 read-only boundary
 
 ## Acceptance criteria
-- [ ] Document the authoritative current GW2 API terms/documentation references used by the project.
-- [ ] Document personal/local-use French/EU privacy and security assumptions and clearly distinguish them from controls required for public deployment.
-- [ ] Define minimum API-key permissions by feature using verified API documentation; unresolved mappings remain VERIFY.
-- [ ] Document explicit prohibited operations and restate the architectural rule that feature code cannot access a generic authenticated/write-capable GW2 operation.
-- [ ] Identify future automated enforcement requirements without falsely claiming that runtime enforcement already exists.
-- [ ] Add or update material VERIFY items with stable IDs and evidence references.
+- [x] Document the authoritative current GW2 API terms/documentation references used by the project.
+- [x] Document personal/local-use French/EU privacy and security assumptions and clearly distinguish them from controls required for public deployment.
+- [x] Define minimum API-key permissions by feature using verified API documentation; unresolved mappings remain VERIFY.
+- [x] Document explicit prohibited operations and restate the architectural rule that feature code cannot access a generic authenticated/write-capable GW2 operation.
+- [x] Identify future automated enforcement requirements without falsely claiming that runtime enforcement already exists.
+- [x] Add or update material VERIFY items with stable IDs and evidence references.
 
 ## Required validation
-- [ ] Security/release checklist exists and is internally consistent.
-- [ ] Every external API/legal claim is either sourced from an authoritative project reference or marked VERIFY.
-- [ ] The read-only enforcement requirement is explicitly documented.
-- [ ] No application behavior is falsely claimed to be implemented.
-- [ ] Final diff contains no credential/token values.
+- [x] Security/release checklist exists and is internally consistent.
+- [x] Every external API/legal claim is either sourced from an authoritative project reference or marked VERIFY.
+- [x] The read-only enforcement requirement is explicitly documented.
+- [x] No application behavior is falsely claimed to be implemented.
+- [x] Final diff contains no credential/token values.
 
 ## Non-goals
 - Legal advice.

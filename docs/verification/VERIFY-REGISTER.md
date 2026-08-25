@@ -71,3 +71,12 @@ Resolved items remain in the table above.
 For significant verification decisions, detailed evidence should remain in the
 ticket or other authoritative project document rather than being duplicated
 here.
+
+## Open items
+
+| Item | Ticket | Status |
+| --- | --- | --- |
+| M1-01 skeleton verified locally (build, smoke tests, frontend build, process startup) but not yet verified in CI (no CI configured) | TKT-M1-01 | Open |
+| E2E stub (`tests/Gw2Tp.Web.E2E`) has no tests; Playwright runs are expected in a later milestone | TKT-M1-01 | Open |
+| Placeholder C# test projects (`Gw2Tp.Domain.Tests`, `Gw2Tp.Application.Tests`, `Gw2Tp.Analytics.Tests`, `Gw2Tp.Infrastructure.Tests`) contain no tests yet; add with their owning tickets | TKT-M1-01 | Open |
+

@@ -64,3 +64,24 @@ Visual Studio for Mac was retired on August 31, 2024. On macOS use Visual Studio
 - MAY = optional.
 - ASSUMPTION = provisional until verified.
 - VERIFY = must be checked against current authoritative documentation or measured behavior before release.
+
+## Development commands
+
+Requires the .NET 10 SDK and a recent Node.js. No credentials are required for the M1 skeleton.
+
+### Backend
+
+- Build the solution: `dotnet build TyrianLedger.slnx`
+- Run all tests: `dotnet test`
+- Run the API locally: `dotnet run --project src/Gw2Tp.Web` (URL printed in console output; smoke endpoints: `/` and `/healthz`)
+
+### Frontend
+
+- Install dependencies: `cd frontend && npm install`
+- Run the dev server: `cd frontend && npm run dev`
+- Production build: `cd frontend && npm run build`
+
+### E2E (stub, later milestones)
+
+- `cd tests/Gw2Tp.Web.E2E && npm install && npx playwright install` then `npm test`
+
