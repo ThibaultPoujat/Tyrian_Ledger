@@ -23,6 +23,8 @@ References:
 ## Best practices required by this project
 
 - API key stored outside source code;
+- persistent local credentials use the host OS secret service (Keychain,
+  Credential Manager, or Secret Service), never a plaintext application file;
 - no secret in browser JavaScript;
 - loopback-only server by default;
 - redacted logs;

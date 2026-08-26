@@ -4,21 +4,17 @@ using Microsoft.Extensions.Logging;
 namespace Gw2Tp.Infrastructure.Secrets;
 
 /// <summary>
-/// Persistent local credential provider backed by the macOS Keychain.
+/// Retrieves the local credential through the current operating system's
+/// secret service without exposing its value outside Infrastructure.
 /// </summary>
-public sealed class MacOsKeychainSecretStore : ISecretStore
+public sealed class OperatingSystemSecretStore : ISecretStore
 {
-    private readonly IKeychainCredentialReader _credentialReader;
-    private readonly ILogger<MacOsKeychainSecretStore> _logger;
+    private readonly IPlatformSecretReader _credentialReader;
+    private readonly ILogger<OperatingSystemSecretStore> _logger;
 
-    public MacOsKeychainSecretStore(ILogger<MacOsKeychainSecretStore> logger)
-        : this(new MacOsKeychainCredentialReader(), logger)
-    {
-    }
-
-    internal MacOsKeychainSecretStore(
-        IKeychainCredentialReader credentialReader,
-        ILogger<MacOsKeychainSecretStore> logger)
+    internal OperatingSystemSecretStore(
+        IPlatformSecretReader credentialReader,
+        ILogger<OperatingSystemSecretStore> logger)
     {
         ArgumentNullException.ThrowIfNull(credentialReader);
         ArgumentNullException.ThrowIfNull(logger);
@@ -41,11 +37,15 @@ public sealed class MacOsKeychainSecretStore : ISecretStore
         var credential = await GetCredentialOrNullAsync(cancellationToken);
         if (credential is null)
         {
-            _logger.LogWarning("GW2 API credential is unavailable from the local OS secret store.");
+            _logger.LogWarning(
+                "GW2 API credential is unavailable from {SecretStore}.",
+                _credentialReader.StoreName);
             throw new LocalConfigurationException();
         }
 
-        _logger.LogInformation("GW2 API credential resolved from the local OS secret store.");
+        _logger.LogInformation(
+            "GW2 API credential resolved from {SecretStore}.",
+            _credentialReader.StoreName);
     }
 
     private async ValueTask<string?> GetCredentialOrNullAsync(CancellationToken cancellationToken)
@@ -61,7 +61,7 @@ public sealed class MacOsKeychainSecretStore : ISecretStore
         }
         catch
         {
-            // Keychain/provider diagnostics can contain sensitive data. Return
+            // OS secret-service diagnostics can contain sensitive data. Return
             // only the stable application-level configuration state instead.
             return null;
         }

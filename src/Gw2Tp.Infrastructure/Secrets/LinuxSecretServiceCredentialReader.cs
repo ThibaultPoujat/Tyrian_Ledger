@@ -2,39 +2,37 @@ using System.Diagnostics;
 
 namespace Gw2Tp.Infrastructure.Secrets;
 
-internal interface IPlatformSecretReader
+/// <summary>
+/// Reads the credential from an unlocked implementation of the freedesktop.org
+/// Secret Service API, such as GNOME Keyring or KWallet.
+/// </summary>
+internal sealed class LinuxSecretServiceCredentialReader : IPlatformSecretReader
 {
-    string StoreName { get; }
+    private const string SecretToolPath = "secret-tool";
 
-    ValueTask<string?> ReadGw2ApiCredentialAsync(CancellationToken cancellationToken);
-}
-
-internal sealed class MacOsKeychainCredentialReader : IPlatformSecretReader
-{
-    private const string SecurityToolPath = "/usr/bin/security";
-
-    public string StoreName => "macOS Keychain";
+    public string StoreName => "Linux Secret Service";
 
     public async ValueTask<string?> ReadGw2ApiCredentialAsync(CancellationToken cancellationToken)
     {
-        if (!OperatingSystem.IsMacOS())
+        if (!OperatingSystem.IsLinux())
         {
             return null;
         }
 
         try
         {
-            var startInfo = new ProcessStartInfo(SecurityToolPath)
+            var startInfo = new ProcessStartInfo(SecretToolPath)
             {
                 CreateNoWindow = true,
                 RedirectStandardError = true,
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
             };
-            startInfo.ArgumentList.Add("find-generic-password");
-            startInfo.ArgumentList.Add("-s");
-            startInfo.ArgumentList.Add(SecretStoreMetadata.ServiceName);
-            startInfo.ArgumentList.Add("-w");
+            startInfo.ArgumentList.Add("lookup");
+            startInfo.ArgumentList.Add(SecretStoreMetadata.LinuxApplicationAttribute);
+            startInfo.ArgumentList.Add(SecretStoreMetadata.LinuxApplicationValue);
+            startInfo.ArgumentList.Add(SecretStoreMetadata.LinuxCredentialAttribute);
+            startInfo.ArgumentList.Add(SecretStoreMetadata.LinuxCredentialValue);
 
             using var process = Process.Start(startInfo);
             if (process is null)

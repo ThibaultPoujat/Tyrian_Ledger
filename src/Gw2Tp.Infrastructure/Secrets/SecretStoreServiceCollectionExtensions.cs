@@ -1,6 +1,7 @@
 using Gw2Tp.Application.Secrets;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Gw2Tp.Infrastructure.Secrets;
 
@@ -13,12 +14,17 @@ public static class SecretStoreServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(environment);
 
-        services.AddSingleton<MacOsKeychainSecretStore>();
+        services.AddSingleton<IPlatformSecretReader>(_ =>
+            PlatformSecretReaderFactory.CreateForCurrentOperatingSystem());
+        services.AddSingleton<OperatingSystemSecretStore>(serviceProvider =>
+            new OperatingSystemSecretStore(
+                serviceProvider.GetRequiredService<IPlatformSecretReader>(),
+                serviceProvider.GetRequiredService<ILogger<OperatingSystemSecretStore>>()));
 
         if (!environment.IsDevelopment() && !environment.IsEnvironment("Testing"))
         {
             services.AddSingleton<ISecretStore>(serviceProvider =>
-                serviceProvider.GetRequiredService<MacOsKeychainSecretStore>());
+                serviceProvider.GetRequiredService<OperatingSystemSecretStore>());
             return services;
         }
 
@@ -26,7 +32,7 @@ public static class SecretStoreServiceCollectionExtensions
         services.AddSingleton<ISecretStore>(serviceProvider =>
             new DevelopmentSecretStore(
                 serviceProvider.GetRequiredService<EnvironmentSecretStore>(),
-                serviceProvider.GetRequiredService<MacOsKeychainSecretStore>()));
+                serviceProvider.GetRequiredService<OperatingSystemSecretStore>()));
 
         return services;
     }

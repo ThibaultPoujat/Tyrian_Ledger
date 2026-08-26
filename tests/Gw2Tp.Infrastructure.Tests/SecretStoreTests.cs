@@ -41,11 +41,11 @@ public sealed class SecretStoreTests
     }
 
     [Fact]
-    public async Task Keychain_provider_redacts_underlying_failures_from_logs_and_exceptions()
+    public async Task Operating_system_provider_redacts_underlying_failures_from_logs_and_exceptions()
     {
-        var logger = new CapturingLogger<MacOsKeychainSecretStore>();
-        var store = new MacOsKeychainSecretStore(
-            new ThrowingKeychainCredentialReader(SyntheticCredential),
+        var logger = new CapturingLogger<OperatingSystemSecretStore>();
+        var store = new OperatingSystemSecretStore(
+            new ThrowingPlatformSecretReader(SyntheticCredential),
             logger);
 
         var exception = await Assert.ThrowsAsync<LocalConfigurationException>(
@@ -54,6 +54,19 @@ public sealed class SecretStoreTests
         Assert.Equal(LocalConfigurationException.StableMessage, exception.Message);
         Assert.DoesNotContain(SyntheticCredential, exception.ToString());
         Assert.All(logger.Entries, entry => Assert.DoesNotContain(SyntheticCredential, entry));
+    }
+
+    [Fact]
+    public void Platform_factory_selects_the_supported_operating_system_secret_readers()
+    {
+        Assert.IsType<MacOsKeychainCredentialReader>(
+            PlatformSecretReaderFactory.Create(RuntimePlatform.MacOs));
+        Assert.IsType<WindowsCredentialManagerCredentialReader>(
+            PlatformSecretReaderFactory.Create(RuntimePlatform.Windows));
+        Assert.IsType<LinuxSecretServiceCredentialReader>(
+            PlatformSecretReaderFactory.Create(RuntimePlatform.Linux));
+        Assert.IsType<UnsupportedPlatformSecretReader>(
+            PlatformSecretReaderFactory.Create(RuntimePlatform.Unsupported));
     }
 
     [Theory]
@@ -73,14 +86,16 @@ public sealed class SecretStoreTests
         Assert.Equal(shouldRegisterEnvironmentProvider, isEnvironmentProviderRegistered);
     }
 
-    private sealed class ThrowingKeychainCredentialReader : IKeychainCredentialReader
+    private sealed class ThrowingPlatformSecretReader : IPlatformSecretReader
     {
         private readonly string _syntheticCredential;
 
-        public ThrowingKeychainCredentialReader(string syntheticCredential)
+        public ThrowingPlatformSecretReader(string syntheticCredential)
         {
             _syntheticCredential = syntheticCredential;
         }
+
+        public string StoreName => "synthetic OS secret store";
 
         public ValueTask<string?> ReadGw2ApiCredentialAsync(CancellationToken cancellationToken)
         {

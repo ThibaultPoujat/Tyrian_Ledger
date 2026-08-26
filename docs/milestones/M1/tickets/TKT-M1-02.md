@@ -4,7 +4,9 @@
 M1
 
 ## Goal
-Create the local credential/configuration boundary required by the architecture without ever persisting an API key in source control, browser storage, logs, or ordinary application configuration.
+Create the cross-platform local credential/configuration boundary required by
+the architecture without ever persisting an API key in source control, browser
+storage, logs, or ordinary application configuration.
 
 ## Dependencies
 M1-01
@@ -13,6 +15,9 @@ M1-01
 - [ ] Define and implement an `ISecretStore`/equivalent application-facing abstraction for retrieving the GW2 API credential without exposing its value to feature code or the web UI.
 - [ ] Support a documented local-development environment-variable override (for example, a single `TYRIAN_LEDGER_*` variable whose exact name is documented by the implementation).
 - [ ] Preserve ADR-006: production/local persistent storage must use an OS-backed secret mechanism; environment-variable retrieval is only a development/test fallback.
+- [ ] Support the local-host secret service on macOS (Keychain), Windows
+  (Credential Manager), and Linux desktop environments implementing the Secret
+  Service API; browser clients remain secret-free on every platform.
 - [ ] Ensure credential values are never written to logs, exceptions, browser responses, DTOs, or persisted application data.
 - [ ] Return a stable, non-secret configuration error when the credential is required but unavailable.
 - [ ] Keep secret retrieval outside Domain and Analytics layers.
@@ -22,6 +27,9 @@ M1-01
 - [ ] Environment-provider test: a synthetic credential can be resolved for local development/test execution.
 - [ ] Log-redaction test: a synthetic credential never appears in captured logs/exceptions.
 - [ ] Web-boundary test: a synthetic credential is not present in any HTTP response/serialized DTO; if no existing endpoint exercises configuration yet, add only the smallest non-secret configuration/status surface needed to prove this.
+- [ ] Platform-selection test: macOS, Windows, Linux Secret Service, and
+  unsupported-platform readers resolve to the intended adapter without a
+  plaintext fallback.
 - [ ] Tests never use a real GW2 credential.
 
 ## Non-goals
@@ -36,6 +44,9 @@ M1-01
 - Prefer an explicit provider abstraction with dependency injection over direct reads from environment variables inside controllers or business logic.
 - Do not add a plaintext file-based secret store as a fallback.
 - Keep the secret value out of domain models and application DTOs.
+- On an unsupported platform or where its OS secret service is unavailable,
+  return the stable configuration error rather than falling back to plaintext
+  storage.
 
 ## Specification references
 - `docs/specs/project-spec.md`
