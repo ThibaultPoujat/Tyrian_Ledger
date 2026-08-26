@@ -74,6 +74,24 @@ Requires the .NET 10 SDK and a recent Node.js. No credentials are required for t
 - Dev server: `cd frontend && npm run dev`
 - Build: `cd frontend && npm run build`
 
+### Quick local review
+
+Start any missing local services and open the application in a browser:
+
+```bash
+./scripts/dev-up.sh
+```
+
+The script waits for the API at `http://127.0.0.1:5000/healthz` and the
+frontend at `http://127.0.0.1:5173`, reusing a healthy service if it is already
+running. It writes local logs and process IDs under ignored `.local/dev/`.
+
+Stop only services started by that script:
+
+```bash
+./scripts/dev-down.sh
+```
+
 ### E2E
 
 The Playwright project is intentionally introduced by the relevant ticket/milestone rather than required for every local development session.
