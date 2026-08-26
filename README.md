@@ -1,6 +1,6 @@
 # Tyrian Ledger - Qwen/MTPLX Development Package
 
-This repository is the complete planning and development package for a local, read-only Guild Wars 2 Trading Post analysis application.
+This repository is the planning and development package for a local, read-only Guild Wars 2 Trading Post analysis application.
 
 ## Purpose
 
@@ -12,49 +12,36 @@ Build a browser-based local application that:
 - calculates market and crafting opportunities deterministically;
 - makes assumptions, data age, uncertainty, liquidity, and opportunity cost visible;
 - persists local user history without requiring a server or cloud account;
-- can later support historical analysis and long-term investment research;
-- may later add an application-facing LLM, but **no LLM integration is part of the MVP or current architecture**.
+- may later support historical analysis and long-term investment research;
+- may later add an application-facing LLM, but no LLM integration is part of the MVP or current architecture.
 
 ## Development environment
 
-The local coding agent is Qwen3.8-27B operated through MTPLX on an Apple Silicon Mac. MTPLX exposes an OpenAI-compatible local API and is used only as the development assistant/runtime. It is not an application runtime dependency.
+The local coding agent is Qwen3.8-27B operated through Pi/MTPLX on an Apple Silicon Mac. MTPLX is a development dependency only and is not part of the application runtime.
 
-Important: MTPLX currently runs MLX-native model artifacts and explicitly treats GGUF as the llama.cpp format. The raw `unsloth/Qwen3.8-27B-GGUF` repository must therefore be treated as a source model reference, not as a guaranteed MTPLX-loadable artifact. Milestone M0 contains an explicit compatibility gate before development proceeds.
+## Documentation layout
 
-## Important editor note
+- `docs/specs/` - normative product/system specifications.
+- `docs/architecture/` - technical architecture and API endpoint matrix.
+- `docs/security/` - security and French/EU data-protection baseline.
+- `docs/testing/` - testing strategy.
+- `docs/ux/` - UI/UX rules.
+- `docs/adr/` - Architecture Decision Records.
+- `docs/context/` - lightweight context intended for the coding agent.
+- `docs/verification/` - unresolved external-contract and verification register.
+- `docs/milestones/` - milestone definitions plus milestone-scoped `tickets/` and `prompts/`.
+- `docs/workflow/` - coding-agent execution and delivery rules.
+- `config/AGENTS.md` - agent entry rules loaded by Pi.
 
-Visual Studio for Mac was retired on August 31, 2024. On macOS use Visual Studio Code (or another current editor) with the local MTPLX-compatible coding workflow.
+## Agent workflow
 
-## Deliverables in this package
-
-- `docs/specs/project-spec.md` - normative product and system specification.
-- `docs/architecture/architecture.md` - technical architecture.
-- `docs/security/security.md` - security and French/EU data-protection baseline.
-- `docs/testing/testing-strategy.md` - test strategy and quality gates.
-- `docs/ux/ux.md` - UI/UX rules.
-- `docs/workflow/ai-development-workflow.md` - human-readable Qwen workflow overview.
-- `docs/workflow/agent-execution-rules.md` - lightweight agent execution and anti-loop rules.
-- `docs/workflow/delivery-protocol.md` - Git/GitHub delivery rules.
-- `docs/adr/` - Architecture Decision Records (ADRs).
-- `docs/milestones/` - milestone definitions and completion criteria.
-- `docs/context/` - lightweight context files intended for Qwen.
-- `docs/tickets/` - implementation tickets.
-- `docs/prompts/` - one lightweight execution prompt per ticket plus the canonical prompt template.
-- `config/` - repository configuration templates.
-- `.github/pull_request_template.md` - standard ticket PR structure.
-
-## How to use this package
-
-1. Create or clone the Git repository.
-2. Read `docs/specs/project-spec.md` once yourself.
-3. Start a **fresh Qwen session for each ticket**.
-4. Let `config/AGENTS.md` load the permanent context, current milestone, VERIFY register, ticket, and ticket prompt.
-5. Let Qwen load specialized documents only when the current ticket explicitly needs them.
-6. Execute tickets in dependency order within each milestone.
-7. Require tests for behavior changes and direct documentation validation for documentation-only tickets.
-8. Do not let Qwen silently change architectural decisions. If a ticket exposes a real architectural issue, update or create an ADR first.
-9. Keep the application fully read-only and local until a future scope explicitly changes that decision.
-10. For every ticket, use a dedicated branch, prefix ticket commits with `[TICKET_NAME]`, create the required GitHub PR, and never merge the PR as Qwen.
+1. Start a fresh Pi session for each coherent ticket phase.
+2. Load only the permanent context, current milestone context, VERIFY register, one ticket, and the matching prompt.
+3. Read specialized documents or source files only when required.
+4. Keep the active local context around 16K tokens by default.
+5. Use Git commits and the working tree as the hand-off between sessions.
+6. Split complex tickets into sequential implementation/test/review sessions instead of preserving one large conversation.
+7. Complete Git/GitHub delivery through the repository delivery protocol; Qwen must not merge its own PR.
 
 ## Normative language
 
@@ -71,17 +58,16 @@ Requires the .NET 10 SDK and a recent Node.js. No credentials are required for t
 
 ### Backend
 
-- Build the solution: `dotnet build TyrianLedger.slnx`
-- Run all tests: `dotnet test`
-- Run the API locally: `dotnet run --project src/Gw2Tp.Web` (URL printed in console output; smoke endpoints: `/` and `/healthz`)
+- Build: `dotnet build TyrianLedger.slnx`
+- Test: `dotnet test`
+- Run locally: `dotnet run --project src/Gw2Tp.Web`
 
 ### Frontend
 
-- Install dependencies: `cd frontend && npm install`
-- Run the dev server: `cd frontend && npm run dev`
-- Production build: `cd frontend && npm run build`
+- Install: `cd frontend && npm install`
+- Dev server: `cd frontend && npm run dev`
+- Build: `cd frontend && npm run build`
 
-### E2E (stub, later milestones)
+### E2E
 
-- `cd tests/Gw2Tp.Web.E2E && npm install && npx playwright install` then `npm test`
-
+The Playwright project is intentionally introduced by the relevant ticket/milestone rather than required for every local development session.
