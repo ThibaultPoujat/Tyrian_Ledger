@@ -18,7 +18,6 @@
 - `docs/milestones/M0.md` through `docs/milestones/M8.md`
 - `docs/milestones/M0/tickets/` through `docs/milestones/M8/tickets/`
 - `docs/rate-limiting/rate-limit-policy.md`
-- `docs/roadmap.md`
 - `docs/security/security.md`
 - `docs/specs/project-spec.md`
 - `docs/specs/verified-external-notes.md`
