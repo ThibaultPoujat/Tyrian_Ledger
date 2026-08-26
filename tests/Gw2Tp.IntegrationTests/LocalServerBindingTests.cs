@@ -1,9 +1,9 @@
+using System.Net;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using System.Net;
 using Gw2Tp.Web;
 using Xunit;
 
@@ -18,9 +18,8 @@ public sealed class LocalServerBindingTests
     {
         using var factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder => builder.UseSetting(WebHostDefaults.EnvironmentKey, environmentName));
-        var configuration = new ConfigurationBuilder()
-            .Build();
         var client = factory.CreateClient();
+        var configuration = factory.Services.GetRequiredService<IConfiguration>();
 
         var urls = LocalServerBinding.ResolveUrls(configuration);
         var response = await client.GetAsync("/healthz");

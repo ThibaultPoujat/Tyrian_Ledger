@@ -1,5 +1,6 @@
-using System.Net;
 using System.Collections;
+using System.Net;
+using System.Reflection;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -41,7 +42,7 @@ public class WebStartupSmokeTests : IClassFixture<WebApplicationFactory<Program>
             .GetRequiredService<IOptions<ValidationOptions>>()
             .Value;
         var resolvers = typeof(ValidationOptions)
-            .GetProperty("Resolvers")
+            .GetProperty("Resolvers", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             ?.GetValue(validationOptions) as IEnumerable;
 
         Assert.NotNull(resolvers);
