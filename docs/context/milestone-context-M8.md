@@ -4,10 +4,13 @@
 M8 - Hardening, accessibility, release readiness
 
 ## Goal
-Security review, browser compatibility, performance checks, documentation, backups, and a clean local release workflow.
+Harden the application, improve accessibility and usability, and verify release readiness against the documented security, performance, and read-only requirements.
 
-## Permanent context
-Load `docs/context/permanent-context.md`.
+## Agent context
+Load `docs/context/permanent-context.md`, the VERIFY register, one M8 ticket, and its matching M8 prompt. Read release, accessibility, security, and performance guidance only when required.
 
-## Rules for this milestone
-Implement only the tickets in this milestone. If a ticket requires an architecture change, create/update an ADR before coding beyond the smallest safe change.
+## Session rule
+Prefer separate sessions for hardening, accessibility, release validation, and final review. Keep active context near 16K and use Git state as the hand-off.
+
+## Rules
+Do not broaden release scope silently. Verify external claims and security assumptions. A release candidate is not complete until its acceptance criteria and validation evidence are recorded.
