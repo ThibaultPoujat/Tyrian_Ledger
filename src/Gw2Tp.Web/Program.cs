@@ -1,12 +1,25 @@
-// Tyrian Ledger Web - M1 skeleton (TKT-M1-01).
-// No business logic yet. GW2 access is a non-goal until M2.
+using Gw2Tp.Application.Secrets;
+using Gw2Tp.Infrastructure.Secrets;
+
+// Tyrian Ledger Web - M1 skeleton. GW2 access is a non-goal until M2.
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddTyrianLedgerSecretStore(builder.Environment);
 var app = builder.Build();
 
 app.MapGet("/", () => Results.Ok(new { service = "Tyrian Ledger API", status = "running" }));
 app.MapGet("/healthz", () => Results.Ok("ok"));
+app.MapGet("/api/status", async (ISecretStore secretStore, CancellationToken cancellationToken) =>
+{
+    var credentialAvailability = await secretStore
+        .GetGw2ApiCredentialAvailabilityAsync(cancellationToken);
+
+    return Results.Ok(new ServiceStatusResponse(
+        credentialAvailability == SecretAvailability.Available ? "configured" : "not-configured"));
+});
 
 app.Run();
 
 public partial class Program;
+
+internal sealed record ServiceStatusResponse(string CredentialStatus);

@@ -5,4 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Gw2Tp.Application/Gw2Tp.Application.csproj" />
+    <ProjectReference Include="../Gw2Tp.Infrastructure/Gw2Tp.Infrastructure.csproj" />
+  </ItemGroup>
 </Project>
