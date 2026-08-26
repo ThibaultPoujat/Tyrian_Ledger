@@ -1,110 +1,89 @@
-# Qwen + MTPLX Development Workflow
+# Local Coding-Agent Development Workflow
 
 ## Purpose
 
-Qwen is the local development agent. It is not the product decision-maker and is not
-part of the application runtime.
+Qwen is the local development agent operated through Pi/MTPLX. It is not part of the application runtime and is not the project's decision-maker.
 
-This document is the human-readable overview of the workflow. Detailed agent behavior
-and GitHub delivery rules live in:
-
-- `docs/workflow/agent-execution-rules.md`
-- `docs/workflow/delivery-protocol.md`
+The workflow is designed for a local 32 GB Apple Silicon machine: small active contexts, fresh sessions, deterministic validation, and Git-based hand-offs.
 
 ## Context model
 
-The repository deliberately separates deep reference material from lightweight agent
-context.
-
-### Always-loaded context
+Each ticket session loads the minimum context:
 
 - `docs/context/permanent-context.md`
-- current `docs/context/milestone-context-Mx.md`
+- current milestone context
 - `docs/verification/VERIFY-REGISTER.md`
-- one assigned ticket
-- one assigned prompt
+- one ticket under `docs/milestones/<M>/tickets/`
+- the matching prompt under `docs/milestones/<M>/prompts/`
+- specialized documents/source files only when required
 
-### Loaded only when relevant
+Deep specification documents remain reference material. Do not inject the whole project documentation set into every session.
 
-- project specification;
-- architecture;
-- ADRs;
-- security;
-- rate-limit policy;
-- endpoint matrix;
-- testing strategy;
-- UX documentation;
-- source files.
+## Ticket versus session
 
-Do not load the complete project specification for every ticket.
+A ticket is a project unit. A session is a bounded execution slice.
 
-## Ticket lifecycle
+A ticket may use several sessions:
 
-1. Start a fresh agent session for the ticket.
-2. Read the minimum context listed above.
+1. implementation;
+2. focused tests;
+3. review/final validation.
+
+Start a new session when context is becoming large/noisy, the work phase changes, compaction has already occurred, or the remaining work can be recovered from Git and the ticket.
+
+Do not run concurrent Qwen sessions for ordinary work on the local 32 GB machine.
+
+## Context target
+
+Use approximately 16K active context as the default local target. A larger model context is not a reason to preserve a long session. Prefer a new session over an oversized conversation.
+
+## Standard session lifecycle
+
+1. Start a fresh Pi session.
+2. Read the assigned ticket and minimal context.
 3. Review relevant VERIFY items.
-4. Inspect repository state.
-5. Make a brief implementation plan.
-6. Implement only the ticket.
-7. Validate the acceptance criteria.
+4. Inspect the current repository/Git state.
+5. Make a plan of no more than five steps.
+6. Execute one coherent work slice.
+7. Run focused validation.
 8. Review the diff.
-9. Update the VERIFY register when material uncertainty was discovered.
-10. Complete the Git/GitHub delivery gate.
-11. Stop. The next ticket starts in a new session.
+9. Commit or hand off according to the delivery protocol.
+10. Stop.
 
-## VERIFY and blockers
+The next session recovers from the repository state; it does not inherit the previous chat history.
 
-`VERIFY` means an external fact is unresolved but work can continue safely without
-assuming it is true.
+## VERIFY and BLOCKED
 
-`BLOCKED` means missing or contradictory information makes the requested work
-impossible or unsafe.
+`VERIFY` means an external fact is unresolved but safe progress can continue without assuming it.
 
-Qwen should not stop merely because a fact is uncertain. It should register the
-uncertainty and continue wherever possible.
+`BLOCKED` means missing or contradictory information makes the requested work technically impossible or unsafe.
+
+Do not stop merely because something is uncertain. Record VERIFY and continue when possible.
 
 ## Anti-loop policy
 
-Qwen must prefer execution over repeated planning.
-
 - Maximum five planning steps.
-- Do not repeatedly restate acceptance criteria.
+- Prefer execution over repeated summaries.
 - Do not reread unchanged files more than twice.
-- Do not repeat an analysis without new evidence.
+- Do not repeat analysis without new evidence.
 - Do not retry a failed operation more than twice.
-- After two unsuccessful attempts, report the exact blocker.
 - Never enter a read -> summarize -> reread -> resummarize loop.
-- Stop when the ticket is complete.
+- Stop after the current coherent work slice.
 
 ## Testing policy
 
-For code tickets, test behavior changes and run the narrowest relevant tests first.
-Broader validation follows when useful.
+For code tickets, test changed behavior and run the narrowest relevant tests first. Broader validation follows when useful.
 
-For documentation-only tickets, validate the documents and acceptance criteria rather
-than inventing executable tests where no implementation exists yet.
+For documentation tickets, validate documents and acceptance criteria instead of inventing executable tests for behavior that does not exist.
 
-Never weaken or delete a test simply to obtain a passing result.
+Never weaken or delete tests merely to obtain a passing result.
 
 ## Architecture and ADRs
 
-An ADR is an Architecture Decision Record: a short record of a durable architectural
-decision, its context, alternatives, chosen option, and consequences.
-
-Do not create an ADR for ordinary ticket implementation. Create/update one only when a
-durable, cross-cutting architectural decision is required.
+Create or update an ADR only for a durable cross-cutting architectural decision. Ordinary ticket implementation does not require a new ADR.
 
 ## Human review
 
-Human review remains mandatory for changes involving:
+Human review remains mandatory for API permissions, credentials/authentication, API request policy, financial formulas, persistence schema decisions, security behavior, project scope, and architectural decisions.
 
-- API permissions;
-- credentials/authentication;
-- API request policy;
-- financial formulas;
-- persistence schema decisions;
-- security behavior;
-- project scope;
-- architectural decisions.
-
-Qwen must not merge its own pull requests.
+Qwen must never merge its own pull request.
