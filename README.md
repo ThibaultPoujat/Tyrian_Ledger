@@ -62,10 +62,12 @@ snapshots, not active instructions.
 
 Requires the .NET 10 SDK and a recent Node.js. No credentials are required for the M1 skeleton.
 
-### Backend
+### .NET tests and backend
 
 - Build: `dotnet build TyrianLedger.slnx`
-- Test: `dotnet test`
+- Unit tests: `dotnet test TyrianLedger.slnx --configuration Release --filter "FullyQualifiedName!~Gw2Tp.IntegrationTests"`
+- Integration tests: `dotnet test tests/Gw2Tp.IntegrationTests/Gw2Tp.IntegrationTests.csproj --configuration Release`
+- Full .NET suite: `dotnet test TyrianLedger.slnx --configuration Release`
 - Run locally: `dotnet run --project src/Gw2Tp.Web`
 
 ### Frontend
@@ -76,4 +78,11 @@ Requires the .NET 10 SDK and a recent Node.js. No credentials are required for t
 
 ### E2E
 
-The Playwright project is intentionally introduced by the relevant ticket/milestone rather than required for every local development session.
+The Playwright suite starts the loopback-only ASP.NET Core API and Vite frontend
+automatically. It uses the local health endpoint and the React shell only; it
+does not call the live GW2 API.
+
+- Install frontend dependencies: `cd frontend && npm ci`
+- Install E2E dependencies: `cd tests/Gw2Tp.Web.E2E && npm ci`
+- Install the Chromium test browser: `cd tests/Gw2Tp.Web.E2E && npx playwright install chromium`
+- Run browser smoke tests: `cd tests/Gw2Tp.Web.E2E && npm test`

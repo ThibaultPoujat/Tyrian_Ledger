@@ -77,5 +77,5 @@ here.
 | Item | Ticket | Status |
 | --- | --- | --- |
 | M1-01 skeleton is verified locally; the CI workflow now exists but its GitHub run should be confirmed before M1 closes. | TKT-M1-01 | Open |
-| E2E stub (`tests/Gw2Tp.Web.E2E`) has no tests; Playwright runs are expected in a later milestone | TKT-M1-01 | Open |
-| Placeholder C# test projects (`Gw2Tp.Domain.Tests`, `Gw2Tp.Application.Tests`, `Gw2Tp.Analytics.Tests`, `Gw2Tp.Infrastructure.Tests`) contain no tests yet; add with their owning tickets | TKT-M1-01 | Open |
+| E2E stub (`tests/Gw2Tp.Web.E2E`) had no tests; an offline Playwright smoke suite now verifies both the local API health endpoint and React shell. | TKT-M1-03 | RESOLVED — 2026-08-26 |
+| Placeholder C# test projects (`Gw2Tp.Domain.Tests`, `Gw2Tp.Application.Tests`, `Gw2Tp.Analytics.Tests`, `Gw2Tp.Infrastructure.Tests`) had no tests; each active layer now has executable harness coverage. | TKT-M1-03 | RESOLVED — 2026-08-26 |
