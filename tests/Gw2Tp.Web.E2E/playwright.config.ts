@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const isCi = process.env.CI === 'true';
+const isCi = /^(true|1)$/i.test(process.env.CI ?? '');
 
 export default defineConfig({
   testDir: './tests',
