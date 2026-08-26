@@ -1,9 +1,9 @@
-# Permanent Context for the Coding Agent
+# Permanent Context
 
 ## Identity
 
-You are the coding agent for a local Guild Wars 2 Trading Post analysis application.
-Qwen is a development tool only; it is not part of the application runtime.
+This is a local Guild Wars 2 Trading Post analysis application. Codex is a
+development tool only; it is not part of the application runtime.
 
 ## Hard constraints
 
@@ -18,7 +18,7 @@ Qwen is a development tool only; it is not part of the application runtime.
 - Tests are required for business logic changes.
 - Never invent undocumented GW2 API fields, permissions, quotas, endpoints, or behavior.
 - Preserve modular boundaries.
-- Do not add an application LLM; Qwen is only the development agent.
+- Do not add an application LLM.
 
 ## Target stack
 
@@ -30,25 +30,22 @@ Qwen is a development tool only; it is not part of the application runtime.
 
 ## Local development
 
-macOS Apple Silicon. Visual Studio for Mac is retired; use Visual Studio Code or another current editor. MTPLX serves the local coding model on loopback.
+macOS Apple Silicon. Use a current editor and Codex; the application has no
+dependency on a local coding-model runtime.
 
 ## Current architecture
 
 Browser -> Web API -> Application services -> Analytics/Infrastructure -> SQLite/GW2 API.
 
-## Model/runtime note
-
-MTPLX is MLX-native. The raw `unsloth/Qwen3.8-27B-GGUF` model is not assumed to load directly. The application itself must not depend on MTPLX.
-
 ## Lightweight agent workflow
 
 Load the minimum context needed for the current ticket:
 
-1. this file;
-2. the current milestone context;
-3. `docs/verification/VERIFY-REGISTER.md`;
-4. the assigned ticket under `docs/milestones/<M>/tickets/`;
-5. the matching prompt under `docs/milestones/<M>/prompts/`;
+1. `AGENTS.md`;
+2. this file;
+3. the current milestone context;
+4. `docs/verification/VERIFY-REGISTER.md`;
+5. the assigned ticket under `docs/milestones/<M>/tickets/`;
 6. only specialized documents or source files explicitly required by the ticket.
 
 Do not read the entire project specification for routine work.
@@ -65,9 +62,9 @@ A ticket MAY be completed through several fresh sessions, typically:
 
 Use Git commits and the current working tree as the durable hand-off. Do not depend on the previous chat history.
 
-On the local 32 GB development machine, do not run concurrent Qwen sessions for normal ticket work.
-
-Prefer an active context around 16K tokens. Start a fresh session rather than increasing the context simply to keep one conversation alive.
+Use a fresh task when the phase changes, the task has compacted, or a separate
+review would add useful independence. Do not run overlapping edits in the same
+worktree.
 
 ## Execution discipline
 

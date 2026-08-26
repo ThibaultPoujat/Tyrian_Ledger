@@ -46,7 +46,8 @@ architecture.
 - `docs/adr/ADR-006-secrets.md`
 - `docs/adr/ADR-007-read-only-boundary.md`
 - `docs/verification/VERIFY-REGISTER.md`
-- `docs/workflow/agent-execution-rules.md`
+- `AGENTS.md`
+- `docs/workflow/codex-collaboration.md`
 - `docs/workflow/delivery-protocol.md`
 
 ## Implementation note
@@ -56,5 +57,5 @@ cannot be verified, record it as VERIFY and continue with all work that does not
 on the unresolved fact. Stop only if the missing information makes the requested work
 technically impossible or unsafe.
 
-## Agent prompt
-See `docs/prompts/TKT-M0-04-prompt.md`.
+## Codex execution
+Follow the repository-root `AGENTS.md`; this ticket is the task contract.

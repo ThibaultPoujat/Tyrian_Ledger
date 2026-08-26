@@ -1,20 +1,20 @@
-# Local Coding-Agent Development Workflow
+# Codex Development Workflow
 
 ## Purpose
 
-Qwen is the local development agent operated through Pi/MTPLX. It is not part of the application runtime and is not the project's decision-maker.
-
-The workflow is designed for a local 32 GB Apple Silicon machine: small active contexts, fresh sessions, deterministic validation, and Git-based hand-offs.
+Codex implements the work; the owner supplies functional intent and makes
+durable product decisions. The application runtime remains deterministic and
+contains no application LLM.
 
 ## Context model
 
 Each ticket session loads the minimum context:
 
+- `AGENTS.md`
 - `docs/context/permanent-context.md`
 - current milestone context
 - `docs/verification/VERIFY-REGISTER.md`
 - one ticket under `docs/milestones/<M>/tickets/`
-- the matching prompt under `docs/milestones/<M>/prompts/`
 - specialized documents/source files only when required
 
 Deep specification documents remain reference material. Do not inject the whole project documentation set into every session.
@@ -31,15 +31,12 @@ A ticket may use several sessions:
 
 Start a new session when context is becoming large/noisy, the work phase changes, compaction has already occurred, or the remaining work can be recovered from Git and the ticket.
 
-Do not run concurrent Qwen sessions for ordinary work on the local 32 GB machine.
-
-## Context target
-
-Use approximately 16K active context as the default local target. A larger model context is not a reason to preserve a long session. Prefer a new session over an oversized conversation.
+Do not run concurrent tasks that touch the same files or need the same durable
+decision. Use separate worktrees for independent work.
 
 ## Standard session lifecycle
 
-1. Start a fresh Pi session.
+1. Start a Codex task from a functional brief and one ticket.
 2. Read the assigned ticket and minimal context.
 3. Review relevant VERIFY items.
 4. Inspect the current repository/Git state.
@@ -82,8 +79,10 @@ Never weaken or delete tests merely to obtain a passing result.
 
 Create or update an ADR only for a durable cross-cutting architectural decision. Ordinary ticket implementation does not require a new ADR.
 
-## Human review
+## Owner review
 
-Human review remains mandatory for API permissions, credentials/authentication, API request policy, financial formulas, persistence schema decisions, security behavior, project scope, and architectural decisions.
-
-Qwen must never merge its own pull request.
+The owner decides API permissions, credentials/authentication, API request
+policy, financial formulas, persistence schema decisions, security behaviour,
+project scope, and architectural decisions. See
+`docs/workflow/codex-collaboration.md` for the normal implementation/review
+loop. Codex must never merge its own pull request.

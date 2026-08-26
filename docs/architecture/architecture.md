@@ -59,7 +59,6 @@ HTTP endpoints, DTO mapping, UI, validation, presentation.
     Gw2Tp.IntegrationTests/
     Gw2Tp.Web.E2E/
   docs/
-  config/
 ```
 
 ## External API gateway

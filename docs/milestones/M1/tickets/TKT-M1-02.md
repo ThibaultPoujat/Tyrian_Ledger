@@ -44,5 +44,5 @@ M1-01
 - `docs/testing/testing-strategy.md`
 - Relevant milestone context file
 
-## Agent prompt
-See `docs/prompts/TKT-M1-02-prompt.md`.
+## Codex execution
+Follow the repository-root `AGENTS.md`; this ticket is the task contract.

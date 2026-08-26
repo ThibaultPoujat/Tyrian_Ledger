@@ -29,5 +29,5 @@ M2-01,M2-02
 - `docs/testing/testing-strategy.md`
 - Relevant milestone context file
 
-## Agent prompt
-See the dedicated prompt file: `docs/prompts/{code}-prompt.md`.
+## Codex execution
+Follow the repository-root `AGENTS.md`; this ticket is the task contract.
