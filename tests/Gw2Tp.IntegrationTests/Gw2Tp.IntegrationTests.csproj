@@ -13,6 +13,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/Gw2Tp.Application/Gw2Tp.Application.csproj" />
     <ProjectReference Include="../../src/Gw2Tp.Web/Gw2Tp.Web.csproj" />
     <ProjectReference Include="../Gw2Tp.Testing/Gw2Tp.Testing.csproj" />
   </ItemGroup>
