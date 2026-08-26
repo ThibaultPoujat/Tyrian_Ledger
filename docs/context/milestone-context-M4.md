@@ -4,10 +4,13 @@
 M4 - Dashboard and session planning
 
 ## Goal
-Deliver the first genuinely useful desktop UI and session planner around market opportunities.
+Build the main local dashboard and session-planning workflow over the deterministic opportunity engine.
 
-## Permanent context
-Load `docs/context/permanent-context.md`.
+## Agent context
+Load `docs/context/permanent-context.md`, the VERIFY register, one M4 ticket, and its matching M4 prompt. Read UX and relevant application contracts only when required.
 
-## Rules for this milestone
-Implement only the tickets in this milestone. If a ticket requires an architecture change, create/update an ADR before coding beyond the smallest safe change.
+## Session rule
+Separate UI implementation, interaction/state work, tests, and review into fresh sessions when practical. Keep active context near 16K and use Git state as the hand-off.
+
+## Rules
+Do not invent execution-time accuracy. Use defensible coarse categories or explicit user estimates where the specification requires uncertainty. Preserve local-first and read-only behavior.

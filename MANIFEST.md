@@ -2,12 +2,8 @@
 
 - `Tyrian_Ledger_Development_Package.pdf`
 - `README.md`
-- `config/.editorconfig`
-- `config/.gitignore`
 - `config/AGENTS.md`
-- `config/Directory.Build.props`
 - `config/README.md`
-- `config/global.json`
 - `docs/adr/ADR-001-stack.md`
 - `docs/adr/ADR-002-local-first.md`
 - `docs/adr/ADR-003-no-llm-runtime.md`
@@ -18,114 +14,30 @@
 - `docs/architecture/architecture.md`
 - `docs/architecture/gw2-endpoint-matrix.md`
 - `docs/context/context-template.md`
-- `docs/context/milestone-context-M0.md`
-- `docs/context/milestone-context-M1.md`
-- `docs/context/milestone-context-M2.md`
-- `docs/context/milestone-context-M3.md`
-- `docs/context/milestone-context-M4.md`
-- `docs/context/milestone-context-M5.md`
-- `docs/context/milestone-context-M6.md`
-- `docs/context/milestone-context-M7.md`
-- `docs/context/milestone-context-M8.md`
 - `docs/context/permanent-context.md`
 - `docs/context/qwen-git-context.md`
+- `docs/context/milestone-context-M0.md` through `docs/context/milestone-context-M8.md`
 - `docs/milestones/INDEX.md`
-- `docs/milestones/M0.md`
-- `docs/milestones/M1.md`
-- `docs/milestones/M2.md`
-- `docs/milestones/M3.md`
-- `docs/milestones/M4.md`
-- `docs/milestones/M5.md`
-- `docs/milestones/M6.md`
-- `docs/milestones/M7.md`
-- `docs/milestones/M8.md`
+- `docs/milestones/M0.md` through `docs/milestones/M8.md`
+- `docs/milestones/M0/tickets/` and `docs/milestones/M0/prompts/`
+- `docs/milestones/M1/tickets/` and `docs/milestones/M1/prompts/`
+- `docs/milestones/M2/tickets/` and `docs/milestones/M2/prompts/`
+- `docs/milestones/M3/tickets/` and `docs/milestones/M3/prompts/`
+- `docs/milestones/M4/tickets/` and `docs/milestones/M4/prompts/`
+- `docs/milestones/M5/tickets/` and `docs/milestones/M5/prompts/`
+- `docs/milestones/M6/tickets/` and `docs/milestones/M6/prompts/`
+- `docs/milestones/M7/tickets/` and `docs/milestones/M7/prompts/`
+- `docs/milestones/M8/tickets/` and `docs/milestones/M8/prompts/`
 - `docs/prompts/PROMPT-TEMPLATE.md`
-- `docs/prompts/TKT-M0-01-prompt.md`
-- `docs/prompts/TKT-M0-02-prompt.md`
-- `docs/prompts/TKT-M0-03-prompt.md`
-- `docs/prompts/TKT-M0-04-prompt.md`
-- `docs/prompts/TKT-M0-SETUP-01-prompt.md`
-- `docs/prompts/TKT-M1-01-prompt.md`
-- `docs/prompts/TKT-M1-02-prompt.md`
-- `docs/prompts/TKT-M1-03-prompt.md`
-- `docs/prompts/TKT-M1-04-prompt.md`
-- `docs/prompts/TKT-M2-01-prompt.md`
-- `docs/prompts/TKT-M2-02-prompt.md`
-- `docs/prompts/TKT-M2-03-prompt.md`
-- `docs/prompts/TKT-M2-04-prompt.md`
-- `docs/prompts/TKT-M3-01-prompt.md`
-- `docs/prompts/TKT-M3-02-prompt.md`
-- `docs/prompts/TKT-M3-03-prompt.md`
-- `docs/prompts/TKT-M3-04-prompt.md`
-- `docs/prompts/TKT-M4-01-prompt.md`
-- `docs/prompts/TKT-M4-02-prompt.md`
-- `docs/prompts/TKT-M4-03-prompt.md`
-- `docs/prompts/TKT-M4-04-prompt.md`
-- `docs/prompts/TKT-M5-01-prompt.md`
-- `docs/prompts/TKT-M5-02-prompt.md`
-- `docs/prompts/TKT-M5-03-prompt.md`
-- `docs/prompts/TKT-M5-04-prompt.md`
-- `docs/prompts/TKT-M6-01-prompt.md`
-- `docs/prompts/TKT-M6-02-prompt.md`
-- `docs/prompts/TKT-M6-03-prompt.md`
-- `docs/prompts/TKT-M6-04-prompt.md`
-- `docs/prompts/TKT-M7-01-prompt.md`
-- `docs/prompts/TKT-M7-02-prompt.md`
-- `docs/prompts/TKT-M7-03-prompt.md`
-- `docs/prompts/TKT-M7-04-prompt.md`
-- `docs/prompts/TKT-M8-01-prompt.md`
-- `docs/prompts/TKT-M8-02-prompt.md`
-- `docs/prompts/TKT-M8-03-prompt.md`
-- `docs/prompts/TKT-M8-04-prompt.md`
 - `docs/rate-limiting/rate-limit-policy.md`
 - `docs/roadmap.md`
 - `docs/security/security.md`
 - `docs/specs/project-spec.md`
 - `docs/specs/verified-external-notes.md`
 - `docs/testing/testing-strategy.md`
-- `docs/tickets/TKT-M0-01.md`
-- `docs/tickets/TKT-M0-02.md`
-- `docs/tickets/TKT-M0-03.md`
-- `docs/tickets/TKT-M0-04.md`
-- `docs/tickets/TKT-M0-SETUP-01.md`
-- `docs/tickets/TKT-M1-01.md`
-- `docs/tickets/TKT-M1-02.md`
-- `docs/tickets/TKT-M1-03.md`
-- `docs/tickets/TKT-M1-04.md`
-- `docs/tickets/TKT-M2-01.md`
-- `docs/tickets/TKT-M2-02.md`
-- `docs/tickets/TKT-M2-03.md`
-- `docs/tickets/TKT-M2-04.md`
-- `docs/tickets/TKT-M3-01.md`
-- `docs/tickets/TKT-M3-02.md`
-- `docs/tickets/TKT-M3-03.md`
-- `docs/tickets/TKT-M3-04.md`
-- `docs/tickets/TKT-M4-01.md`
-- `docs/tickets/TKT-M4-02.md`
-- `docs/tickets/TKT-M4-03.md`
-- `docs/tickets/TKT-M4-04.md`
-- `docs/tickets/TKT-M5-01.md`
-- `docs/tickets/TKT-M5-02.md`
-- `docs/tickets/TKT-M5-03.md`
-- `docs/tickets/TKT-M5-04.md`
-- `docs/tickets/TKT-M6-01.md`
-- `docs/tickets/TKT-M6-02.md`
-- `docs/tickets/TKT-M6-03.md`
-- `docs/tickets/TKT-M6-04.md`
-- `docs/tickets/TKT-M7-01.md`
-- `docs/tickets/TKT-M7-02.md`
-- `docs/tickets/TKT-M7-03.md`
-- `docs/tickets/TKT-M7-04.md`
-- `docs/tickets/TKT-M8-01.md`
-- `docs/tickets/TKT-M8-02.md`
-- `docs/tickets/TKT-M8-03.md`
-- `docs/tickets/TKT-M8-04.md`
 - `docs/ux/ux.md`
 - `docs/verification/VERIFY-REGISTER.md`
 - `docs/workflow/agent-execution-rules.md`
 - `docs/workflow/ai-development-workflow.md`
 - `docs/workflow/delivery-protocol.md`
 - `.github/pull_request_template.md`
-- `tests/fixtures/gw2/commerce/prices.json`
-- `tests/fixtures/gw2/commerce/listings.json`
-- `tests/fixtures/gw2/errors/429.json`

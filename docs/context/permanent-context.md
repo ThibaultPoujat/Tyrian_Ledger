@@ -1,4 +1,4 @@
-# Permanent Context for Qwen
+# Permanent Context for the Coding Agent
 
 ## Identity
 
@@ -30,7 +30,7 @@ Qwen is a development tool only; it is not part of the application runtime.
 
 ## Local development
 
-macOS Apple Silicon. Visual Studio for Mac is retired; use Visual Studio Code or equivalent. MTPLX serves the local coding model on loopback.
+macOS Apple Silicon. Visual Studio for Mac is retired; use Visual Studio Code or another current editor. MTPLX serves the local coding model on loopback.
 
 ## Current architecture
 
@@ -38,24 +38,49 @@ Browser -> Web API -> Application services -> Analytics/Infrastructure -> SQLite
 
 ## Model/runtime note
 
-MTPLX is MLX-native. The raw `unsloth/Qwen3.8-27B-GGUF` model is not assumed to load directly. Compatibility was investigated in M0. The application itself must not depend on MTPLX.
+MTPLX is MLX-native. The raw `unsloth/Qwen3.8-27B-GGUF` model is not assumed to load directly. The application itself must not depend on MTPLX.
 
-## Agent execution discipline
+## Lightweight agent workflow
 
-For a ticket, use the minimum context needed:
+Load the minimum context needed for the current ticket:
 
 1. this file;
 2. the current milestone context;
 3. `docs/verification/VERIFY-REGISTER.md`;
-4. the assigned ticket;
-5. the assigned prompt;
+4. the assigned ticket under `docs/milestones/<M>/tickets/`;
+5. the matching prompt under `docs/milestones/<M>/prompts/`;
 6. only specialized documents or source files explicitly required by the ticket.
 
-Do not read the entire project specification unless a specific unresolved requirement cannot be answered from the smaller context.
+Do not read the entire project specification for routine work.
 
-One ticket is one execution unit. Implement only that ticket and stop when it is complete.
+## Session philosophy
 
-Planning must be brief. Prefer execution over repeated summaries.
+A ticket is a work item, not a single conversation.
+
+A ticket MAY be completed through several fresh sessions, typically:
+
+- implementation;
+- tests;
+- review and final validation.
+
+Use Git commits and the current working tree as the durable hand-off. Do not depend on the previous chat history.
+
+On the local 32 GB development machine, do not run concurrent Qwen sessions for normal ticket work.
+
+Prefer an active context around 16K tokens. Start a fresh session rather than increasing the context simply to keep one conversation alive.
+
+## Execution discipline
+
+For each session:
+
+- inspect the current repository state;
+- make a brief plan of no more than five steps;
+- execute one coherent work slice;
+- validate it;
+- review the diff;
+- stop.
+
+Prefer execution over repeated summaries.
 
 Do not repeatedly reread unchanged files or repeat an investigation without new evidence.
 
@@ -67,25 +92,23 @@ When uncertain, use `VERIFY` rather than inventing a fact.
 
 `BLOCKED` means missing or contradictory information makes the requested work technically impossible or unsafe.
 
-Only stop for a blocker. Do not repeatedly investigate a VERIFY item after sufficient evidence has been recorded.
+Only stop for a real blocker. Do not repeatedly investigate a VERIFY item after sufficient evidence has been recorded.
 
 ## Required behavior
 
 Prefer small, reversible changes.
 
-Never claim completion without checking the ticket acceptance criteria and relevant validation.
+Never claim completion without checking the affected acceptance criteria and relevant validation.
 
 ## VERIFY register
 
 `docs/verification/VERIFY-REGISTER.md` is the authoritative project-level index of unresolved verification items.
 
-Every ticket must:
+Every ticket session must:
 
-- review relevant existing VERIFY items before implementation;
+- review relevant existing VERIFY items;
 - add newly discovered material VERIFY items;
 - update existing items affected by new evidence;
 - mark items RESOLVED only when sufficient evidence is recorded in the ticket or another authoritative project document;
 - preserve resolved entries for audit/history;
-- reference relevant VERIFY IDs in the ticket report.
-
-The register is an index. Detailed evidence remains in the ticket or another authoritative project document.
+- reference relevant VERIFY IDs in the session or ticket report.

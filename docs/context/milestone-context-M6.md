@@ -4,10 +4,13 @@
 M6 - Personal history and reconciliation
 
 ## Goal
-Persist saved operations and realized outcomes; distinguish realized and unrealized profit; support local clearing.
+Build local history, operation records, profit reconciliation, and personal statistics without requiring a server or cloud account.
 
-## Permanent context
-Load `docs/context/permanent-context.md`.
+## Agent context
+Load `docs/context/permanent-context.md`, the VERIFY register, one M6 ticket, and its matching M6 prompt. Read persistence and reconciliation guidance only when needed.
 
-## Rules for this milestone
-Implement only the tickets in this milestone. If a ticket requires an architecture change, create/update an ADR before coding beyond the smallest safe change.
+## Session rule
+Use separate sessions for schema/model work, reconciliation logic, UI/history work, and tests/review when the context grows. Keep active context near 16K and use Git as the hand-off.
+
+## Rules
+Define profit and reconciliation semantics explicitly. Preserve local-only privacy and avoid storing secrets. Do not silently expand the persistence model beyond the ticket.
