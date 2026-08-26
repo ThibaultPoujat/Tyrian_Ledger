@@ -1,12 +1,12 @@
-# Tyrian Ledger — Qwen Coding Agent Rules
+# Tyrian Ledger — Coding Agent Rules
 
 Read `docs/context/permanent-context.md` first.
 
 Then read only:
 
 - the current milestone context;
-- the assigned ticket;
-- the assigned ticket prompt;
+- the assigned ticket under `docs/milestones/<M>/tickets/`;
+- the matching prompt under `docs/milestones/<M>/prompts/`;
 - `docs/verification/VERIFY-REGISTER.md`;
 - specialized documents explicitly required by the ticket.
 
@@ -34,7 +34,17 @@ Always:
 - report assumptions and unresolved verification items;
 - maintain `docs/verification/VERIFY-REGISTER.md` for material uncertainty;
 - run the smallest relevant validation first;
-- stop after the assigned ticket is complete.
+- stop after the current session's coherent work slice is complete.
+
+## Session discipline
+
+A ticket is a work item, not a single conversation.
+
+- Prefer a fresh Pi session for each coherent implementation, test, or review phase.
+- Do not try to carry a long conversation across phases when the repository and Git state already contain the required context.
+- Treat commits and the working tree as the durable hand-off between sessions.
+- On the 32 GB local development machine, do not run concurrent Qwen sessions for ordinary ticket work.
+- Prefer keeping the active context comfortably below the model limit; 16K is the default target for local agent work.
 
 ## VERIFY discipline
 
@@ -61,4 +71,4 @@ or unsafe.
 - Do not repeat the same analysis more than twice without new evidence.
 - Do not retry the same failed operation more than twice.
 - If an operation still fails after two attempts, stop and report the exact blocker.
-- After the requested changes and validation are complete, STOP.
+- After the requested work and validation for the current session slice are complete, STOP.
