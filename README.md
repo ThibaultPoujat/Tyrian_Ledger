@@ -24,8 +24,8 @@ tool only; it is not part of the application runtime.
 
 Start with [AGENTS.md](AGENTS.md), then follow
 [the owner/Codex collaboration guide](docs/workflow/codex-collaboration.md).
-The committed development-package PDF and its Qwen/MTPLX records are historical
-snapshots, not active instructions.
+The remaining Qwen/MTPLX records are historical snapshots, not active
+instructions.
 
 ## Documentation layout
 

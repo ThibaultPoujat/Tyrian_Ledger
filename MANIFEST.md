@@ -1,6 +1,5 @@
 # Repository documentation map
 
-- `Tyrian_Ledger_Development_Package.pdf` — historical Qwen/MTPLX package snapshot; not active guidance.
 - `AGENTS.md` — active Codex entry instructions.
 - `README.md`
 - `docs/adr/ADR-001-stack.md`

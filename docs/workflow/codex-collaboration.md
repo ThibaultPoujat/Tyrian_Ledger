@@ -33,6 +33,23 @@ Do not ask one task to implement an entire milestone. Do not run overlapping
 implementation tasks in one worktree. Separate work is safe to parallelize
 only when it has different worktrees and no shared files or decisions.
 
+## How to start a Codex task
+
+For an existing ticket, use a short request such as:
+
+> Implement `TKT-M1-02`. Read `AGENTS.md` and the ticket first. If the ticket
+> is stale, ambiguous, or requires a durable owner decision, explain that
+> before changing code; otherwise implement it, validate it, and open a PR.
+
+There is no corresponding prompt file. The root instructions and the ticket
+are the execution contract. For new work, provide a completed functional brief
+instead; Codex will turn it into one small ticket before implementation.
+
+Treat completed tickets as history. Treat a not-yet-started ticket as a useful
+backlog contract: refresh its external facts, dependencies, and acceptance
+criteria immediately before beginning it instead of maintaining duplicate
+prompts or preemptively rewriting every future ticket.
+
 ## What the owner should provide
 
 Describe what should be true for the player, not a technical solution. State
@@ -50,6 +67,6 @@ of each option rather than asking broad technical questions.
 
 ## Current workflow cleanup
 
-The committed PDF and M0 Qwen/MTPLX records are historical evidence from the
-retired local-agent workflow. Current source Markdown, tickets, ADRs, and Git
-state are authoritative for Codex work.
+The M0 Qwen/MTPLX records are historical evidence from the retired local-agent
+workflow. Current source Markdown, tickets, ADRs, and Git state are
+authoritative for Codex work.
