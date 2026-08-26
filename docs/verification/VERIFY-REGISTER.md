@@ -53,9 +53,9 @@ the item originated remains the primary source of context and evidence.
 
 | ID | Status | Description | Source / Evidence | Owner Ticket | Date Added | Date Resolved |
 |---|---|---|---|---|---|---|
-| VERIFY-001 | OPEN | Upstream license terms of the `Qwen/Qwen3.8-27B` base model for the selected MTPLX artifact (`Youssofal/Qwen3.8-27B-MTPLX-Optimized-Speed-FP16`); the README states apache-2.0 on the MTPLX repo, but the base model license was not independently checked. | `docs/tickets/TKT-M0-01.md` — VERIFY items | TKT-M0-01 | 2026-08-21 | — |
-| VERIFY-002 | OPEN | Whether the selected FP16 MTPLX artifact is the correct performance choice for this developer Mac's chip generation; `mtplx hardware` timed out during inspection and was not completed (README: M1/M2 use the FP16 sibling; M3+ use the parent artifact). | `docs/tickets/TKT-M0-01.md` — VERIFY items | TKT-M0-01 | 2026-08-21 | — |
-| VERIFY-003 | OPEN | A live MTPLX generation smoke test (`mtplx runtime-smoke` or one `mtplx ask`) before relying on the selected model for sustained development; only inspect verdicts were recorded so far. | `docs/tickets/TKT-M0-01.md` — VERIFY items | TKT-M0-01 | 2026-08-21 | — |
+| VERIFY-001 | SUPERSEDED | Upstream license terms of the retired Qwen/MTPLX development-model path. No longer relevant to active development after the Codex migration. | Historical evidence: `docs/milestones/M0/tickets/TKT-M0-01.md`; superseded by TKT-M1-00 | TKT-M0-01 | 2026-08-21 | 2026-08-26 |
+| VERIFY-002 | SUPERSEDED | Hardware fit of the retired MTPLX artifact. No longer relevant to active development after the Codex migration. | Historical evidence: `docs/milestones/M0/tickets/TKT-M0-01.md`; superseded by TKT-M1-00 | TKT-M0-01 | 2026-08-21 | 2026-08-26 |
+| VERIFY-003 | SUPERSEDED | Live smoke test for the retired MTPLX development path. No longer relevant to active development after the Codex migration. | Historical evidence: `docs/milestones/M0/tickets/TKT-M0-01.md`; superseded by TKT-M1-00 | TKT-M0-01 | 2026-08-21 | 2026-08-26 |
 | VERIFY-004 | OPEN | Exact hard limit of the `ids` batch parameter (community best-practices page documents 200 IDs per request) and exact 206 / paging behavior (max `page_size`, per-endpoint applicability). | `docs/architecture/gw2-endpoint-matrix.md` — global rules; wiki `API:Best_practices` and `API:2` fetched 2026-08-21 | TKT-M0-02 | 2026-08-21 | — |
 | VERIFY-005 | OPEN | Schema version to pin per endpoint via `?v=` / `X-Schema-Version`; the latest relevant version per endpoint must be confirmed against `/v2.json?v=latest` (matrix recipes row assumes schema `2022-03-09T02:00:00.000Z`). | `docs/architecture/gw2-endpoint-matrix.md`; wiki `API:2` fetched 2026-08-21 | TKT-M0-02 | 2026-08-21 | — |
 | VERIFY-006 | IN PROGRESS | Whether the GW2 API rate limit (per-IP token bucket; community-documented burst 300, refill 5/s) is applied per IP only or per IP+key, and the exact values. Guidance re-fetched 2026-08-22 and converted into configurable scheduler parameters + a safe live-verification procedure; values remain community-estimates until the M2 live check. | wiki `API:Best_practices` fetched 2026-08-21 and 2026-08-22; `docs/rate-limiting/rate-limit-policy.md` §1/§5 | TKT-M0-03 | 2026-08-21 | — |
@@ -76,7 +76,6 @@ here.
 
 | Item | Ticket | Status |
 | --- | --- | --- |
-| M1-01 skeleton verified locally (build, smoke tests, frontend build, process startup) but not yet verified in CI (no CI configured) | TKT-M1-01 | Open |
+| M1-01 skeleton is verified locally; the CI workflow now exists but its GitHub run should be confirmed before M1 closes. | TKT-M1-01 | Open |
 | E2E stub (`tests/Gw2Tp.Web.E2E`) has no tests; Playwright runs are expected in a later milestone | TKT-M1-01 | Open |
 | Placeholder C# test projects (`Gw2Tp.Domain.Tests`, `Gw2Tp.Application.Tests`, `Gw2Tp.Analytics.Tests`, `Gw2Tp.Infrastructure.Tests`) contain no tests yet; add with their owning tickets | TKT-M1-01 | Open |
-

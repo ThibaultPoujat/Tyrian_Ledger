@@ -1,7 +1,7 @@
-# Qwen Delivery Protocol
+# Codex Delivery Protocol
 
-This document contains Git/GitHub delivery rules only. It is intentionally separate
-from ticket execution rules so normal implementation prompts stay small.
+This document contains Git/GitHub delivery rules only. The ticket and
+`AGENTS.md` define execution rules.
 
 ## Branch
 
@@ -38,11 +38,11 @@ The PR body must include:
 - risks and limitations;
 - follow-up work.
 
-Qwen MUST verify that the PR actually exists and report its URL.
+Codex MUST verify that the PR actually exists and report its URL.
 
 Never invent a PR URL.
 
-Never merge the PR. Human review and merge are mandatory.
+Never merge the PR. The owner performs the final functional review and merge.
 
 If branch push, GitHub authentication, CLI/remote access, or permissions prevent PR
 creation, stop at the delivery gate and report the exact blocker. Do not claim the

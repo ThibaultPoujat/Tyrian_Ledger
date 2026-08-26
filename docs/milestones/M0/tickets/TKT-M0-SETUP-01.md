@@ -1,5 +1,8 @@
 # TKT-M0-SETUP-01 - Establish VERIFY register and workflow enforcement
 
+> Historical record. Paths and Qwen-specific instructions describe the 2026-08
+> setup and are superseded for active work by `AGENTS.md` and TKT-M1-00.
+
 ## Milestone
 M0
 
@@ -82,5 +85,5 @@ TKT-M0-01 (source of the imported VERIFY items)
   execution).
 - No VERIFY database, API, or scripts.
 
-## Agent prompt
-See the dedicated prompt file: `docs/prompts/TKT-M0-SETUP-01-prompt.md`.
+## Codex execution
+Follow the repository-root `AGENTS.md`; this ticket is the task contract.

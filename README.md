@@ -1,4 +1,4 @@
-# Tyrian Ledger - Qwen/MTPLX Development Package
+# Tyrian Ledger
 
 This repository is the planning and development package for a local, read-only Guild Wars 2 Trading Post analysis application.
 
@@ -15,9 +15,17 @@ Build a browser-based local application that:
 - may later support historical analysis and long-term investment research;
 - may later add an application-facing LLM, but no LLM integration is part of the MVP or current architecture.
 
-## Development environment
+## Development with Codex
 
-The local coding agent is Qwen3.8-27B operated through Pi/MTPLX on an Apple Silicon Mac. MTPLX is a development dependency only and is not part of the application runtime.
+Use Codex with GPT-5.6 Terra at High reasoning effort for normal ticket work.
+Use a separate XHigh review task for security-sensitive, financial,
+architectural, or unusually difficult work. The coding agent is a development
+tool only; it is not part of the application runtime.
+
+Start with [AGENTS.md](AGENTS.md), then follow
+[the owner/Codex collaboration guide](docs/workflow/codex-collaboration.md).
+The committed development-package PDF and its Qwen/MTPLX records are historical
+snapshots, not active instructions.
 
 ## Documentation layout
 
@@ -27,21 +35,19 @@ The local coding agent is Qwen3.8-27B operated through Pi/MTPLX on an Apple Sili
 - `docs/testing/` - testing strategy.
 - `docs/ux/` - UI/UX rules.
 - `docs/adr/` - Architecture Decision Records.
-- `docs/context/` - lightweight context intended for the coding agent.
+- `docs/context/` - focused context for the current ticket.
 - `docs/verification/` - unresolved external-contract and verification register.
-- `docs/milestones/` - milestone definitions plus milestone-scoped `tickets/` and `prompts/`.
+- `docs/milestones/` - milestone definitions and ticket contracts.
 - `docs/workflow/` - coding-agent execution and delivery rules.
-- `config/AGENTS.md` - agent entry rules loaded by Pi.
+- `AGENTS.md` - Codex entry instructions.
 
 ## Agent workflow
 
-1. Start a fresh Pi session for each coherent ticket phase.
-2. Load only the permanent context, current milestone context, VERIFY register, one ticket, and the matching prompt.
-3. Read specialized documents or source files only when required.
-4. Keep the active local context around 16K tokens by default.
-5. Use Git commits and the working tree as the hand-off between sessions.
-6. Split complex tickets into sequential implementation/test/review sessions instead of preserving one large conversation.
-7. Complete Git/GitHub delivery through the repository delivery protocol; Qwen must not merge its own PR.
+1. Give Codex a functional brief for one small outcome.
+2. Codex works from one ticket and the minimum relevant context.
+3. Use a clean implementation task followed by a fresh review task.
+4. Use commits, tests, tickets, and pull requests as the hand-off.
+5. The owner confirms functional success and merges after CI passes.
 
 ## Normative language
 
@@ -64,7 +70,7 @@ Requires the .NET 10 SDK and a recent Node.js. No credentials are required for t
 
 ### Frontend
 
-- Install: `cd frontend && npm install`
+- Install: `cd frontend && npm ci`
 - Dev server: `cd frontend && npm run dev`
 - Build: `cd frontend && npm run build`
 

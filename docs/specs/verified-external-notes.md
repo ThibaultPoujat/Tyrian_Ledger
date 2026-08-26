@@ -1,4 +1,7 @@
-# External Verification Notes
+# Historical External Verification Notes
+
+> These notes document the retired Qwen/MTPLX discovery path. They are kept
+> for project history and must not be used as active Codex instructions.
 
 Verification date: 2026-08-19.
 

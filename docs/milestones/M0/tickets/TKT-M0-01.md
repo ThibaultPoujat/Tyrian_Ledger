@@ -1,5 +1,8 @@
 # TKT-M0-01 - Verify MTPLX/Qwen3.8-27B development model path
 
+> Historical record for the retired local-agent path. It is not active Codex
+> guidance; see `AGENTS.md` and TKT-M1-00.
+
 ## Milestone
 M0
 
@@ -105,5 +108,5 @@ None required for M0-01. If a full runtime smoke is desired, it is a
 small follow-up; if the chip is M3+, consider switching the cached default to
 the parent (non-FP16) artifact.
 
-## Agent prompt
-See the dedicated prompt file: `docs/prompts/{code}-prompt.md`.
+## Codex execution
+Follow the repository-root `AGENTS.md`; this ticket is the task contract.

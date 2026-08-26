@@ -28,9 +28,6 @@ None
 - `docs/testing/testing-strategy.md`
 - Relevant milestone context file
 
-## Agent prompt
-See the dedicated prompt file: `docs/prompts/{code}-prompt.md`.
-
 ## Decision record (executed 2026-08-22)
 
 ### Deliverables
@@ -80,3 +77,7 @@ See the dedicated prompt file: `docs/prompts/{code}-prompt.md`.
 ### Non-goals honored
 - No load testing of the real GW2 API; the live verification is bounded to
   ≤2 single read-only GETs, manually executed, never in a retry loop.
+
+## Codex execution
+
+Follow the repository-root `AGENTS.md`; this ticket is the task contract.

@@ -1,9 +1,8 @@
-# Package manifest
+# Repository documentation map
 
-- `Tyrian_Ledger_Development_Package.pdf`
+- `Tyrian_Ledger_Development_Package.pdf` — historical Qwen/MTPLX package snapshot; not active guidance.
+- `AGENTS.md` — active Codex entry instructions.
 - `README.md`
-- `config/AGENTS.md`
-- `config/README.md`
 - `docs/adr/ADR-001-stack.md`
 - `docs/adr/ADR-002-local-first.md`
 - `docs/adr/ADR-003-no-llm-runtime.md`
@@ -15,20 +14,10 @@
 - `docs/architecture/gw2-endpoint-matrix.md`
 - `docs/context/context-template.md`
 - `docs/context/permanent-context.md`
-- `docs/context/qwen-git-context.md`
 - `docs/context/milestone-context-M0.md` through `docs/context/milestone-context-M8.md`
 - `docs/milestones/INDEX.md`
 - `docs/milestones/M0.md` through `docs/milestones/M8.md`
-- `docs/milestones/M0/tickets/` and `docs/milestones/M0/prompts/`
-- `docs/milestones/M1/tickets/` and `docs/milestones/M1/prompts/`
-- `docs/milestones/M2/tickets/` and `docs/milestones/M2/prompts/`
-- `docs/milestones/M3/tickets/` and `docs/milestones/M3/prompts/`
-- `docs/milestones/M4/tickets/` and `docs/milestones/M4/prompts/`
-- `docs/milestones/M5/tickets/` and `docs/milestones/M5/prompts/`
-- `docs/milestones/M6/tickets/` and `docs/milestones/M6/prompts/`
-- `docs/milestones/M7/tickets/` and `docs/milestones/M7/prompts/`
-- `docs/milestones/M8/tickets/` and `docs/milestones/M8/prompts/`
-- `docs/prompts/PROMPT-TEMPLATE.md`
+- `docs/milestones/M0/tickets/` through `docs/milestones/M8/tickets/`
 - `docs/rate-limiting/rate-limit-policy.md`
 - `docs/roadmap.md`
 - `docs/security/security.md`
@@ -37,7 +26,8 @@
 - `docs/testing/testing-strategy.md`
 - `docs/ux/ux.md`
 - `docs/verification/VERIFY-REGISTER.md`
-- `docs/workflow/agent-execution-rules.md`
 - `docs/workflow/ai-development-workflow.md`
+- `docs/workflow/codex-collaboration.md`
+- `docs/workflow/functional-brief-template.md`
 - `docs/workflow/delivery-protocol.md`
 - `.github/pull_request_template.md`
