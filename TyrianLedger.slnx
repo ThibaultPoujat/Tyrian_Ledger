@@ -12,5 +12,6 @@
     <Project Path="tests/Gw2Tp.Analytics.Tests/Gw2Tp.Analytics.Tests.csproj" />
     <Project Path="tests/Gw2Tp.Infrastructure.Tests/Gw2Tp.Infrastructure.Tests.csproj" />
     <Project Path="tests/Gw2Tp.IntegrationTests/Gw2Tp.IntegrationTests.csproj" />
+    <Project Path="tests/Gw2Tp.Testing/Gw2Tp.Testing.csproj" />
   </Folder>
 </Solution>
