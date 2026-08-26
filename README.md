@@ -72,6 +72,10 @@ For the credential boundary and the temporary Development/Testing environment
 override, see [local secrets](docs/development/local-secrets.md). A real GW2
 credential must never be committed or placed in browser storage.
 
+The API and development frontend bind to loopback by default. See
+[local runtime](docs/development/local-runtime.md) for binding overrides and
+the HTTP security baseline.
+
 ### Frontend
 
 - Install: `cd frontend && npm ci`

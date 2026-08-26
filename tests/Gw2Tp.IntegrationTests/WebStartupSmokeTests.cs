@@ -1,5 +1,9 @@
 using System.Net;
+using System.Collections;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Validation;
 using Xunit;
 
 namespace Gw2Tp.IntegrationTests;
@@ -28,5 +32,19 @@ public class WebStartupSmokeTests : IClassFixture<WebApplicationFactory<Program>
         var client = _factory.CreateClient();
         var response = await client.GetAsync("/healthz");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public void Built_in_minimal_api_validation_is_registered_when_app_starts()
+    {
+        var validationOptions = _factory.Services
+            .GetRequiredService<IOptions<ValidationOptions>>()
+            .Value;
+        var resolvers = typeof(ValidationOptions)
+            .GetProperty("Resolvers")
+            ?.GetValue(validationOptions) as IEnumerable;
+
+        Assert.NotNull(resolvers);
+        Assert.NotEmpty(resolvers.Cast<object>());
     }
 }
