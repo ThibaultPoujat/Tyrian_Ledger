@@ -4,10 +4,13 @@
 M3 - Deterministic market engine
 
 ## Goal
-Implement money, fee policy, top-of-book screening, order-book simulation, liquidity, freshness, and opportunity scoring.
+Build deterministic, testable market-profit calculations and opportunity analysis from verified market data.
 
-## Permanent context
-Load `docs/context/permanent-context.md`.
+## Agent context
+Load `docs/context/permanent-context.md`, the VERIFY register, one M3 ticket, and its matching M3 prompt. Read finance-related specs and test guidance only when needed.
 
-## Rules for this milestone
-Implement only the tickets in this milestone. If a ticket requires an architecture change, create/update an ADR before coding beyond the smallest safe change.
+## Session rule
+Separate calculator implementation, test expansion, and review into fresh sessions when the context grows. Keep active context near 16K. Git commits are the hand-off.
+
+## Rules
+Money remains integer copper. Do not mix transport DTOs with domain models. Keep algorithms deterministic, explainable, and bounded by the ticket.
