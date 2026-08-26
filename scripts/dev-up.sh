@@ -13,6 +13,18 @@ command -v curl >/dev/null || {
   echo "curl is required to check the local services." >&2
   exit 1
 }
+command -v dotnet >/dev/null || {
+  echo "The .NET SDK is required. Install the version in global.json." >&2
+  exit 1
+}
+command -v node >/dev/null || {
+  echo "Node.js is required. Install a current Node.js release." >&2
+  exit 1
+}
+[[ -f "$repo_root/frontend/node_modules/vite/bin/vite.js" ]] || {
+  echo "Frontend dependencies are missing. Run: cd frontend && npm ci" >&2
+  exit 1
+}
 
 mkdir -p "$runtime_dir"
 
