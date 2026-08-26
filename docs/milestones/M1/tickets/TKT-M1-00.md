@@ -39,7 +39,7 @@ None. This is repository-process work only.
 
 - Changing the accepted .NET, React, TypeScript, SQLite, or test-stack ADR.
 - Implementing M1-02 or any application feature.
-- Rewriting historical M0 evidence or regenerating the historical PDF.
+- Rewriting historical M0 evidence.
 
 ## Codex execution
 
