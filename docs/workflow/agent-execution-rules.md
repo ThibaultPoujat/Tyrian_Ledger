@@ -13,6 +13,8 @@ For a ticket, load only:
 5. the matching prompt under `docs/milestones/<M>/prompts/`
 6. only specialized documents or source files explicitly required by the ticket
 
+The milestone-scoped prompt is canonical. If an older ticket contains a historical `docs/prompts/...` prompt reference, ignore that old path and use the matching prompt beside the ticket.
+
 Do not read the complete project specification for routine work. Read it only when a specific unresolved requirement cannot be answered from the smaller context.
 
 Prefer targeted file/range reads over broad scans. Do not repeatedly reread unchanged files.
@@ -25,7 +27,7 @@ A ticket MAY require multiple fresh sessions, for example:
 
 1. implementation;
 2. focused tests;
-3. review/fix/validation.
+3. review/validation.
 
 Start a fresh session when:
 
