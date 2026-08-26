@@ -4,4 +4,8 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Gw2Tp.Application/Gw2Tp.Application.csproj" />
+  </ItemGroup>
 </Project>

@@ -68,6 +68,10 @@ Requires the .NET 10 SDK and a recent Node.js. No credentials are required for t
 - Test: `dotnet test`
 - Run locally: `dotnet run --project src/Gw2Tp.Web`
 
+For the credential boundary and the temporary Development/Testing environment
+override, see [local secrets](docs/development/local-secrets.md). A real GW2
+credential must never be committed or placed in browser storage.
+
 ### Frontend
 
 - Install: `cd frontend && npm ci`

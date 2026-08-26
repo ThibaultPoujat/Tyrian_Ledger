@@ -113,7 +113,11 @@ Represent money in integer copper using a dedicated value type or equivalent. No
 
 ## Secrets
 
-Use an OS-backed local secret store through an abstraction. For development, support an environment-variable override that is explicitly documented as local development only.
+Use an OS-backed local secret store through an abstraction. The local host uses
+macOS Keychain, Windows Credential Manager, or the Linux Secret Service API as
+appropriate. The browser must never access the secret store or receive a
+credential value. For development, support an environment-variable override
+that is explicitly documented as local development only.
 
 ## Local network binding
 

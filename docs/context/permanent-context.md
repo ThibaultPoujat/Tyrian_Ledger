@@ -30,8 +30,11 @@ development tool only; it is not part of the application runtime.
 
 ## Local development
 
-macOS Apple Silicon. Use a current editor and Codex; the application has no
-dependency on a local coding-model runtime.
+The owner's primary development environment is macOS Apple Silicon. The local
+Web API and browser client must remain usable on macOS, Windows, and supported
+Linux desktop environments; browser clients never depend on a host-specific
+secret API. Use a current editor and Codex; the application has no dependency
+on a local coding-model runtime.
 
 ## Current architecture
 
