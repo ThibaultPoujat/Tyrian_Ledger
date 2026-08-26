@@ -2,6 +2,7 @@ using Gw2Tp.Application.Secrets;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Text.Json;
 using Xunit;
 
 namespace Gw2Tp.IntegrationTests;
@@ -28,7 +29,10 @@ public sealed class SecretStatusEndpointTests
         var responseBody = await response.Content.ReadAsStringAsync();
 
         response.EnsureSuccessStatusCode();
-        Assert.Contains("configured", responseBody);
+        using var responseDocument = JsonDocument.Parse(responseBody);
+        Assert.Equal(
+            "configured",
+            responseDocument.RootElement.GetProperty("credentialStatus").GetString());
         Assert.DoesNotContain(SyntheticCredential, responseBody);
     }
 
