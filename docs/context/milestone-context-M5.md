@@ -4,10 +4,13 @@
 M5 - Account-aware analysis and crafting
 
 ## Goal
-Add API-key validation, account snapshots, owned-item economics, crafting feasibility, and bounded multi-step crafting analysis.
+Add authorized account-aware analysis, inventory/bank opportunity cost, and bounded crafting-path evaluation.
 
-## Permanent context
-Load `docs/context/permanent-context.md`.
+## Agent context
+Load `docs/context/permanent-context.md`, the VERIFY register, one M5 ticket, and its matching M5 prompt. Read account/API permissions, crafting, security, and relevant test guidance only when required.
 
-## Rules for this milestone
-Implement only the tickets in this milestone. If a ticket requires an architecture change, create/update an ADR before coding beyond the smallest safe change.
+## Session rule
+Prefer separate sessions for account data access, analytics/crafting logic, tests, and security review. Keep active context near 16K and use Git state as the hand-off.
+
+## Rules
+Never expose API keys or account payloads unnecessarily. Owned materials are not free: account-aware recommendations must model opportunity cost. Keep crafting search bounded and deterministic.
