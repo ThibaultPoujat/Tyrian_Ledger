@@ -9,7 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(LocalServerBinding.ResolveUrls(builder.Configuration));
 builder.Services.AddValidation();
 builder.Services.AddTyrianLedgerSecretStore(builder.Environment);
-builder.Services.AddTyrianLedgerGw2ApiClient();
+builder.Services.AddTyrianLedgerGw2ApiClient(builder.Configuration);
 var app = builder.Build();
 
 app.UseTyrianLedgerSecurityHeaders();

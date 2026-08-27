@@ -19,7 +19,7 @@ Fetched **2026-08-22** from the Guild Wars 2 Wiki (page source, HTTP 200).
 | Refill rate | 5 tokens/s (300/min) | `API:Best_practices` §Rate Limit | community-documented; **VERIFY-006** |
 | 429 semantics | returned when the rate limit was exceeded | `API:2` §Error codes, 2026-08-22 | documented |
 | 429 response body/headers (`Retry-After`, `X-RateLimit-*`) | not documented | wiki does not state them | **VERIFY-010** |
-| Random "Invalid key" 403s | retry later instead of marking key invalid | `API:Best_practices` §Invalid API-Keys, 2026-08-22 | documented as observed behavior |
+| Community observation for random "Invalid key" 403s | retry later instead of marking key invalid | `API:Best_practices` §Invalid API-Keys, 2026-08-22 | insufficient to classify an individual response; **VERIFY-012** |
 | Legal constraint | API use is subject to ArenaNet Content/Website Terms of Use | `API:Terms_of_Use`, 2026-08-22 | authoritative (thin pointer page); legal scope is TKT-M0-04 |
 
 Note: the wiki is the community's best documentation of the live API; it is
@@ -46,15 +46,15 @@ possible value.
 
 | Parameter | Meaning | Default | Constraint / note |
 |---|---|---|---|
-| `rateLimit.burstSize` | Token-bucket capacity | 300 | ≤ community-documented burst (VERIFY-006); must be user-adjustable |
-| `rateLimit.refillTokensPerSecond` | Token-bucket refill rate | 5.0 | ≤ community-documented refill (VERIFY-006) |
-| `rateLimit.maxConcurrentRequests` | In-flight requests cap | 5 (VERIFY-011 tuning) | Deduplication must collapse identical in-flight requests (architecture.md) |
-| `retry.on429.initialBackoffMs` | First backoff after a 429 | 1000 | Bounded exponential backoff (architecture.md) |
-| `retry.on429.maxBackoffMs` | Backoff ceiling | 30000 | |
-| `retry.on429.maxAttempts` | Retries per logical request | 5 | Beyond this: surface `RateLimited` error state, do not block the UI |
-| `retry.honorServerRetryAfter` | Use server-provided wait if present | true | Only when the header exists (VERIFY-010); it must take precedence over the computed backoff |
-| `retry.on5xx.initialBackoffMs` / `maxBackoffMs` / `maxAttempts` | Retry for 502/503/504 | 1000 / 30000 / 3 | Same bounded exponential pattern |
-| `request.timeoutMs` | Per-request timeout | 10000 | |
+| `Gw2Api:RateLimit:BurstSize` | Token-bucket capacity | 300 | ≤ community-documented burst (VERIFY-006); must be user-adjustable |
+| `Gw2Api:RateLimit:RefillTokensPerSecond` | Token-bucket refill rate | 5 | ≤ community-documented refill (VERIFY-006) |
+| `Gw2Api:RateLimit:MaxConcurrentRequests` | In-flight requests cap | 5 (VERIFY-011 tuning) | Deduplication must collapse identical in-flight requests (architecture.md) |
+| `Gw2Api:Retry:On429:InitialBackoffMs` | First backoff after a 429 | 1000 | Bounded exponential backoff (architecture.md) |
+| `Gw2Api:Retry:On429:MaxBackoffMs` | Computed backoff ceiling | 30000 | Does not override a valid server `Retry-After` |
+| `Gw2Api:Retry:On429:MaxAttempts` | Total outbound attempts per logical request, including the initial request | 5 | Beyond this: surface `RateLimited` error state, do not block the UI |
+| `Gw2Api:Retry:HonorServerRetryAfter` | Use server-provided wait if present | true | Only when the header exists (VERIFY-010); it takes precedence over the computed backoff |
+| `Gw2Api:Retry:On5xx:InitialBackoffMs` / `MaxBackoffMs` / `MaxAttempts` | Retry for 502/503/504 | 1000 / 30000 / 3 | Same bounded pattern; `MaxAttempts` includes the initial request |
+| `Gw2Api:RequestTimeoutMs` | Per-request timeout | 10000 | |
 
 Defaults are starting points chosen for a single local, read-only user; the
 real sustainable rate is whatever the live API confirms (VERIFY-006,
@@ -81,9 +81,11 @@ Maps the architecture.md 5-step policy to concrete gateway behavior:
    known, the expected wait; the app must never spin silently or hammer the
    API.
 
-For 403 "Invalid key" random failures (documented in §1), the gateway retries
-the same key later in intervals; it must not declare the key invalid after a
-single failure.
+M2 treats all 401 and 403 responses as permanent: it returns their stable
+error category without retrying. The public endpoint response contract does
+not provide a verified discriminator for the community-observed random
+"Invalid key" 403 case; **VERIFY-012** records the evidence needed before a
+future authenticated gateway can introduce a narrow exception.
 
 ## 4. Mock 429 scenario specification
 
@@ -101,10 +103,11 @@ The M1/M2 gateway tests MUST cover at least:
   `RateLimited` and the deduplicator has not spawned duplicate concurrent
   requests (asserted on the request count sent to the mock transport).
 - `429-while-deduplicated`: a second identical request issued during the
-  backoff window is coalesced with the first (1 network request total).
+  backoff window is coalesced with the first; only the original 429 and its
+  retry reach the mock transport (two sends, not a parallel duplicate).
 
-The fixture is a specification artifact; the mock transport implementing it
-lands with the M1 gateway (TKT-M1-02/03).
+The fixture is a specification artifact; the deterministic mock transport and
+scheduler tests are implemented by TKT-M2-02.
 
 ## 5. Safe live verification (non-stressing)
 
