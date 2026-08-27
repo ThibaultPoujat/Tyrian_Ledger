@@ -257,11 +257,14 @@ public sealed class Gw2RequestSchedulerTests
         var result = await apiClient.GetPricesAsync([900001]);
 
         Assert.True(result.IsSuccess);
-        var logEntry = Assert.Single(logger.Entries);
+        Assert.NotEmpty(logger.Entries);
         var serializedDiagnostics = JsonSerializer.Serialize(diagnostics.GetSnapshot());
 
-        Assert.DoesNotContain(syntheticApiKey, logEntry, StringComparison.Ordinal);
-        Assert.DoesNotContain("Authorization", logEntry, StringComparison.OrdinalIgnoreCase);
+        Assert.All(logger.Entries, logEntry =>
+        {
+            Assert.DoesNotContain(syntheticApiKey, logEntry, StringComparison.Ordinal);
+            Assert.DoesNotContain("Authorization", logEntry, StringComparison.OrdinalIgnoreCase);
+        });
         Assert.DoesNotContain(syntheticApiKey, serializedDiagnostics, StringComparison.Ordinal);
         Assert.DoesNotContain("Authorization", serializedDiagnostics, StringComparison.OrdinalIgnoreCase);
     }
