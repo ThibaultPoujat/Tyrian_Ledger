@@ -14,11 +14,14 @@ internal sealed class Gw2ApiClient : IGw2ApiClient
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
     private readonly HttpClient _httpClient;
+    private readonly IGw2RequestScheduler _requestScheduler;
 
-    public Gw2ApiClient(HttpClient httpClient)
+    public Gw2ApiClient(HttpClient httpClient, IGw2RequestScheduler requestScheduler)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
+        ArgumentNullException.ThrowIfNull(requestScheduler);
         _httpClient = httpClient;
+        _requestScheduler = requestScheduler;
     }
 
     public Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>> GetPricesAsync(
@@ -47,55 +50,90 @@ internal sealed class Gw2ApiClient : IGw2ApiClient
     {
         var requestUri = CreateBatchRequestUri(resourcePath, itemIds);
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        try
+        {
+            return await _requestScheduler.ScheduleAsync(
+                // Batch URIs are intentionally relative to the typed client's
+                // fixed base address; their original string is the complete
+                // public request identity for the scheduler.
+                new Gw2RequestKey(requestUri.OriginalString),
+                operationCancellationToken => SendBatchAttemptAsync(
+                    requestUri,
+                    map,
+                    operationCancellationToken),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Gw2RequestSchedulerCapacityExceededException)
+        {
+            return Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(
+                Gw2ApiErrorCategory.UpstreamUnavailable);
+        }
+    }
 
+    private async Task<Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>> SendBatchAttemptAsync<TDto, TMarket>(
+        Uri requestUri,
+        Func<TDto, TMarket> map,
+        CancellationToken operationCancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
         try
         {
             using var response = await _httpClient.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
+                operationCancellationToken).ConfigureAwait(false);
 
             if (response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.PartialContent))
             {
-                return Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(MapErrorCategory(response.StatusCode));
+                return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>(
+                    Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(MapErrorCategory(response.StatusCode)),
+                    GetRetryKind(response.StatusCode),
+                    GetRetryAfter(response));
             }
 
-            await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var responseStream = await response.Content
+                .ReadAsStreamAsync(operationCancellationToken)
+                .ConfigureAwait(false);
             var payload = await JsonSerializer.DeserializeAsync<List<TDto>>(
                 responseStream,
                 SerializerOptions,
-                cancellationToken);
+                operationCancellationToken).ConfigureAwait(false);
 
             if (payload is null)
             {
-                return Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.InvalidPayload);
+                return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>(
+                    Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.InvalidPayload));
             }
 
             var marketData = payload.Select(map).ToArray();
-            return Gw2ApiResult<IReadOnlyList<TMarket>>.Success(
-                marketData,
-                response.StatusCode == HttpStatusCode.PartialContent);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
+            return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>(
+                Gw2ApiResult<IReadOnlyList<TMarket>>.Success(
+                    marketData,
+                    response.StatusCode == HttpStatusCode.PartialContent));
         }
         catch (JsonException)
         {
-            return Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.InvalidPayload);
+            return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>(
+                Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.InvalidPayload));
+        }
+        catch (OperationCanceledException) when (operationCancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (HttpRequestException)
         {
-            return Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.TransportFailure);
+            return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>(
+                Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.TransportFailure));
         }
         catch (IOException)
         {
-            return Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.TransportFailure);
+            return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>(
+                Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.TransportFailure));
         }
         catch (TaskCanceledException)
         {
-            return Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.TransportFailure);
+            return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>(
+                Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.TransportFailure));
         }
     }
 
@@ -186,5 +224,30 @@ internal sealed class Gw2ApiClient : IGw2ApiClient
             HttpStatusCode.TooManyRequests => Gw2ApiErrorCategory.RateLimited,
             _ => Gw2ApiErrorCategory.UnexpectedResponse,
         };
+    }
+
+    private static Gw2RetryKind GetRetryKind(HttpStatusCode statusCode) => statusCode switch
+    {
+        HttpStatusCode.TooManyRequests => Gw2RetryKind.RateLimited,
+        HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout =>
+            Gw2RetryKind.UpstreamUnavailable,
+        _ => Gw2RetryKind.None,
+    };
+
+    private static TimeSpan? GetRetryAfter(HttpResponseMessage response)
+    {
+        var retryAfter = response.Headers.RetryAfter;
+        if (retryAfter?.Delta is { } retryAfterDelta && retryAfterDelta > TimeSpan.Zero)
+        {
+            return retryAfterDelta;
+        }
+
+        if (retryAfter?.Date is { } retryAfterDate)
+        {
+            var retryAfterDateDelay = retryAfterDate - DateTimeOffset.UtcNow;
+            return retryAfterDateDelay > TimeSpan.Zero ? retryAfterDateDelay : null;
+        }
+
+        return null;
     }
 }

@@ -3,6 +3,7 @@ using System.Text;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -17,7 +18,7 @@ public sealed class Gw2ApiClientTests
         var handler = new StubHttpMessageHandler(
             (_, _) => Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, payload)));
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
 
         var result = await apiClient.GetPricesAsync([900001, 900002, 900003]);
 
@@ -45,7 +46,7 @@ public sealed class Gw2ApiClientTests
         var handler = new StubHttpMessageHandler(
             (_, _) => Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, payload)));
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
 
         var result = await apiClient.GetListingsAsync([900001, 900002]);
 
@@ -82,7 +83,7 @@ public sealed class Gw2ApiClientTests
         var handler = new StubHttpMessageHandler(
             (_, _) => Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, payload)));
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
 
         var result = await apiClient.GetPricesAsync([900001]);
 
@@ -110,7 +111,7 @@ public sealed class Gw2ApiClientTests
         var handler = new StubHttpMessageHandler(
             (_, _) => Task.FromResult(new HttpResponseMessage((HttpStatusCode)statusCode)));
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
 
         var result = await apiClient.GetPricesAsync([900001]);
 
@@ -127,7 +128,7 @@ public sealed class Gw2ApiClientTests
         var handler = new StubHttpMessageHandler(
             (_, _) => Task.FromResult(CreateJsonResponse(HttpStatusCode.PartialContent, payload)));
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
 
         var result = await apiClient.GetPricesAsync([900001, 999999]);
 
@@ -145,7 +146,7 @@ public sealed class Gw2ApiClientTests
         var handler = new StubHttpMessageHandler(
             (_, _) => Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, payload)));
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
 
         var result = await apiClient.GetPricesAsync([900001]);
 
@@ -159,7 +160,7 @@ public sealed class Gw2ApiClientTests
         var handler = new StubHttpMessageHandler(
             (_, _) => Task.FromException<HttpResponseMessage>(new HttpRequestException("synthetic transport failure")));
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
 
         var result = await apiClient.GetPricesAsync([900001]);
 
@@ -176,7 +177,7 @@ public sealed class Gw2ApiClientTests
                 Content = new ThrowingResponseContent(),
             }));
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
 
         var result = await apiClient.GetPricesAsync([900001]);
 
@@ -193,7 +194,7 @@ public sealed class Gw2ApiClientTests
             return CreateJsonResponse(HttpStatusCode.OK, "[]");
         });
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
         using var cancellationTokenSource = new CancellationTokenSource();
 
         var operation = apiClient.GetPricesAsync([900001], cancellationTokenSource.Token);
@@ -208,7 +209,7 @@ public sealed class Gw2ApiClientTests
         var handler = new StubHttpMessageHandler(
             (_, _) => Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, "[]")));
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
 
         await Assert.ThrowsAsync<ArgumentException>(() => apiClient.GetPricesAsync([]));
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => apiClient.GetPricesAsync([0]));
@@ -224,7 +225,7 @@ public sealed class Gw2ApiClientTests
         var handler = new StubHttpMessageHandler(
             (_, _) => Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, "[]")));
         using var httpClient = CreateHttpClient(handler);
-        var apiClient = new Gw2ApiClient(httpClient);
+        var apiClient = CreateApiClient(httpClient);
 
         var result = await apiClient.GetPricesAsync(itemIds);
 
@@ -238,7 +239,7 @@ public sealed class Gw2ApiClientTests
     public void Service_registration_exposes_the_application_gateway_abstraction()
     {
         var services = new ServiceCollection();
-        services.AddTyrianLedgerGw2ApiClient();
+        services.AddTyrianLedgerGw2ApiClient(new ConfigurationBuilder().Build());
         using var provider = services.BuildServiceProvider();
 
         var client = provider.GetRequiredService<IGw2ApiClient>();
@@ -250,6 +251,9 @@ public sealed class Gw2ApiClientTests
     {
         BaseAddress = new Uri("https://api.guildwars2.com/v2/"),
     };
+
+    private static Gw2ApiClient CreateApiClient(HttpClient httpClient) =>
+        new(httpClient, PassthroughRequestScheduler.Instance);
 
     private static HttpResponseMessage CreateJsonResponse(HttpStatusCode statusCode, string payload) => new(statusCode)
     {
@@ -323,4 +327,19 @@ public sealed class Gw2ApiClientTests
     }
 
     private sealed record CapturedRequest(HttpMethod Method, Uri RequestUri);
+
+    private sealed class PassthroughRequestScheduler : IGw2RequestScheduler
+    {
+        public static readonly PassthroughRequestScheduler Instance = new();
+
+        private PassthroughRequestScheduler()
+        {
+        }
+
+        public async Task<T> ScheduleAsync<T>(
+            Gw2RequestKey requestKey,
+            Func<CancellationToken, Task<Gw2ScheduledResult<T>>> sendAsync,
+            CancellationToken cancellationToken) =>
+            (await sendAsync(cancellationToken)).Result;
+    }
 }

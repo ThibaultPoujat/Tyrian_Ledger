@@ -63,6 +63,7 @@ the item originated remains the primary source of context and evidence.
 | VERIFY-008 | OPEN | `/v2/account/recipes` scope is `account, unlocks` per the wiki infobox; confirm whether the `characters` scope also affects the unlocked recipe set, and confirm the exact server-side caching duration of `/v2/commerce/transactions` (wiki cites ~5 minutes). | wiki `API:2/account/recipes`, `API:2/commerce/transactions` fetched 2026-08-21 | TKT-M0-02 | 2026-08-21 | — |
 | VERIFY-010 | OPEN | Exact 429 response contract: whether the API sends `Retry-After` (and/or `X-RateLimit-*` headers) and a machine-readable body; the wiki documents neither, so the policy treats server-provided wait info as optional. | `docs/rate-limiting/rate-limit-policy.md` §1; wiki `API:2` fetched 2026-08-22 | TKT-M0-03 | 2026-08-22 | — |
 | VERIFY-011 | OPEN | Empirical per-IP vs per-IP+key rate-limit behavior and the sustainable request rate for a single local read-only user; to be settled by the safe live check (≤2 read-only GETs, no burst) defined in the policy doc, scheduled with M2. | `docs/rate-limiting/rate-limit-policy.md` §5 | TKT-M0-03 | 2026-08-22 | — |
+| VERIFY-012 | OPEN | A verified response-level discriminator, if any, for the community-observed transient "Invalid key" 403 condition. Until one exists, the gateway must treat all 401/403 responses as permanent and must not retry them. | `docs/rate-limiting/rate-limit-policy.md` §1/§3; TKT-M2-02 decision, 2026-08-27 | TKT-M2-02 | 2026-08-27 | — |
 
 ## Verification history
 
