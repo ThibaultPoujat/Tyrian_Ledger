@@ -16,5 +16,11 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Gw2Tp.Application/Gw2Tp.Application.csproj" />
     <ProjectReference Include="../../src/Gw2Tp.Infrastructure/Gw2Tp.Infrastructure.csproj" />
+    <ProjectReference Include="../Gw2Tp.Testing/Gw2Tp.Testing.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../fixtures/**/*.json" Link="Fixtures/%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 </Project>

@@ -1,13 +1,15 @@
 using Gw2Tp.Application.Secrets;
+using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.Secrets;
 using Gw2Tp.Web;
 
-// Tyrian Ledger Web - M1 skeleton. GW2 access is a non-goal until M2.
+// Tyrian Ledger Web composition root. Public GW2 market access begins in M2.
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(LocalServerBinding.ResolveUrls(builder.Configuration));
 builder.Services.AddValidation();
 builder.Services.AddTyrianLedgerSecretStore(builder.Environment);
+builder.Services.AddTyrianLedgerGw2ApiClient();
 var app = builder.Build();
 
 app.UseTyrianLedgerSecurityHeaders();

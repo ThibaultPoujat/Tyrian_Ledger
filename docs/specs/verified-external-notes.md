@@ -1,7 +1,8 @@
 # Historical External Verification Notes
 
-> These notes document the retired Qwen/MTPLX discovery path. They are kept
-> for project history and must not be used as active Codex instructions.
+> These notes document historical external verification. The retired
+> Qwen/MTPLX material and the dated M2 public probe below are records, not
+> active Codex instructions.
 
 Verification date: 2026-08-19.
 
@@ -36,3 +37,22 @@ The current project uses these references as the starting point for verification
 - https://wiki.guildwars2.com/wiki/API:Terms_of_Use
 
 The exact API contract must always be rechecked before release.
+
+## M2 public API probe
+
+On 2026-08-26, TKT-M2-01 performed the owner-approved, read-only, no-key
+verification check. It made exactly two requests and retained only metadata
+and response shape:
+
+- `GET https://api.guildwars2.com/v2.json?v=latest` returned HTTP 200 with
+  `langs`, `routes`, and `schema_versions`; the newest listed schema version
+  was `2025-08-29T01:00:00.000Z`.
+- `GET https://api.guildwars2.com/v2/commerce/prices?v=latest` returned HTTP
+  200 with an array of 27,987 numeric item IDs and
+  `X-Rate-Limit-Limit: 600`. It did not fetch detailed records without an
+  explicit `ids` parameter.
+
+This confirms the global schema value used by the public prices/listings
+client. It does not settle batch limits, 206 behavior, rate-limit scope,
+burst/refill values, 429 headers, or a sustainable rate; those remain in the
+VERIFY register.
