@@ -1,8 +1,8 @@
-namespace Gw2Tp.Application.MarketData;
+namespace Gw2Tp.Domain.MarketData;
 
 /// <summary>
-/// UTC instants that let analytics and presentation layers calculate the age
-/// and expiry state of a market-data response without seeing cache internals.
+/// UTC instants that let callers classify market-data age without depending on
+/// transport or cache implementation details.
 /// </summary>
 public sealed record DataFreshness
 {

@@ -1,3 +1,5 @@
+using Gw2Tp.Domain.MarketData;
+
 namespace Gw2Tp.Application.MarketData;
 
 /// <summary>

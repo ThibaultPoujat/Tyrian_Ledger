@@ -4,6 +4,8 @@ using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Time;
 using Microsoft.Extensions.Options;
 
+using Gw2Tp.Domain.MarketData;
+
 namespace Gw2Tp.Infrastructure.Gw2Api;
 
 internal interface IGw2ApiTransport
