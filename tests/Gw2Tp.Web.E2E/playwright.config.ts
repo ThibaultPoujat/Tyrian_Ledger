@@ -30,7 +30,8 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: `API_URL=${apiBaseUrl} npm --prefix ../../frontend run dev -- --host ${localHost} --port ${frontendPort} --strictPort`,
+      command: `npm --prefix ../../frontend run dev -- --host ${localHost} --port ${frontendPort} --strictPort`,
+      env: { API_URL: apiBaseUrl },
       url: frontendBaseUrl,
       reuseExistingServer: !isCi,
       timeout: 120_000,
