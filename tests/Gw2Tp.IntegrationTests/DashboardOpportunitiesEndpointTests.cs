@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.Time;
+using Gw2Tp.Testing;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -58,5 +60,39 @@ public sealed class DashboardOpportunitiesEndpointTests
         Assert.Equal(
             firstOpportunities.EnumerateArray().Select(opportunity => opportunity.GetProperty("itemId").GetInt32()),
             secondOpportunities.EnumerateArray().Select(opportunity => opportunity.GetProperty("itemId").GetInt32()));
+    }
+
+    [Fact]
+    public async Task Dashboard_detail_matches_the_known_deterministic_fixture()
+    {
+        var frozenNow = new DateTimeOffset(2026, 8, 27, 12, 0, 0, TimeSpan.Zero);
+        using var factory = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<IGw2ApiClient>();
+                    services.RemoveAll<IClock>();
+                    services.AddSingleton<IClock>(new FrozenClock(frozenNow));
+                });
+            });
+        var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/dashboard/opportunities");
+        response.EnsureSuccessStatusCode();
+        using var responseDocument = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var fixtureDocument = await new JsonFixtureLoader(
+                Path.Combine(AppContext.BaseDirectory, "Fixtures"))
+            .LoadAsync("dashboard/opportunity-detail.json");
+
+        var actualDetail = responseDocument.RootElement
+            .GetProperty("opportunities")
+            .EnumerateArray()
+            .Single(opportunity => opportunity.GetProperty("itemId").GetInt32() == 900_004)
+            .GetProperty("detail");
+
+        Assert.True(
+            JsonElement.DeepEquals(fixtureDocument.RootElement, actualDetail),
+            "The dashboard detail must remain consistent with its deterministic fixture.");
     }
 }

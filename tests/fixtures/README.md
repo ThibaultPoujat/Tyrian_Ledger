@@ -11,6 +11,9 @@ account, character, or credential data.
   `gw2/commerce/prices.json`.
 - `errors/<http-status>.json` — synthetic error scenarios grouped by HTTP
   response status; for example, `errors/429.json`.
+- `dashboard/<feature>.json` — deterministic local dashboard response fragments
+  used to compare UI-facing scenario output; for example,
+  `dashboard/opportunity-detail.json`.
 
 ## Content rules
 

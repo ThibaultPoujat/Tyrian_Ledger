@@ -31,6 +31,7 @@ export default function App() {
   const [state, setState] = useState<DashboardState>({ kind: 'loading' });
   const [requestVersion, setRequestVersion] = useState(0);
   const [filters, setFilters] = useState<DashboardFilters>(initialFilters);
+  const [selectedOpportunityId, setSelectedOpportunityId] = useState<number | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -59,6 +60,10 @@ export default function App() {
   const filteredOpportunities = useMemo(
     () => opportunities.filter((opportunity) => matchesFilters(opportunity, filters)),
     [filters, opportunities],
+  );
+  const selectedOpportunity = useMemo(
+    () => opportunities.find((opportunity) => opportunity.itemId === selectedOpportunityId) ?? null,
+    [opportunities, selectedOpportunityId],
   );
 
   return (
@@ -218,15 +223,30 @@ export default function App() {
                         <th scope="col">Liquidity proxy</th>
                         <th scope="col">Confidence / risk</th>
                         <th scope="col">Data age</th>
+                        <th scope="col">Details</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredOpportunities.map((opportunity) => (
-                        <OpportunityRow key={opportunity.itemId} opportunity={opportunity} />
+                        <OpportunityRow
+                          key={opportunity.itemId}
+                          isSelected={opportunity.itemId === selectedOpportunityId}
+                          onSelect={() => setSelectedOpportunityId((current) => (
+                            current === opportunity.itemId ? null : opportunity.itemId
+                          ))}
+                          opportunity={opportunity}
+                        />
                       ))}
                     </tbody>
                   </table>
                 </div>
+              )}
+
+              {selectedOpportunity !== null && (
+                <OpportunityDetail
+                  onClose={() => setSelectedOpportunityId(null)}
+                  opportunity={selectedOpportunity}
+                />
               )}
 
               <p className="method-note">
@@ -240,7 +260,15 @@ export default function App() {
   );
 }
 
-function OpportunityRow({ opportunity }: { opportunity: DashboardOpportunity }) {
+function OpportunityRow({
+  isSelected,
+  onSelect,
+  opportunity,
+}: {
+  isSelected: boolean;
+  onSelect: () => void;
+  opportunity: DashboardOpportunity;
+}) {
   return (
     <tr data-testid="opportunity-row">
       <td className="rank-cell">#{opportunity.rank}</td>
@@ -263,7 +291,163 @@ function OpportunityRow({ opportunity }: { opportunity: DashboardOpportunity }) 
         </span>
         <time dateTime={opportunity.capturedAtUtc}>{formatDataAge(opportunity.capturedAtUtc)}</time>
       </td>
+      <td>
+        <button
+          aria-expanded={isSelected}
+          aria-label={`${isSelected ? 'Hide' : 'View'} details for ${opportunity.label}`}
+          className="detail-toggle"
+          onClick={onSelect}
+          type="button"
+        >
+          {isSelected ? 'Hide details' : 'View details'}
+        </button>
+      </td>
     </tr>
+  );
+}
+
+function OpportunityDetail({
+  onClose,
+  opportunity,
+}: {
+  onClose: () => void;
+  opportunity: DashboardOpportunity;
+}) {
+  const { detail } = opportunity;
+
+  return (
+    <section
+      aria-labelledby="opportunity-detail-title"
+      className="opportunity-detail"
+      data-testid="opportunity-detail"
+    >
+      <div className="opportunity-detail-heading">
+        <div>
+          <p className="eyebrow">Calculation detail</p>
+          <h2 id="opportunity-detail-title">{opportunity.label}</h2>
+        </div>
+        <button className="detail-close" onClick={onClose} type="button">
+          Close details
+        </button>
+      </div>
+
+      <p className="scenario-disclaimer">
+        <strong>Modeled scenario only.</strong> This uses the supplied order-book snapshot and configured fees.
+        It is not an actual purchase, sale, fill, fee, or realized-profit outcome, and it does not guarantee one.
+      </p>
+
+      <div className="detail-grid">
+        <section aria-labelledby="scenario-assumptions-title" className="detail-section">
+          <h3 id="scenario-assumptions-title">Scenario assumptions</h3>
+          <dl>
+            <DetailTerm label="Strategy" value={formatStrategy(opportunity.strategy)} />
+            <DetailTerm label="Requested quantity" value={`${detail.requestedQuantity} items`} />
+            <DetailTerm label="Analyzed at" value={formatDateTime(detail.analyzedAtUtc)} />
+            <DetailTerm label="Confidence / risk" value={formatConfidence(detail.confidence)} />
+            <DetailTerm
+              label="Acquisition assumption"
+              value={`Take supplied sell levels: ${detail.acquisition.filledQuantity} of ${detail.acquisition.requestedQuantity} items for ${formatCopper(detail.acquisition.totalValueCopper)}.`}
+            />
+            <DetailTerm
+              label="Exit assumption"
+              value={`Take supplied buy levels: ${detail.exit.filledQuantity} of ${detail.exit.requestedQuantity} items for ${formatCopper(detail.exit.totalValueCopper)} gross.`}
+            />
+          </dl>
+        </section>
+
+        <section aria-labelledby="fees-title" className="detail-section">
+          <h3 id="fees-title">Configured fees</h3>
+          <dl>
+            <DetailTerm
+              label="Listing fee"
+              value={`${formatBasisPoints(detail.fees.listingBasisPoints)} (${formatRounding(detail.fees.listingRounding)}) = ${formatCopper(detail.fees.listingFeeCopper)}`}
+            />
+            <DetailTerm
+              label="Exchange fee"
+              value={`${formatBasisPoints(detail.fees.exchangeBasisPoints)} (${formatRounding(detail.fees.exchangeRounding)}) = ${formatCopper(detail.fees.exchangeFeeCopper)}`}
+            />
+          </dl>
+        </section>
+
+        <section aria-labelledby="financials-title" className="detail-section">
+          <h3 id="financials-title">Modeled financial result</h3>
+          <dl>
+            <DetailTerm label="Capital required" value={formatCopper(detail.financials.capitalRequiredCopper)} />
+            <DetailTerm label="Modeled net proceeds" value={formatCopper(detail.financials.netSaleProceedsCopper)} />
+            <DetailTerm label="Modeled profit" value={formatCopper(detail.financials.modeledNetProfitCopper)} />
+            <DetailTerm
+              label="Modeled ROI"
+              value={formatBasisPoints(detail.financials.returnOnInvestmentBasisPoints)}
+            />
+          </dl>
+        </section>
+
+        <section aria-labelledby="liquidity-title" className="detail-section">
+          <h3 id="liquidity-title">Order-book impact and liquidity</h3>
+          <dl>
+            <DetailTerm
+              label="Acquisition liquidity"
+              value={`${detail.liquidity.acquisitionFilledQuantity} of ${detail.requestedQuantity} modeled; ${formatFillStatus(detail.liquidity.isFullyAcquirable)}.`}
+            />
+            <DetailTerm
+              label="Exit liquidity"
+              value={`${detail.liquidity.liquidationFilledQuantity} of ${detail.requestedQuantity} modeled; ${formatFillStatus(detail.liquidity.isFullyLiquidatable)}.`}
+            />
+            <DetailTerm
+              label="Acquisition price impact"
+              value={formatCopper(detail.liquidity.acquisitionPriceImpactCopper)}
+            />
+            <DetailTerm
+              label="Exit price impact"
+              value={formatCopper(detail.liquidity.liquidationPriceImpactCopper)}
+            />
+            <DetailTerm
+              label="Total price impact"
+              value={formatCopper(detail.liquidity.totalPriceImpactCopper)}
+            />
+          </dl>
+        </section>
+      </div>
+
+      <section aria-labelledby="calculation-breakdown-title" className="calculation-breakdown">
+        <h3 id="calculation-breakdown-title">Human-readable calculation breakdown</h3>
+        <p>
+          Acquisition cost {formatCopper(detail.financials.acquisitionCostCopper)} + listing fee{' '}
+          {formatCopper(detail.fees.listingFeeCopper)} = capital required{' '}
+          {formatCopper(detail.financials.capitalRequiredCopper)}.
+        </p>
+        <p>
+          Gross exit value {formatCopper(detail.financials.grossSaleValueCopper)} − listing fee{' '}
+          {formatCopper(detail.fees.listingFeeCopper)} − exchange fee {formatCopper(detail.fees.exchangeFeeCopper)}
+          {' '}= modeled net proceeds {formatCopper(detail.financials.netSaleProceedsCopper)}.
+        </p>
+        <p>
+          Modeled net proceeds {formatCopper(detail.financials.netSaleProceedsCopper)} − acquisition cost{' '}
+          {formatCopper(detail.financials.acquisitionCostCopper)} = modeled profit{' '}
+          {formatCopper(detail.financials.modeledNetProfitCopper)} ({formatBasisPoints(detail.financials.returnOnInvestmentBasisPoints)} ROI).
+        </p>
+      </section>
+
+      <section aria-labelledby="data-age-title" className="data-age-detail">
+        <h3 id="data-age-title">Data age</h3>
+        <p>
+          <span className={`freshness-label freshness-${detail.freshness}`}>
+            {formatFreshness(detail.freshness)}
+          </span>{' '}
+          Captured <time dateTime={detail.capturedAtUtc}>{formatDataAge(detail.capturedAtUtc)}</time>
+          {' '}({formatDateTime(detail.capturedAtUtc)}); this scenario expires at {formatDateTime(detail.expiresAtUtc)}.
+        </p>
+      </section>
+    </section>
+  );
+}
+
+function DetailTerm({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }
 
@@ -343,4 +527,17 @@ function formatDataAge(capturedAtUtc: string): string {
   }
 
   return `${ageInMinutes} minutes ago`;
+}
+
+function formatDateTime(utcValue: string): string {
+  const parsedDate = new Date(utcValue);
+  return Number.isNaN(parsedDate.getTime()) ? 'Unknown time' : parsedDate.toISOString();
+}
+
+function formatRounding(rounding: 'down' | 'up'): string {
+  return `rounded ${rounding}`;
+}
+
+function formatFillStatus(isFullyFilled: boolean): string {
+  return isFullyFilled ? 'full modeled depth' : 'insufficient modeled depth';
 }

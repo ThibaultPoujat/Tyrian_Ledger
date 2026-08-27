@@ -1,7 +1,55 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import type { DashboardOpportunitiesResponse } from './dashboardApi';
+import type { DashboardOpportunitiesResponse, DashboardOpportunityDetail } from './dashboardApi';
+
+const opportunityDetail: DashboardOpportunityDetail = {
+  requestedQuantity: 5,
+  analyzedAtUtc: '2026-08-27T12:00:00Z',
+  acquisition: {
+    requestedQuantity: 5,
+    filledQuantity: 5,
+    isFullyFilled: true,
+    totalValueCopper: 800,
+    priceImpactCopper: 300,
+  },
+  exit: {
+    requestedQuantity: 5,
+    filledQuantity: 5,
+    isFullyFilled: true,
+    totalValueCopper: 1_500,
+    priceImpactCopper: 0,
+  },
+  fees: {
+    listingBasisPoints: 0,
+    listingRounding: 'down',
+    listingFeeCopper: 0,
+    exchangeBasisPoints: 0,
+    exchangeRounding: 'down',
+    exchangeFeeCopper: 0,
+  },
+  financials: {
+    acquisitionCostCopper: 800,
+    grossSaleValueCopper: 1_500,
+    netSaleProceedsCopper: 1_500,
+    capitalRequiredCopper: 800,
+    modeledNetProfitCopper: 700,
+    returnOnInvestmentBasisPoints: 8_750,
+  },
+  liquidity: {
+    acquisitionFilledQuantity: 5,
+    liquidationFilledQuantity: 5,
+    isFullyAcquirable: true,
+    isFullyLiquidatable: true,
+    acquisitionPriceImpactCopper: 300,
+    liquidationPriceImpactCopper: 0,
+    totalPriceImpactCopper: 300,
+  },
+  freshness: 'current',
+  capturedAtUtc: '2026-08-27T11:59:00Z',
+  expiresAtUtc: '2026-08-27T12:04:00Z',
+  confidence: 'normal',
+};
 
 const dashboardResponse: DashboardOpportunitiesResponse = {
   isSampleData: true,
@@ -21,6 +69,7 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
       confidence: 'normal',
       freshness: 'current',
       capturedAtUtc: '2026-08-27T11:59:00Z',
+      detail: opportunityDetail,
     },
     {
       itemId: 900_003,
@@ -35,6 +84,12 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
       confidence: 'reduced',
       freshness: 'stale',
       capturedAtUtc: '2026-08-27T11:30:00Z',
+      detail: {
+        ...opportunityDetail,
+        freshness: 'stale',
+        capturedAtUtc: '2026-08-27T11:30:00Z',
+        confidence: 'reduced',
+      },
     },
     {
       itemId: 900_001,
@@ -49,6 +104,7 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
       confidence: 'normal',
       freshness: 'current',
       capturedAtUtc: '2026-08-27T11:59:00Z',
+      detail: opportunityDetail,
     },
     {
       itemId: 900_002,
@@ -63,6 +119,7 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
       confidence: 'normal',
       freshness: 'current',
       capturedAtUtc: '2026-08-27T11:59:00Z',
+      detail: opportunityDetail,
     },
     {
       itemId: 900_005,
@@ -77,6 +134,7 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
       confidence: 'normal',
       freshness: 'current',
       capturedAtUtc: '2026-08-27T11:59:00Z',
+      detail: opportunityDetail,
     },
   ],
 };
@@ -127,6 +185,26 @@ describe('market dashboard filters', () => {
 
     expect(screen.getByRole('heading', { name: 'No opportunities match these filters' })).toBeVisible();
     expect(screen.queryByTestId('opportunity-row')).not.toBeInTheDocument();
+  });
+
+  it('renders the selected opportunity detail as a modeled scenario', async () => {
+    await renderReadyDashboard();
+
+    fireEvent.click(screen.getByRole('button', {
+      name: 'View details for Sample market flip #900004',
+    }));
+
+    const detail = screen.getByTestId('opportunity-detail');
+    expect(detail).toHaveTextContent('Modeled scenario only.');
+    expect(detail).toHaveTextContent('not an actual purchase, sale, fill, fee, or realized-profit outcome');
+    expect(detail).toHaveTextContent('Take supplied sell levels: 5 of 5 items for 0g 8s 0c.');
+    expect(detail).toHaveTextContent('Take supplied buy levels: 5 of 5 items for 0g 15s 0c gross.');
+    expect(detail).toHaveTextContent('Capital required0g 8s 0c');
+    expect(detail).toHaveTextContent('Modeled profit0g 7s 0c');
+    expect(detail).toHaveTextContent('Modeled ROI87.50%');
+    expect(detail).toHaveTextContent('Total price impact0g 3s 0c');
+    expect(detail).toHaveTextContent('Human-readable calculation breakdown');
+    expect(detail).toHaveTextContent('Data age');
   });
 });
 
