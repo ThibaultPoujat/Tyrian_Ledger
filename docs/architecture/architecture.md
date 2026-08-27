@@ -124,6 +124,21 @@ A flip-profit scenario models a completed sale for total transaction values:
 The listing fee is included as an up-front cost in this completed-sale model.
 Unsold or cancelled listings are not represented by this scenario.
 
+## Order-book simulation
+
+Order-book calculations model immediate execution against a supplied snapshot;
+they are scenarios, not guarantees of a real-world fill. Acquisition consumes
+sell levels from the lowest unit price upward, and liquidation consumes buy
+levels from the highest unit price downward, regardless of source ordering.
+
+The weighted average unit price remains exact as total copper divided by the
+filled quantity; no floating-point or whole-copper rounding is applied. Price
+impact is a total-copper comparison against filling the executed quantity at
+the best available level: actual acquisition cost less the best-ask baseline,
+or best-bid baseline less actual liquidation proceeds. Insufficient depth
+returns the partial execution, its remaining quantity, and an explicit
+incomplete status.
+
 ## Secrets
 
 Use an OS-backed local secret store through an abstraction. The local host uses
