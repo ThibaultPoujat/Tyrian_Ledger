@@ -105,7 +105,7 @@ internal sealed class CachingGw2ApiClient : IGw2ApiClient
             throw new ArgumentException("At least one item ID is required.", nameof(itemIds));
         }
 
-        var itemIdSnapshot = itemIds.ToArray();
+        var itemIdSnapshot = itemIds.OrderBy(itemId => itemId).ToArray();
         foreach (var itemId in itemIdSnapshot)
         {
             if (itemId <= 0)
@@ -170,6 +170,9 @@ internal sealed class CachingGw2ApiClient : IGw2ApiClient
         {
             try
             {
+                // A cache fill is shared by all callers with this request
+                // key. Like the request scheduler, one caller cancelling its
+                // wait must not cancel the shared outbound operation.
                 var result = await getFromTransportAsync(CancellationToken.None).ConfigureAwait(false);
                 if (!result.IsSuccess)
                 {

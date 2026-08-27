@@ -72,6 +72,53 @@ public sealed class CachingGw2ApiClientTests
     }
 
     [Fact]
+    public async Task Cache_key_is_independent_of_item_id_order()
+    {
+        IReadOnlyCollection<int>? transmittedItemIds = null;
+        var transport = new StubMarketTransport((itemIds, _) =>
+        {
+            transmittedItemIds = itemIds;
+            return Task.FromResult(SuccessfulPrices());
+        });
+        var client = CreateClient(
+            transport,
+            new MutableClock(new DateTimeOffset(2026, 8, 27, 9, 0, 0, TimeSpan.Zero)));
+
+        await client.GetPricesAsync([900002, 900001]);
+        await client.GetPricesAsync([900001, 900002]);
+
+        Assert.Equal(1, transport.PriceRequestCount);
+        Assert.Equal([900001, 900002], transmittedItemIds);
+    }
+
+    [Fact]
+    public async Task Caller_cancellation_does_not_cancel_a_shared_cache_fill()
+    {
+        var responseSource = new TaskCompletionSource<Gw2ApiResult<IReadOnlyList<MarketPrice>>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new StubMarketTransport((_, cancellationToken) =>
+        {
+            Assert.False(cancellationToken.CanBeCanceled);
+            return responseSource.Task;
+        });
+        var client = CreateClient(
+            transport,
+            new MutableClock(new DateTimeOffset(2026, 8, 27, 9, 0, 0, TimeSpan.Zero)));
+        using var cancellationSource = new CancellationTokenSource();
+
+        var cancelledWaiter = client.GetPricesAsync([900001], cancellationSource.Token);
+        await transport.WaitForPriceRequestAsync();
+        cancellationSource.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelledWaiter);
+        var remainingWaiter = client.GetPricesAsync([900001]);
+        responseSource.SetResult(SuccessfulPrices());
+
+        Assert.True((await remainingWaiter).IsSuccess);
+        Assert.Equal(1, transport.PriceRequestCount);
+    }
+
+    [Fact]
     public async Task Failed_transport_results_are_not_cached()
     {
         var responses = new Queue<Gw2ApiResult<IReadOnlyList<MarketPrice>>>(
@@ -116,6 +163,39 @@ public sealed class CachingGw2ApiClientTests
     }
 
     [Fact]
+    public async Task Listings_are_cached_then_refreshed_after_expiry_and_a_failure_is_not_cached()
+    {
+        var capturedAtUtc = new DateTimeOffset(2026, 8, 27, 9, 0, 0, TimeSpan.Zero);
+        var clock = new MutableClock(capturedAtUtc);
+        var listingResponses = new Queue<Gw2ApiResult<IReadOnlyList<MarketListing>>>(
+        [
+            SuccessfulListings(),
+            Gw2ApiResult<IReadOnlyList<MarketListing>>.Failure(
+                Gw2ApiErrorCategory.UpstreamUnavailable),
+            SuccessfulListings(),
+        ]);
+        var transport = new StubMarketTransport(
+            (_, _) => Task.FromResult(SuccessfulPrices()),
+            (_, _) => Task.FromResult(listingResponses.Dequeue()));
+        var client = CreateClient(transport, clock);
+
+        var initial = await client.GetListingsAsync([900001]);
+        var hit = await client.GetListingsAsync([900001]);
+        clock.Advance(TimeSpan.FromMinutes(2));
+        var failedRefresh = await client.GetListingsAsync([900001]);
+        var recovered = await client.GetListingsAsync([900001]);
+
+        Assert.True(initial.IsSuccess);
+        Assert.True(hit.IsSuccess);
+        Assert.Equal(initial.Freshness, hit.Freshness);
+        Assert.False(failedRefresh.IsSuccess);
+        Assert.Null(failedRefresh.Freshness);
+        Assert.True(recovered.IsSuccess);
+        Assert.NotNull(recovered.Freshness);
+        Assert.Equal(3, transport.ListingRequestCount);
+    }
+
+    [Fact]
     public void Cache_options_require_a_positive_time_to_live()
     {
         var options = new Gw2MarketCacheOptions { TimeToLiveSeconds = 0 };
@@ -144,6 +224,15 @@ public sealed class CachingGw2ApiClientTests
                 new MarketOrderSummary(40, 905)),
         ]);
 
+    private static Gw2ApiResult<IReadOnlyList<MarketListing>> SuccessfulListings() =>
+        Gw2ApiResult<IReadOnlyList<MarketListing>>.Success(
+        [
+            new MarketListing(
+                900001,
+                [new MarketOrderLevel(4, 1200, 850)],
+                [new MarketOrderLevel(1, 40, 905)]),
+        ]);
+
     private sealed class MutableClock : IClock
     {
         public MutableClock(DateTimeOffset utcNow)
@@ -160,18 +249,27 @@ public sealed class CachingGw2ApiClientTests
     {
         private readonly Func<IReadOnlyCollection<int>, CancellationToken, Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>>>
             _getPricesAsync;
+        private readonly Func<IReadOnlyCollection<int>, CancellationToken, Task<Gw2ApiResult<IReadOnlyList<MarketListing>>>>
+            _getListingsAsync;
         private readonly TaskCompletionSource _priceRequestStarted = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         private int _priceRequestCount;
+        private int _listingRequestCount;
 
         public StubMarketTransport(
             Func<IReadOnlyCollection<int>, CancellationToken, Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>>>
-                getPricesAsync)
+                getPricesAsync,
+            Func<IReadOnlyCollection<int>, CancellationToken, Task<Gw2ApiResult<IReadOnlyList<MarketListing>>>>?
+                getListingsAsync = null)
         {
             _getPricesAsync = getPricesAsync;
+            _getListingsAsync = getListingsAsync ?? ((_, _) =>
+                throw new NotSupportedException("Listings are not used by this test transport."));
         }
 
         public int PriceRequestCount => Volatile.Read(ref _priceRequestCount);
+
+        public int ListingRequestCount => Volatile.Read(ref _listingRequestCount);
 
         public Task WaitForPriceRequestAsync() => _priceRequestStarted.Task;
 
@@ -186,7 +284,10 @@ public sealed class CachingGw2ApiClientTests
 
         public Task<Gw2ApiResult<IReadOnlyList<MarketListing>>> GetListingsAsync(
             IReadOnlyCollection<int> itemIds,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException("Listings are not used by this test transport.");
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _listingRequestCount);
+            return _getListingsAsync(itemIds, cancellationToken);
+        }
     }
 }

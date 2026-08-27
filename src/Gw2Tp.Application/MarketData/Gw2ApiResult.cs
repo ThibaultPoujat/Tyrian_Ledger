@@ -25,8 +25,8 @@ public sealed class Gw2ApiResult<T>
     public bool IsPartialData { get; }
 
     /// <summary>
-    /// Capture and expiry instants for successful market data when the gateway
-    /// served it from its freshness-aware cache.
+    /// Optional capture and expiry metadata attached by the gateway to a
+    /// successful market-data response.
     /// </summary>
     public DataFreshness? Freshness { get; }
 
