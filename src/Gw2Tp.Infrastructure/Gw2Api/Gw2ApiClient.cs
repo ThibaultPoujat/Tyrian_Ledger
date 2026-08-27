@@ -50,16 +50,24 @@ internal sealed class Gw2ApiClient : IGw2ApiClient
     {
         var requestUri = CreateBatchRequestUri(resourcePath, itemIds);
 
-        return await _requestScheduler.ScheduleAsync(
-            // Batch URIs are intentionally relative to the typed client's
-            // fixed base address; their original string is the complete
-            // public request identity for the scheduler.
-            new Gw2RequestKey(requestUri.OriginalString),
-            operationCancellationToken => SendBatchAttemptAsync(
-                requestUri,
-                map,
-                operationCancellationToken),
-            cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await _requestScheduler.ScheduleAsync(
+                // Batch URIs are intentionally relative to the typed client's
+                // fixed base address; their original string is the complete
+                // public request identity for the scheduler.
+                new Gw2RequestKey(requestUri.OriginalString),
+                operationCancellationToken => SendBatchAttemptAsync(
+                    requestUri,
+                    map,
+                    operationCancellationToken),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Gw2RequestSchedulerCapacityExceededException)
+        {
+            return Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(
+                Gw2ApiErrorCategory.UpstreamUnavailable);
+        }
     }
 
     private async Task<Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>> SendBatchAttemptAsync<TDto, TMarket>(

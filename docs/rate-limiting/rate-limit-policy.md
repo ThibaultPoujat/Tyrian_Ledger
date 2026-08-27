@@ -49,6 +49,7 @@ possible value.
 | `Gw2Api:RateLimit:BurstSize` | Token-bucket capacity | 300 | ≤ community-documented burst (VERIFY-006); must be user-adjustable |
 | `Gw2Api:RateLimit:RefillTokensPerSecond` | Token-bucket refill rate | 5 | ≤ community-documented refill (VERIFY-006) |
 | `Gw2Api:RateLimit:MaxConcurrentRequests` | In-flight requests cap | 5 (VERIFY-011 tuning) | Deduplication must collapse identical in-flight requests (architecture.md) |
+| `Gw2Api:RateLimit:MaxQueuedRequests` | Waiting-request queue cap | 100 | Bounds local scheduler memory; requests beyond the cap surface `UpstreamUnavailable` |
 | `Gw2Api:Retry:On429:InitialBackoffMs` | First backoff after a 429 | 1000 | Bounded exponential backoff (architecture.md) |
 | `Gw2Api:Retry:On429:MaxBackoffMs` | Computed backoff ceiling | 30000 | Does not override a valid server `Retry-After` |
 | `Gw2Api:Retry:On429:MaxAttempts` | Total outbound attempts per logical request, including the initial request | 5 | Beyond this: surface `RateLimited` error state, do not block the UI |

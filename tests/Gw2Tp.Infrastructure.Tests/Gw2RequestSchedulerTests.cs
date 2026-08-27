@@ -37,6 +37,49 @@ public sealed class Gw2RequestSchedulerTests
     }
 
     [Fact]
+    public async Task Completed_shared_request_is_removed_when_all_callers_cancel()
+    {
+        var responseSource = new TaskCompletionSource<Gw2ScheduledResult<int>>();
+        using var firstCancellationSource = new CancellationTokenSource();
+        using var secondCancellationSource = new CancellationTokenSource();
+        using var scheduler = CreateScheduler();
+        var firstSendCount = 0;
+
+        var firstCancelledRequest = scheduler.ScheduleAsync<int>(
+            new Gw2RequestKey("prices:900001"),
+            _ =>
+            {
+                Interlocked.Increment(ref firstSendCount);
+                return responseSource.Task;
+            },
+            firstCancellationSource.Token);
+        var secondCancelledRequest = scheduler.ScheduleAsync<int>(
+            new Gw2RequestKey("prices:900001"),
+            _ => throw new InvalidOperationException("The deduplicated send must not run."),
+            secondCancellationSource.Token);
+
+        firstCancellationSource.Cancel();
+        secondCancellationSource.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => firstCancelledRequest);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => secondCancelledRequest);
+        Assert.Equal(1, firstSendCount);
+
+        responseSource.SetResult(new Gw2ScheduledResult<int>(1));
+
+        var nextRequest = await scheduler.ScheduleAsync<int>(
+            new Gw2RequestKey("prices:900001"),
+            _ =>
+            {
+                Interlocked.Increment(ref firstSendCount);
+                return Task.FromResult(new Gw2ScheduledResult<int>(2));
+            },
+            CancellationToken.None);
+
+        Assert.Equal(2, nextRequest);
+        Assert.Equal(2, firstSendCount);
+    }
+
+    [Fact]
     public async Task Scheduler_enforces_the_configured_concurrent_request_limit()
     {
         var firstResponse = new TaskCompletionSource<HttpResponseMessage>(
@@ -64,6 +107,36 @@ public sealed class Gw2RequestSchedulerTests
 
         Assert.All(results, result => Assert.True(result.IsSuccess));
         Assert.Equal(2, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Queue_capacity_exhaustion_returns_a_stable_failure()
+    {
+        var firstResponse = new TaskCompletionSource<HttpResponseMessage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var outboundAttempt = 0;
+        var handler = new DelegateHttpMessageHandler((_, _) =>
+            Interlocked.Increment(ref outboundAttempt) == 1
+                ? firstResponse.Task
+                : Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, "[]")));
+        var options = CreateOptions();
+        options.RateLimit.MaxConcurrentRequests = 1;
+        options.RateLimit.MaxQueuedRequests = 0;
+        using var httpClient = CreateHttpClient(handler);
+        using var scheduler = CreateScheduler(options);
+        var apiClient = new Gw2ApiClient(httpClient, scheduler);
+
+        var firstRequest = apiClient.GetPricesAsync([900001]);
+        await handler.WaitForRequestAsync();
+
+        var queuedRequest = await apiClient.GetPricesAsync([900002]);
+
+        Assert.False(queuedRequest.IsSuccess);
+        Assert.Equal(Gw2ApiErrorCategory.UpstreamUnavailable, queuedRequest.ErrorCategory);
+        Assert.Equal(1, handler.RequestCount);
+
+        firstResponse.SetResult(CreateJsonResponse(HttpStatusCode.OK, "[]"));
+        Assert.True((await firstRequest).IsSuccess);
     }
 
     [Fact]
@@ -220,6 +293,7 @@ public sealed class Gw2RequestSchedulerTests
                 ["Gw2Api:RateLimit:BurstSize"] = "9",
                 ["Gw2Api:RateLimit:RefillTokensPerSecond"] = "2",
                 ["Gw2Api:RateLimit:MaxConcurrentRequests"] = "3",
+                ["Gw2Api:RateLimit:MaxQueuedRequests"] = "4",
                 ["Gw2Api:Retry:On429:InitialBackoffMs"] = "25",
                 ["Gw2Api:Retry:On429:MaxBackoffMs"] = "50",
                 ["Gw2Api:Retry:On429:MaxAttempts"] = "2",
@@ -239,6 +313,7 @@ public sealed class Gw2RequestSchedulerTests
         Assert.Equal(9, options.RateLimit.BurstSize);
         Assert.Equal(2, options.RateLimit.RefillTokensPerSecond);
         Assert.Equal(3, options.RateLimit.MaxConcurrentRequests);
+        Assert.Equal(4, options.RateLimit.MaxQueuedRequests);
         Assert.Equal(25, options.Retry.On429.InitialBackoffMs);
         Assert.Equal(50, options.Retry.On429.MaxBackoffMs);
         Assert.Equal(2, options.Retry.On429.MaxAttempts);
@@ -247,6 +322,25 @@ public sealed class Gw2RequestSchedulerTests
         Assert.Equal(80, options.Retry.On5xx.MaxBackoffMs);
         Assert.Equal(4, options.Retry.On5xx.MaxAttempts);
         Assert.Equal(2500, options.RequestTimeoutMs);
+    }
+
+    [Fact]
+    public void Invalid_scheduler_configuration_reports_the_invalid_setting()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gw2Api:RateLimit:MaxConcurrentRequests"] = "0",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddTyrianLedgerGw2ApiClient(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() =>
+            provider.GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>().Value);
+
+        Assert.Contains("Gw2Api:RateLimit:MaxConcurrentRequests", exception.Message);
     }
 
     private static HttpClient CreateHttpClient(HttpMessageHandler handler) => new(handler)
@@ -268,6 +362,7 @@ public sealed class Gw2RequestSchedulerTests
                 BurstSize = 20,
                 RefillTokensPerSecond = 20,
                 MaxConcurrentRequests = 5,
+                MaxQueuedRequests = 20,
             },
             Retry = new Gw2RetryOptions
             {

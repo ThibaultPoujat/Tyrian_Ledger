@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+
 namespace Gw2Tp.Infrastructure.Gw2Api;
 
 /// <summary>
@@ -34,6 +36,12 @@ internal sealed class Gw2ApiSchedulerOptions
             return false;
         }
 
+        if (RateLimit.MaxQueuedRequests < 0)
+        {
+            validationError = "Gw2Api:RateLimit:MaxQueuedRequests cannot be negative.";
+            return false;
+        }
+
         if (!Retry.On429.IsValid("Gw2Api:Retry:On429", out validationError) ||
             !Retry.On5xx.IsValid("Gw2Api:Retry:On5xx", out validationError))
         {
@@ -58,6 +66,20 @@ internal sealed class Gw2RateLimitOptions
     public int RefillTokensPerSecond { get; set; } = 5;
 
     public int MaxConcurrentRequests { get; set; } = 5;
+
+    public int MaxQueuedRequests { get; set; } = 100;
+}
+
+internal sealed class Gw2ApiSchedulerOptionsValidator : IValidateOptions<Gw2ApiSchedulerOptions>
+{
+    public ValidateOptionsResult Validate(string? name, Gw2ApiSchedulerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return options.TryValidate(out var validationError)
+            ? ValidateOptionsResult.Success
+            : ValidateOptionsResult.Fail(validationError);
+    }
 }
 
 internal sealed class Gw2RetryOptions

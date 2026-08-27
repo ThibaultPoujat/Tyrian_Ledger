@@ -16,12 +16,10 @@ public static class Gw2ApiServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
 
+        services.AddSingleton<IValidateOptions<Gw2ApiSchedulerOptions>, Gw2ApiSchedulerOptionsValidator>();
         services
             .AddOptions<Gw2ApiSchedulerOptions>()
             .Bind(configuration.GetSection(Gw2ApiSchedulerOptions.ConfigurationSectionName))
-            .Validate(
-                options => options.TryValidate(out _),
-                "GW2 API scheduler configuration is invalid.")
             .ValidateOnStart();
         services.AddSingleton<IGw2RequestScheduler, Gw2RequestScheduler>();
 

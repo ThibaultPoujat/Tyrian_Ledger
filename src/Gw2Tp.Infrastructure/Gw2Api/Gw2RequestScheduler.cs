@@ -26,7 +26,7 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
 
     private readonly Gw2ApiSchedulerOptions _options;
     private readonly TokenBucketRateLimiter _rateLimiter;
-    private readonly SemaphoreSlim _concurrencyLimiter;
+    private readonly ConcurrencyLimiter _concurrencyLimiter;
     private readonly IGw2RequestDelay _delay;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<Gw2RequestKey, Task<object>> _inFlight = new();
@@ -67,11 +67,14 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
             ReplenishmentPeriod = TimeSpan.FromSeconds(1),
             AutoReplenishment = true,
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-            QueueLimit = int.MaxValue,
+            QueueLimit = options.RateLimit.MaxConcurrentRequests,
         });
-        _concurrencyLimiter = new SemaphoreSlim(
-            options.RateLimit.MaxConcurrentRequests,
-            options.RateLimit.MaxConcurrentRequests);
+        _concurrencyLimiter = new ConcurrencyLimiter(new ConcurrencyLimiterOptions
+        {
+            PermitLimit = options.RateLimit.MaxConcurrentRequests,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = options.RateLimit.MaxQueuedRequests,
+        });
     }
 
     public async Task<T> ScheduleAsync<T>(
@@ -84,22 +87,25 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
 
         // Callers may independently cancel their wait without cancelling the
         // shared network operation needed by other deduplicated callers.
-        var inFlight = _inFlight.GetOrAdd(
-            requestKey,
-            _ => ExecuteBoxedAsync(sendAsync));
-
-        try
+        while (true)
         {
-            return (T)await inFlight.WaitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            if (inFlight.IsCompleted &&
-                _inFlight.TryGetValue(requestKey, out var current) &&
-                ReferenceEquals(current, inFlight))
+            if (!_inFlight.TryGetValue(requestKey, out var inFlight))
             {
-                _inFlight.TryRemove(requestKey, out _);
+                var completion = new TaskCompletionSource<object>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+
+                if (_inFlight.TryAdd(requestKey, completion.Task))
+                {
+                    _ = CompleteInFlightAsync(requestKey, completion, sendAsync);
+                    inFlight = completion.Task;
+                }
+                else
+                {
+                    continue;
+                }
             }
+
+            return (T)await inFlight.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -107,6 +113,29 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
     {
         _rateLimiter.Dispose();
         _concurrencyLimiter.Dispose();
+    }
+
+    private async Task CompleteInFlightAsync<T>(
+        Gw2RequestKey requestKey,
+        TaskCompletionSource<object> completion,
+        Func<CancellationToken, Task<Gw2ScheduledResult<T>>> sendAsync)
+    {
+        try
+        {
+            var result = await ExecuteBoxedAsync(sendAsync).ConfigureAwait(false);
+            completion.TrySetResult(result);
+            RemoveInFlight(requestKey, completion.Task);
+        }
+        catch (OperationCanceledException)
+        {
+            completion.TrySetCanceled();
+            RemoveInFlight(requestKey, completion.Task);
+        }
+        catch (Exception exception)
+        {
+            completion.TrySetException(exception);
+            RemoveInFlight(requestKey, completion.Task);
+        }
     }
 
     private async Task<object> ExecuteBoxedAsync<T>(
@@ -139,20 +168,31 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
     private async Task<Gw2ScheduledResult<T>> ExecuteOnceAsync<T>(
         Func<CancellationToken, Task<Gw2ScheduledResult<T>>> sendAsync)
     {
-        using var lease = await _rateLimiter.AcquireAsync(1, CancellationToken.None).ConfigureAwait(false);
-        if (!lease.IsAcquired)
+        using var concurrencyLease = await _concurrencyLimiter
+            .AcquireAsync(1, CancellationToken.None)
+            .ConfigureAwait(false);
+        if (!concurrencyLease.IsAcquired)
         {
-            throw new InvalidOperationException("The GW2 API request scheduler could not acquire a rate-limit token.");
+            throw new Gw2RequestSchedulerCapacityExceededException();
         }
 
-        await _concurrencyLimiter.WaitAsync(CancellationToken.None).ConfigureAwait(false);
-        try
+        using var rateLimitLease = await _rateLimiter
+            .AcquireAsync(1, CancellationToken.None)
+            .ConfigureAwait(false);
+        if (!rateLimitLease.IsAcquired)
         {
-            return await sendAsync(CancellationToken.None).ConfigureAwait(false);
+            throw new Gw2RequestSchedulerCapacityExceededException();
         }
-        finally
+
+        return await sendAsync(CancellationToken.None).ConfigureAwait(false);
+    }
+
+    private void RemoveInFlight(Gw2RequestKey requestKey, Task<object> expectedTask)
+    {
+        if (_inFlight.TryGetValue(requestKey, out var currentTask) &&
+            ReferenceEquals(currentTask, expectedTask))
         {
-            _concurrencyLimiter.Release();
+            _inFlight.TryRemove(requestKey, out _);
         }
     }
 
@@ -195,6 +235,10 @@ internal enum Gw2RetryKind
     None,
     RateLimited,
     UpstreamUnavailable,
+}
+
+internal sealed class Gw2RequestSchedulerCapacityExceededException : Exception
+{
 }
 
 internal interface IGw2RequestDelay
