@@ -2,6 +2,7 @@ using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Time;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Options;
 
 namespace Gw2Tp.Infrastructure.Gw2Api;
@@ -31,6 +32,11 @@ public static class Gw2ApiServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IGw2RequestScheduler, Gw2RequestScheduler>();
         services.AddSingleton<IClock, SystemClock>();
+        services.AddSingleton<MarketDataDiagnostics>();
+        services.AddSingleton<IMarketDataDiagnostics>(serviceProvider =>
+            serviceProvider.GetRequiredService<MarketDataDiagnostics>());
+        services.AddSingleton<IMarketDataDiagnosticsRecorder>(serviceProvider =>
+            serviceProvider.GetRequiredService<MarketDataDiagnostics>());
 
         services.AddHttpClient(Gw2ApiClient.HttpClientName, (serviceProvider, httpClient) =>
         {
@@ -40,9 +46,12 @@ public static class Gw2ApiServiceCollectionExtensions
                 .Value;
             httpClient.Timeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMs);
         });
+        services.Configure<HttpClientFactoryOptions>(Gw2ApiClient.HttpClientName, options =>
+            options.ShouldRedactHeaderValue = static _ => true);
         services.AddSingleton<IGw2ApiTransport>(serviceProvider => new Gw2ApiClient(
             serviceProvider.GetRequiredService<IHttpClientFactory>(),
-            serviceProvider.GetRequiredService<IGw2RequestScheduler>()));
+            serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
+            serviceProvider.GetRequiredService<IMarketDataDiagnosticsRecorder>()));
         services.AddSingleton<IGw2ApiClient, CachingGw2ApiClient>();
 
         return services;

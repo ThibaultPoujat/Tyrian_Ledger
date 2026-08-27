@@ -1,3 +1,4 @@
+using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Secrets;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.Secrets;
@@ -24,9 +25,45 @@ app.MapGet("/api/status", async (ISecretStore secretStore, CancellationToken can
     return Results.Ok(new ServiceStatusResponse(
         credentialAvailability == SecretAvailability.Available ? "configured" : "not-configured"));
 });
+app.MapGet("/api/diagnostics/market-data", (IMarketDataDiagnostics diagnostics) =>
+    Results.Ok(MarketDataDiagnosticsResponse.From(diagnostics.GetSnapshot())));
 
 app.Run();
 
 public partial class Program;
 
 internal sealed record ServiceStatusResponse(string CredentialStatus);
+
+internal sealed record MarketDataDiagnosticsResponse(
+    IReadOnlyList<MarketDataEndpointDiagnosticsResponse> Endpoints)
+{
+    internal static MarketDataDiagnosticsResponse From(MarketDataDiagnosticsSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        return new MarketDataDiagnosticsResponse(
+        [
+            .. snapshot.Endpoints.Select(endpoint => new MarketDataEndpointDiagnosticsResponse(
+                endpoint.Endpoint,
+                endpoint.RequestCount,
+                endpoint.CacheHitCount,
+                endpoint.CacheMissCount,
+                endpoint.RateLimitedResponseCount,
+                endpoint.ParsingFailureCount,
+                endpoint.LatencySampleCount,
+                endpoint.TotalRequestLatencyMilliseconds,
+                endpoint.AverageRequestLatencyMilliseconds)),
+        ]);
+    }
+}
+
+internal sealed record MarketDataEndpointDiagnosticsResponse(
+    string Endpoint,
+    long RequestCount,
+    long CacheHitCount,
+    long CacheMissCount,
+    long RateLimitedResponseCount,
+    long ParsingFailureCount,
+    long LatencySampleCount,
+    long TotalRequestLatencyMilliseconds,
+    long AverageRequestLatencyMilliseconds);
