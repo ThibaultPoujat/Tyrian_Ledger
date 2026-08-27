@@ -345,6 +345,43 @@ public sealed class Gw2RequestSchedulerTests
         Assert.Contains("Gw2Api:RateLimit:MaxConcurrentRequests", exception.Message);
     }
 
+    [Fact]
+    public void Cache_options_bind_the_configurable_freshness_lifetime()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gw2Api:MarketCache:TimeToLiveSeconds"] = "45",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddTyrianLedgerGw2ApiClient(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<Gw2MarketCacheOptions>>().Value;
+
+        Assert.Equal(45, options.TimeToLiveSeconds);
+    }
+
+    [Fact]
+    public void Invalid_cache_configuration_reports_the_invalid_setting()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gw2Api:MarketCache:TimeToLiveSeconds"] = "0",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddTyrianLedgerGw2ApiClient(configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var exception = Assert.Throws<OptionsValidationException>(() =>
+            provider.GetRequiredService<IOptions<Gw2MarketCacheOptions>>().Value);
+
+        Assert.Contains("Gw2Api:MarketCache:TimeToLiveSeconds", exception.Message);
+    }
+
     private static HttpClient CreateHttpClient(HttpMessageHandler handler) => new(handler)
     {
         BaseAddress = new Uri("https://api.guildwars2.com/v2/"),

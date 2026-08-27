@@ -5,22 +5,42 @@ using Gw2Tp.Application.MarketData;
 
 namespace Gw2Tp.Infrastructure.Gw2Api;
 
-internal sealed class Gw2ApiClient : IGw2ApiClient
+/// <summary>
+/// HTTP transport for public GW2 market data. Caching remains outside this
+/// type so all consumers enter through the cache-aware application gateway.
+/// </summary>
+internal sealed class Gw2ApiClient : IGw2ApiTransport
 {
     internal const string SchemaVersion = "2025-08-29T01:00:00.000Z";
+    internal const string HttpClientName = "TyrianLedger.Gw2Api";
 
     // System.Text.Json ignores unmapped JSON properties by default, keeping
     // additive upstream fields from breaking otherwise valid market payloads.
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
 
-    private readonly HttpClient _httpClient;
+    private readonly Func<HttpClient> _createHttpClient;
     private readonly IGw2RequestScheduler _requestScheduler;
 
-    public Gw2ApiClient(HttpClient httpClient, IGw2RequestScheduler requestScheduler)
+    public Gw2ApiClient(IHttpClientFactory httpClientFactory, IGw2RequestScheduler requestScheduler)
+        : this(
+            () => (httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory)))
+                .CreateClient(HttpClientName),
+            requestScheduler)
     {
-        ArgumentNullException.ThrowIfNull(httpClient);
+    }
+
+    public Gw2ApiClient(HttpClient httpClient, IGw2RequestScheduler requestScheduler)
+        : this(
+            () => httpClient ?? throw new ArgumentNullException(nameof(httpClient)),
+            requestScheduler)
+    {
+    }
+
+    private Gw2ApiClient(Func<HttpClient> createHttpClient, IGw2RequestScheduler requestScheduler)
+    {
+        ArgumentNullException.ThrowIfNull(createHttpClient);
         ArgumentNullException.ThrowIfNull(requestScheduler);
-        _httpClient = httpClient;
+        _createHttpClient = createHttpClient;
         _requestScheduler = requestScheduler;
     }
 
@@ -78,7 +98,7 @@ internal sealed class Gw2ApiClient : IGw2ApiClient
         using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
         try
         {
-            using var response = await _httpClient.SendAsync(
+            using var response = await _createHttpClient().SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
                 operationCancellationToken).ConfigureAwait(false);
