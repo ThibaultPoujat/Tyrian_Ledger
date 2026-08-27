@@ -37,10 +37,10 @@ public sealed class TransactionFeePolicy
 
     private static Money CalculateFee(Money grossSaleValue, FeeRule rule)
     {
-        var wholeCopperGroups = grossSaleValue.Copper / FeeRule.BasisPointsPerWhole;
-        var remainingCopper = grossSaleValue.Copper % FeeRule.BasisPointsPerWhole;
-        var wholeFee = checked(wholeCopperGroups * rule.BasisPoints);
-        var remainderProduct = remainingCopper * rule.BasisPoints;
+        var wholeBasisPointBlocks = grossSaleValue.Copper / FeeRule.BasisPointsPerWhole;
+        var remainderCopper = grossSaleValue.Copper % FeeRule.BasisPointsPerWhole;
+        var wholeFee = checked(wholeBasisPointBlocks * rule.BasisPoints);
+        var remainderProduct = remainderCopper * rule.BasisPoints;
         var remainderFee = remainderProduct / FeeRule.BasisPointsPerWhole;
 
         if (rule.Rounding is FeeRounding.Up && remainderProduct % FeeRule.BasisPointsPerWhole != 0)
