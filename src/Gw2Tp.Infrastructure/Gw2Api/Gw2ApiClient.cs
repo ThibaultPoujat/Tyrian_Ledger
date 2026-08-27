@@ -124,7 +124,11 @@ internal sealed class Gw2ApiClient : IGw2ApiClient
         var commaSeparatedIds = string.Join(
             ',',
             itemIds.Select(itemId => itemId.ToString(CultureInfo.InvariantCulture)));
-        var query = $"ids={Uri.EscapeDataString(commaSeparatedIds)}&v={Uri.EscapeDataString(SchemaVersion)}";
+        // Item IDs are validated positive invariant-culture integers. The
+        // comma-separated value and pinned schema version are already safe
+        // query components, so escaping the whole batch would only impose a
+        // local input-length limit before the request reaches the gateway.
+        var query = $"ids={commaSeparatedIds}&v={SchemaVersion}";
 
         return new Uri($"{resourcePath}?{query}", UriKind.Relative);
     }

@@ -231,6 +231,7 @@ public sealed class Gw2ApiClientTests
         Assert.True(result.IsSuccess);
         var request = Assert.Single(handler.Requests);
         Assert.Equal(string.Join(',', itemIds), GetQueryParameters(request.RequestUri)["ids"]);
+        Assert.DoesNotContain("%2C", request.RequestUri.Query, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
