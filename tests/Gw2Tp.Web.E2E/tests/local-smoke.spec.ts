@@ -28,3 +28,17 @@ test('market dashboard loads and filters ranked sample opportunities', async ({ 
   await expect(opportunityRows).toHaveCount(1);
   await expect(opportunityRows).toContainText('Sample market flip #900001');
 });
+
+test('opportunity detail explains the modeled scenario without implying an actual outcome', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByRole('button', { name: 'View details for Sample market flip #900004' }).click();
+
+  const detail = page.getByTestId('opportunity-detail');
+  await expect(detail.getByRole('heading', { name: 'Sample market flip #900004' })).toBeVisible();
+  await expect(detail).toContainText('Modeled scenario only.');
+  await expect(detail).toContainText('not an actual purchase, sale, fill, fee, or realized-profit outcome');
+  await expect(detail).toContainText('Human-readable calculation breakdown');
+  await expect(detail).toContainText('Order-book impact and liquidity');
+  await expect(detail).toContainText('Data age');
+});

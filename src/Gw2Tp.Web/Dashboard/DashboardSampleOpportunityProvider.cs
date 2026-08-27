@@ -129,8 +129,69 @@ internal sealed class DashboardSampleOpportunityProvider
             LiquidityPriceImpactCopper: explanation.TotalPriceImpact.Copper,
             Confidence: ToResponseValue(explanation.Confidence),
             Freshness: explanation.IsStale ? "stale" : "current",
-            CapturedAtUtc: capturedAtUtc);
+            CapturedAtUtc: capturedAtUtc,
+            Detail: CreateDetailResponse(result.analysis));
     }
+
+    private static DashboardOpportunityDetailResponse CreateDetailResponse(FlipOpportunityAnalysis analysis)
+    {
+        ArgumentNullException.ThrowIfNull(analysis);
+
+        var acquisition = analysis.AcquisitionExecution
+            ?? throw new InvalidOperationException("Dashboard sample opportunities must include acquisition execution.");
+        var liquidation = analysis.LiquidationExecution
+            ?? throw new InvalidOperationException("Dashboard sample opportunities must include liquidation execution.");
+        var liquidity = analysis.Liquidity
+            ?? throw new InvalidOperationException("Dashboard sample opportunities must include liquidity metrics.");
+        var profit = analysis.Profit
+            ?? throw new InvalidOperationException("Dashboard sample opportunities must include modeled profit.");
+        var capitalRequired = analysis.CapitalRequired
+            ?? throw new InvalidOperationException("Dashboard sample opportunities must include capital requirements.");
+        var returnOnInvestment = analysis.ReturnOnInvestment
+            ?? throw new InvalidOperationException("Dashboard sample opportunities must include ROI.");
+        var freshness = analysis.Scenario.Freshness
+            ?? throw new InvalidOperationException("Dashboard sample opportunities must include freshness metadata.");
+
+        return new DashboardOpportunityDetailResponse(
+            RequestedQuantity: analysis.Scenario.RequestedQuantity,
+            AnalyzedAtUtc: analysis.Scenario.AnalyzedAtUtc,
+            Acquisition: CreateExecutionResponse(acquisition),
+            Exit: CreateExecutionResponse(liquidation),
+            Fees: new DashboardFeeResponse(
+                ListingBasisPoints: analysis.Scenario.ListingFeeRule.BasisPoints,
+                ListingRounding: ToResponseValue(analysis.Scenario.ListingFeeRule.Rounding),
+                ListingFeeCopper: profit.ListingFee.Copper,
+                ExchangeBasisPoints: analysis.Scenario.ExchangeFeeRule.BasisPoints,
+                ExchangeRounding: ToResponseValue(analysis.Scenario.ExchangeFeeRule.Rounding),
+                ExchangeFeeCopper: profit.ExchangeFee.Copper),
+            Financials: new DashboardFinancialResponse(
+                AcquisitionCostCopper: profit.AcquisitionCost.Copper,
+                GrossSaleValueCopper: profit.GrossSaleValue.Copper,
+                NetSaleProceedsCopper: profit.NetSaleProceeds.Copper,
+                CapitalRequiredCopper: capitalRequired.Copper,
+                ModeledNetProfitCopper: profit.NetProfit.Copper,
+                ReturnOnInvestmentBasisPoints: ToBasisPoints(returnOnInvestment)),
+            Liquidity: new DashboardLiquidityResponse(
+                AcquisitionFilledQuantity: liquidity.AcquisitionFilledQuantity,
+                LiquidationFilledQuantity: liquidity.LiquidationFilledQuantity,
+                IsFullyAcquirable: liquidity.IsFullyAcquirable,
+                IsFullyLiquidatable: liquidity.IsFullyLiquidatable,
+                AcquisitionPriceImpactCopper: liquidity.AcquisitionPriceImpact.Copper,
+                LiquidationPriceImpactCopper: liquidity.LiquidationPriceImpact.Copper,
+                TotalPriceImpactCopper: liquidity.TotalPriceImpact.Copper),
+            Freshness: analysis.Scenario.AnalyzedAtUtc >= freshness.ExpiresAtUtc ? "stale" : "current",
+            CapturedAtUtc: freshness.CapturedAtUtc,
+            ExpiresAtUtc: freshness.ExpiresAtUtc,
+            Confidence: ToResponseValue(analysis.Confidence));
+    }
+
+    private static DashboardExecutionResponse CreateExecutionResponse(OrderBookExecutionScenario execution) =>
+        new(
+            RequestedQuantity: execution.RequestedQuantity,
+            FilledQuantity: execution.FilledQuantity,
+            IsFullyFilled: execution.IsFullyFilled,
+            TotalValueCopper: execution.TotalValue.Copper,
+            PriceImpactCopper: execution.PriceImpact.Copper);
 
     private static FlipOpportunityRequest CreateRequest(
         int itemId,
@@ -166,6 +227,13 @@ internal sealed class DashboardSampleOpportunityProvider
         _ => throw new ArgumentOutOfRangeException(nameof(confidence), confidence, "The opportunity confidence is not supported."),
     };
 
+    private static string ToResponseValue(FeeRounding rounding) => rounding switch
+    {
+        FeeRounding.Down => "down",
+        FeeRounding.Up => "up",
+        _ => throw new ArgumentOutOfRangeException(nameof(rounding), rounding, "The fee rounding mode is not supported."),
+    };
+
     private sealed record SampleCandidate(int ItemId, string Label, FlipOpportunityRequest Request);
 }
 
@@ -187,4 +255,50 @@ internal sealed record DashboardOpportunityResponse(
     long LiquidityPriceImpactCopper,
     string Confidence,
     string Freshness,
-    DateTimeOffset CapturedAtUtc);
+    DateTimeOffset CapturedAtUtc,
+    DashboardOpportunityDetailResponse Detail);
+
+internal sealed record DashboardOpportunityDetailResponse(
+    int RequestedQuantity,
+    DateTimeOffset AnalyzedAtUtc,
+    DashboardExecutionResponse Acquisition,
+    DashboardExecutionResponse Exit,
+    DashboardFeeResponse Fees,
+    DashboardFinancialResponse Financials,
+    DashboardLiquidityResponse Liquidity,
+    string Freshness,
+    DateTimeOffset CapturedAtUtc,
+    DateTimeOffset ExpiresAtUtc,
+    string Confidence);
+
+internal sealed record DashboardExecutionResponse(
+    int RequestedQuantity,
+    int FilledQuantity,
+    bool IsFullyFilled,
+    long TotalValueCopper,
+    long PriceImpactCopper);
+
+internal sealed record DashboardFeeResponse(
+    int ListingBasisPoints,
+    string ListingRounding,
+    long ListingFeeCopper,
+    int ExchangeBasisPoints,
+    string ExchangeRounding,
+    long ExchangeFeeCopper);
+
+internal sealed record DashboardFinancialResponse(
+    long AcquisitionCostCopper,
+    long GrossSaleValueCopper,
+    long NetSaleProceedsCopper,
+    long CapitalRequiredCopper,
+    long ModeledNetProfitCopper,
+    long ReturnOnInvestmentBasisPoints);
+
+internal sealed record DashboardLiquidityResponse(
+    int AcquisitionFilledQuantity,
+    int LiquidationFilledQuantity,
+    bool IsFullyAcquirable,
+    bool IsFullyLiquidatable,
+    long AcquisitionPriceImpactCopper,
+    long LiquidationPriceImpactCopper,
+    long TotalPriceImpactCopper);

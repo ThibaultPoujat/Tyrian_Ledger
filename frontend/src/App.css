@@ -223,7 +223,7 @@ h3 {
 
 table {
   width: 100%;
-  min-width: 850px;
+  min-width: 960px;
   border-collapse: collapse;
 }
 
@@ -287,6 +287,21 @@ time {
   font-weight: 750;
 }
 
+.detail-toggle,
+.detail-close {
+  padding: 0.48rem 0.62rem;
+  color: #e7f4eb;
+  background: #1c3b2c;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.detail-toggle:hover,
+.detail-close:hover {
+  background: #28513b;
+}
+
 .confidence-chip,
 .freshness-label {
   display: inline-block;
@@ -324,4 +339,100 @@ time {
   padding: 1rem 1.3rem;
   border-top: 1px solid #3e5d4d;
   font-size: 0.86rem;
+}
+
+.opportunity-detail {
+  padding: 1.4rem 1.3rem;
+  border-top: 1px solid #3e5d4d;
+  background: rgb(13 25 20 / 78%);
+}
+
+.opportunity-detail-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.opportunity-detail-heading h2 {
+  margin-bottom: 0;
+}
+
+.scenario-disclaimer {
+  max-width: 68rem;
+  margin: 1rem 0 1.3rem;
+  padding: 0.85rem 1rem;
+  border-left: 3px solid #f7c46c;
+  background: rgb(105 74 30 / 20%);
+  color: #f3dfbb;
+  line-height: 1.55;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.detail-section,
+.calculation-breakdown,
+.data-age-detail {
+  border: 1px solid rgb(79 116 92 / 72%);
+  border-radius: 0.65rem;
+  background: rgb(20 40 30 / 70%);
+}
+
+.detail-section {
+  padding: 1rem;
+}
+
+.detail-section h3,
+.calculation-breakdown h3,
+.data-age-detail h3 {
+  margin-bottom: 0.8rem;
+  font-size: 0.95rem;
+}
+
+.detail-section dl {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.detail-section dt {
+  margin-bottom: 0.16rem;
+  color: #9bc4aa;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.detail-section dd {
+  margin: 0;
+  color: #e6efe9;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+}
+
+.calculation-breakdown,
+.data-age-detail {
+  margin-top: 0.9rem;
+  padding: 1rem;
+}
+
+.calculation-breakdown p,
+.data-age-detail p {
+  margin-bottom: 0.65rem;
+  color: #d6e5dc;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.55;
+}
+
+.calculation-breakdown p:last-child,
+.data-age-detail p:last-child {
+  margin-bottom: 0;
+}
+
+.data-age-detail time {
+  display: inline;
+  margin: 0;
 }
