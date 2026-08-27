@@ -24,7 +24,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `dotnet run --project ../../src/Gw2Tp.Web/Gw2Tp.Web.csproj --no-build --no-launch-profile --urls ${apiBaseUrl}`,
+      command: `dotnet run --project ../../src/Gw2Tp.Web/Gw2Tp.Web.csproj --no-launch-profile --urls ${apiBaseUrl}`,
       env: { ASPNETCORE_ENVIRONMENT: 'Testing' },
       url: `${apiBaseUrl}/healthz`,
       reuseExistingServer: !isCi,
