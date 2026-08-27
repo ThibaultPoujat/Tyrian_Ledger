@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using System.Diagnostics;
 using Gw2Tp.Application.MarketData;
 
 namespace Gw2Tp.Infrastructure.Gw2Api;
@@ -20,28 +21,50 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
 
     private readonly Func<HttpClient> _createHttpClient;
     private readonly IGw2RequestScheduler _requestScheduler;
+    private readonly IMarketDataDiagnosticsRecorder _diagnostics;
 
-    public Gw2ApiClient(IHttpClientFactory httpClientFactory, IGw2RequestScheduler requestScheduler)
+    public Gw2ApiClient(
+        IHttpClientFactory httpClientFactory,
+        IGw2RequestScheduler requestScheduler,
+        IMarketDataDiagnosticsRecorder diagnostics)
         : this(
             () => (httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory)))
                 .CreateClient(HttpClientName),
-            requestScheduler)
+            requestScheduler,
+            diagnostics)
     {
     }
 
     public Gw2ApiClient(HttpClient httpClient, IGw2RequestScheduler requestScheduler)
         : this(
             () => httpClient ?? throw new ArgumentNullException(nameof(httpClient)),
-            requestScheduler)
+            requestScheduler,
+            NullMarketDataDiagnostics.Instance)
     {
     }
 
-    private Gw2ApiClient(Func<HttpClient> createHttpClient, IGw2RequestScheduler requestScheduler)
+    internal Gw2ApiClient(
+        HttpClient httpClient,
+        IGw2RequestScheduler requestScheduler,
+        IMarketDataDiagnosticsRecorder diagnostics)
+        : this(
+            () => httpClient ?? throw new ArgumentNullException(nameof(httpClient)),
+            requestScheduler,
+            diagnostics)
+    {
+    }
+
+    private Gw2ApiClient(
+        Func<HttpClient> createHttpClient,
+        IGw2RequestScheduler requestScheduler,
+        IMarketDataDiagnosticsRecorder diagnostics)
     {
         ArgumentNullException.ThrowIfNull(createHttpClient);
         ArgumentNullException.ThrowIfNull(requestScheduler);
+        ArgumentNullException.ThrowIfNull(diagnostics);
         _createHttpClient = createHttpClient;
         _requestScheduler = requestScheduler;
+        _diagnostics = diagnostics;
     }
 
     public Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>> GetPricesAsync(
@@ -69,6 +92,7 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
         CancellationToken cancellationToken)
     {
         var requestUri = CreateBatchRequestUri(resourcePath, itemIds);
+        var endpoint = GetEndpoint(resourcePath);
 
         try
         {
@@ -78,6 +102,7 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
                 // public request identity for the scheduler.
                 new Gw2RequestKey(requestUri.OriginalString),
                 operationCancellationToken => SendBatchAttemptAsync(
+                    endpoint,
                     requestUri,
                     map,
                     operationCancellationToken),
@@ -91,10 +116,12 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
     }
 
     private async Task<Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>> SendBatchAttemptAsync<TDto, TMarket>(
+        Gw2MarketDataEndpoint endpoint,
         Uri requestUri,
         Func<TDto, TMarket> map,
         CancellationToken operationCancellationToken)
     {
+        var stopwatch = Stopwatch.StartNew();
         using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
         try
         {
@@ -102,6 +129,11 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
                 operationCancellationToken).ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _diagnostics.RecordRateLimitedResponse(endpoint);
+            }
 
             if (response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.PartialContent))
             {
@@ -133,6 +165,7 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
         }
         catch (JsonException)
         {
+            _diagnostics.RecordParsingFailure(endpoint);
             return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>(
                 Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.InvalidPayload));
         }
@@ -155,7 +188,18 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
             return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<TMarket>>>(
                 Gw2ApiResult<IReadOnlyList<TMarket>>.Failure(Gw2ApiErrorCategory.TransportFailure));
         }
+        finally
+        {
+            _diagnostics.RecordRequest(endpoint, stopwatch.Elapsed);
+        }
     }
+
+    private static Gw2MarketDataEndpoint GetEndpoint(string resourcePath) => resourcePath switch
+    {
+        "commerce/prices" => Gw2MarketDataEndpoint.Prices,
+        "commerce/listings" => Gw2MarketDataEndpoint.Listings,
+        _ => throw new ArgumentOutOfRangeException(nameof(resourcePath), resourcePath, "Unknown market endpoint."),
+    };
 
     private static Uri CreateBatchRequestUri(
         string resourcePath,

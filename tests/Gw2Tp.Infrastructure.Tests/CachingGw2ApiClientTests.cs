@@ -26,6 +26,31 @@ public sealed class CachingGw2ApiClientTests
     }
 
     [Fact]
+    public async Task Cache_lookups_increment_hit_and_miss_counters_without_retaining_request_identity()
+    {
+        var clock = new MutableClock(new DateTimeOffset(2026, 8, 27, 9, 0, 0, TimeSpan.Zero));
+        var transport = new StubMarketTransport((_, _) => Task.FromResult(SuccessfulPrices()));
+        var diagnostics = new MarketDataDiagnostics();
+        var client = new CachingGw2ApiClient(
+            transport,
+            new Gw2MarketCacheOptions { TimeToLiveSeconds = 120 },
+            clock,
+            diagnostics);
+
+        await client.GetPricesAsync([900001]);
+        await client.GetPricesAsync([900001]);
+
+        var prices = diagnostics.GetSnapshot().Endpoints.Single(endpoint =>
+            endpoint.Endpoint == "commerce/prices");
+        Assert.Equal("commerce/prices", prices.Endpoint);
+        Assert.Equal(1, prices.CacheMissCount);
+        Assert.Equal(1, prices.CacheHitCount);
+        Assert.Equal(0, prices.RequestCount);
+        Assert.Equal(0, prices.RateLimitedResponseCount);
+        Assert.Equal(0, prices.ParsingFailureCount);
+    }
+
+    [Fact]
     public async Task Entry_at_its_expiry_boundary_is_refilled_with_new_freshness()
     {
         var capturedAtUtc = new DateTimeOffset(2026, 8, 27, 9, 0, 0, TimeSpan.Zero);

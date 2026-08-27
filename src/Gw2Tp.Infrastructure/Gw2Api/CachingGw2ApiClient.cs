@@ -25,6 +25,7 @@ internal sealed class CachingGw2ApiClient : IGw2ApiClient
 {
     private readonly IGw2ApiTransport _transport;
     private readonly IClock _clock;
+    private readonly IMarketDataDiagnosticsRecorder _diagnostics;
     private readonly TimeSpan _timeToLive;
     private readonly ExpiringResponseCache<IReadOnlyList<MarketPrice>> _prices;
     private readonly ExpiringResponseCache<IReadOnlyList<MarketListing>> _listings;
@@ -32,22 +33,26 @@ internal sealed class CachingGw2ApiClient : IGw2ApiClient
     public CachingGw2ApiClient(
         IGw2ApiTransport transport,
         IOptions<Gw2MarketCacheOptions> options,
-        IClock clock)
+        IClock clock,
+        IMarketDataDiagnosticsRecorder diagnostics)
         : this(
             transport,
             options?.Value ?? throw new ArgumentNullException(nameof(options)),
-            clock)
+            clock,
+            diagnostics)
     {
     }
 
     internal CachingGw2ApiClient(
         IGw2ApiTransport transport,
         Gw2MarketCacheOptions options,
-        IClock clock)
+        IClock clock,
+        IMarketDataDiagnosticsRecorder diagnostics)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(diagnostics);
 
         if (!options.TryValidate(out var validationError))
         {
@@ -59,9 +64,24 @@ internal sealed class CachingGw2ApiClient : IGw2ApiClient
 
         _transport = transport;
         _clock = clock;
+        _diagnostics = diagnostics;
         _timeToLive = TimeSpan.FromSeconds(options.TimeToLiveSeconds);
-        _prices = new ExpiringResponseCache<IReadOnlyList<MarketPrice>>(_clock);
-        _listings = new ExpiringResponseCache<IReadOnlyList<MarketListing>>(_clock);
+        _prices = new ExpiringResponseCache<IReadOnlyList<MarketPrice>>(
+            _clock,
+            _diagnostics,
+            Gw2MarketDataEndpoint.Prices);
+        _listings = new ExpiringResponseCache<IReadOnlyList<MarketListing>>(
+            _clock,
+            _diagnostics,
+            Gw2MarketDataEndpoint.Listings);
+    }
+
+    internal CachingGw2ApiClient(
+        IGw2ApiTransport transport,
+        Gw2MarketCacheOptions options,
+        IClock clock)
+        : this(transport, options, clock, NullMarketDataDiagnostics.Instance)
+    {
     }
 
     public Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>> GetPricesAsync(
@@ -129,13 +149,21 @@ internal sealed class CachingGw2ApiClient : IGw2ApiClient
     private sealed class ExpiringResponseCache<T>
     {
         private readonly IClock _clock;
+        private readonly IMarketDataDiagnosticsRecorder _diagnostics;
+        private readonly Gw2MarketDataEndpoint _endpoint;
         private readonly ConcurrentDictionary<Gw2MarketCacheKey, CacheEntry> _entries = new();
         private readonly ConcurrentDictionary<Gw2MarketCacheKey, Lazy<Task<Gw2ApiResult<T>>>> _inFlight = new();
 
-        public ExpiringResponseCache(IClock clock)
+        public ExpiringResponseCache(
+            IClock clock,
+            IMarketDataDiagnosticsRecorder diagnostics,
+            Gw2MarketDataEndpoint endpoint)
         {
             ArgumentNullException.ThrowIfNull(clock);
+            ArgumentNullException.ThrowIfNull(diagnostics);
             _clock = clock;
+            _diagnostics = diagnostics;
+            _endpoint = endpoint;
         }
 
         public async Task<Gw2ApiResult<T>> GetOrCreateAsync(
@@ -151,9 +179,11 @@ internal sealed class CachingGw2ApiClient : IGw2ApiClient
             if (_entries.TryGetValue(key, out var cached) &&
                 _clock.UtcNow < cached.Result.Freshness!.ExpiresAtUtc)
             {
+                _diagnostics.RecordCacheHit(_endpoint);
                 return cached.Result;
             }
 
+            _diagnostics.RecordCacheMiss(_endpoint);
             _entries.TryRemove(key, out _);
             var candidate = new Lazy<Task<Gw2ApiResult<T>>>(
                 () => FillAsync(key, getFromTransportAsync, createFreshness),
