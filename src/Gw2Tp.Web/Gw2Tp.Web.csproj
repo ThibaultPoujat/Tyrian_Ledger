@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Gw2Tp.Application/Gw2Tp.Application.csproj" />
+    <ProjectReference Include="../Gw2Tp.Analytics/Gw2Tp.Analytics.csproj" />
     <ProjectReference Include="../Gw2Tp.Infrastructure/Gw2Tp.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

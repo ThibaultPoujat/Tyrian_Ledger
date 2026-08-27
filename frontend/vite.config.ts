@@ -13,6 +13,7 @@ export default defineConfig({
     host: localHost,
     proxy: {
       '/healthz': apiTarget,
+      '/api': apiTarget,
     },
   },
 });
