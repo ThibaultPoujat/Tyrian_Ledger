@@ -111,6 +111,19 @@ Persist only information needed for the feature. Keep raw API snapshots only whe
 
 Represent money in integer copper using a dedicated value type or equivalent. No floating-point arithmetic for gold/silver/copper calculations.
 
+Transaction-fee policy is provided by the caller as independent listing and
+exchange rules, each expressed in basis points with explicit whole-copper
+rounding. The application does not embed a default Guild Wars 2 fee schedule.
+
+A flip-profit scenario models a completed sale for total transaction values:
+
+`net sale proceeds = gross sale value - listing fee - exchange fee`
+
+`net profit = net sale proceeds - acquisition cost`
+
+The listing fee is included as an up-front cost in this completed-sale model.
+Unsold or cancelled listings are not represented by this scenario.
+
 ## Secrets
 
 Use an OS-backed local secret store through an abstraction. The local host uses
