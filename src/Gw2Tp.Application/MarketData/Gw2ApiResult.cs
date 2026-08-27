@@ -9,11 +9,13 @@ public sealed class Gw2ApiResult<T>
     private Gw2ApiResult(
         T? value,
         Gw2ApiErrorCategory? errorCategory,
-        bool isPartialData)
+        bool isPartialData,
+        DataFreshness? freshness)
     {
         Value = value;
         ErrorCategory = errorCategory;
         IsPartialData = isPartialData;
+        Freshness = freshness;
     }
 
     public T? Value { get; }
@@ -22,14 +24,23 @@ public sealed class Gw2ApiResult<T>
 
     public bool IsPartialData { get; }
 
+    /// <summary>
+    /// Optional capture and expiry metadata attached by the gateway to a
+    /// successful market-data response.
+    /// </summary>
+    public DataFreshness? Freshness { get; }
+
     public bool IsSuccess => ErrorCategory is null;
 
-    public static Gw2ApiResult<T> Success(T value, bool isPartialData = false)
+    public static Gw2ApiResult<T> Success(
+        T value,
+        bool isPartialData = false,
+        DataFreshness? freshness = null)
     {
         ArgumentNullException.ThrowIfNull(value);
-        return new Gw2ApiResult<T>(value, null, isPartialData);
+        return new Gw2ApiResult<T>(value, null, isPartialData, freshness);
     }
 
     public static Gw2ApiResult<T> Failure(Gw2ApiErrorCategory errorCategory) =>
-        new(default, errorCategory, isPartialData: false);
+        new(default, errorCategory, isPartialData: false, freshness: null);
 }

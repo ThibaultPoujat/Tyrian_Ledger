@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.Time;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -17,13 +18,21 @@ public static class Gw2ApiServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.AddSingleton<IValidateOptions<Gw2ApiSchedulerOptions>, Gw2ApiSchedulerOptionsValidator>();
+        services.AddSingleton<IValidateOptions<Gw2MarketCacheOptions>, Gw2MarketCacheOptionsValidator>();
         services
             .AddOptions<Gw2ApiSchedulerOptions>()
             .Bind(configuration.GetSection(Gw2ApiSchedulerOptions.ConfigurationSectionName))
             .ValidateOnStart();
+        services
+            .AddOptions<Gw2MarketCacheOptions>()
+            .Bind(configuration
+                .GetSection(Gw2ApiSchedulerOptions.ConfigurationSectionName)
+                .GetSection(Gw2MarketCacheOptions.ConfigurationSectionName))
+            .ValidateOnStart();
         services.AddSingleton<IGw2RequestScheduler, Gw2RequestScheduler>();
+        services.AddSingleton<IClock, SystemClock>();
 
-        services.AddHttpClient<IGw2ApiClient, Gw2ApiClient>((serviceProvider, httpClient) =>
+        services.AddHttpClient(Gw2ApiClient.HttpClientName, (serviceProvider, httpClient) =>
         {
             httpClient.BaseAddress = Gw2ApiBaseAddress;
             var options = serviceProvider
@@ -31,6 +40,10 @@ public static class Gw2ApiServiceCollectionExtensions
                 .Value;
             httpClient.Timeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMs);
         });
+        services.AddSingleton<IGw2ApiTransport>(serviceProvider => new Gw2ApiClient(
+            serviceProvider.GetRequiredService<IHttpClientFactory>(),
+            serviceProvider.GetRequiredService<IGw2RequestScheduler>()));
+        services.AddSingleton<IGw2ApiClient, CachingGw2ApiClient>();
 
         return services;
     }

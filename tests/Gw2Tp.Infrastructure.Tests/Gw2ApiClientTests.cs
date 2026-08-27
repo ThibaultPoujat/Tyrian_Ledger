@@ -244,7 +244,8 @@ public sealed class Gw2ApiClientTests
 
         var client = provider.GetRequiredService<IGw2ApiClient>();
 
-        Assert.IsType<Gw2ApiClient>(client);
+        Assert.IsType<CachingGw2ApiClient>(client);
+        Assert.IsType<Gw2ApiClient>(provider.GetRequiredService<IGw2ApiTransport>());
     }
 
     private static HttpClient CreateHttpClient(HttpMessageHandler handler) => new(handler)
