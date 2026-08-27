@@ -2,6 +2,7 @@ using System.Numerics;
 using Gw2Tp.Analytics.Finance;
 using Gw2Tp.Analytics.FlipOpportunities;
 using Gw2Tp.Analytics.OrderBooks;
+using Gw2Tp.Application.Preferences;
 using Gw2Tp.Application.Time;
 using Gw2Tp.Domain.Finance;
 using Gw2Tp.Domain.MarketData;
@@ -42,8 +43,10 @@ internal sealed class DashboardSampleOpportunityProvider
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
     }
 
-    public DashboardOpportunitiesResponse GetDashboard()
+    public DashboardOpportunitiesResponse GetDashboard(UserSessionPreferences preferences)
     {
+        ArgumentNullException.ThrowIfNull(preferences);
+
         var analyzedAtUtc = clock.UtcNow;
         var analyzer = new FlipOpportunityAnalyzer(SampleFeePolicy);
         var scorer = new FlipOpportunityScorer(SampleScoringConfiguration);
@@ -51,10 +54,15 @@ internal sealed class DashboardSampleOpportunityProvider
         var analysesByItemId = candidates
             .Select(candidate => (candidate, analysis: analyzer.Analyze(candidate.Request)))
             .ToDictionary(result => result.candidate.ItemId, result => result);
-        var rankedScores = scorer.Rank(analysesByItemId.Values.Select(result => result.analysis));
+        var rankedScores = scorer
+            .Rank(analysesByItemId.Values.Select(result => result.analysis))
+            .OrderByDescending(score => score.ScoreBasisPoints)
+            .ThenBy(score => score.ItemId);
 
         var opportunities = rankedScores
-            .Select((score, index) => CreateResponse(score, index + 1, analysesByItemId[score.ItemId]))
+            .Select(score => CreateResponse(score, rank: 0, analysesByItemId[score.ItemId]))
+            .Where(opportunity => MatchesPreferences(opportunity, preferences))
+            .Select((opportunity, index) => opportunity with { Rank = index + 1 })
             .ToArray();
 
         return new DashboardOpportunitiesResponse(
@@ -63,6 +71,39 @@ internal sealed class DashboardSampleOpportunityProvider
             GeneratedAtUtc: analyzedAtUtc,
             Opportunities: Array.AsReadOnly(opportunities));
     }
+
+    private static bool MatchesPreferences(
+        DashboardOpportunityResponse opportunity,
+        UserSessionPreferences preferences)
+    {
+        var perOpportunityCapitalLimit = preferences.GetPerOpportunityCapitalLimitCopper();
+
+        return (perOpportunityCapitalLimit is null ||
+                opportunity.CapitalRequiredCopper <= perOpportunityCapitalLimit)
+            && (preferences.MinimumProfitCopper is null ||
+                opportunity.ModeledNetProfitCopper >= preferences.MinimumProfitCopper)
+            && MatchesRiskPreference(opportunity.Confidence, preferences.RiskPreference)
+            && MatchesStrategyPreference(opportunity.Strategy, preferences.StrategyPreference);
+    }
+
+    private static bool MatchesRiskPreference(
+        string confidence,
+        OpportunityRiskPreference preference) => preference switch
+    {
+        OpportunityRiskPreference.All => true,
+        OpportunityRiskPreference.Normal => confidence == "normal",
+        OpportunityRiskPreference.Reduced => confidence == "reduced",
+        _ => throw new ArgumentOutOfRangeException(nameof(preference), preference, "The risk preference is not supported."),
+    };
+
+    private static bool MatchesStrategyPreference(
+        string strategy,
+        OpportunityStrategyPreference preference) => preference switch
+    {
+        OpportunityStrategyPreference.All => true,
+        OpportunityStrategyPreference.MarketFlip => strategy == "market-flip",
+        _ => throw new ArgumentOutOfRangeException(nameof(preference), preference, "The strategy preference is not supported."),
+    };
 
     private static IReadOnlyList<SampleCandidate> CreateCandidates(DateTimeOffset analyzedAtUtc) =>
     [

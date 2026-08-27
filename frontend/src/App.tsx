@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   loadDashboardOpportunities,
+  loadUserSessionPreferences,
+  saveUserSessionPreferences,
   type DashboardOpportunitiesResponse,
   type DashboardOpportunity,
+  type UserSessionPreferences,
 } from './dashboardApi';
 import './App.css';
 
@@ -12,34 +15,49 @@ type DashboardState =
   | { kind: 'ready'; response: DashboardOpportunitiesResponse };
 
 interface DashboardFilters {
-  maximumCapital: string;
-  minimumProfit: string;
-  strategy: string;
-  confidence: 'all' | 'normal' | 'reduced';
   freshness: 'all' | 'current' | 'stale';
 }
 
 const initialFilters: DashboardFilters = {
-  maximumCapital: '',
-  minimumProfit: '',
-  strategy: 'all',
-  confidence: 'all',
   freshness: 'all',
+};
+
+interface PreferenceForm {
+  capitalLimitCopper: string;
+  minimumProfitCopper: string;
+  riskPreference: UserSessionPreferences['riskPreference'];
+  strategyPreference: UserSessionPreferences['strategyPreference'];
+  allocationPercent: string;
+}
+
+const initialPreferenceForm: PreferenceForm = {
+  capitalLimitCopper: '',
+  minimumProfitCopper: '',
+  riskPreference: 'all',
+  strategyPreference: 'all',
+  allocationPercent: '100',
 };
 
 export default function App() {
   const [state, setState] = useState<DashboardState>({ kind: 'loading' });
   const [requestVersion, setRequestVersion] = useState(0);
   const [filters, setFilters] = useState<DashboardFilters>(initialFilters);
+  const [preferences, setPreferences] = useState<PreferenceForm>(initialPreferenceForm);
+  const [preferenceMessage, setPreferenceMessage] = useState<string | null>(null);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<number | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: 'loading' });
 
-    void loadDashboardOpportunities(controller.signal)
-      .then((response) => {
+    void Promise.all([
+      loadDashboardOpportunities(controller.signal),
+      loadUserSessionPreferences(controller.signal),
+    ])
+      .then(([response, savedPreferences]) => {
         if (!controller.signal.aborted) {
+          setPreferences(toPreferenceForm(savedPreferences));
           setState({ kind: 'ready', response });
         }
       })
@@ -53,10 +71,6 @@ export default function App() {
   }, [requestVersion]);
 
   const opportunities = state.kind === 'ready' ? state.response.opportunities : [];
-  const strategies = useMemo(
-    () => Array.from(new Set(opportunities.map((opportunity) => opportunity.strategy))).sort(),
-    [opportunities],
-  );
   const filteredOpportunities = useMemo(
     () => opportunities.filter((opportunity) => matchesFilters(opportunity, filters)),
     [filters, opportunities],
@@ -101,29 +115,53 @@ export default function App() {
           </section>
 
           <section className="dashboard-layout" aria-label="Opportunity dashboard">
-            <aside className="filter-panel" aria-labelledby="filters-title">
+            <aside className="filter-panel" aria-labelledby="preferences-title">
               <div>
-                <p className="eyebrow">Refine the list</p>
-                <h2 id="filters-title">Filters</h2>
+                <p className="eyebrow">Local preference profile</p>
+                <h2 id="preferences-title">Opportunity preferences</h2>
               </div>
 
-              <div className="filter-fields">
+              <form
+                className="filter-fields"
+                noValidate
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const { errors, value } = toUserSessionPreferences(preferences);
+                  if (value === null) {
+                    setPreferenceMessage(errors.join(' '));
+                    return;
+                  }
+
+                  setIsSavingPreferences(true);
+                  setPreferenceMessage(null);
+                  void saveUserSessionPreferences(value)
+                    .then((savedPreferences) => {
+                      setPreferences(toPreferenceForm(savedPreferences));
+                      setPreferenceMessage('Preferences saved. Updating ranked opportunities.');
+                      setRequestVersion((version) => version + 1);
+                    })
+                    .catch(() => {
+                      setPreferenceMessage('Preferences could not be saved. Your displayed results have not changed.');
+                    })
+                    .finally(() => setIsSavingPreferences(false));
+                }}
+              >
                 <label htmlFor="maximum-capital">
-                  Maximum capital
+                  Available capital
                   <span>copper</span>
                 </label>
                 <input
                   id="maximum-capital"
                   min="0"
-                  name="maximumCapital"
-                  onChange={(event) => setFilters((current) => ({
+                  name="capitalLimitCopper"
+                  onChange={(event) => setPreferences((current) => ({
                     ...current,
-                    maximumCapital: event.target.value,
+                    capitalLimitCopper: event.target.value,
                   }))}
-                  placeholder="Any amount"
+                  placeholder="No limit"
                   step="1"
                   type="number"
-                  value={filters.maximumCapital}
+                  value={preferences.capitalLimitCopper}
                 />
 
                 <label htmlFor="minimum-profit">
@@ -133,65 +171,94 @@ export default function App() {
                 <input
                   id="minimum-profit"
                   min="0"
-                  name="minimumProfit"
-                  onChange={(event) => setFilters((current) => ({
+                  name="minimumProfitCopper"
+                  onChange={(event) => setPreferences((current) => ({
                     ...current,
-                    minimumProfit: event.target.value,
+                    minimumProfitCopper: event.target.value,
                   }))}
-                  placeholder="Any amount"
+                  placeholder="No limit"
                   step="1"
                   type="number"
-                  value={filters.minimumProfit}
+                  value={preferences.minimumProfitCopper}
                 />
 
                 <label htmlFor="strategy">Strategy</label>
                 <select
                   id="strategy"
-                  name="strategy"
-                  onChange={(event) => setFilters((current) => ({
+                  name="strategyPreference"
+                  onChange={(event) => setPreferences((current) => ({
                     ...current,
-                    strategy: event.target.value,
+                    strategyPreference: event.target.value as PreferenceForm['strategyPreference'],
                   }))}
-                  value={filters.strategy}
+                  value={preferences.strategyPreference}
                 >
                   <option value="all">All available strategies</option>
-                  {strategies.map((strategy) => (
-                    <option key={strategy} value={strategy}>
-                      {formatStrategy(strategy)}
-                    </option>
-                  ))}
+                  <option value="market-flip">Market flip</option>
                 </select>
 
                 <label htmlFor="confidence">Risk / confidence</label>
                 <select
                   id="confidence"
-                  name="confidence"
-                  onChange={(event) => setFilters((current) => ({
+                  name="riskPreference"
+                  onChange={(event) => setPreferences((current) => ({
                     ...current,
-                    confidence: event.target.value as DashboardFilters['confidence'],
+                    riskPreference: event.target.value as PreferenceForm['riskPreference'],
                   }))}
-                  value={filters.confidence}
+                  value={preferences.riskPreference}
                 >
                   <option value="all">All confidence signals</option>
                   <option value="normal">Normal confidence</option>
                   <option value="reduced">Reduced confidence</option>
                 </select>
 
-                <label htmlFor="freshness">Freshness</label>
-                <select
-                  id="freshness"
-                  name="freshness"
-                  onChange={(event) => setFilters((current) => ({
+                <label htmlFor="allocation-percent">
+                  Per-opportunity allocation
+                  <span>percent</span>
+                </label>
+                <input
+                  id="allocation-percent"
+                  max="100"
+                  min="1"
+                  name="allocationPercent"
+                  onChange={(event) => setPreferences((current) => ({
                     ...current,
-                    freshness: event.target.value as DashboardFilters['freshness'],
+                    allocationPercent: event.target.value,
                   }))}
-                  value={filters.freshness}
-                >
-                  <option value="all">All data ages</option>
-                  <option value="current">Current snapshot</option>
-                  <option value="stale">Stale snapshot</option>
-                </select>
-              </div>
+                  step="1"
+                  type="number"
+                  value={preferences.allocationPercent}
+                />
+
+                <p className="allocation-note">
+                  Each modeled opportunity can use at most this share of your available capital.
+                </p>
+
+                <button className="preferences-save" disabled={isSavingPreferences} type="submit">
+                  {isSavingPreferences ? 'Saving preferences…' : 'Save and apply preferences'}
+                </button>
+                {preferenceMessage !== null && (
+                  <p aria-live="polite" className="preference-message" role="status">
+                    {preferenceMessage}
+                  </p>
+                )}
+
+                <div className="freshness-filter">
+                  <label htmlFor="freshness">Freshness</label>
+                  <select
+                    id="freshness"
+                    name="freshness"
+                    onChange={(event) => setFilters((current) => ({
+                      ...current,
+                      freshness: event.target.value as DashboardFilters['freshness'],
+                    }))}
+                    value={filters.freshness}
+                  >
+                    <option value="all">All data ages</option>
+                    <option value="current">Current snapshot</option>
+                    <option value="stale">Stale snapshot</option>
+                  </select>
+                </div>
+              </form>
             </aside>
 
             <section className="opportunity-panel" aria-labelledby="opportunities-title">
@@ -208,7 +275,7 @@ export default function App() {
               {filteredOpportunities.length === 0 ? (
                 <section className="empty-results" role="status">
                   <h3>No opportunities match these filters</h3>
-                  <p>Broaden the capital, profit, strategy, confidence, or freshness criteria.</p>
+                  <p>Broaden the saved capital, profit, strategy, confidence, allocation, or freshness criteria.</p>
                 </section>
               ) : (
                 <div className="opportunity-table-wrapper">
@@ -452,23 +519,57 @@ function DetailTerm({ label, value }: { label: string; value: string }) {
 }
 
 function matchesFilters(opportunity: DashboardOpportunity, filters: DashboardFilters): boolean {
-  const maximumCapital = parseCopper(filters.maximumCapital);
-  const minimumProfit = parseCopper(filters.minimumProfit);
-
-  return (maximumCapital === null || opportunity.capitalRequiredCopper <= maximumCapital)
-    && (minimumProfit === null || opportunity.modeledNetProfitCopper >= minimumProfit)
-    && (filters.strategy === 'all' || opportunity.strategy === filters.strategy)
-    && (filters.confidence === 'all' || opportunity.confidence === filters.confidence)
-    && (filters.freshness === 'all' || opportunity.freshness === filters.freshness);
+  return filters.freshness === 'all' || opportunity.freshness === filters.freshness;
 }
 
-function parseCopper(value: string): number | null {
+function toPreferenceForm(preferences: UserSessionPreferences): PreferenceForm {
+  return {
+    capitalLimitCopper: preferences.capitalLimitCopper?.toString() ?? '',
+    minimumProfitCopper: preferences.minimumProfitCopper?.toString() ?? '',
+    riskPreference: preferences.riskPreference,
+    strategyPreference: preferences.strategyPreference,
+    allocationPercent: preferences.allocationPercent.toString(),
+  };
+}
+
+function toUserSessionPreferences(form: PreferenceForm): {
+  errors: string[];
+  value: UserSessionPreferences | null;
+} {
+  const capitalLimitCopper = parsePreferenceCopper(form.capitalLimitCopper, 'Available capital');
+  const minimumProfitCopper = parsePreferenceCopper(form.minimumProfitCopper, 'Minimum modeled profit');
+  const allocationPercent = Number(form.allocationPercent);
+  const errors = [capitalLimitCopper.error, minimumProfitCopper.error].filter(
+    (error): error is string => error !== null,
+  );
+
+  if (!Number.isSafeInteger(allocationPercent) || allocationPercent < 1 || allocationPercent > 100) {
+    errors.push('Per-opportunity allocation must be an integer from 1 through 100.');
+  }
+
+  return errors.length > 0
+    ? { errors, value: null }
+    : {
+      errors,
+      value: {
+        capitalLimitCopper: capitalLimitCopper.value,
+        minimumProfitCopper: minimumProfitCopper.value,
+        riskPreference: form.riskPreference,
+        strategyPreference: form.strategyPreference,
+        allocationPercent,
+      },
+    };
+}
+
+function parsePreferenceCopper(value: string, label: string): { error: string | null; value: number | null } {
   if (value.trim() === '') {
-    return null;
+    return { error: null, value: null };
   }
 
   const parsedValue = Number(value);
-  return Number.isSafeInteger(parsedValue) && parsedValue >= 0 ? parsedValue : null;
+  return Number.isSafeInteger(parsedValue) && parsedValue >= 0
+    ? { error: null, value: parsedValue }
+    : { error: `${label} must be a non-negative whole-copper amount.`, value: null };
 }
 
 function formatCopper(copper: number): string {

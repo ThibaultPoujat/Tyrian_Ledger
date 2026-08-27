@@ -1,7 +1,11 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import type { DashboardOpportunitiesResponse, DashboardOpportunityDetail } from './dashboardApi';
+import type {
+  DashboardOpportunitiesResponse,
+  DashboardOpportunityDetail,
+  UserSessionPreferences,
+} from './dashboardApi';
 
 const opportunityDetail: DashboardOpportunityDetail = {
   requestedQuantity: 5,
@@ -139,6 +143,14 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
   ],
 };
 
+const defaultPreferences: UserSessionPreferences = {
+  capitalLimitCopper: null,
+  minimumProfitCopper: null,
+  riskPreference: 'all',
+  strategyPreference: 'all',
+  allocationPercent: 100,
+};
+
 const fetchMock = vi.fn();
 
 beforeEach(() => {
@@ -151,40 +163,72 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('market dashboard filters', () => {
-  it('filters opportunities by capital and minimum modeled profit', async () => {
-    await renderReadyDashboard();
+describe('market dashboard preferences and filters', () => {
+  it('hydrates, saves, and applies a deterministic local preference profile', async () => {
+    let currentPreferences = defaultPreferences;
+    let dashboardRequestCount = 0;
+    const filteredResponse: DashboardOpportunitiesResponse = {
+      ...dashboardResponse,
+      opportunities: [dashboardResponse.opportunities[0], dashboardResponse.opportunities[2]].map(
+        (opportunity, index) => ({ ...opportunity, rank: index + 1 }),
+      ),
+    };
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = getFetchUrl(input);
+      if (url === '/api/preferences/user-session' && init?.method === 'PUT') {
+        currentPreferences = JSON.parse(init.body as string) as UserSessionPreferences;
+        return Promise.resolve(successfulResponse(currentPreferences));
+      }
 
-    fireEvent.change(screen.getByLabelText(/maximum capital/i), { target: { value: '600' } });
-    expectOpportunityRows(['Sample market flip #900001']);
+      if (url === '/api/preferences/user-session') {
+        return Promise.resolve(successfulResponse(currentPreferences));
+      }
 
-    fireEvent.change(screen.getByLabelText(/maximum capital/i), { target: { value: '' } });
-    fireEvent.change(screen.getByLabelText(/minimum modeled profit/i), { target: { value: '600' } });
-    expectOpportunityRows(['Sample market flip #900004', 'Sample market flip #900003']);
+      dashboardRequestCount += 1;
+      return Promise.resolve(successfulResponse(
+        dashboardRequestCount === 1 ? dashboardResponse : filteredResponse,
+      ));
+    });
+
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Ranked opportunities' });
+    expect(screen.getByLabelText(/available capital/i)).toHaveValue(null);
+    expect(screen.getByLabelText(/per-opportunity allocation/i)).toHaveValue(100);
+
+    fireEvent.change(screen.getByLabelText(/available capital/i), { target: { value: '1600' } });
+    fireEvent.change(screen.getByLabelText(/risk \/ confidence/i), { target: { value: 'normal' } });
+    fireEvent.change(screen.getByLabelText(/per-opportunity allocation/i), { target: { value: '50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and apply preferences' }));
+
+    await waitFor(() => expect(screen.getAllByTestId('opportunity-row')).toHaveLength(2));
+    expectOpportunityRows(['Sample market flip #900004', 'Sample market flip #900001']);
+    const saveCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT');
+    expect(saveCall).toBeDefined();
+    expect(JSON.parse((saveCall?.[1] as RequestInit).body as string)).toEqual({
+      capitalLimitCopper: 1600,
+      minimumProfitCopper: null,
+      riskPreference: 'normal',
+      strategyPreference: 'all',
+      allocationPercent: 50,
+    });
   });
 
-  it('filters opportunities by strategy, confidence, and freshness', async () => {
+  it('shows local validation feedback without sending invalid preferences', async () => {
     await renderReadyDashboard();
 
-    fireEvent.change(screen.getByLabelText(/^strategy$/i), { target: { value: 'market-flip' } });
-    expect(screen.queryByText('Sample craft #900005')).not.toBeInTheDocument();
-    expect(screen.getAllByTestId('opportunity-row')).toHaveLength(4);
+    fireEvent.change(screen.getByLabelText(/per-opportunity allocation/i), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save and apply preferences' }));
 
-    fireEvent.change(screen.getByLabelText(/risk \/ confidence/i), { target: { value: 'reduced' } });
-    expectOpportunityRows(['Sample market flip #900003']);
+    expect(screen.getByText('Per-opportunity allocation must be an integer from 1 through 100.')).toBeVisible();
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')).toBe(false);
+  });
 
-    fireEvent.change(screen.getByLabelText(/risk \/ confidence/i), { target: { value: 'all' } });
+  it('keeps freshness as a view-only filter after saved preferences are applied', async () => {
+    await renderReadyDashboard();
+
     fireEvent.change(screen.getByLabelText(/^freshness$/i), { target: { value: 'stale' } });
+
     expectOpportunityRows(['Sample market flip #900003']);
-  });
-
-  it('explains when no opportunity matches the selected filters', async () => {
-    await renderReadyDashboard();
-
-    fireEvent.change(screen.getByLabelText(/maximum capital/i), { target: { value: '1' } });
-
-    expect(screen.getByRole('heading', { name: 'No opportunities match these filters' })).toBeVisible();
-    expect(screen.queryByTestId('opportunity-row')).not.toBeInTheDocument();
   });
 
   it('renders the selected opportunity detail as a modeled scenario', async () => {
@@ -210,7 +254,7 @@ describe('market dashboard filters', () => {
 
 describe('market dashboard states', () => {
   it('shows an explicit loading state before the sample feed responds', () => {
-    fetchMock.mockReturnValue(new Promise(() => {}));
+    fetchMock.mockImplementation(() => new Promise(() => {}));
 
     render(<App />);
 
@@ -218,9 +262,17 @@ describe('market dashboard states', () => {
   });
 
   it('shows an explicit error and retries the local sample feed', async () => {
-    fetchMock
-      .mockRejectedValueOnce(new Error('Sample feed unavailable.'))
-      .mockResolvedValueOnce(successfulResponse());
+    let firstDashboardRequest = true;
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      if (getFetchUrl(input) === '/api/dashboard/opportunities' && firstDashboardRequest) {
+        firstDashboardRequest = false;
+        return Promise.reject(new Error('Sample feed unavailable.'));
+      }
+
+      return Promise.resolve(successfulResponse(
+        getFetchUrl(input) === '/api/dashboard/opportunities' ? dashboardResponse : defaultPreferences,
+      ));
+    });
 
     render(<App />);
 
@@ -228,22 +280,27 @@ describe('market dashboard states', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry loading dashboard' }));
 
     expect(await screen.findByText('Sample market flip #900004')).toBeVisible();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
 async function renderReadyDashboard(): Promise<void> {
-  fetchMock.mockResolvedValueOnce(successfulResponse());
+  fetchMock.mockImplementation((input: RequestInfo | URL) => Promise.resolve(successfulResponse(
+    getFetchUrl(input) === '/api/dashboard/opportunities' ? dashboardResponse : defaultPreferences,
+  )));
   render(<App />);
   await screen.findByRole('heading', { name: 'Ranked opportunities' });
 }
 
-function successfulResponse(): Response {
+function successfulResponse(payload: unknown): Response {
   return {
     ok: true,
     status: 200,
-    json: async () => dashboardResponse,
+    json: async () => payload,
   } as Response;
+}
+
+function getFetchUrl(input: RequestInfo | URL): string {
+  return typeof input === 'string' ? input : input.toString();
 }
 
 function expectOpportunityRows(expectedLabels: string[]): void {

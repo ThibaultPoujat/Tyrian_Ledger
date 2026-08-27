@@ -14,7 +14,7 @@ test('local API health endpoint responds', async ({ page }) => {
   await expect(page.locator('body')).toContainText('ok');
 });
 
-test('market dashboard loads and filters ranked sample opportunities', async ({ page }) => {
+test('market dashboard saves local preferences and filters ranked sample opportunities', async ({ page, request }) => {
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: 'Market opportunities' })).toBeVisible();
@@ -23,10 +23,27 @@ test('market dashboard loads and filters ranked sample opportunities', async ({ 
   const opportunityRows = page.getByTestId('opportunity-row');
   await expect(opportunityRows).toHaveCount(4);
 
-  await page.getByLabel(/maximum capital/i).fill('600');
+  await page.getByLabel(/available capital/i).fill('1200');
+  await page.getByLabel(/per-opportunity allocation/i).fill('50');
+  await page.getByRole('button', { name: 'Save and apply preferences' }).click();
 
   await expect(opportunityRows).toHaveCount(1);
   await expect(opportunityRows).toContainText('Sample market flip #900001');
+
+  await page.reload();
+  await expect(page.getByLabel(/available capital/i)).toHaveValue('1200');
+  await expect(opportunityRows).toHaveCount(1);
+
+  const resetResponse = await request.put(`${apiBaseUrl}/api/preferences/user-session`, {
+    data: {
+      capitalLimitCopper: null,
+      minimumProfitCopper: null,
+      riskPreference: 'all',
+      strategyPreference: 'all',
+      allocationPercent: 100,
+    },
+  });
+  expect(resetResponse.status()).toBe(200);
 });
 
 test('opportunity detail explains the modeled scenario without implying an actual outcome', async ({ page }) => {

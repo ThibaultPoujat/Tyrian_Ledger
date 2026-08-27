@@ -1,9 +1,12 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.Preferences;
 using Gw2Tp.Application.Secrets;
 using Gw2Tp.Infrastructure.Gw2Api;
+using Gw2Tp.Infrastructure.Preferences;
 using Gw2Tp.Infrastructure.Secrets;
 using Gw2Tp.Web;
 using Gw2Tp.Web.Dashboard;
+using Gw2Tp.Web.Preferences;
 
 // Tyrian Ledger Web composition root. Public GW2 market access begins in M2.
 
@@ -12,8 +15,11 @@ builder.WebHost.UseUrls(LocalServerBinding.ResolveUrls(builder.Configuration));
 builder.Services.AddValidation();
 builder.Services.AddTyrianLedgerSecretStore(builder.Environment);
 builder.Services.AddTyrianLedgerGw2ApiClient(builder.Configuration);
+builder.Services.AddTyrianLedgerUserSessionPreferences(builder.Configuration, builder.Environment);
 builder.Services.AddSingleton<DashboardSampleOpportunityProvider>();
 var app = builder.Build();
+
+await app.Services.MigrateTyrianLedgerUserSessionPreferencesAsync();
 
 app.UseTyrianLedgerSecurityHeaders();
 
@@ -29,8 +35,15 @@ app.MapGet("/api/status", async (ISecretStore secretStore, CancellationToken can
 });
 app.MapGet("/api/diagnostics/market-data", (IMarketDataDiagnostics diagnostics) =>
     Results.Ok(MarketDataDiagnosticsResponse.From(diagnostics.GetSnapshot())));
-app.MapGet("/api/dashboard/opportunities", (DashboardSampleOpportunityProvider provider) =>
-    Results.Ok(provider.GetDashboard()));
+app.MapUserSessionPreferencesEndpoints();
+app.MapGet("/api/dashboard/opportunities", async (
+    DashboardSampleOpportunityProvider provider,
+    IUserSessionPreferencesStore preferencesStore,
+    CancellationToken cancellationToken) =>
+{
+    var preferences = await preferencesStore.GetAsync(cancellationToken);
+    return Results.Ok(provider.GetDashboard(preferences));
+});
 
 app.Run();
 

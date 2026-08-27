@@ -1,5 +1,15 @@
 export type DashboardConfidence = 'normal' | 'reduced';
 export type DashboardFreshness = 'current' | 'stale';
+export type DashboardRiskPreference = 'all' | DashboardConfidence;
+export type DashboardStrategyPreference = 'all' | 'market-flip';
+
+export interface UserSessionPreferences {
+  capitalLimitCopper: number | null;
+  minimumProfitCopper: number | null;
+  riskPreference: DashboardRiskPreference;
+  strategyPreference: DashboardStrategyPreference;
+  allocationPercent: number;
+}
 
 export interface DashboardOpportunity {
   itemId: number;
@@ -90,6 +100,43 @@ export async function loadDashboardOpportunities(
   return payload;
 }
 
+export async function loadUserSessionPreferences(
+  signal: AbortSignal,
+): Promise<UserSessionPreferences> {
+  const response = await fetch('/api/preferences/user-session', { signal });
+  if (!response.ok) {
+    throw new Error(`Preference request failed with status ${response.status}.`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isUserSessionPreferences(payload)) {
+    throw new Error('Preference response was not in the expected format.');
+  }
+
+  return payload;
+}
+
+export async function saveUserSessionPreferences(
+  preferences: UserSessionPreferences,
+): Promise<UserSessionPreferences> {
+  const response = await fetch('/api/preferences/user-session', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(preferences),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Preference save failed with status ${response.status}.`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isUserSessionPreferences(payload)) {
+    throw new Error('Preference save response was not in the expected format.');
+  }
+
+  return payload;
+}
+
 function isDashboardOpportunitiesResponse(value: unknown): value is DashboardOpportunitiesResponse {
   if (!isRecord(value)
     || typeof value.isSampleData !== 'boolean'
@@ -100,6 +147,19 @@ function isDashboardOpportunitiesResponse(value: unknown): value is DashboardOpp
   }
 
   return value.opportunities.every(isDashboardOpportunity);
+}
+
+function isUserSessionPreferences(value: unknown): value is UserSessionPreferences {
+  return isRecord(value)
+    && isNullableSafeInteger(value.capitalLimitCopper)
+    && isNullableSafeInteger(value.minimumProfitCopper)
+    && (value.riskPreference === 'all' || value.riskPreference === 'normal' || value.riskPreference === 'reduced')
+    && (value.strategyPreference === 'all'
+      || value.strategyPreference === 'market-flip')
+    && typeof value.allocationPercent === 'number'
+    && Number.isSafeInteger(value.allocationPercent)
+    && value.allocationPercent >= 1
+    && value.allocationPercent <= 100;
 }
 
 function isDashboardOpportunity(value: unknown): value is DashboardOpportunity {
@@ -176,4 +236,8 @@ function isDashboardLiquidity(value: unknown): value is DashboardLiquidity {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isNullableSafeInteger(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0);
 }
