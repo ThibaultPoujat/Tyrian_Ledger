@@ -194,6 +194,34 @@ h3 {
   color: #8ca196;
 }
 
+.allocation-note,
+.preference-message {
+  margin: 0.15rem 0 0;
+  color: #b4c8bd;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.preferences-save {
+  margin-top: 0.45rem;
+  padding: 0.65rem 0.8rem;
+  color: #101916;
+  background: #f7c46c;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.preferences-save:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.freshness-filter {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgb(86 118 98 / 55%);
+}
+
 .opportunity-panel {
   overflow: hidden;
 }

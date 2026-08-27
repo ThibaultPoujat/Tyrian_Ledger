@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Time;
+using Gw2Tp.Infrastructure.Preferences;
 using Gw2Tp.Testing;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -17,6 +19,9 @@ public sealed class DashboardOpportunitiesEndpointTests
         using var factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
+                builder.UseSetting(
+                    UserSessionPreferencesServiceCollectionExtensions.DatabasePathConfigurationKey,
+                    CreateDatabasePath());
                 builder.ConfigureServices(services => services.RemoveAll<IGw2ApiClient>());
             });
         var client = factory.CreateClient();
@@ -69,6 +74,9 @@ public sealed class DashboardOpportunitiesEndpointTests
         using var factory = new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
+                builder.UseSetting(
+                    UserSessionPreferencesServiceCollectionExtensions.DatabasePathConfigurationKey,
+                    CreateDatabasePath());
                 builder.ConfigureServices(services =>
                 {
                     services.RemoveAll<IGw2ApiClient>();
@@ -95,4 +103,10 @@ public sealed class DashboardOpportunitiesEndpointTests
             JsonElement.DeepEquals(fixtureDocument.RootElement, actualDetail),
             "The dashboard detail must remain consistent with its deterministic fixture.");
     }
+
+    private static string CreateDatabasePath() => Path.Combine(
+        Path.GetTempPath(),
+        "TyrianLedger",
+        "IntegrationTests",
+        $"dashboard-preferences-{Guid.NewGuid():N}.db");
 }

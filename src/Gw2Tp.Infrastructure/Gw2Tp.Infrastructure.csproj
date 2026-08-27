@@ -6,6 +6,11 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
     <ProjectReference Include="../Gw2Tp.Application/Gw2Tp.Application.csproj" />
     <ProjectReference Include="../Gw2Tp.Domain/Gw2Tp.Domain.csproj" />
   </ItemGroup>
