@@ -35,7 +35,10 @@ being added to this table.
 - Schema version: production requests MUST pin a known schema version via
   `?v=<ISO-8601>` or `X-Schema-Version` (wiki-recommended; **VERIFY** the
   chosen pinned versions per endpoint against `/v2.json?v=latest` in M2).
-  If omitted, the API returns the earliest schema.
+  TKT-M2-01's bounded public probe established
+  `2025-08-29T01:00:00.000Z` as the current global version, which the public
+  prices and listings client pins. Other endpoint-specific pinning remains
+  **VERIFY-005**. If omitted, the API returns the earliest schema.
 - Auth: `Authorization: Bearer <API key>` header (server-side; preferred) or
   `?access_token=`. This application uses the header only, from the
   server-side secret store (ADR-006); the key is never sent to the browser.

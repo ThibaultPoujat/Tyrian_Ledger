@@ -1,13 +1,22 @@
-{
-  "id": 900001,
-  "buys": [
-    { "listings": 4, "unit_price": 850, "quantity": 1200 },
-    { "listings": 1, "unit_price": 800, "quantity": 250 },
-    { "listings": 2, "unit_price": 750, "quantity": 90 }
-  ],
-  "sells": [
-    { "listings": 2, "unit_price": 905, "quantity": 40 },
-    { "listings": 1, "unit_price": 910, "quantity": 300 },
-    { "listings": 3, "unit_price": 925, "quantity": 150 }
-  ]
-}
+[
+  {
+    "id": 900001,
+    "buys": [
+      { "listings": 4, "unit_price": 850, "quantity": 1200 },
+      { "listings": 1, "unit_price": 800, "quantity": 250 },
+      { "listings": 2, "unit_price": 750, "quantity": 90 }
+    ],
+    "sells": [
+      { "listings": 2, "unit_price": 905, "quantity": 40 },
+      { "listings": 1, "unit_price": 910, "quantity": 300 },
+      { "listings": 3, "unit_price": 925, "quantity": 150 }
+    ]
+  },
+  {
+    "id": 900002,
+    "buys": [],
+    "sells": [
+      { "listings": 2, "unit_price": 120, "quantity": 350 }
+    ]
+  }
+]

@@ -26,6 +26,16 @@ Note: the wiki is the community's best documentation of the live API; it is
 not ArenaNet official. The exact contract MUST be revalidated before release
 (`docs/specs/verified-external-notes.md`).
 
+### M2 public-probe evidence
+
+TKT-M2-01 performed the approved bounded, no-key check on 2026-08-26: one
+`/v2.json?v=latest` request and one `/v2/commerce/prices?v=latest` request.
+Both returned HTTP 200 with `X-Rate-Limit-Limit: 600`. This is an observed
+response header only: it does not establish the limiter scope, burst/refill
+behavior, 429 contract, or sustainable rate, and therefore does not change
+the configurable scheduler defaults in §2. See VERIFY-006, VERIFY-010, and
+VERIFY-011.
+
 ## 2. Application-level scheduler parameters (configurable)
 
 These parameters configure the gateway's request scheduler (ADR-004). They are
