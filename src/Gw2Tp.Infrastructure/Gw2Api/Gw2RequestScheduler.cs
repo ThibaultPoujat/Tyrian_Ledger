@@ -67,7 +67,7 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
             ReplenishmentPeriod = TimeSpan.FromSeconds(1),
             AutoReplenishment = true,
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-            QueueLimit = options.RateLimit.MaxConcurrentRequests,
+            QueueLimit = options.RateLimit.MaxQueuedRequests,
         });
         _concurrencyLimiter = new ConcurrencyLimiter(new ConcurrencyLimiterOptions
         {

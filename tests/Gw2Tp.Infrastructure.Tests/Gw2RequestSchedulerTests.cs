@@ -37,7 +37,7 @@ public sealed class Gw2RequestSchedulerTests
     }
 
     [Fact]
-    public async Task Completed_shared_request_is_removed_when_all_callers_cancel()
+    public async Task Completed_shared_request_is_removed_after_completion_when_all_callers_cancel()
     {
         var responseSource = new TaskCompletionSource<Gw2ScheduledResult<int>>();
         using var firstCancellationSource = new CancellationTokenSource();
@@ -110,7 +110,7 @@ public sealed class Gw2RequestSchedulerTests
     }
 
     [Fact]
-    public async Task Queue_capacity_exhaustion_returns_a_stable_failure()
+    public async Task Token_bucket_queue_capacity_exhaustion_returns_a_stable_failure()
     {
         var firstResponse = new TaskCompletionSource<HttpResponseMessage>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -120,7 +120,9 @@ public sealed class Gw2RequestSchedulerTests
                 ? firstResponse.Task
                 : Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, "[]")));
         var options = CreateOptions();
-        options.RateLimit.MaxConcurrentRequests = 1;
+        options.RateLimit.BurstSize = 1;
+        options.RateLimit.RefillTokensPerSecond = 1;
+        options.RateLimit.MaxConcurrentRequests = 2;
         options.RateLimit.MaxQueuedRequests = 0;
         using var httpClient = CreateHttpClient(handler);
         using var scheduler = CreateScheduler(options);
