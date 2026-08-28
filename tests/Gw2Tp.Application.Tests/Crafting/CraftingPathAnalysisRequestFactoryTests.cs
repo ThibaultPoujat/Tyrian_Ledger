@@ -98,6 +98,27 @@ public sealed class CraftingPathAnalysisRequestFactoryTests
             new CraftingSearchLimits(3, 10)));
     }
 
+    [Fact]
+    public void Rejects_null_market_order_book_sides_and_levels_with_argument_errors()
+    {
+        var emptyLevels = Array.Empty<MarketOrderLevel>();
+
+        Assert.Throws<ArgumentException>(() => CreateRequest([new MarketListing(10, null!, emptyLevels)]));
+        Assert.Throws<ArgumentException>(() => CreateRequest([new MarketListing(10, emptyLevels, null!)]));
+        Assert.Throws<ArgumentException>(() => CreateRequest(
+            [new MarketListing(10, new MarketOrderLevel[] { null! }, emptyLevels)]));
+    }
+
+    private static CraftingPathAnalysisRequest CreateRequest(IReadOnlyList<MarketListing> marketListings) =>
+        CraftingPathAnalysisRequestFactory.Create(
+            targetItemId: 10,
+            requestedQuantity: 1,
+            recipes: [],
+            new AccountOwnedItemsSnapshot("profile-alpha", [], []),
+            craftingSnapshot: null,
+            marketListings,
+            new CraftingSearchLimits(3, 10));
+
     private static MarketListing Listing(int itemId, int buy, int sell) =>
         new(
             itemId,

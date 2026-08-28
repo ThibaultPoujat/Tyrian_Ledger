@@ -48,6 +48,16 @@ public static class CraftingPathAnalysisRequestFactory
         var evidence = new Dictionary<int, OwnedItemMarketEvidence>();
         foreach (var listing in marketListings)
         {
+            if (listing.Buys is null || listing.Sells is null)
+            {
+                throw new ArgumentException("Market listing order-book sides cannot be null.", nameof(marketListings));
+            }
+
+            if (listing.Buys.Any(level => level is null) || listing.Sells.Any(level => level is null))
+            {
+                throw new ArgumentException("Market listing order-book levels cannot contain null values.", nameof(marketListings));
+            }
+
             if (!evidence.TryAdd(
                     listing.ItemId,
                     new OwnedItemMarketEvidence(

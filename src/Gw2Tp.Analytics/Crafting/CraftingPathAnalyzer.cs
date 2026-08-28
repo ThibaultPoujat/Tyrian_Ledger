@@ -359,7 +359,7 @@ public sealed class CraftingPathAnalyzer
                 itemId,
                 requiredQuantity,
                 currentDepth,
-                string.Join(',', ancestors.Order()));
+                string.Join(',', ancestors));
             if (memoizedOptions.TryGetValue(key, out var memoized))
             {
                 MemoizedSubproblemHits++;
