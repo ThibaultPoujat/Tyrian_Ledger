@@ -1,5 +1,6 @@
 using Gw2Tp.Application.Preferences;
 using Gw2Tp.Application.Operations;
+using Gw2Tp.Application.MarketHistory;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,6 +39,8 @@ public static class UserSessionPreferencesServiceCollectionExtensions
         services.AddDbContextFactory<UserSessionPreferencesDbContext>(options => options.UseSqlite(connectionString));
         services.AddSingleton<IUserSessionPreferencesStore, SqliteUserSessionPreferencesStore>();
         services.AddSingleton<IOperationHistoryStore, SqliteOperationHistoryStore>();
+        services.AddSingleton<IMarketSnapshotStore, SqliteMarketSnapshotStore>();
+        services.AddSingleton<IMarketWatchlistStore, SqliteMarketWatchlistStore>();
 
         return services;
     }

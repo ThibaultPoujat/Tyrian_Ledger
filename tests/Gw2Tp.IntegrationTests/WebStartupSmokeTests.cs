@@ -10,11 +10,11 @@ using Xunit;
 namespace Gw2Tp.IntegrationTests;
 
 // Skeleton smoke test: confirms the local app starts (TKT-M1-01). No business assertions.
-public class WebStartupSmokeTests : IClassFixture<WebApplicationFactory<Program>>
+public class WebStartupSmokeTests : IClassFixture<TestWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly TestWebApplicationFactory _factory;
 
-    public WebStartupSmokeTests(WebApplicationFactory<Program> factory)
+    public WebStartupSmokeTests(TestWebApplicationFactory factory)
     {
         _factory = factory;
     }

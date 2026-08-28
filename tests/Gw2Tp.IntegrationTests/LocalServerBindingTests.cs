@@ -16,7 +16,7 @@ public sealed class LocalServerBindingTests
     [InlineData("Testing")]
     public async Task Default_url_is_loopback_only_for_local_startup_environments(string environmentName)
     {
-        using var factory = new WebApplicationFactory<Program>()
+        using var factory = new TestWebApplicationFactory()
             .WithWebHostBuilder(builder => builder.UseSetting(WebHostDefaults.EnvironmentKey, environmentName));
         var client = factory.CreateClient();
         var configuration = factory.Services.GetRequiredService<IConfiguration>();

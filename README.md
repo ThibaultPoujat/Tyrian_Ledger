@@ -97,10 +97,11 @@ does not call the live GW2 API.
 
 ## Back up and restore local data
 
-Tyrian Ledger keeps its local preference profile and recorded operation history
-in the SQLite file `user-session-preferences.db`. By default, the file is in
-the platform's .NET local application-data directory under `TyrianLedger`; a
-user or developer may instead configure its exact location with
+Tyrian Ledger keeps its local preference profile, recorded operation history,
+and public market snapshot history in the SQLite file
+`user-session-preferences.db`. By default, the file is in the platform's .NET
+local application-data directory under `TyrianLedger`; a user or developer may
+instead configure its exact location with
 `UserSessionPreferences__DatabasePath`.
 
 To create a backup, stop Tyrian Ledger first, then copy that SQLite file to a
@@ -112,7 +113,23 @@ startup.
 
 Account snapshots and public market cache entries are held only in process
 memory, so they are not included in the SQLite backup and disappear when the
-application stops. The Guild Wars 2 API credential is stored separately by the
-operating system and is not included in this database; see
+application stops. Public market snapshot history is durable local data and is
+included in the backup; clearing account snapshots does not remove it. The Guild
+Wars 2 API credential is stored separately by the operating system and is not
+included in this database; see
 [local secrets](docs/development/local-secrets.md). Creating, restoring, or
 clearing local data never uploads it. Automated cloud backup is not provided.
+
+## Historical market storage planning
+
+Historical collection is opt-in and will never collect untracked items. The
+initial policy supports at most 25 locally tracked items: watchlist items use
+hourly top-of-book samples and daily full order-book samples; lower-interest
+background items use daily and weekly samples respectively. Snapshot history is
+append-only and retained locally until the user removes the database.
+
+For 25 watchlist items, a 365-day planning year yields 219,000 top-of-book
+samples and 9,125 order-book samples. Assuming an average of 40 stored levels
+per order book and allowing 10% for indexes and SQLite overhead, plan for about
+50 MiB per year. This is an estimate rather than a storage guarantee: actual
+growth varies with order-book depth and the chosen watchlist mix.

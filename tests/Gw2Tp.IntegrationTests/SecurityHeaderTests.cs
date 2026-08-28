@@ -5,11 +5,11 @@ using Xunit;
 
 namespace Gw2Tp.IntegrationTests;
 
-public sealed class SecurityHeaderTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class SecurityHeaderTests : IClassFixture<TestWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly TestWebApplicationFactory _factory;
 
-    public SecurityHeaderTests(WebApplicationFactory<Program> factory)
+    public SecurityHeaderTests(TestWebApplicationFactory factory)
     {
         _factory = factory;
     }
