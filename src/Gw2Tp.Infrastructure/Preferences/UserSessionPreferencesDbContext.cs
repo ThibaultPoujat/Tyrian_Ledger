@@ -63,6 +63,7 @@ public sealed class UserSessionPreferencesDbContext : DbContext
             entity.Property(operation => operation.Status)
                 .HasMaxLength(16)
                 .IsRequired();
+            entity.Property(operation => operation.ActualOutcomeJson);
             entity.HasOne(operation => operation.Scenario)
                 .WithOne(scenario => scenario.Operation)
                 .HasForeignKey<OperationHistoryScenarioEntity>(scenario => scenario.OperationId)
@@ -101,6 +102,8 @@ internal sealed class OperationHistoryEntity
     public string CalculationVersionId { get; set; } = null!;
 
     public string ConfigurationVersionId { get; set; } = null!;
+
+    public string? ActualOutcomeJson { get; set; }
 
     public OperationHistoryScenarioEntity Scenario { get; set; } = null!;
 }

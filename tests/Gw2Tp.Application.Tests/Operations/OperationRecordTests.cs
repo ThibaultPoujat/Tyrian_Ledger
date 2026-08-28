@@ -1,7 +1,9 @@
 using Gw2Tp.Analytics.Crafting;
 using Gw2Tp.Analytics.FlipOpportunities;
 using Gw2Tp.Analytics.OwnedItems;
+using Gw2Tp.Analytics.Reconciliation;
 using Gw2Tp.Application.Operations;
+using Gw2Tp.Domain.Finance;
 using Xunit;
 
 namespace Gw2Tp.Application.Tests.Operations;
@@ -41,6 +43,32 @@ public sealed class OperationRecordTests
         Assert.Single(scenario.SelectedPath.Ingredients);
         Assert.Equal(40, Assert.Single(scenario.IngredientCosts).SelectedStrategy!.TotalEconomicCostCopper);
         Assert.Equal(45, scenario.ModeledFinancials!.NetProfitCopper);
+    }
+
+    [Fact]
+    public void Retains_actual_outcome_evidence_for_a_cancelled_operation_without_changing_its_status()
+    {
+        var actualOutcome = new OperationActualOutcome(
+        [
+            new ActualAcquisitionLot(
+                Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+                new DateTimeOffset(2026, 8, 28, 8, 0, 0, TimeSpan.Zero),
+                2,
+                new Money(60)),
+        ],
+        []);
+        var operation = new OperationRecord(
+            Guid.NewGuid(),
+            new DateTimeOffset(2026, 8, 28, 8, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 8, 28, 8, 0, 0, TimeSpan.Zero),
+            OperationStatus.Cancelled,
+            "calc-v1",
+            "config-v1",
+            CreateMarketFlipScenario(),
+            actualOutcome);
+
+        Assert.Equal(OperationStatus.Cancelled, operation.Status);
+        Assert.Same(actualOutcome, operation.ActualOutcome);
     }
 
     [Theory]
