@@ -149,7 +149,7 @@ public sealed class HistoricalMarketAnalyticsCalculator
             }
         }
 
-        return maximumDrawdown;
+        return RoundPercentage(maximumDrawdown);
     }
 
     private static decimal CalculatePopulationStandardDeviation(IEnumerable<decimal> values)

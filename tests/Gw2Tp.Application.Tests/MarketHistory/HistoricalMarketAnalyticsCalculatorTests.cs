@@ -60,6 +60,18 @@ public sealed class HistoricalMarketAnalyticsCalculatorTests
     }
 
     [Fact]
+    public void Rounds_drawdown_to_the_public_percentage_precision()
+    {
+        var snapshots = Enumerable.Range(0, HistoricalMarketAnalyticsCalculator.MinimumObservationCount)
+            .Select(index => CreateSnapshot(index, index == 29 ? 2 : 3, 10, 20))
+            .ToArray();
+
+        var analytics = new HistoricalMarketAnalyticsCalculator().Calculate(snapshots);
+
+        Assert.Equal(33.333333m, analytics.BuyPrices.MaximumDrawdownPercent);
+    }
+
+    [Fact]
     public void Excludes_missing_price_sides_without_inventing_observations()
     {
         var snapshots = Enumerable.Range(0, HistoricalMarketAnalyticsCalculator.MinimumObservationCount)
