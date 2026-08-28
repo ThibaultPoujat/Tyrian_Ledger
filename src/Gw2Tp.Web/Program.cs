@@ -1,5 +1,6 @@
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Preferences;
+using Gw2Tp.Application.SessionPlanning;
 using Gw2Tp.Application.Secrets;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.Preferences;
@@ -16,6 +17,7 @@ builder.Services.AddValidation();
 builder.Services.AddTyrianLedgerSecretStore(builder.Environment);
 builder.Services.AddTyrianLedgerGw2ApiClient(builder.Configuration);
 builder.Services.AddTyrianLedgerUserSessionPreferences(builder.Configuration, builder.Environment);
+builder.Services.AddSingleton<SessionPlanner>();
 builder.Services.AddSingleton<DashboardSampleOpportunityProvider>();
 var app = builder.Build();
 
@@ -37,12 +39,21 @@ app.MapGet("/api/diagnostics/market-data", (IMarketDataDiagnostics diagnostics) 
     Results.Ok(MarketDataDiagnosticsResponse.From(diagnostics.GetSnapshot())));
 app.MapUserSessionPreferencesEndpoints();
 app.MapGet("/api/dashboard/opportunities", async (
+    string? effortCategory,
     DashboardSampleOpportunityProvider provider,
     IUserSessionPreferencesStore preferencesStore,
     CancellationToken cancellationToken) =>
 {
+    if (!DashboardEffortCategoryValues.TryParse(effortCategory, out var selectedEffortCategory))
+    {
+        return Results.ValidationProblem(new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["effortCategory"] = ["Effort category must be very-low, low, medium, high, or ongoing-patient."],
+        });
+    }
+
     var preferences = await preferencesStore.GetAsync(cancellationToken);
-    return Results.Ok(provider.GetDashboard(preferences));
+    return Results.Ok(provider.GetDashboard(preferences, selectedEffortCategory));
 });
 
 app.Run();

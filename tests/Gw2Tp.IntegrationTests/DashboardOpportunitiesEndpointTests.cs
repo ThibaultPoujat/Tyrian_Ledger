@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Time;
@@ -41,9 +42,9 @@ public sealed class DashboardOpportunitiesEndpointTests
         Assert.Equal(
             "Deterministic local sample data. No live market scan was performed.",
             firstRoot.GetProperty("sourceDescription").GetString());
-        Assert.Equal(4, firstOpportunities.GetArrayLength());
+        Assert.Equal(5, firstOpportunities.GetArrayLength());
         Assert.Equal(
-            [1, 2, 3, 4],
+            [1, 2, 3, 4, 5],
             firstOpportunities.EnumerateArray().Select(opportunity => opportunity.GetProperty("rank").GetInt32()));
         Assert.True(firstOpportunities.EnumerateArray()
             .Select(opportunity => opportunity.GetProperty("scoreBasisPoints").GetInt32())
@@ -62,6 +63,14 @@ public sealed class DashboardOpportunitiesEndpointTests
         Assert.Contains(
             firstOpportunities.EnumerateArray(),
             opportunity => opportunity.GetProperty("freshness").GetString() == "stale");
+        Assert.Equal(
+            ["high", "low", "medium", "ongoing-patient", "very-low"],
+            firstOpportunities
+                .EnumerateArray()
+                .Select(opportunity => opportunity.GetProperty("effortCategory").GetString()
+                    ?? throw new InvalidOperationException("Dashboard effort category must be present."))
+                .Order(StringComparer.Ordinal)
+                .ToArray());
         Assert.Equal(
             firstOpportunities.EnumerateArray().Select(opportunity => opportunity.GetProperty("itemId").GetInt32()),
             secondOpportunities.EnumerateArray().Select(opportunity => opportunity.GetProperty("itemId").GetInt32()));
@@ -102,6 +111,48 @@ public sealed class DashboardOpportunitiesEndpointTests
         Assert.True(
             JsonElement.DeepEquals(fixtureDocument.RootElement, actualDetail),
             "The dashboard detail must remain consistent with its deterministic fixture.");
+    }
+
+    [Fact]
+    public async Task Dashboard_endpoint_filters_the_session_shortlist_by_effort_category()
+    {
+        using var factory = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting(
+                    UserSessionPreferencesServiceCollectionExtensions.DatabasePathConfigurationKey,
+                    CreateDatabasePath());
+                builder.ConfigureServices(services => services.RemoveAll<IGw2ApiClient>());
+            });
+        var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/dashboard/opportunities?effortCategory=high");
+
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var opportunity = Assert.Single(document.RootElement.GetProperty("opportunities").EnumerateArray());
+        Assert.Equal("high", opportunity.GetProperty("effortCategory").GetString());
+        Assert.Equal(1, opportunity.GetProperty("rank").GetInt32());
+    }
+
+    [Fact]
+    public async Task Dashboard_endpoint_rejects_unknown_effort_category_values()
+    {
+        using var factory = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting(
+                    UserSessionPreferencesServiceCollectionExtensions.DatabasePathConfigurationKey,
+                    CreateDatabasePath());
+                builder.ConfigureServices(services => services.RemoveAll<IGw2ApiClient>());
+            });
+        var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/api/dashboard/opportunities?effortCategory=minutes");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(document.RootElement.GetProperty("errors").TryGetProperty("effortCategory", out _));
     }
 
     private static string CreateDatabasePath() => Path.Combine(

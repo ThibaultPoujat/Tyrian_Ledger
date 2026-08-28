@@ -222,6 +222,19 @@ h3 {
   border-top: 1px solid rgb(86 118 98 / 55%);
 }
 
+.effort-filter {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgb(86 118 98 / 55%);
+}
+
+.effort-note {
+  margin: 0.15rem 0 0;
+  color: #b4c8bd;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
 .opportunity-panel {
   overflow: hidden;
 }
@@ -251,7 +264,7 @@ h3 {
 
 table {
   width: 100%;
-  min-width: 960px;
+  min-width: 1060px;
   border-collapse: collapse;
 }
 
@@ -331,6 +344,7 @@ time {
 }
 
 .confidence-chip,
+.effort-chip,
 .freshness-label {
   display: inline-block;
   border-radius: 999px;
