@@ -1,6 +1,6 @@
-namespace Gw2Tp.Application.Operations;
-
 using Gw2Tp.Analytics.Reconciliation;
+
+namespace Gw2Tp.Application.Operations;
 
 /// <summary>
 /// Local persistence for saved operation calculation contexts.
