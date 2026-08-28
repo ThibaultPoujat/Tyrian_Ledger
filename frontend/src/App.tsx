@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   loadAccountAccessStatus,
   loadDashboardOpportunities,
+  loadOperationHistoryStatistics,
   loadUserSessionPreferences,
   saveUserSessionPreferences,
   type DashboardEffortCategory,
   type DashboardOpportunitiesResponse,
   type DashboardOpportunity,
   type AccountAccessStatus,
+  type OperationHistoryStatistics,
+  type OperationLifecycleStatistics,
+  type OperationProfitStatistics,
   type UserSessionPreferences,
 } from './dashboardApi';
 import './App.css';
@@ -21,6 +25,11 @@ type AccountAccessState =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'ready'; status: AccountAccessStatus };
+
+type HistoryStatisticsState =
+  | { kind: 'loading' }
+  | { kind: 'error' }
+  | { kind: 'ready'; statistics: OperationHistoryStatistics };
 
 interface DashboardFilters {
   freshness: 'all' | 'current' | 'stale';
@@ -51,6 +60,7 @@ const initialPreferenceForm: PreferenceForm = {
 export default function App() {
   const [state, setState] = useState<DashboardState>({ kind: 'loading' });
   const [accountAccess, setAccountAccess] = useState<AccountAccessState>({ kind: 'loading' });
+  const [historyStatistics, setHistoryStatistics] = useState<HistoryStatisticsState>({ kind: 'loading' });
   const [requestVersion, setRequestVersion] = useState(0);
   const [filters, setFilters] = useState<DashboardFilters>(initialFilters);
   const [effortCategory, setEffortCategory] = useState<DashboardEffortFilter>('all');
@@ -104,6 +114,25 @@ export default function App() {
     return () => controller.abort();
   }, [requestVersion]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    setHistoryStatistics({ kind: 'loading' });
+
+    void loadOperationHistoryStatistics(controller.signal)
+      .then((statistics) => {
+        if (!controller.signal.aborted) {
+          setHistoryStatistics({ kind: 'ready', statistics });
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setHistoryStatistics({ kind: 'error' });
+        }
+      });
+
+    return () => controller.abort();
+  }, [requestVersion]);
+
   const opportunities = state.kind === 'ready' ? state.response.opportunities : [];
   const filteredOpportunities = useMemo(
     () => opportunities.filter((opportunity) => matchesFilters(opportunity, filters)),
@@ -123,6 +152,8 @@ export default function App() {
           Ranked modeled scenarios for planning—not orders, execution predictions, or profit guarantees.
         </p>
       </header>
+
+      <OperationHistoryPanel historyStatistics={historyStatistics} />
 
       {state.kind === 'loading' && (
         <section className="dashboard-state" aria-live="polite" role="status">
@@ -441,6 +472,117 @@ function AccountAccessPanel({ accountAccess }: { accountAccess: AccountAccessSta
 
 function formatAccountFeature(feature: AccountAccessStatus['features'][number]['feature']): string {
   return feature === 'account-materials' ? 'Account materials' : 'Account crafting';
+}
+
+function OperationHistoryPanel({ historyStatistics }: { historyStatistics: HistoryStatisticsState }) {
+  if (historyStatistics.kind === 'loading') {
+    return (
+      <section className="history-panel" aria-live="polite" aria-label="Personal history">
+        <p className="eyebrow">Local history</p>
+        <h2>Personal history</h2>
+        <p>Loading locally recorded operation statistics.</p>
+      </section>
+    );
+  }
+
+  if (historyStatistics.kind === 'error') {
+    return (
+      <section className="history-panel history-panel-error" aria-label="Personal history" role="status">
+        <p className="eyebrow">Local history</p>
+        <h2>Personal history is unavailable</h2>
+        <p>Statistics could not load. No local history has been changed.</p>
+      </section>
+    );
+  }
+
+  const { statistics } = historyStatistics;
+  if (statistics.operationCount === 0) {
+    return (
+      <section className="history-panel" aria-labelledby="history-title" data-testid="personal-history">
+        <p className="eyebrow">Local history</p>
+        <h2 id="history-title">Personal history</h2>
+        <p>No local operation history yet.</p>
+        <p className="history-note">
+          Statistics start with operations recorded here; unknown lifetime history is not backfilled.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="history-panel" aria-labelledby="history-title" data-testid="personal-history">
+      <div className="history-panel-heading">
+        <div>
+          <p className="eyebrow">Local history</p>
+          <h2 id="history-title">Personal history</h2>
+        </div>
+        <p className="history-coverage">
+          Recorded locally from <time dateTime={statistics.firstRecordedAtUtc ?? undefined}>
+            {formatDateTime(statistics.firstRecordedAtUtc ?? '')}
+          </time>{' '}
+          through <time dateTime={statistics.lastRecordedAtUtc ?? undefined}>
+            {formatDateTime(statistics.lastRecordedAtUtc ?? '')}
+          </time>.
+        </p>
+      </div>
+
+      <dl className="history-statistics">
+        <HistoryStatistic label="Saved operations" value={`${statistics.operationCount} recorded`} />
+        <HistoryStatistic
+          label="Recorded realized profit"
+          value={formatProfitTotal(statistics.realizedProfit, 'No recorded sales yet.')}
+        />
+        <HistoryStatistic
+          label="Average recorded realized profit"
+          value={formatExactProfitRatio(statistics.realizedProfit, 'No recorded sales yet.')}
+        />
+        <HistoryStatistic
+          label="Average modeled profit"
+          value={formatExactProfitRatio(statistics.modeledNetProfit, 'No stored modeled financial snapshots.')}
+        />
+        <HistoryStatistic
+          label="Lifecycle completion rate"
+          value={formatCompletionRatio(statistics.lifecycle)}
+        />
+      </dl>
+
+      <p className="history-note">
+        Realized values use recorded acquisition, sale, and fee evidence. Modeled values remain saved scenarios,
+        not guarantees. Averages and completion use exact ratios so no copper is rounded away.
+      </p>
+    </section>
+  );
+}
+
+function HistoryStatistic({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function formatProfitTotal(statistics: OperationProfitStatistics, unavailableMessage: string): string {
+  return statistics.totalCopper === null ? unavailableMessage : formatCopper(statistics.totalCopper);
+}
+
+function formatExactProfitRatio(statistics: OperationProfitStatistics, unavailableMessage: string): string {
+  if (statistics.totalCopper === null) {
+    return unavailableMessage;
+  }
+
+  const operationLabel = statistics.eligibleOperationCount === 1 ? 'operation' : 'operations';
+  return `${formatCopper(statistics.totalCopper)} ÷ ${statistics.eligibleOperationCount} eligible ${operationLabel}`;
+}
+
+function formatCompletionRatio(lifecycle: OperationLifecycleStatistics): string {
+  if (lifecycle.terminalOperationCount === 0) {
+    return 'No completed or cancelled operations yet.';
+  }
+
+  const operationLabel = lifecycle.terminalOperationCount === 1 ? 'operation' : 'operations';
+  return `${lifecycle.completedOperationCount} completed ÷ ${lifecycle.terminalOperationCount} terminal ${operationLabel}`;
 }
 
 function OpportunityRow({

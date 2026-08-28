@@ -28,6 +28,26 @@ export interface AccountAccessStatus {
   features: AccountFeatureAccess[];
 }
 
+export interface OperationProfitStatistics {
+  eligibleOperationCount: number;
+  totalCopper: number | null;
+}
+
+export interface OperationLifecycleStatistics {
+  completedOperationCount: number;
+  cancelledOperationCount: number;
+  terminalOperationCount: number;
+}
+
+export interface OperationHistoryStatistics {
+  operationCount: number;
+  firstRecordedAtUtc: string | null;
+  lastRecordedAtUtc: string | null;
+  modeledNetProfit: OperationProfitStatistics;
+  realizedProfit: OperationProfitStatistics;
+  lifecycle: OperationLifecycleStatistics;
+}
+
 export interface DashboardOpportunity {
   itemId: number;
   label: string;
@@ -152,6 +172,20 @@ export async function loadAccountAccessStatus(signal: AbortSignal): Promise<Acco
   return payload;
 }
 
+export async function loadOperationHistoryStatistics(signal: AbortSignal): Promise<OperationHistoryStatistics> {
+  const response = await fetch('/api/history/statistics', { signal });
+  if (!response.ok) {
+    throw new Error(`Operation history statistics request failed with status ${response.status}.`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isOperationHistoryStatistics(payload)) {
+    throw new Error('Operation history statistics response was not in the expected format.');
+  }
+
+  return payload;
+}
+
 export async function saveUserSessionPreferences(
   preferences: UserSessionPreferences,
 ): Promise<UserSessionPreferences> {
@@ -218,6 +252,31 @@ function isAccountFeatureAccess(value: unknown): value is AccountFeatureAccess {
     && typeof value.isAvailable === 'boolean'
     && Array.isArray(value.missingPermissions)
     && value.missingPermissions.every((permission) => typeof permission === 'string');
+}
+
+function isOperationHistoryStatistics(value: unknown): value is OperationHistoryStatistics {
+  return isRecord(value)
+    && isNonNegativeSafeInteger(value.operationCount)
+    && isNullableString(value.firstRecordedAtUtc)
+    && isNullableString(value.lastRecordedAtUtc)
+    && isOperationProfitStatistics(value.modeledNetProfit)
+    && isOperationProfitStatistics(value.realizedProfit)
+    && isOperationLifecycleStatistics(value.lifecycle);
+}
+
+function isOperationProfitStatistics(value: unknown): value is OperationProfitStatistics {
+  return isRecord(value)
+    && isNonNegativeSafeInteger(value.eligibleOperationCount)
+    && isNullableSignedSafeInteger(value.totalCopper)
+    && (value.eligibleOperationCount === 0 ? value.totalCopper === null : value.totalCopper !== null);
+}
+
+function isOperationLifecycleStatistics(value: unknown): value is OperationLifecycleStatistics {
+  return isRecord(value)
+    && isNonNegativeSafeInteger(value.completedOperationCount)
+    && isNonNegativeSafeInteger(value.cancelledOperationCount)
+    && isNonNegativeSafeInteger(value.terminalOperationCount)
+    && value.terminalOperationCount === value.completedOperationCount + value.cancelledOperationCount;
 }
 
 function isDashboardOpportunity(value: unknown): value is DashboardOpportunity {
@@ -307,4 +366,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNullableSafeInteger(value: unknown): value is number | null {
   return value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0);
+}
+
+function isNullableSignedSafeInteger(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isSafeInteger(value));
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return typeof value === 'string' || value === null;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
