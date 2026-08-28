@@ -18,7 +18,7 @@ public sealed record MarketSamplingSchedule(
     TimeSpan? PriceSnapshotInterval,
     TimeSpan? OrderBookSnapshotInterval)
 {
-    public bool IsTracked => PriceSnapshotInterval is not null;
+    public bool IsTracked => PriceSnapshotInterval is not null || OrderBookSnapshotInterval is not null;
 }
 
 /// <summary>
@@ -59,11 +59,13 @@ public static class MarketSamplingPolicy
             throw new ArgumentOutOfRangeException(nameof(backgroundItemCount), "The background item count cannot be negative.");
         }
 
-        if (watchlistItemCount + backgroundItemCount > MaximumTrackedItemCount)
+        var totalTrackedItemCount = (long)watchlistItemCount + backgroundItemCount;
+        if (totalTrackedItemCount > MaximumTrackedItemCount)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(backgroundItemCount),
-                $"No more than {MaximumTrackedItemCount} items may be tracked locally.");
+                nameof(totalTrackedItemCount),
+                totalTrackedItemCount,
+                $"The combined watchlist and background item count cannot exceed {MaximumTrackedItemCount}.");
         }
 
         if (averageOrderBookLevelCount < 0)

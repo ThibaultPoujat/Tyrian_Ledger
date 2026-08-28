@@ -19,6 +19,9 @@ public sealed class MarketSamplingPolicyTests
         Assert.False(untracked.IsTracked);
         Assert.Null(untracked.PriceSnapshotInterval);
         Assert.Null(untracked.OrderBookSnapshotInterval);
+
+        var orderBookOnly = new MarketSamplingSchedule(null, TimeSpan.FromDays(1));
+        Assert.True(orderBookOnly.IsTracked);
     }
 
     [Fact]
@@ -38,9 +41,12 @@ public sealed class MarketSamplingPolicyTests
     [Fact]
     public void Rejects_a_tracked_item_count_above_the_local_cap()
     {
-        Assert.Throws<ArgumentOutOfRangeException>(() => MarketSamplingPolicy.EstimateAnnualStorage(
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => MarketSamplingPolicy.EstimateAnnualStorage(
             watchlistItemCount: MarketSamplingPolicy.MaximumTrackedItemCount,
             backgroundItemCount: 1));
+
+        Assert.Equal("totalTrackedItemCount", exception.ParamName);
+        Assert.Equal(26L, exception.ActualValue);
     }
 
     [Fact]
