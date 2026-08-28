@@ -5,6 +5,7 @@ import type {
   AccountAccessStatus,
   DashboardOpportunitiesResponse,
   DashboardOpportunityDetail,
+  MarketResearchWatchlist,
   OperationHistoryStatistics,
   UserSessionPreferences,
 } from './dashboardApi';
@@ -156,6 +157,57 @@ const defaultPreferences: UserSessionPreferences = {
   riskPreference: 'all',
   strategyPreference: 'all',
   allocationPercent: 100,
+};
+
+const marketResearchWatchlist: MarketResearchWatchlist = {
+  maximumWatchlistItemCount: 25,
+  trackedItemCount: 2,
+  items: [
+    {
+      itemId: 19721,
+      coverage: {
+        observationCount: 30,
+        firstCapturedAtUtc: '2026-08-01T00:00:00Z',
+        lastCapturedAtUtc: '2026-08-02T05:00:00Z',
+      },
+      buyPrices: {
+        observationCount: 30,
+        tenthPercentileCopper: 100,
+        medianCopper: 140,
+        ninetiethPercentileCopper: 180,
+      },
+      sellPrices: {
+        observationCount: 30,
+        tenthPercentileCopper: 120,
+        medianCopper: 160,
+        ninetiethPercentileCopper: 200,
+      },
+      buyLiquidity: { observationCount: 30, coefficientOfVariationPercent: 25 },
+      sellLiquidity: { observationCount: 30, coefficientOfVariationPercent: 10 },
+    },
+    {
+      itemId: 46731,
+      coverage: {
+        observationCount: 4,
+        firstCapturedAtUtc: '2026-08-01T00:00:00Z',
+        lastCapturedAtUtc: '2026-08-01T03:00:00Z',
+      },
+      buyPrices: {
+        observationCount: 4,
+        tenthPercentileCopper: null,
+        medianCopper: null,
+        ninetiethPercentileCopper: null,
+      },
+      sellPrices: {
+        observationCount: 4,
+        tenthPercentileCopper: null,
+        medianCopper: null,
+        ninetiethPercentileCopper: null,
+      },
+      buyLiquidity: { observationCount: 4, coefficientOfVariationPercent: null },
+      sellLiquidity: { observationCount: 4, coefficientOfVariationPercent: null },
+    },
+  ],
 };
 
 const populatedHistoryStatistics: OperationHistoryStatistics = {
@@ -330,6 +382,67 @@ describe('market dashboard preferences and filters', () => {
     expect(detail).toHaveTextContent('Total price impact0g 3s 0c');
     expect(detail).toHaveTextContent('Human-readable calculation breakdown');
     expect(detail).toHaveTextContent('Data age');
+  });
+});
+
+describe('historical market research', () => {
+  it('discloses local coverage and withholds metrics when the observed sample is insufficient', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => Promise.resolve(successfulResponse(
+      getFetchUrl(input) === '/api/dashboard/opportunities'
+        ? dashboardResponse
+        : getFetchUrl(input) === '/api/market-research/watchlist'
+          ? marketResearchWatchlist
+          : emptyHistoryStatistics,
+    )));
+
+    render(<App />);
+
+    const research = await screen.findByTestId('market-research');
+    expect(research).toHaveTextContent('Observed local prices and liquidity are descriptive evidence, not investment advice, a forecast, or a guarantee.');
+    expect(research).toHaveTextContent('30 local samples: 2026-08-01T00:00:00.000Z through 2026-08-02T05:00:00.000Z.');
+    expect(research).toHaveTextContent('P10 0g 1s 0c · median 0g 1s 40c · P90 0g 1s 80c');
+    expect(research).toHaveTextContent('Insufficient local sample (4 observed).');
+    expect(research).toHaveTextContent('missing values are not treated as zero');
+  });
+
+  it('adds, compares, and removes a small local research watchlist', async () => {
+    let currentWatchlist: MarketResearchWatchlist = { ...marketResearchWatchlist, items: [marketResearchWatchlist.items[0]] };
+    fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = getFetchUrl(input);
+      if (url === '/api/market-research/watchlist' && init?.method === 'POST') {
+        currentWatchlist = { ...marketResearchWatchlist };
+        return Promise.resolve(noContentResponse());
+      }
+
+      if (url === '/api/market-research/watchlist/19721' && init?.method === 'DELETE') {
+        currentWatchlist = { ...currentWatchlist, items: currentWatchlist.items.filter((item) => item.itemId !== 19721) };
+        return Promise.resolve(noContentResponse());
+      }
+
+      return Promise.resolve(successfulResponse(
+        url === '/api/dashboard/opportunities'
+          ? dashboardResponse
+          : url === '/api/market-research/watchlist'
+            ? currentWatchlist
+            : emptyHistoryStatistics,
+      ));
+    });
+
+    render(<App />);
+    await screen.findByTestId('market-research');
+    expect(screen.getAllByTestId('research-row')).toHaveLength(1);
+
+    fireEvent.change(screen.getByLabelText(/guild wars 2 item id/i), { target: { value: '46731' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add to research watchlist' }));
+
+    await waitFor(() => expect(screen.getAllByTestId('research-row')).toHaveLength(2));
+    expect(screen.getByText('Item #19721')).toBeVisible();
+    expect(screen.getByText('Item #46731')).toBeVisible();
+    expect(screen.getByText('2 research items; 2 of 25 tracked')).toBeVisible();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0]);
+    await waitFor(() => expect(screen.getAllByTestId('research-row')).toHaveLength(1));
+    expect(screen.queryByText('Item #19721')).toBeNull();
   });
 });
 

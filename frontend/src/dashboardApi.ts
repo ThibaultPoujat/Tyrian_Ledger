@@ -48,6 +48,39 @@ export interface OperationHistoryStatistics {
   lifecycle: OperationLifecycleStatistics;
 }
 
+export interface MarketResearchCoverage {
+  observationCount: number;
+  firstCapturedAtUtc: string | null;
+  lastCapturedAtUtc: string | null;
+}
+
+export interface MarketResearchPriceStatistics {
+  observationCount: number;
+  tenthPercentileCopper: number | null;
+  medianCopper: number | null;
+  ninetiethPercentileCopper: number | null;
+}
+
+export interface MarketResearchLiquidity {
+  observationCount: number;
+  coefficientOfVariationPercent: number | null;
+}
+
+export interface MarketResearchWatchlistItem {
+  itemId: number;
+  coverage: MarketResearchCoverage;
+  buyPrices: MarketResearchPriceStatistics;
+  sellPrices: MarketResearchPriceStatistics;
+  buyLiquidity: MarketResearchLiquidity;
+  sellLiquidity: MarketResearchLiquidity;
+}
+
+export interface MarketResearchWatchlist {
+  maximumWatchlistItemCount: number;
+  trackedItemCount: number;
+  items: MarketResearchWatchlistItem[];
+}
+
 export interface DashboardOpportunity {
   itemId: number;
   label: string;
@@ -186,6 +219,40 @@ export async function loadOperationHistoryStatistics(signal: AbortSignal): Promi
   return payload;
 }
 
+export async function loadMarketResearchWatchlist(signal: AbortSignal): Promise<MarketResearchWatchlist> {
+  const response = await fetch('/api/market-research/watchlist', { signal });
+  if (!response.ok) {
+    throw new Error(`Market research request failed with status ${response.status}.`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isMarketResearchWatchlist(payload)) {
+    throw new Error('Market research response was not in the expected format.');
+  }
+
+  return payload;
+}
+
+export async function addMarketResearchWatchlistItem(itemId: number): Promise<void> {
+  const response = await fetch('/api/market-research/watchlist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ itemId }),
+  });
+  if (!response.ok) {
+    throw new Error(`Adding the research item failed with status ${response.status}.`);
+  }
+}
+
+export async function removeMarketResearchWatchlistItem(itemId: number): Promise<void> {
+  const response = await fetch(`/api/market-research/watchlist/${encodeURIComponent(itemId)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error(`Removing the research item failed with status ${response.status}.`);
+  }
+}
+
 export async function clearAccountSnapshotData(): Promise<void> {
   const response = await fetch('/api/account/snapshots', { method: 'DELETE' });
   if (!response.ok) {
@@ -269,6 +336,50 @@ function isOperationHistoryStatistics(value: unknown): value is OperationHistory
     && isOperationProfitStatistics(value.modeledNetProfit)
     && isOperationProfitStatistics(value.realizedProfit)
     && isOperationLifecycleStatistics(value.lifecycle);
+}
+
+function isMarketResearchWatchlist(value: unknown): value is MarketResearchWatchlist {
+  return isRecord(value)
+    && isNonNegativeSafeInteger(value.maximumWatchlistItemCount)
+    && isNonNegativeSafeInteger(value.trackedItemCount)
+    && value.trackedItemCount <= value.maximumWatchlistItemCount
+    && Array.isArray(value.items)
+    && value.items.length <= value.trackedItemCount
+    && value.items.every(isMarketResearchWatchlistItem);
+}
+
+function isMarketResearchWatchlistItem(value: unknown): value is MarketResearchWatchlistItem {
+  return isRecord(value)
+    && isPositiveSafeInteger(value.itemId)
+    && isMarketResearchCoverage(value.coverage)
+    && isMarketResearchPriceStatistics(value.buyPrices)
+    && isMarketResearchPriceStatistics(value.sellPrices)
+    && isMarketResearchLiquidity(value.buyLiquidity)
+    && isMarketResearchLiquidity(value.sellLiquidity);
+}
+
+function isMarketResearchCoverage(value: unknown): value is MarketResearchCoverage {
+  return isRecord(value)
+    && isNonNegativeSafeInteger(value.observationCount)
+    && isNullableString(value.firstCapturedAtUtc)
+    && isNullableString(value.lastCapturedAtUtc)
+    && (value.observationCount === 0
+      ? value.firstCapturedAtUtc === null && value.lastCapturedAtUtc === null
+      : typeof value.firstCapturedAtUtc === 'string' && typeof value.lastCapturedAtUtc === 'string');
+}
+
+function isMarketResearchPriceStatistics(value: unknown): value is MarketResearchPriceStatistics {
+  return isRecord(value)
+    && isNonNegativeSafeInteger(value.observationCount)
+    && isNullableSafeInteger(value.tenthPercentileCopper)
+    && isNullableSafeInteger(value.medianCopper)
+    && isNullableSafeInteger(value.ninetiethPercentileCopper);
+}
+
+function isMarketResearchLiquidity(value: unknown): value is MarketResearchLiquidity {
+  return isRecord(value)
+    && isNonNegativeSafeInteger(value.observationCount)
+    && isNullableNonNegativeNumber(value.coefficientOfVariationPercent);
 }
 
 function isOperationProfitStatistics(value: unknown): value is OperationProfitStatistics {
@@ -385,4 +496,12 @@ function isNullableString(value: unknown): value is string | null {
 
 function isNonNegativeSafeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function isNullableNonNegativeNumber(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isFinite(value) && value >= 0);
 }
