@@ -19,6 +19,8 @@ test('market dashboard saves local preferences and filters ranked sample opportu
 
   await expect(page.getByRole('heading', { name: 'Market opportunities' })).toBeVisible();
   await expect(page.getByText('Sample data', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('personal-history')).toContainText('No local operation history yet.');
+  await expect(page.getByTestId('personal-history')).toContainText('unknown lifetime history is not backfilled');
 
   const opportunityRows = page.getByTestId('opportunity-row');
   await expect(opportunityRows).toHaveCount(5);

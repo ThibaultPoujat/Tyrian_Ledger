@@ -5,6 +5,7 @@ import type {
   AccountAccessStatus,
   DashboardOpportunitiesResponse,
   DashboardOpportunityDetail,
+  OperationHistoryStatistics,
   UserSessionPreferences,
 } from './dashboardApi';
 
@@ -155,6 +156,44 @@ const defaultPreferences: UserSessionPreferences = {
   riskPreference: 'all',
   strategyPreference: 'all',
   allocationPercent: 100,
+};
+
+const populatedHistoryStatistics: OperationHistoryStatistics = {
+  operationCount: 4,
+  firstRecordedAtUtc: '2026-08-28T08:00:00Z',
+  lastRecordedAtUtc: '2026-08-28T08:08:00Z',
+  modeledNetProfit: {
+    eligibleOperationCount: 2,
+    totalCopper: 21,
+  },
+  realizedProfit: {
+    eligibleOperationCount: 2,
+    totalCopper: 40,
+  },
+  lifecycle: {
+    completedOperationCount: 1,
+    cancelledOperationCount: 1,
+    terminalOperationCount: 2,
+  },
+};
+
+const emptyHistoryStatistics: OperationHistoryStatistics = {
+  operationCount: 0,
+  firstRecordedAtUtc: null,
+  lastRecordedAtUtc: null,
+  modeledNetProfit: {
+    eligibleOperationCount: 0,
+    totalCopper: null,
+  },
+  realizedProfit: {
+    eligibleOperationCount: 0,
+    totalCopper: null,
+  },
+  lifecycle: {
+    completedOperationCount: 0,
+    cancelledOperationCount: 0,
+    terminalOperationCount: 0,
+  },
 };
 
 const missingCraftingPermissionAccess: AccountAccessStatus = {
@@ -342,6 +381,68 @@ describe('account access status', () => {
     expect(screen.getByText(/account materials enabled/i)).toBeVisible();
     expect(screen.getByText(/account crafting disabled — missing characters, unlocks/i)).toBeVisible();
     expect(document.querySelector('img')).toBeNull();
+  });
+});
+
+describe('personal history statistics', () => {
+  it('renders evidence-scoped modeled and realized statistics with exact ratios', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => Promise.resolve(successfulResponse(
+      getFetchUrl(input) === '/api/dashboard/opportunities'
+        ? dashboardResponse
+        : getFetchUrl(input) === '/api/history/statistics'
+          ? populatedHistoryStatistics
+          : defaultPreferences,
+    )));
+
+    render(<App />);
+
+    const history = await screen.findByTestId('personal-history');
+    expect(history).toHaveTextContent('Recorded locally from 2026-08-28T08:00:00.000Z through 2026-08-28T08:08:00.000Z.');
+    expect(history).toHaveTextContent('Saved operations4 recorded');
+    expect(history).toHaveTextContent('Recorded realized profit0g 0s 40c');
+    expect(history).toHaveTextContent('Average recorded realized profit0g 0s 40c ÷ 2 eligible operations');
+    expect(history).toHaveTextContent('Average modeled profit0g 0s 21c ÷ 2 eligible operations');
+    expect(history).toHaveTextContent('Lifecycle completion rate1 completed ÷ 2 terminal operations');
+    expect(history).toHaveTextContent('not guarantees');
+  });
+
+  it('explains that an empty local history does not reconstruct lifetime results', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => Promise.resolve(successfulResponse(
+      getFetchUrl(input) === '/api/dashboard/opportunities'
+        ? dashboardResponse
+        : getFetchUrl(input) === '/api/history/statistics'
+          ? emptyHistoryStatistics
+          : defaultPreferences,
+    )));
+
+    render(<App />);
+
+    const history = await screen.findByTestId('personal-history');
+    expect(history).toHaveTextContent('No local operation history yet.');
+    expect(history).toHaveTextContent('unknown lifetime history is not backfilled');
+  });
+
+  it('does not turn unavailable evidence into zero-valued metrics', async () => {
+    const insufficientHistory: OperationHistoryStatistics = {
+      ...emptyHistoryStatistics,
+      operationCount: 1,
+      firstRecordedAtUtc: '2026-08-28T08:00:00Z',
+      lastRecordedAtUtc: '2026-08-28T08:01:00Z',
+    };
+    fetchMock.mockImplementation((input: RequestInfo | URL) => Promise.resolve(successfulResponse(
+      getFetchUrl(input) === '/api/dashboard/opportunities'
+        ? dashboardResponse
+        : getFetchUrl(input) === '/api/history/statistics'
+          ? insufficientHistory
+          : defaultPreferences,
+    )));
+
+    render(<App />);
+
+    const history = await screen.findByTestId('personal-history');
+    expect(history).toHaveTextContent('No recorded sales yet.');
+    expect(history).toHaveTextContent('No stored modeled financial snapshots.');
+    expect(history).toHaveTextContent('No completed or cancelled operations yet.');
   });
 });
 
