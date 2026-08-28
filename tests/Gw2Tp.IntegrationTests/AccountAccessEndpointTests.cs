@@ -40,6 +40,30 @@ public sealed class AccountAccessEndpointTests
         Assert.DoesNotContain("credential", responseBody, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(AccountAccessValidationStatus.NotConfigured, "notconfigured")]
+    [InlineData(AccountAccessValidationStatus.Valid, "valid")]
+    [InlineData(AccountAccessValidationStatus.Invalid, "invalid")]
+    [InlineData(AccountAccessValidationStatus.Unavailable, "unavailable")]
+    public async Task Account_access_endpoint_uses_stable_validation_status_literals(
+        AccountAccessValidationStatus validationStatus,
+        string expectedWireStatus)
+    {
+        using var factory = CreateFactory(new AccountAccessStatus(
+            validationStatus,
+            null,
+            null,
+            [],
+            []));
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/account/access");
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal(expectedWireStatus, document.RootElement.GetProperty("validationStatus").GetString());
+    }
+
     private static WebApplicationFactory<Program> CreateFactory(AccountAccessStatus status) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {

@@ -82,7 +82,7 @@ internal sealed record AccountAccessResponse(
         ArgumentNullException.ThrowIfNull(status);
 
         return new AccountAccessResponse(
-            status.ValidationStatus.ToString().ToLowerInvariant(),
+            ToWireValidationStatus(status.ValidationStatus),
             status.KeyId,
             status.KeyName,
             status.Permissions,
@@ -91,6 +91,15 @@ internal sealed record AccountAccessResponse(
                 feature.IsAvailable,
                 feature.MissingPermissions)).ToArray());
     }
+
+    private static string ToWireValidationStatus(AccountAccessValidationStatus status) => status switch
+    {
+        AccountAccessValidationStatus.NotConfigured => "notconfigured",
+        AccountAccessValidationStatus.Valid => "valid",
+        AccountAccessValidationStatus.Invalid => "invalid",
+        AccountAccessValidationStatus.Unavailable => "unavailable",
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown account access validation status."),
+    };
 }
 
 internal sealed record AccountFeatureAccessResponse(
