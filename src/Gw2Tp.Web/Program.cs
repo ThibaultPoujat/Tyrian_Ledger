@@ -8,6 +8,7 @@ using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.Preferences;
 using Gw2Tp.Infrastructure.Secrets;
 using Gw2Tp.Web;
+using Gw2Tp.Web.AccountSnapshots;
 using Gw2Tp.Web.Dashboard;
 using Gw2Tp.Web.History;
 using Gw2Tp.Web.Preferences;
@@ -48,6 +49,7 @@ app.MapGet("/api/account/access", async (
 });
 app.MapGet("/api/diagnostics/market-data", (IMarketDataDiagnostics diagnostics) =>
     Results.Ok(MarketDataDiagnosticsResponse.From(diagnostics.GetSnapshot())));
+app.MapAccountSnapshotEndpoints();
 app.MapUserSessionPreferencesEndpoints();
 app.MapGet("/api/history/statistics", async (
     IOperationHistoryStore operationHistoryStore,

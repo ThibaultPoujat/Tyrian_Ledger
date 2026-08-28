@@ -17,7 +17,7 @@ namespace Gw2Tp.Infrastructure.AccountSnapshots;
 /// Typed, read-only ingestion for minimized authenticated account snapshots.
 /// Account payloads are mapped before caching and are never persisted.
 /// </summary>
-internal sealed class Gw2AccountSnapshotService : IAccountSnapshotService
+internal sealed class Gw2AccountSnapshotService : IAccountSnapshotService, IAccountSnapshotCacheClearer
 {
     private const string OwnedItemsFeature = "account-materials";
     private const string CraftingFeature = "account-crafting";
@@ -28,8 +28,9 @@ internal sealed class Gw2AccountSnapshotService : IAccountSnapshotService
     private readonly IGw2RequestScheduler _requestScheduler;
     private readonly IGw2ApiCredentialReader _credentialReader;
     private readonly IAccountAccessService _accountAccessService;
-    private readonly ExpiringSnapshotCache<AccountOwnedItemsSnapshot> _ownedItemsCache;
-    private readonly ExpiringSnapshotCache<AccountCraftingSnapshot> _craftingCache;
+    private readonly TimeSpan _snapshotCacheTimeToLive;
+    private readonly IClock _clock;
+    private SnapshotCaches _snapshotCaches;
 
     public Gw2AccountSnapshotService(
         IHttpClientFactory httpClientFactory,
@@ -93,36 +94,48 @@ internal sealed class Gw2AccountSnapshotService : IAccountSnapshotService
         _requestScheduler = requestScheduler;
         _credentialReader = credentialReader;
         _accountAccessService = accountAccessService;
-        var timeToLive = TimeSpan.FromSeconds(options.TimeToLiveSeconds);
-        _ownedItemsCache = new ExpiringSnapshotCache<AccountOwnedItemsSnapshot>(
-            OwnedItemsFeature,
-            timeToLive,
-            clock);
-        _craftingCache = new ExpiringSnapshotCache<AccountCraftingSnapshot>(
-            CraftingFeature,
-            timeToLive,
-            clock);
+        _snapshotCacheTimeToLive = TimeSpan.FromSeconds(options.TimeToLiveSeconds);
+        _clock = clock;
+        _snapshotCaches = CreateSnapshotCaches();
     }
 
     public Task<AccountSnapshotLoadResult<AccountOwnedItemsSnapshot>> GetOwnedItemsAsync(
         AccountSnapshotRefreshMode refreshMode = AccountSnapshotRefreshMode.UseCache,
-        CancellationToken cancellationToken = default) =>
-        GetFeatureAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var caches = Volatile.Read(ref _snapshotCaches);
+        return GetFeatureAsync(
             OwnedItemsFeature,
             refreshMode,
-            _ownedItemsCache,
+            caches.OwnedItems,
             LoadOwnedItemsAsync,
             cancellationToken);
+    }
 
     public Task<AccountSnapshotLoadResult<AccountCraftingSnapshot>> GetCraftingAsync(
         AccountSnapshotRefreshMode refreshMode = AccountSnapshotRefreshMode.UseCache,
-        CancellationToken cancellationToken = default) =>
-        GetFeatureAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var caches = Volatile.Read(ref _snapshotCaches);
+        return GetFeatureAsync(
             CraftingFeature,
             refreshMode,
-            _craftingCache,
+            caches.Crafting,
             LoadCraftingAsync,
             cancellationToken);
+    }
+
+    public void ClearCachedSnapshots() => Interlocked.Exchange(ref _snapshotCaches, CreateSnapshotCaches());
+
+    private SnapshotCaches CreateSnapshotCaches() => new(
+        new ExpiringSnapshotCache<AccountOwnedItemsSnapshot>(
+            OwnedItemsFeature,
+            _snapshotCacheTimeToLive,
+            _clock),
+        new ExpiringSnapshotCache<AccountCraftingSnapshot>(
+            CraftingFeature,
+            _snapshotCacheTimeToLive,
+            _clock));
 
     private async Task<AccountSnapshotLoadResult<TSnapshot>> GetFeatureAsync<TSnapshot>(
         string featureName,
@@ -689,6 +702,10 @@ internal sealed class Gw2AccountSnapshotService : IAccountSnapshotService
 
         private sealed record CacheEntry(AccountSnapshotLoadResult<TSnapshot> Result);
     }
+
+    private sealed record SnapshotCaches(
+        ExpiringSnapshotCache<AccountOwnedItemsSnapshot> OwnedItems,
+        ExpiringSnapshotCache<AccountCraftingSnapshot> Crafting);
 
     private sealed record AccountSnapshotCacheKey(string ProfileId, string FeatureName);
 }

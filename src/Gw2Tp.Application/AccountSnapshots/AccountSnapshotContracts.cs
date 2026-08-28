@@ -100,3 +100,13 @@ public interface IAccountSnapshotService
         AccountSnapshotRefreshMode refreshMode = AccountSnapshotRefreshMode.UseCache,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Clears minimized account snapshots retained only for the current local
+/// application process. This operation never changes persistent history,
+/// preferences, public market cache data, or an operating-system credential.
+/// </summary>
+public interface IAccountSnapshotCacheClearer
+{
+    void ClearCachedSnapshots();
+}

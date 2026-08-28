@@ -186,6 +186,13 @@ export async function loadOperationHistoryStatistics(signal: AbortSignal): Promi
   return payload;
 }
 
+export async function clearAccountSnapshotData(): Promise<void> {
+  const response = await fetch('/api/account/snapshots', { method: 'DELETE' });
+  if (!response.ok) {
+    throw new Error(`Account snapshot clearing failed with status ${response.status}.`);
+  }
+}
+
 export async function saveUserSessionPreferences(
   preferences: UserSessionPreferences,
 ): Promise<UserSessionPreferences> {
