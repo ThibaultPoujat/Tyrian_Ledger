@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  loadAccountAccessStatus,
   loadDashboardOpportunities,
   loadUserSessionPreferences,
   saveUserSessionPreferences,
   type DashboardEffortCategory,
   type DashboardOpportunitiesResponse,
   type DashboardOpportunity,
+  type AccountAccessStatus,
   type UserSessionPreferences,
 } from './dashboardApi';
 import './App.css';
@@ -14,6 +16,11 @@ type DashboardState =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'ready'; response: DashboardOpportunitiesResponse };
+
+type AccountAccessState =
+  | { kind: 'loading' }
+  | { kind: 'error' }
+  | { kind: 'ready'; status: AccountAccessStatus };
 
 interface DashboardFilters {
   freshness: 'all' | 'current' | 'stale';
@@ -43,6 +50,7 @@ const initialPreferenceForm: PreferenceForm = {
 
 export default function App() {
   const [state, setState] = useState<DashboardState>({ kind: 'loading' });
+  const [accountAccess, setAccountAccess] = useState<AccountAccessState>({ kind: 'loading' });
   const [requestVersion, setRequestVersion] = useState(0);
   const [filters, setFilters] = useState<DashboardFilters>(initialFilters);
   const [effortCategory, setEffortCategory] = useState<DashboardEffortFilter>('all');
@@ -76,6 +84,25 @@ export default function App() {
 
     return () => controller.abort();
   }, [effortCategory, requestVersion]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setAccountAccess({ kind: 'loading' });
+
+    void loadAccountAccessStatus(controller.signal)
+      .then((status) => {
+        if (!controller.signal.aborted) {
+          setAccountAccess({ kind: 'ready', status });
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setAccountAccess({ kind: 'error' });
+        }
+      });
+
+    return () => controller.abort();
+  }, [requestVersion]);
 
   const opportunities = state.kind === 'ready' ? state.response.opportunities : [];
   const filteredOpportunities = useMemo(
@@ -120,6 +147,8 @@ export default function App() {
             <strong>Sample data</strong>
             <p>{state.response.sourceDescription}</p>
           </section>
+
+          <AccountAccessPanel accountAccess={accountAccess} />
 
           <section className="dashboard-layout" aria-label="Opportunity dashboard">
             <aside className="filter-panel" aria-labelledby="preferences-title">
@@ -353,6 +382,65 @@ export default function App() {
       )}
     </main>
   );
+}
+
+function AccountAccessPanel({ accountAccess }: { accountAccess: AccountAccessState }) {
+  if (accountAccess.kind === 'loading') {
+    return (
+      <section className="account-access" aria-live="polite" aria-label="Account access status">
+        <strong>Account access</strong>
+        <p>Checking the locally configured API key.</p>
+      </section>
+    );
+  }
+
+  if (accountAccess.kind === 'error') {
+    return (
+      <section className="account-access account-access-error" aria-label="Account access status" role="status">
+        <strong>Account access unavailable</strong>
+        <p>Account-aware features remain disabled. Market analysis is still available.</p>
+      </section>
+    );
+  }
+
+  const { status } = accountAccess;
+  if (status.validationStatus !== 'valid') {
+    const message = status.validationStatus === 'notconfigured'
+      ? 'No locally configured API key was found.'
+      : status.validationStatus === 'invalid'
+        ? 'The locally configured API key could not be validated.'
+        : 'The configured API key could not be checked right now.';
+
+    return (
+      <section className="account-access account-access-error" aria-label="Account access status" role="status">
+        <strong>Account-aware features disabled</strong>
+        <p>{message}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="account-access" aria-label="Account access status">
+      <div>
+        <strong>Account access verified</strong>
+        {status.keyName !== null && <p>Key name: <output>{status.keyName}</output></p>}
+        <p>Granted permissions: {status.permissions.join(', ') || 'none'}.</p>
+      </div>
+      <ul>
+        {status.features.map((feature) => (
+          <li key={feature.feature}>
+            {feature.isAvailable
+              ? `${formatAccountFeature(feature.feature)} enabled`
+              : `${formatAccountFeature(feature.feature)} disabled — missing ${feature.missingPermissions.join(', ')}.`}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function formatAccountFeature(feature: AccountAccessStatus['features'][number]['feature']): string {
+  return feature === 'account-materials' ? 'Account materials' : 'Account crafting';
 }
 
 function OpportunityRow({

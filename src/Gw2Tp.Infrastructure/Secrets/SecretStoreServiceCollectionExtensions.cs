@@ -16,6 +16,7 @@ public static class SecretStoreServiceCollectionExtensions
 
         services.AddSingleton<IPlatformSecretReader>(_ =>
             PlatformSecretReaderFactory.CreateForCurrentOperatingSystem());
+        services.AddSingleton<PlatformGw2ApiCredentialReader>();
         services.AddSingleton<OperatingSystemSecretStore>(serviceProvider =>
             new OperatingSystemSecretStore(
                 serviceProvider.GetRequiredService<IPlatformSecretReader>(),
@@ -23,11 +24,20 @@ public static class SecretStoreServiceCollectionExtensions
 
         if (!environment.IsDevelopment() && !environment.IsEnvironment("Testing"))
         {
+            services.AddSingleton<IGw2ApiCredentialReader>(serviceProvider =>
+                serviceProvider.GetRequiredService<PlatformGw2ApiCredentialReader>());
             services.AddSingleton<ISecretStore>(serviceProvider =>
                 serviceProvider.GetRequiredService<OperatingSystemSecretStore>());
             return services;
         }
 
+        services.AddSingleton<EnvironmentGw2ApiCredentialReader>();
+        services.AddSingleton<PreferredGw2ApiCredentialReader>(serviceProvider =>
+            new PreferredGw2ApiCredentialReader(
+                serviceProvider.GetRequiredService<EnvironmentGw2ApiCredentialReader>(),
+                serviceProvider.GetRequiredService<PlatformGw2ApiCredentialReader>()));
+        services.AddSingleton<IGw2ApiCredentialReader>(serviceProvider =>
+            serviceProvider.GetRequiredService<PreferredGw2ApiCredentialReader>());
         services.AddSingleton<EnvironmentSecretStore>();
         services.AddSingleton<ISecretStore>(serviceProvider =>
             new DevelopmentSecretStore(

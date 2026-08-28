@@ -1,0 +1,5 @@
+{
+  "id": "synthetic-token-id-fragment",
+  "name": "Local crafting key",
+  "permissions": ["account", "characters", "inventories", "unlocks"]
+}
