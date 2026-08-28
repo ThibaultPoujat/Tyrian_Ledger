@@ -1,7 +1,9 @@
 using Gw2Tp.Application.AccountAccess;
+using Gw2Tp.Application.AccountSnapshots;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Time;
 using Gw2Tp.Infrastructure.AccountAccess;
+using Gw2Tp.Infrastructure.AccountSnapshots;
 using Gw2Tp.Infrastructure.Secrets;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +25,7 @@ public static class Gw2ApiServiceCollectionExtensions
 
         services.AddSingleton<IValidateOptions<Gw2ApiSchedulerOptions>, Gw2ApiSchedulerOptionsValidator>();
         services.AddSingleton<IValidateOptions<Gw2MarketCacheOptions>, Gw2MarketCacheOptionsValidator>();
+        services.AddSingleton<IValidateOptions<Gw2AccountSnapshotCacheOptions>, Gw2AccountSnapshotCacheOptionsValidator>();
         services
             .AddOptions<Gw2ApiSchedulerOptions>()
             .Bind(configuration.GetSection(Gw2ApiSchedulerOptions.ConfigurationSectionName))
@@ -32,6 +35,12 @@ public static class Gw2ApiServiceCollectionExtensions
             .Bind(configuration
                 .GetSection(Gw2ApiSchedulerOptions.ConfigurationSectionName)
                 .GetSection(Gw2MarketCacheOptions.ConfigurationSectionName))
+            .ValidateOnStart();
+        services
+            .AddOptions<Gw2AccountSnapshotCacheOptions>()
+            .Bind(configuration
+                .GetSection(Gw2ApiSchedulerOptions.ConfigurationSectionName)
+                .GetSection(Gw2AccountSnapshotCacheOptions.ConfigurationSectionName))
             .ValidateOnStart();
         services.AddSingleton<IGw2RequestScheduler, Gw2RequestScheduler>();
         services.AddSingleton<IClock, SystemClock>();
@@ -57,6 +66,7 @@ public static class Gw2ApiServiceCollectionExtensions
             serviceProvider.GetRequiredService<IMarketDataDiagnosticsRecorder>()));
         services.AddSingleton<IGw2ApiClient, CachingGw2ApiClient>();
         services.AddSingleton<IAccountAccessService, Gw2AccountAccessService>();
+        services.AddSingleton<IAccountSnapshotService, Gw2AccountSnapshotService>();
 
         return services;
     }
