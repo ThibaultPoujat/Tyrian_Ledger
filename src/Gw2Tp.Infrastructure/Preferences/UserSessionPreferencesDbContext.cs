@@ -12,6 +12,10 @@ public sealed class UserSessionPreferencesDbContext : DbContext
 
     internal DbSet<UserSessionPreferencesEntity> UserSessionPreferences => Set<UserSessionPreferencesEntity>();
 
+    internal DbSet<OperationHistoryEntity> Operations => Set<OperationHistoryEntity>();
+
+    internal DbSet<OperationHistoryScenarioEntity> OperationScenarios => Set<OperationHistoryScenarioEntity>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<UserSessionPreferencesEntity>(entity =>
@@ -39,7 +43,74 @@ public sealed class UserSessionPreferencesDbContext : DbContext
             entity.Property(preferences => preferences.RiskPreference).HasMaxLength(16).IsRequired();
             entity.Property(preferences => preferences.StrategyPreference).HasMaxLength(16).IsRequired();
         });
+
+        modelBuilder.Entity<OperationHistoryEntity>(entity =>
+        {
+            entity.ToTable("Operations", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_Operations_Status",
+                    "Status IN ('planned', 'in-progress', 'completed', 'cancelled')");
+            });
+            entity.HasKey(operation => operation.Id);
+            entity.Property(operation => operation.CalculationVersionId)
+                .HasMaxLength(128)
+                .IsRequired();
+            entity.Property(operation => operation.ConfigurationVersionId)
+                .HasMaxLength(128)
+                .IsRequired();
+            entity.Property(operation => operation.Status)
+                .HasMaxLength(16)
+                .IsRequired();
+            entity.HasOne(operation => operation.Scenario)
+                .WithOne(scenario => scenario.Operation)
+                .HasForeignKey<OperationHistoryScenarioEntity>(scenario => scenario.OperationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<OperationHistoryScenarioEntity>(entity =>
+        {
+            entity.ToTable("OperationScenarios", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_OperationScenarios_Kind",
+                    "Kind IN ('market-flip', 'crafting')");
+            });
+            entity.HasKey(scenario => scenario.OperationId);
+            entity.Property(scenario => scenario.Kind)
+                .HasMaxLength(16)
+                .IsRequired();
+            entity.Property(scenario => scenario.PayloadJson).IsRequired();
+        });
     }
+}
+
+internal sealed class OperationHistoryEntity
+{
+    public Guid Id { get; set; }
+
+    public DateTimeOffset CreatedAtUtc { get; set; }
+
+    public DateTimeOffset LastModifiedAtUtc { get; set; }
+
+    public string Status { get; set; } = null!;
+
+    public string CalculationVersionId { get; set; } = null!;
+
+    public string ConfigurationVersionId { get; set; } = null!;
+
+    public OperationHistoryScenarioEntity Scenario { get; set; } = null!;
+}
+
+internal sealed class OperationHistoryScenarioEntity
+{
+    public Guid OperationId { get; set; }
+
+    public string Kind { get; set; } = null!;
+
+    public string PayloadJson { get; set; } = null!;
+
+    public OperationHistoryEntity Operation { get; set; } = null!;
 }
 
 internal sealed class UserSessionPreferencesEntity

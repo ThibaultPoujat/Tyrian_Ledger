@@ -1,0 +1,19 @@
+namespace Gw2Tp.Application.Operations;
+
+/// <summary>
+/// Local persistence for saved operation calculation contexts.
+/// </summary>
+public interface IOperationHistoryStore
+{
+    Task CreateAsync(OperationRecord operation, CancellationToken cancellationToken);
+
+    Task<OperationRecord?> GetAsync(Guid operationId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<OperationRecord>> ListAsync(CancellationToken cancellationToken);
+
+    Task UpdateStatusAsync(
+        Guid operationId,
+        OperationStatus status,
+        DateTimeOffset lastModifiedAtUtc,
+        CancellationToken cancellationToken);
+}
