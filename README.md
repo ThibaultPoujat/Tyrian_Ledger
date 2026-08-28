@@ -128,6 +128,13 @@ hourly top-of-book samples and daily full order-book samples; lower-interest
 background items use daily and weekly samples respectively. Snapshot history is
 append-only and retained locally until the user removes the database.
 
+The local collector batches due IDs into at most one prices request and one
+listings request per cycle, both through the shared GW2 gateway. It rechecks
+the opt-in watchlist every minute and pauses for five minutes after a terminal
+rate-limit result. These local safeguards are configurable under
+`MarketHistory:Collection`; they supplement, and never replace, the gateway's
+configurable request scheduler.
+
 For 25 watchlist items, a 365-day planning year yields 219,000 top-of-book
 samples and 9,125 order-book samples. Assuming an average of 40 stored levels
 per order book and allowing 10% for indexes and SQLite overhead, plan for about
