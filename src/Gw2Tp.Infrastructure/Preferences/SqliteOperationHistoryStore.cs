@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Gw2Tp.Analytics.Reconciliation;
 using Gw2Tp.Application.Operations;
 using Microsoft.EntityFrameworkCore;
 
@@ -101,6 +102,40 @@ internal sealed class SqliteOperationHistoryStore : IOperationHistoryStore
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task UpdateActualOutcomeAsync(
+        Guid operationId,
+        OperationActualOutcome actualOutcome,
+        DateTimeOffset lastModifiedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        if (operationId == Guid.Empty)
+        {
+            throw new ArgumentException("An operation ID is required.", nameof(operationId));
+        }
+
+        ArgumentNullException.ThrowIfNull(actualOutcome);
+
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await dbContext.Operations
+            .SingleOrDefaultAsync(operation => operation.Id == operationId, cancellationToken);
+        if (entity is null)
+        {
+            throw new KeyNotFoundException("The requested operation does not exist.");
+        }
+
+        var normalizedLastModifiedAtUtc = lastModifiedAtUtc.ToUniversalTime();
+        if (normalizedLastModifiedAtUtc < entity.LastModifiedAtUtc)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(lastModifiedAtUtc),
+                "The last-modified timestamp cannot precede the stored last-modified timestamp.");
+        }
+
+        entity.ActualOutcomeJson = SerializeActualOutcome(actualOutcome);
+        entity.LastModifiedAtUtc = normalizedLastModifiedAtUtc;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private static OperationHistoryEntity ToEntity(OperationRecord operation) => new()
     {
         Id = operation.Id,
@@ -110,6 +145,7 @@ internal sealed class SqliteOperationHistoryStore : IOperationHistoryStore
         Status = ToStorageValue(operation.Status),
         CalculationVersionId = operation.CalculationVersionId,
         ConfigurationVersionId = operation.ConfigurationVersionId,
+        ActualOutcomeJson = operation.ActualOutcome is null ? null : SerializeActualOutcome(operation.ActualOutcome),
         Scenario = new OperationHistoryScenarioEntity
         {
             OperationId = operation.Id,
@@ -128,7 +164,8 @@ internal sealed class SqliteOperationHistoryStore : IOperationHistoryStore
             ParseStatus(entity.Status),
             entity.CalculationVersionId,
             entity.ConfigurationVersionId,
-            DeserializeScenario(scenario));
+            DeserializeScenario(scenario),
+            DeserializeActualOutcome(entity.ActualOutcomeJson));
     }
 
     private static string SerializeScenario(OperationScenarioSnapshot scenario) => scenario switch
@@ -146,6 +183,15 @@ internal sealed class SqliteOperationHistoryStore : IOperationHistoryStore
             ?? throw new InvalidOperationException("The stored crafting scenario is invalid."),
         _ => throw new InvalidOperationException("The stored operation scenario kind is unsupported."),
     };
+
+    private static string SerializeActualOutcome(OperationActualOutcome actualOutcome) =>
+        JsonSerializer.Serialize(actualOutcome, JsonOptions);
+
+    private static OperationActualOutcome? DeserializeActualOutcome(string? actualOutcomeJson) =>
+        actualOutcomeJson is null
+            ? null
+            : JsonSerializer.Deserialize<OperationActualOutcome>(actualOutcomeJson, JsonOptions)
+                ?? throw new InvalidOperationException("The stored operation actual outcome is invalid.");
 
     private static OperationStatus ParseStatus(string value) => value switch
     {

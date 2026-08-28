@@ -67,6 +67,7 @@ public sealed class Gw2RequestSchedulerTests
         Assert.Equal(1, firstSendCount);
 
         responseSource.SetResult(new Gw2ScheduledResult<int>(1));
+        await Task.Yield();
 
         var nextRequest = await scheduler.ScheduleAsync<int>(
             new Gw2RequestKey("prices:900001"),

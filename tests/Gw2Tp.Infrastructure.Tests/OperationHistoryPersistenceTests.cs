@@ -3,7 +3,9 @@ using System.Text.Json;
 using Gw2Tp.Analytics.Crafting;
 using Gw2Tp.Analytics.FlipOpportunities;
 using Gw2Tp.Analytics.OwnedItems;
+using Gw2Tp.Analytics.Reconciliation;
 using Gw2Tp.Application.Operations;
+using Gw2Tp.Domain.Finance;
 using Gw2Tp.Infrastructure.Preferences;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -33,7 +35,8 @@ public sealed class OperationHistoryPersistenceTests
             OperationStatus.Planned,
             "flip-calculation-v1",
             "flip-config-v1",
-            CreateMarketFlipScenario());
+            CreateMarketFlipScenario(),
+            CreateActualOutcome());
         var craftingOperation = new OperationRecord(
             Guid.Parse("0e15e7d9-86ee-4aa2-9b73-6cfe60be7eb1"),
             createdAtUtc.AddMinutes(1),
@@ -55,12 +58,16 @@ public sealed class OperationHistoryPersistenceTests
         Assert.Equal(55, marketScenario.Analysis.Financials!.NetProfitCopper);
         Assert.Equal(4, marketScenario.Score!.Weights.NetProfit);
         Assert.Single(marketScenario.Analysis.Acquisition!.Fills);
+        Assert.Equal(2, storedMarket.ActualOutcome!.AcquisitionLots.Single().Quantity);
+        Assert.Equal(30, storedMarket.ActualOutcome.SaleSettlements.Single().ExchangeFee.Copper);
+        Assert.Equal(new Money(55), new OperationReconciliationCalculator().Calculate(storedMarket.ActualOutcome).RealizedProfit);
 
         var craftingScenario = Assert.IsType<CraftingOperationScenarioSnapshot>(storedCrafting!.Scenario);
         Assert.Equal(42, craftingScenario.SelectedPath.RecipeId);
         Assert.Equal(40, Assert.Single(craftingScenario.IngredientCosts).SelectedStrategy!.TotalEconomicCostCopper);
         Assert.Equal(45, craftingScenario.ModeledFinancials!.NetProfitCopper);
         Assert.Single(craftingScenario.SelectedPath.Ingredients);
+        Assert.Null(storedCrafting.ActualOutcome);
         Assert.Equal([marketOperation.Id, craftingOperation.Id], listedOperations.Select(operation => operation.Id));
         Assert.Contains("\"kind\":\"acquisition\"", await ReadScenarioPayloadAsync(databasePath, marketOperation.Id));
 
@@ -80,6 +87,19 @@ public sealed class OperationHistoryPersistenceTests
         var completedOperation = await store.GetAsync(craftingOperation.Id, CancellationToken.None);
         Assert.Equal(OperationStatus.Completed, completedOperation!.Status);
         Assert.Equal(completedAtUtc, completedOperation.LastModifiedAtUtc);
+
+        var updatedActualOutcome = CreateActualOutcome(listingFeeCopper: 1, exchangeFeeCopper: 2);
+        var outcomeUpdatedAtUtc = completedAtUtc.AddMinutes(1);
+        await store.UpdateActualOutcomeAsync(
+            craftingOperation.Id,
+            updatedActualOutcome,
+            outcomeUpdatedAtUtc,
+            CancellationToken.None);
+
+        var operationWithUpdatedOutcome = await store.GetAsync(craftingOperation.Id, CancellationToken.None);
+        Assert.Equal(outcomeUpdatedAtUtc, operationWithUpdatedOutcome!.LastModifiedAtUtc);
+        Assert.Equal(1, operationWithUpdatedOutcome.ActualOutcome!.SaleSettlements.Single().ListingFee.Copper);
+        Assert.Equal(2, operationWithUpdatedOutcome.ActualOutcome.SaleSettlements.Single().ExchangeFee.Copper);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => store.UpdateStatusAsync(
             craftingOperation.Id,
@@ -113,6 +133,9 @@ public sealed class OperationHistoryPersistenceTests
             Assert.Equal(1L, await ExecuteScalarAsync(
                 dbContext.Database.GetDbConnection(),
                 "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'OperationScenarios'"));
+            Assert.Equal(1L, await ExecuteScalarAsync(
+                dbContext.Database.GetDbConnection(),
+                "SELECT COUNT(*) FROM pragma_table_info('Operations') WHERE name = 'ActualOutcomeJson'"));
         }
         finally
         {
@@ -277,6 +300,26 @@ public sealed class OperationHistoryPersistenceTests
         modeledFinancials: new OperationFinancialSnapshot(40, 100, 5, 10, 85, 45),
         reasons: [],
         diagnostics: new CraftingSearchDiagnosticsSnapshot(3, 1, isTruncated: false, reasons: []));
+
+    private static OperationActualOutcome CreateActualOutcome(
+        long listingFeeCopper = 15,
+        long exchangeFeeCopper = 30) => new(
+        [
+            new ActualAcquisitionLot(
+                Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
+                new DateTimeOffset(2026, 8, 28, 8, 1, 0, TimeSpan.Zero),
+                2,
+                new Money(200)),
+        ],
+        [
+            new ActualSaleSettlement(
+                Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"),
+                new DateTimeOffset(2026, 8, 28, 8, 2, 0, TimeSpan.Zero),
+                2,
+                new Money(300),
+                new Money(listingFeeCopper),
+                new Money(exchangeFeeCopper)),
+        ]);
 
     private static OperationFeePolicySnapshot FeePolicy() => new(
         new OperationFeeRuleSnapshot(500, OperationFeeRounding.Down),

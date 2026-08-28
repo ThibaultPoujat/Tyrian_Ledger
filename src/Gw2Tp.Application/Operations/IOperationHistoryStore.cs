@@ -1,3 +1,5 @@
+using Gw2Tp.Analytics.Reconciliation;
+
 namespace Gw2Tp.Application.Operations;
 
 /// <summary>
@@ -14,6 +16,12 @@ public interface IOperationHistoryStore
     Task UpdateStatusAsync(
         Guid operationId,
         OperationStatus status,
+        DateTimeOffset lastModifiedAtUtc,
+        CancellationToken cancellationToken);
+
+    Task UpdateActualOutcomeAsync(
+        Guid operationId,
+        OperationActualOutcome actualOutcome,
         DateTimeOffset lastModifiedAtUtc,
         CancellationToken cancellationToken);
 }

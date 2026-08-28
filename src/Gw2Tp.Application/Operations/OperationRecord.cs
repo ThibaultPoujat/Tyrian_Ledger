@@ -1,6 +1,7 @@
 using Gw2Tp.Analytics.Crafting;
 using Gw2Tp.Analytics.FlipOpportunities;
 using Gw2Tp.Analytics.OwnedItems;
+using Gw2Tp.Analytics.Reconciliation;
 
 namespace Gw2Tp.Application.Operations;
 
@@ -18,7 +19,8 @@ public sealed record OperationRecord
         OperationStatus status,
         string calculationVersionId,
         string configurationVersionId,
-        OperationScenarioSnapshot scenario)
+        OperationScenarioSnapshot scenario,
+        OperationActualOutcome? actualOutcome = null)
     {
         if (id == Guid.Empty)
         {
@@ -33,6 +35,7 @@ public sealed record OperationRecord
         CalculationVersionId = ValidateVersionIdentifier(calculationVersionId, nameof(calculationVersionId));
         ConfigurationVersionId = ValidateVersionIdentifier(configurationVersionId, nameof(configurationVersionId));
         Scenario = scenario ?? throw new ArgumentNullException(nameof(scenario));
+        ActualOutcome = actualOutcome;
         Id = id;
         CreatedAtUtc = createdAtUtc.ToUniversalTime();
         LastModifiedAtUtc = lastModifiedAtUtc.ToUniversalTime();
@@ -60,6 +63,12 @@ public sealed record OperationRecord
     public string ConfigurationVersionId { get; }
 
     public OperationScenarioSnapshot Scenario { get; }
+
+    /// <summary>
+    /// Optional locally recorded actual acquisition and sale values. Modeled scenario values
+    /// are intentionally not used as a substitute when this evidence is absent.
+    /// </summary>
+    public OperationActualOutcome? ActualOutcome { get; }
 
     private static string ValidateVersionIdentifier(string value, string parameterName)
     {
