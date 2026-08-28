@@ -3,6 +3,7 @@ import {
   loadDashboardOpportunities,
   loadUserSessionPreferences,
   saveUserSessionPreferences,
+  type DashboardEffortCategory,
   type DashboardOpportunitiesResponse,
   type DashboardOpportunity,
   type UserSessionPreferences,
@@ -21,6 +22,8 @@ interface DashboardFilters {
 const initialFilters: DashboardFilters = {
   freshness: 'all',
 };
+
+type DashboardEffortFilter = 'all' | DashboardEffortCategory;
 
 interface PreferenceForm {
   capitalLimitCopper: string;
@@ -42,6 +45,7 @@ export default function App() {
   const [state, setState] = useState<DashboardState>({ kind: 'loading' });
   const [requestVersion, setRequestVersion] = useState(0);
   const [filters, setFilters] = useState<DashboardFilters>(initialFilters);
+  const [effortCategory, setEffortCategory] = useState<DashboardEffortFilter>('all');
   const [preferences, setPreferences] = useState<PreferenceForm>(initialPreferenceForm);
   const [preferenceMessage, setPreferenceMessage] = useState<string | null>(null);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
@@ -52,7 +56,10 @@ export default function App() {
     setState({ kind: 'loading' });
 
     void Promise.all([
-      loadDashboardOpportunities(controller.signal),
+      loadDashboardOpportunities(
+        controller.signal,
+        effortCategory === 'all' ? undefined : effortCategory,
+      ),
       loadUserSessionPreferences(controller.signal),
     ])
       .then(([response, savedPreferences]) => {
@@ -68,7 +75,7 @@ export default function App() {
       });
 
     return () => controller.abort();
-  }, [requestVersion]);
+  }, [effortCategory, requestVersion]);
 
   const opportunities = state.kind === 'ready' ? state.response.opportunities : [];
   const filteredOpportunities = useMemo(
@@ -258,6 +265,26 @@ export default function App() {
                     <option value="stale">Stale snapshot</option>
                   </select>
                 </div>
+
+                <div className="effort-filter">
+                  <label htmlFor="session-effort">Session effort</label>
+                  <select
+                    id="session-effort"
+                    name="effortCategory"
+                    onChange={(event) => setEffortCategory(event.target.value as DashboardEffortFilter)}
+                    value={effortCategory}
+                  >
+                    <option value="all">All effort categories</option>
+                    <option value="very-low">Very low effort</option>
+                    <option value="low">Low effort</option>
+                    <option value="medium">Medium effort</option>
+                    <option value="high">High effort</option>
+                    <option value="ongoing-patient">Ongoing / patient</option>
+                  </select>
+                  <p className="effort-note">
+                    Session-only filter. Effort categories are rough planning labels, not time, execution, fill, or profit guarantees.
+                  </p>
+                </div>
               </form>
             </aside>
 
@@ -284,6 +311,7 @@ export default function App() {
                       <tr>
                         <th scope="col">Rank</th>
                         <th scope="col">Opportunity</th>
+                        <th scope="col">Effort</th>
                         <th scope="col">Capital</th>
                         <th scope="col">Modeled profit</th>
                         <th scope="col">ROI</th>
@@ -343,6 +371,11 @@ function OpportunityRow({
         <span className="opportunity-label">{opportunity.label}</span>
         <span className="opportunity-strategy">{formatStrategy(opportunity.strategy)}</span>
       </th>
+      <td>
+        <span className={`effort-chip effort-${opportunity.effortCategory}`}>
+          {formatEffortCategory(opportunity.effortCategory)}
+        </span>
+      </td>
       <td>{formatCopper(opportunity.capitalRequiredCopper)}</td>
       <td className="profit-cell">{formatCopper(opportunity.modeledNetProfitCopper)}</td>
       <td>{formatBasisPoints(opportunity.returnOnInvestmentBasisPoints)}</td>
@@ -610,6 +643,21 @@ function formatStrategy(strategy: string): string {
     .split('-')
     .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
     .join(' ');
+}
+
+function formatEffortCategory(effortCategory: DashboardEffortCategory): string {
+  switch (effortCategory) {
+    case 'very-low':
+      return 'Very low';
+    case 'low':
+      return 'Low';
+    case 'medium':
+      return 'Medium';
+    case 'high':
+      return 'High';
+    case 'ongoing-patient':
+      return 'Ongoing / patient';
+  }
 }
 
 function formatDataAge(capturedAtUtc: string): string {

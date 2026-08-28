@@ -64,6 +64,7 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
       itemId: 900_004,
       label: 'Sample market flip #900004',
       strategy: 'market-flip',
+      effortCategory: 'medium',
       rank: 1,
       scoreBasisPoints: 9_000,
       capitalRequiredCopper: 800,
@@ -79,6 +80,7 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
       itemId: 900_003,
       label: 'Sample market flip #900003',
       strategy: 'market-flip',
+      effortCategory: 'ongoing-patient',
       rank: 2,
       scoreBasisPoints: 7_000,
       capitalRequiredCopper: 800,
@@ -99,6 +101,7 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
       itemId: 900_001,
       label: 'Sample market flip #900001',
       strategy: 'market-flip',
+      effortCategory: 'very-low',
       rank: 3,
       scoreBasisPoints: 6_000,
       capitalRequiredCopper: 500,
@@ -114,6 +117,7 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
       itemId: 900_002,
       label: 'Sample market flip #900002',
       strategy: 'market-flip',
+      effortCategory: 'low',
       rank: 4,
       scoreBasisPoints: 5_000,
       capitalRequiredCopper: 1_000,
@@ -129,6 +133,7 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
       itemId: 900_005,
       label: 'Sample craft #900005',
       strategy: 'crafting',
+      effortCategory: 'high',
       rank: 5,
       scoreBasisPoints: 4_000,
       capitalRequiredCopper: 1_500,
@@ -229,6 +234,31 @@ describe('market dashboard preferences and filters', () => {
     fireEvent.change(screen.getByLabelText(/^freshness$/i), { target: { value: 'stale' } });
 
     expectOpportunityRows(['Sample market flip #900003']);
+  });
+
+  it('requests a session-only effort shortlist and explains that categories are not time guarantees', async () => {
+    const highEffortResponse: DashboardOpportunitiesResponse = {
+      ...dashboardResponse,
+      opportunities: [{ ...dashboardResponse.opportunities[4], rank: 1 }],
+    };
+    fetchMock.mockImplementation((input: RequestInfo | URL) => Promise.resolve(successfulResponse(
+      getFetchUrl(input) === '/api/dashboard/opportunities?effortCategory=high'
+        ? highEffortResponse
+        : getFetchUrl(input) === '/api/dashboard/opportunities' ? dashboardResponse : defaultPreferences,
+    )));
+
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Ranked opportunities' });
+
+    expect(screen.getByLabelText(/session effort/i)).toHaveValue('all');
+    expect(screen.getByText(/rough planning labels, not time, execution, fill, or profit guarantees/i)).toBeVisible();
+    fireEvent.change(screen.getByLabelText(/session effort/i), { target: { value: 'high' } });
+
+    await waitFor(() => expectOpportunityRows(['Sample craft #900005']));
+    expect(fetchMock.mock.calls.map(([input]) => getFetchUrl(input as RequestInfo | URL)))
+      .toContain('/api/dashboard/opportunities?effortCategory=high');
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')).toBe(false);
+    expect(screen.getByText('High')).toBeVisible();
   });
 
   it('renders the selected opportunity detail as a modeled scenario', async () => {

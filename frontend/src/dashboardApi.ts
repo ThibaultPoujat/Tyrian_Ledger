@@ -1,5 +1,6 @@
 export type DashboardConfidence = 'normal' | 'reduced';
 export type DashboardFreshness = 'current' | 'stale';
+export type DashboardEffortCategory = 'very-low' | 'low' | 'medium' | 'high' | 'ongoing-patient';
 export type DashboardRiskPreference = 'all' | DashboardConfidence;
 export type DashboardStrategyPreference = 'all' | 'market-flip';
 
@@ -15,6 +16,7 @@ export interface DashboardOpportunity {
   itemId: number;
   label: string;
   strategy: string;
+  effortCategory: DashboardEffortCategory;
   rank: number;
   scoreBasisPoints: number;
   capitalRequiredCopper: number;
@@ -86,8 +88,12 @@ export interface DashboardOpportunitiesResponse {
 
 export async function loadDashboardOpportunities(
   signal: AbortSignal,
+  effortCategory?: DashboardEffortCategory,
 ): Promise<DashboardOpportunitiesResponse> {
-  const response = await fetch('/api/dashboard/opportunities', { signal });
+  const path = effortCategory === undefined
+    ? '/api/dashboard/opportunities'
+    : `/api/dashboard/opportunities?effortCategory=${encodeURIComponent(effortCategory)}`;
+  const response = await fetch(path, { signal });
   if (!response.ok) {
     throw new Error(`Dashboard request failed with status ${response.status}.`);
   }
@@ -167,6 +173,7 @@ function isDashboardOpportunity(value: unknown): value is DashboardOpportunity {
     && typeof value.itemId === 'number'
     && typeof value.label === 'string'
     && typeof value.strategy === 'string'
+    && isDashboardEffortCategory(value.effortCategory)
     && typeof value.rank === 'number'
     && typeof value.scoreBasisPoints === 'number'
     && typeof value.capitalRequiredCopper === 'number'
@@ -177,6 +184,14 @@ function isDashboardOpportunity(value: unknown): value is DashboardOpportunity {
     && (value.freshness === 'current' || value.freshness === 'stale')
     && typeof value.capturedAtUtc === 'string'
     && isDashboardOpportunityDetail(value.detail);
+}
+
+function isDashboardEffortCategory(value: unknown): value is DashboardEffortCategory {
+  return value === 'very-low'
+    || value === 'low'
+    || value === 'medium'
+    || value === 'high'
+    || value === 'ongoing-patient';
 }
 
 function isDashboardOpportunityDetail(value: unknown): value is DashboardOpportunityDetail {

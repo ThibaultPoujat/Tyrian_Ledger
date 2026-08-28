@@ -5,6 +5,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../Gw2Tp.Analytics/Gw2Tp.Analytics.csproj" />
     <ProjectReference Include="../Gw2Tp.Domain/Gw2Tp.Domain.csproj" />
   </ItemGroup>
 </Project>

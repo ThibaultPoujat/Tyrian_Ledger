@@ -3,6 +3,7 @@ using Gw2Tp.Analytics.Finance;
 using Gw2Tp.Analytics.FlipOpportunities;
 using Gw2Tp.Analytics.OrderBooks;
 using Gw2Tp.Application.Preferences;
+using Gw2Tp.Application.SessionPlanning;
 using Gw2Tp.Application.Time;
 using Gw2Tp.Domain.Finance;
 using Gw2Tp.Domain.MarketData;
@@ -37,13 +38,17 @@ internal sealed class DashboardSampleOpportunityProvider
         twoLegFlipComplexityScoreBasisPoints: FlipOpportunityScoringConfiguration.MaximumScoreBasisPoints);
 
     private readonly IClock clock;
+    private readonly SessionPlanner sessionPlanner;
 
-    public DashboardSampleOpportunityProvider(IClock clock)
+    public DashboardSampleOpportunityProvider(IClock clock, SessionPlanner sessionPlanner)
     {
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        this.sessionPlanner = sessionPlanner ?? throw new ArgumentNullException(nameof(sessionPlanner));
     }
 
-    public DashboardOpportunitiesResponse GetDashboard(UserSessionPreferences preferences)
+    public DashboardOpportunitiesResponse GetDashboard(
+        UserSessionPreferences preferences,
+        SessionEffortCategory? selectedEffortCategory)
     {
         ArgumentNullException.ThrowIfNull(preferences);
 
@@ -59,10 +64,18 @@ internal sealed class DashboardSampleOpportunityProvider
             .OrderByDescending(score => score.ScoreBasisPoints)
             .ThenBy(score => score.ItemId);
 
-        var opportunities = rankedScores
-            .Select(score => CreateResponse(score, rank: 0, analysesByItemId[score.ItemId]))
-            .Where(opportunity => MatchesPreferences(opportunity, preferences))
-            .Select((opportunity, index) => opportunity with { Rank = index + 1 })
+        var planCandidates = rankedScores
+            .Select(score => new SessionPlanCandidate(
+                score,
+                OpportunityStrategyPreference.MarketFlip,
+                analysesByItemId[score.ItemId].candidate.EffortCategory));
+        var opportunities = sessionPlanner
+            .CreateShortlist(planCandidates, preferences, selectedEffortCategory)
+            .Select(entry => CreateResponse(
+                entry.Candidate.Score,
+                entry.Rank,
+                entry.Candidate.EffortCategory,
+                analysesByItemId[entry.Candidate.Score.ItemId]))
             .ToArray();
 
         return new DashboardOpportunitiesResponse(
@@ -71,39 +84,6 @@ internal sealed class DashboardSampleOpportunityProvider
             GeneratedAtUtc: analyzedAtUtc,
             Opportunities: Array.AsReadOnly(opportunities));
     }
-
-    private static bool MatchesPreferences(
-        DashboardOpportunityResponse opportunity,
-        UserSessionPreferences preferences)
-    {
-        var perOpportunityCapitalLimit = preferences.GetPerOpportunityCapitalLimitCopper();
-
-        return (perOpportunityCapitalLimit is null ||
-                opportunity.CapitalRequiredCopper <= perOpportunityCapitalLimit)
-            && (preferences.MinimumProfitCopper is null ||
-                opportunity.ModeledNetProfitCopper >= preferences.MinimumProfitCopper)
-            && MatchesRiskPreference(opportunity.Confidence, preferences.RiskPreference)
-            && MatchesStrategyPreference(opportunity.Strategy, preferences.StrategyPreference);
-    }
-
-    private static bool MatchesRiskPreference(
-        string confidence,
-        OpportunityRiskPreference preference) => preference switch
-    {
-        OpportunityRiskPreference.All => true,
-        OpportunityRiskPreference.Normal => confidence == "normal",
-        OpportunityRiskPreference.Reduced => confidence == "reduced",
-        _ => throw new ArgumentOutOfRangeException(nameof(preference), preference, "The risk preference is not supported."),
-    };
-
-    private static bool MatchesStrategyPreference(
-        string strategy,
-        OpportunityStrategyPreference preference) => preference switch
-    {
-        OpportunityStrategyPreference.All => true,
-        OpportunityStrategyPreference.MarketFlip => strategy == "market-flip",
-        _ => throw new ArgumentOutOfRangeException(nameof(preference), preference, "The strategy preference is not supported."),
-    };
 
     private static IReadOnlyList<SampleCandidate> CreateCandidates(DateTimeOffset analyzedAtUtc) =>
     [
@@ -116,7 +96,8 @@ internal sealed class DashboardSampleOpportunityProvider
                 buyLevels: [Level(5, 160)],
                 sellLevels: [Level(5, 100)],
                 freshness: CurrentFreshness(analyzedAtUtc),
-                analyzedAtUtc)),
+                analyzedAtUtc),
+            SessionEffortCategory.VeryLow),
         new SampleCandidate(
             900_002,
             "Sample market flip #900002",
@@ -126,7 +107,8 @@ internal sealed class DashboardSampleOpportunityProvider
                 buyLevels: [Level(10, 140)],
                 sellLevels: [Level(10, 100)],
                 freshness: CurrentFreshness(analyzedAtUtc),
-                analyzedAtUtc)),
+                analyzedAtUtc),
+            SessionEffortCategory.Low),
         new SampleCandidate(
             900_003,
             "Sample market flip #900003",
@@ -136,7 +118,8 @@ internal sealed class DashboardSampleOpportunityProvider
                 buyLevels: [Level(4, 350)],
                 sellLevels: [Level(4, 200)],
                 freshness: StaleFreshness(analyzedAtUtc),
-                analyzedAtUtc)),
+                analyzedAtUtc),
+            SessionEffortCategory.OngoingPatient),
         new SampleCandidate(
             900_004,
             "Sample market flip #900004",
@@ -146,12 +129,25 @@ internal sealed class DashboardSampleOpportunityProvider
                 buyLevels: [Level(5, 300)],
                 sellLevels: [Level(2, 100), Level(3, 200)],
                 freshness: CurrentFreshness(analyzedAtUtc),
-                analyzedAtUtc)),
+                analyzedAtUtc),
+            SessionEffortCategory.Medium),
+        new SampleCandidate(
+            900_005,
+            "Sample market flip #900005",
+            CreateRequest(
+                900_005,
+                requestedQuantity: 12,
+                buyLevels: [Level(12, 190)],
+                sellLevels: [Level(12, 120)],
+                freshness: CurrentFreshness(analyzedAtUtc),
+                analyzedAtUtc),
+            SessionEffortCategory.High),
     ];
 
     private static DashboardOpportunityResponse CreateResponse(
         FlipOpportunityScore score,
         int rank,
+        SessionEffortCategory effortCategory,
         (SampleCandidate candidate, FlipOpportunityAnalysis analysis) result)
     {
         var explanation = score.Explanation;
@@ -162,6 +158,7 @@ internal sealed class DashboardSampleOpportunityProvider
             ItemId: score.ItemId,
             Label: result.candidate.Label,
             Strategy: "market-flip",
+            EffortCategory: DashboardEffortCategoryValues.ToResponseValue(effortCategory),
             Rank: rank,
             ScoreBasisPoints: score.ScoreBasisPoints,
             CapitalRequiredCopper: explanation.CapitalRequired.Copper,
@@ -275,7 +272,11 @@ internal sealed class DashboardSampleOpportunityProvider
         _ => throw new ArgumentOutOfRangeException(nameof(rounding), rounding, "The fee rounding mode is not supported."),
     };
 
-    private sealed record SampleCandidate(int ItemId, string Label, FlipOpportunityRequest Request);
+    private sealed record SampleCandidate(
+        int ItemId,
+        string Label,
+        FlipOpportunityRequest Request,
+        SessionEffortCategory EffortCategory);
 }
 
 internal sealed record DashboardOpportunitiesResponse(
@@ -288,6 +289,7 @@ internal sealed record DashboardOpportunityResponse(
     int ItemId,
     string Label,
     string Strategy,
+    string EffortCategory,
     int Rank,
     int ScoreBasisPoints,
     long CapitalRequiredCopper,

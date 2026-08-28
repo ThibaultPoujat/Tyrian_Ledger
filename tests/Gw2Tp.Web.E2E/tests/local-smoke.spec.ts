@@ -21,7 +21,7 @@ test('market dashboard saves local preferences and filters ranked sample opportu
   await expect(page.getByText('Sample data', { exact: true })).toBeVisible();
 
   const opportunityRows = page.getByTestId('opportunity-row');
-  await expect(opportunityRows).toHaveCount(4);
+  await expect(opportunityRows).toHaveCount(5);
 
   await page.getByLabel(/available capital/i).fill('1200');
   await page.getByLabel(/per-opportunity allocation/i).fill('50');
@@ -44,6 +44,17 @@ test('market dashboard saves local preferences and filters ranked sample opportu
     },
   });
   expect(resetResponse.status()).toBe(200);
+});
+
+test('market dashboard filters the session shortlist by explicit effort category without promising a duration', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByLabel(/session effort/i).selectOption('high');
+
+  const opportunityRows = page.getByTestId('opportunity-row');
+  await expect(opportunityRows).toHaveCount(1);
+  await expect(opportunityRows).toContainText('Sample market flip #900005');
+  await expect(page.getByText(/rough planning labels, not time, execution, fill, or profit guarantees/i)).toBeVisible();
 });
 
 test('opportunity detail explains the modeled scenario without implying an actual outcome', async ({ page }) => {
