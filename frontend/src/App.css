@@ -117,6 +117,39 @@ h3 {
   color: #d4e3dc;
 }
 
+.account-access {
+  display: flex;
+  align-items: baseline;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #517362;
+  border-radius: 0.8rem;
+  background: rgb(15 32 25 / 85%);
+}
+
+.account-access strong {
+  flex: none;
+  color: #f7c46c;
+}
+
+.account-access p,
+.account-access ul {
+  margin: 0;
+  color: #d4e3dc;
+}
+
+.account-access ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.4rem;
+  padding-left: 1.2rem;
+}
+
+.account-access-error {
+  border-color: #d67d68;
+}
+
 .dashboard-state {
   max-width: 42rem;
   padding: 1.5rem;

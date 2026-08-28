@@ -1,5 +1,8 @@
+using Gw2Tp.Application.AccountAccess;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Time;
+using Gw2Tp.Infrastructure.AccountAccess;
+using Gw2Tp.Infrastructure.Secrets;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
@@ -53,6 +56,7 @@ public static class Gw2ApiServiceCollectionExtensions
             serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
             serviceProvider.GetRequiredService<IMarketDataDiagnosticsRecorder>()));
         services.AddSingleton<IGw2ApiClient, CachingGw2ApiClient>();
+        services.AddSingleton<IAccountAccessService, Gw2AccountAccessService>();
 
         return services;
     }

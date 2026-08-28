@@ -1,0 +1,5 @@
+{
+  "id": "synthetic-token-id-fragment",
+  "name": "Inventory-only local key",
+  "permissions": ["account", "inventories"]
+}

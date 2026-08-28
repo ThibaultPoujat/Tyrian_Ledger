@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import type {
+  AccountAccessStatus,
   DashboardOpportunitiesResponse,
   DashboardOpportunityDetail,
   UserSessionPreferences,
@@ -154,6 +155,17 @@ const defaultPreferences: UserSessionPreferences = {
   riskPreference: 'all',
   strategyPreference: 'all',
   allocationPercent: 100,
+};
+
+const missingCraftingPermissionAccess: AccountAccessStatus = {
+  validationStatus: 'valid',
+  keyId: 'synthetic-token-id-fragment',
+  keyName: "<img src=x onerror=alert('synthetic')>",
+  permissions: ['account', 'inventories'],
+  features: [
+    { feature: 'account-materials', isAvailable: true, missingPermissions: [] },
+    { feature: 'account-crafting', isAvailable: false, missingPermissions: ['characters', 'unlocks'] },
+  ],
 };
 
 const fetchMock = vi.fn();
@@ -310,6 +322,26 @@ describe('market dashboard states', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry loading dashboard' }));
 
     expect(await screen.findByText('Sample market flip #900004')).toBeVisible();
+  });
+});
+
+describe('account access status', () => {
+  it('renders token metadata as text and identifies disabled features with missing permissions', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => Promise.resolve(successfulResponse(
+      getFetchUrl(input) === '/api/dashboard/opportunities'
+        ? dashboardResponse
+        : getFetchUrl(input) === '/api/account/access'
+          ? missingCraftingPermissionAccess
+          : defaultPreferences,
+    )));
+
+    render(<App />);
+
+    expect(await screen.findByText("<img src=x onerror=alert('synthetic')>")).toBeVisible();
+    expect(screen.getByText(/granted permissions: account, inventories/i)).toBeVisible();
+    expect(screen.getByText(/account materials enabled/i)).toBeVisible();
+    expect(screen.getByText(/account crafting disabled — missing characters, unlocks/i)).toBeVisible();
+    expect(document.querySelector('img')).toBeNull();
   });
 });
 

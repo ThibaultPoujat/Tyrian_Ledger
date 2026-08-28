@@ -1,0 +1,5 @@
+{
+  "id": "synthetic-token-id-fragment",
+  "name": "<img src=x onerror=alert('synthetic')>",
+  "permissions": ["account", "characters", "inventories", "unlocks"]
+}

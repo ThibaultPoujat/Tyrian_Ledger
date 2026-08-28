@@ -12,6 +12,22 @@ export interface UserSessionPreferences {
   allocationPercent: number;
 }
 
+export type AccountAccessValidationStatus = 'notconfigured' | 'valid' | 'invalid' | 'unavailable';
+
+export interface AccountFeatureAccess {
+  feature: 'account-materials' | 'account-crafting';
+  isAvailable: boolean;
+  missingPermissions: string[];
+}
+
+export interface AccountAccessStatus {
+  validationStatus: AccountAccessValidationStatus;
+  keyId: string | null;
+  keyName: string | null;
+  permissions: string[];
+  features: AccountFeatureAccess[];
+}
+
 export interface DashboardOpportunity {
   itemId: number;
   label: string;
@@ -122,6 +138,20 @@ export async function loadUserSessionPreferences(
   return payload;
 }
 
+export async function loadAccountAccessStatus(signal: AbortSignal): Promise<AccountAccessStatus> {
+  const response = await fetch('/api/account/access', { signal });
+  if (!response.ok) {
+    throw new Error(`Account access request failed with status ${response.status}.`);
+  }
+
+  const payload: unknown = await response.json();
+  if (!isAccountAccessStatus(payload)) {
+    throw new Error('Account access response was not in the expected format.');
+  }
+
+  return payload;
+}
+
 export async function saveUserSessionPreferences(
   preferences: UserSessionPreferences,
 ): Promise<UserSessionPreferences> {
@@ -166,6 +196,28 @@ function isUserSessionPreferences(value: unknown): value is UserSessionPreferenc
     && Number.isSafeInteger(value.allocationPercent)
     && value.allocationPercent >= 1
     && value.allocationPercent <= 100;
+}
+
+function isAccountAccessStatus(value: unknown): value is AccountAccessStatus {
+  return isRecord(value)
+    && (value.validationStatus === 'notconfigured'
+      || value.validationStatus === 'valid'
+      || value.validationStatus === 'invalid'
+      || value.validationStatus === 'unavailable')
+    && (typeof value.keyId === 'string' || value.keyId === null)
+    && (typeof value.keyName === 'string' || value.keyName === null)
+    && Array.isArray(value.permissions)
+    && value.permissions.every((permission) => typeof permission === 'string')
+    && Array.isArray(value.features)
+    && value.features.every(isAccountFeatureAccess);
+}
+
+function isAccountFeatureAccess(value: unknown): value is AccountFeatureAccess {
+  return isRecord(value)
+    && (value.feature === 'account-materials' || value.feature === 'account-crafting')
+    && typeof value.isAvailable === 'boolean'
+    && Array.isArray(value.missingPermissions)
+    && value.missingPermissions.every((permission) => typeof permission === 'string');
 }
 
 function isDashboardOpportunity(value: unknown): value is DashboardOpportunity {
