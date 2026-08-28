@@ -66,7 +66,11 @@ public static class Gw2ApiServiceCollectionExtensions
             serviceProvider.GetRequiredService<IMarketDataDiagnosticsRecorder>()));
         services.AddSingleton<IGw2ApiClient, CachingGw2ApiClient>();
         services.AddSingleton<IAccountAccessService, Gw2AccountAccessService>();
-        services.AddSingleton<IAccountSnapshotService, Gw2AccountSnapshotService>();
+        services.AddSingleton<Gw2AccountSnapshotService>();
+        services.AddSingleton<IAccountSnapshotService>(serviceProvider =>
+            serviceProvider.GetRequiredService<Gw2AccountSnapshotService>());
+        services.AddSingleton<IAccountSnapshotCacheClearer>(serviceProvider =>
+            serviceProvider.GetRequiredService<Gw2AccountSnapshotService>());
 
         return services;
     }

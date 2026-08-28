@@ -94,3 +94,25 @@ does not call the live GW2 API.
 - Install E2E dependencies: `cd tests/Gw2Tp.Web.E2E && npm ci`
 - Install the Chromium test browser: `cd tests/Gw2Tp.Web.E2E && npx playwright install chromium`
 - Run browser smoke tests: `cd tests/Gw2Tp.Web.E2E && npm test`
+
+## Back up and restore local data
+
+Tyrian Ledger keeps its local preference profile and recorded operation history
+in the SQLite file `user-session-preferences.db`. By default, the file is in
+the platform's .NET local application-data directory under `TyrianLedger`; a
+user or developer may instead configure its exact location with
+`UserSessionPreferences__DatabasePath`.
+
+To create a backup, stop Tyrian Ledger first, then copy that SQLite file to a
+backup location you control. Do not copy it while the application is running.
+To restore a backup, stop Tyrian Ledger, keep a safety copy of the current
+database if wanted, replace `user-session-preferences.db` with the backup, and
+start the application again. It applies any required schema migrations at
+startup.
+
+Account snapshots and public market cache entries are held only in process
+memory, so they are not included in the SQLite backup and disappear when the
+application stops. The Guild Wars 2 API credential is stored separately by the
+operating system and is not included in this database; see
+[local secrets](docs/development/local-secrets.md). Creating, restoring, or
+clearing local data never uploads it. Automated cloud backup is not provided.

@@ -150,6 +150,78 @@ h3 {
   border-color: #d67d68;
 }
 
+.local-data-panel {
+  margin-bottom: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid #3e5d4d;
+  border-radius: 0.8rem;
+  background: rgb(15 28 22 / 88%);
+  box-shadow: 0 1.25rem 3rem rgb(0 0 0 / 16%);
+}
+
+.local-data-panel > p:not(.eyebrow),
+.local-data-confirmation p,
+.local-data-message {
+  max-width: 76rem;
+  color: #c5d6ce;
+  line-height: 1.5;
+}
+
+.local-data-panel > p:last-child {
+  margin-bottom: 0;
+}
+
+.local-data-clear,
+.local-data-cancel {
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.local-data-clear {
+  color: #101916;
+  background: #f7c46c;
+}
+
+.local-data-cancel {
+  margin-left: 0.65rem;
+  color: #e7f4eb;
+  background: #1c3b2c;
+}
+
+.local-data-clear:disabled,
+.local-data-cancel:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.local-data-confirmation {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #d6a75e;
+  border-radius: 0.55rem;
+  background: rgb(71 52 24 / 35%);
+}
+
+.local-data-confirmation p {
+  margin-bottom: 0;
+}
+
+.local-data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.local-data-actions .local-data-cancel {
+  margin-left: 0;
+}
+
+.local-data-message {
+  margin: 1rem 0 0;
+}
+
 .history-panel {
   margin-bottom: 1.25rem;
   padding: 1.25rem;

@@ -384,6 +384,68 @@ describe('account access status', () => {
   });
 });
 
+describe('local account data control', () => {
+  it('requires confirmation before clearing only account snapshots and explains retained local data', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = getFetchUrl(input);
+      if (url === '/api/account/snapshots') {
+        return Promise.resolve(noContentResponse());
+      }
+
+      return Promise.resolve(successfulResponse(
+        url === '/api/dashboard/opportunities'
+          ? dashboardResponse
+          : url === '/api/history/statistics'
+            ? emptyHistoryStatistics
+            : defaultPreferences,
+      ));
+    });
+
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Ranked opportunities' });
+
+    expect(screen.getByText(/clearing them stays on this device and never uploads data/i)).toBeVisible();
+    expect(screen.getByText(/saved operation history, preferences, public market cache, and your operating-system api key are not removed/i)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear account snapshot data' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Clear the current account snapshot cache?');
+    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE')).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm clear account snapshots' }));
+
+    expect(await screen.findByText(/account snapshot data cleared/i)).toHaveTextContent(
+      'Saved operation history, preferences, public market cache, and your operating-system API key were kept.',
+    );
+    const clearCall = fetchMock.mock.calls.find(([input]) => getFetchUrl(input as RequestInfo | URL) === '/api/account/snapshots');
+    expect((clearCall?.[1] as RequestInit).method).toBe('DELETE');
+  });
+
+  it('reports a failed clear without claiming that account snapshots were removed', async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      const url = getFetchUrl(input);
+      if (url === '/api/account/snapshots') {
+        return Promise.resolve(failedResponse(500));
+      }
+
+      return Promise.resolve(successfulResponse(
+        url === '/api/dashboard/opportunities'
+          ? dashboardResponse
+          : url === '/api/history/statistics'
+            ? emptyHistoryStatistics
+            : defaultPreferences,
+      ));
+    });
+
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Ranked opportunities' });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear account snapshot data' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm clear account snapshots' }));
+
+    expect(await screen.findByText(/account snapshot data could not be cleared/i)).toBeVisible();
+    expect(screen.queryByText(/^Account snapshot data cleared\./)).toBeNull();
+  });
+});
+
 describe('personal history statistics', () => {
   it('renders evidence-scoped modeled and realized statistics with exact ratios', async () => {
     fetchMock.mockImplementation((input: RequestInfo | URL) => Promise.resolve(successfulResponse(
@@ -459,6 +521,20 @@ function successfulResponse(payload: unknown): Response {
     ok: true,
     status: 200,
     json: async () => payload,
+  } as Response;
+}
+
+function noContentResponse(): Response {
+  return {
+    ok: true,
+    status: 204,
+  } as Response;
+}
+
+function failedResponse(status: number): Response {
+  return {
+    ok: false,
+    status,
   } as Response;
 }
 

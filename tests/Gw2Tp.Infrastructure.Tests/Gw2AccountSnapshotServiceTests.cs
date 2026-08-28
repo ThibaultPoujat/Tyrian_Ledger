@@ -57,6 +57,27 @@ public sealed class Gw2AccountSnapshotServiceTests
     }
 
     [Fact]
+    public async Task Clearing_cached_account_snapshots_discards_all_cached_profile_data()
+    {
+        var bank = await LoadFixturePayloadAsync("gw2/account/bank.json");
+        var materials = await LoadFixturePayloadAsync("gw2/account/materials.json");
+        var handler = new StubHttpMessageHandler((request, _) => Task.FromResult(
+            CreateJsonResponse(request.RequestUri!.AbsolutePath == "/v2/account/bank" ? bank : materials)));
+        using var httpClient = CreateHttpClient(handler);
+        var service = CreateService(httpClient, CreateAccessService("profile-alpha"));
+
+        var first = await service.GetOwnedItemsAsync();
+        var cached = await service.GetOwnedItemsAsync();
+        service.ClearCachedSnapshots();
+        var reloaded = await service.GetOwnedItemsAsync();
+
+        Assert.Equal(AccountSnapshotLoadStatus.Available, first.Status);
+        Assert.Equal(first, cached);
+        Assert.Equal(AccountSnapshotLoadStatus.Available, reloaded.Status);
+        Assert.Equal(4, handler.Requests.Count);
+    }
+
+    [Fact]
     public async Task Crafting_fixtures_fetch_only_the_enabled_crafting_endpoints()
     {
         var recipes = await LoadFixturePayloadAsync("gw2/account/recipes.json");

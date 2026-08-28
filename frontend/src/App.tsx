@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  clearAccountSnapshotData,
   loadAccountAccessStatus,
   loadDashboardOpportunities,
   loadOperationHistoryStatistics,
@@ -154,6 +155,7 @@ export default function App() {
       </header>
 
       <OperationHistoryPanel historyStatistics={historyStatistics} />
+      <LocalAccountDataPanel />
 
       {state.kind === 'loading' && (
         <section className="dashboard-state" aria-live="polite" role="status">
@@ -472,6 +474,79 @@ function AccountAccessPanel({ accountAccess }: { accountAccess: AccountAccessSta
 
 function formatAccountFeature(feature: AccountAccessStatus['features'][number]['feature']): string {
   return feature === 'account-materials' ? 'Account materials' : 'Account crafting';
+}
+
+function LocalAccountDataPanel() {
+  const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const clearSnapshots = () => {
+    setIsClearing(true);
+    setMessage(null);
+    void clearAccountSnapshotData()
+      .then(() => {
+        setIsConfirmationVisible(false);
+        setMessage('Account snapshot data cleared. Saved operation history, preferences, public market cache, and your operating-system API key were kept.');
+      })
+      .catch(() => {
+        setMessage('Account snapshot data could not be cleared. Your existing account snapshot cache may still be available.');
+      })
+      .finally(() => setIsClearing(false));
+  };
+
+  return (
+    <section className="local-data-panel" aria-labelledby="local-data-title">
+      <p className="eyebrow">Local data</p>
+      <h2 id="local-data-title">Account snapshot data</h2>
+      <p>
+        Account snapshots are minimized data kept only in this application session. Clearing them stays on this device and never uploads data.
+      </p>
+      <p>
+        Saved operation history, preferences, public market cache, and your operating-system API key are not removed.
+      </p>
+
+      {!isConfirmationVisible && (
+        <button
+          className="local-data-clear"
+          onClick={() => {
+            setMessage(null);
+            setIsConfirmationVisible(true);
+          }}
+          type="button"
+        >
+          Clear account snapshot data
+        </button>
+      )}
+
+      {isConfirmationVisible && (
+        <div className="local-data-confirmation" role="alert">
+          <p>
+            Clear the current account snapshot cache? Future account analysis will fetch fresh data when needed.
+          </p>
+          <div className="local-data-actions">
+            <button className="local-data-clear" disabled={isClearing} onClick={clearSnapshots} type="button">
+              {isClearing ? 'Clearing account snapshots…' : 'Confirm clear account snapshots'}
+            </button>
+            <button
+              className="local-data-cancel"
+              disabled={isClearing}
+              onClick={() => setIsConfirmationVisible(false)}
+              type="button"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {message !== null && (
+        <p aria-live="polite" className="local-data-message" role="status">
+          {message}
+        </p>
+      )}
+    </section>
+  );
 }
 
 function OperationHistoryPanel({ historyStatistics }: { historyStatistics: HistoryStatisticsState }) {
