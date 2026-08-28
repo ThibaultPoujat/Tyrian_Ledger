@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Gw2Tp.Application.Operations;
 using Microsoft.EntityFrameworkCore;
 
@@ -6,7 +7,13 @@ namespace Gw2Tp.Infrastructure.Preferences;
 
 internal sealed class SqliteOperationHistoryStore : IOperationHistoryStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters =
+        {
+            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: true),
+        },
+    };
     private readonly IDbContextFactory<UserSessionPreferencesDbContext> dbContextFactory;
 
     public SqliteOperationHistoryStore(IDbContextFactory<UserSessionPreferencesDbContext> dbContextFactory)
@@ -50,13 +57,11 @@ internal sealed class SqliteOperationHistoryStore : IOperationHistoryStore
         var entities = await dbContext.Operations
             .AsNoTracking()
             .Include(operation => operation.Scenario)
+            .OrderBy(operation => operation.CreatedAtUtcTicks)
+            .ThenBy(operation => operation.Id)
             .ToArrayAsync(cancellationToken);
 
-        return Array.AsReadOnly(entities
-            .OrderBy(operation => operation.CreatedAtUtc)
-            .ThenBy(operation => operation.Id)
-            .Select(ToModel)
-            .ToArray());
+        return Array.AsReadOnly(entities.Select(ToModel).ToArray());
     }
 
     public async Task UpdateStatusAsync(
@@ -100,6 +105,7 @@ internal sealed class SqliteOperationHistoryStore : IOperationHistoryStore
     {
         Id = operation.Id,
         CreatedAtUtc = operation.CreatedAtUtc,
+        CreatedAtUtcTicks = operation.CreatedAtUtc.UtcDateTime.Ticks,
         LastModifiedAtUtc = operation.LastModifiedAtUtc,
         Status = ToStorageValue(operation.Status),
         CalculationVersionId = operation.CalculationVersionId,

@@ -59,6 +59,7 @@ public sealed class UserSessionPreferencesDbContext : DbContext
             entity.Property(operation => operation.ConfigurationVersionId)
                 .HasMaxLength(128)
                 .IsRequired();
+            entity.Property(operation => operation.CreatedAtUtcTicks).IsRequired();
             entity.Property(operation => operation.Status)
                 .HasMaxLength(16)
                 .IsRequired();
@@ -90,6 +91,8 @@ internal sealed class OperationHistoryEntity
     public Guid Id { get; set; }
 
     public DateTimeOffset CreatedAtUtc { get; set; }
+
+    public long CreatedAtUtcTicks { get; set; }
 
     public DateTimeOffset LastModifiedAtUtc { get; set; }
 
