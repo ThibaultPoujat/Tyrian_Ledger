@@ -52,6 +52,10 @@ public sealed record OwnedItemStrategyAnalysis
                 throw new ArgumentException("The total economic cost must equal owned opportunity cost plus purchased cost.");
             }
         }
+        else if (reasons.Count == 0 || ownedOpportunityCost is not null || purchasedCost is not null || totalEconomicCost is not null)
+        {
+            throw new ArgumentException("An unavailable strategy must have failure reasons and no cost values.");
+        }
 
         Strategy = strategy;
         IsAvailable = isAvailable;

@@ -132,6 +132,29 @@ public sealed class OwnedItemOpportunityCostCalculatorTests
         Assert.Equal(new Money(468), useOwned.TotalEconomicCost);
     }
 
+    [Fact]
+    public void Rejects_inconsistent_unavailable_strategy_results()
+    {
+        Assert.Throws<ArgumentException>(() => new OwnedItemStrategyAnalysis(
+            OwnedItemStrategy.BuyAll,
+            isAvailable: false,
+            ownedQuantity: 0,
+            purchasedQuantity: 5,
+            ownedOpportunityCost: null,
+            purchasedCost: null,
+            totalEconomicCost: null,
+            reasons: []));
+        Assert.Throws<ArgumentException>(() => new OwnedItemStrategyAnalysis(
+            OwnedItemStrategy.BuyAll,
+            isAvailable: false,
+            ownedQuantity: 0,
+            purchasedQuantity: 5,
+            ownedOpportunityCost: Money.Zero,
+            purchasedCost: new Money(500),
+            totalEconomicCost: new Money(500),
+            reasons: [OwnedItemOpportunityCostReason.MissingPurchaseMarketEvidence]));
+    }
+
     private static OwnedItemOpportunityCostRequest CreateRequest(
         int requiredQuantity,
         IReadOnlyList<OwnedItemLot> ownedLots,
