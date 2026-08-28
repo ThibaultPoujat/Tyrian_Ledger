@@ -69,7 +69,7 @@ public sealed class DashboardOpportunitiesEndpointTests
                 .EnumerateArray()
                 .Select(opportunity => opportunity.GetProperty("effortCategory").GetString()
                     ?? throw new InvalidOperationException("Dashboard effort category must be present."))
-                .Order()
+                .Order(StringComparer.Ordinal)
                 .ToArray());
         Assert.Equal(
             firstOpportunities.EnumerateArray().Select(opportunity => opportunity.GetProperty("itemId").GetInt32()),
