@@ -16,4 +16,12 @@ public interface IMarketSnapshotStore
     Task<IReadOnlyList<MarketOrderBookSnapshot>> ListOrderBookSnapshotsAsync(
         int itemId,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns only the latest capture timestamps needed to determine which
+    /// explicitly tracked items are due for their next collection cycle.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, MarketSnapshotCollectionState>> GetCollectionStatesAsync(
+        IReadOnlyCollection<int> itemIds,
+        CancellationToken cancellationToken);
 }

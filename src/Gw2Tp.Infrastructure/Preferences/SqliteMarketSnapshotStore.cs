@@ -77,6 +77,55 @@ internal sealed class SqliteMarketSnapshotStore : IMarketSnapshotStore
         return Array.AsReadOnly(entities.Select(ToModel).ToArray());
     }
 
+    public async Task<IReadOnlyDictionary<int, MarketSnapshotCollectionState>> GetCollectionStatesAsync(
+        IReadOnlyCollection<int> itemIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(itemIds);
+
+        var distinctItemIds = itemIds
+            .OrderBy(itemId => itemId)
+            .Distinct()
+            .ToArray();
+        foreach (var itemId in distinctItemIds)
+        {
+            ValidateItemId(itemId);
+        }
+
+        if (distinctItemIds.Length == 0)
+        {
+            return new Dictionary<int, MarketSnapshotCollectionState>();
+        }
+
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var latestPriceTicks = await dbContext.MarketPriceSnapshots
+            .AsNoTracking()
+            .Where(snapshot => distinctItemIds.Contains(snapshot.ItemId))
+            .GroupBy(snapshot => snapshot.ItemId)
+            .Select(group => new LatestCaptureTicks(group.Key, group.Max(snapshot => snapshot.CapturedAtUtcTicks)))
+            .ToDictionaryAsync(capture => capture.ItemId, capture => capture.CapturedAtUtcTicks, cancellationToken);
+        var latestOrderBookTicks = await dbContext.MarketOrderBookSnapshots
+            .AsNoTracking()
+            .Where(snapshot => distinctItemIds.Contains(snapshot.ItemId))
+            .GroupBy(snapshot => snapshot.ItemId)
+            .Select(group => new LatestCaptureTicks(group.Key, group.Max(snapshot => snapshot.CapturedAtUtcTicks)))
+            .ToDictionaryAsync(capture => capture.ItemId, capture => capture.CapturedAtUtcTicks, cancellationToken);
+
+        var states = new Dictionary<int, MarketSnapshotCollectionState>(distinctItemIds.Length);
+        foreach (var itemId in distinctItemIds)
+        {
+            states[itemId] = new MarketSnapshotCollectionState(
+                latestPriceTicks.TryGetValue(itemId, out var priceTicks)
+                    ? new DateTimeOffset(priceTicks, TimeSpan.Zero)
+                    : null,
+                latestOrderBookTicks.TryGetValue(itemId, out var orderBookTicks)
+                    ? new DateTimeOffset(orderBookTicks, TimeSpan.Zero)
+                    : null);
+        }
+
+        return states;
+    }
+
     private static MarketPriceSnapshotEntity ToEntity(MarketPriceSnapshot snapshot) => new()
     {
         Id = snapshot.Id,
@@ -170,4 +219,6 @@ internal sealed class SqliteMarketSnapshotStore : IMarketSnapshotStore
             throw new ArgumentOutOfRangeException(nameof(itemId), "An item ID must be positive.");
         }
     }
+
+    private sealed record LatestCaptureTicks(int ItemId, long CapturedAtUtcTicks);
 }

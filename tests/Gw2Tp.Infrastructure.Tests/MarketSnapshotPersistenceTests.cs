@@ -61,6 +61,7 @@ public sealed class MarketSnapshotPersistenceTests
 
         var storedPrices = await store.ListPriceSnapshotsAsync(19721, CancellationToken.None);
         var storedOrderBooks = await store.ListOrderBookSnapshotsAsync(19721, CancellationToken.None);
+        var collectionStates = await store.GetCollectionStatesAsync([19721, 19722], CancellationToken.None);
 
         Assert.Equal([earlierPrice.Id, laterPrice.Id], storedPrices.Select(snapshot => snapshot.Id));
         Assert.Equal(capturedAtUtc, storedPrices[0].Freshness.CapturedAtUtc);
@@ -74,6 +75,10 @@ public sealed class MarketSnapshotPersistenceTests
         Assert.Equal(orderBook.FormatVersion, storedOrderBook.FormatVersion);
         Assert.Equal([99, 95], storedOrderBook.Buys.Select(level => level.UnitPriceInCopper));
         Assert.Equal([105, 110], storedOrderBook.Sells.Select(level => level.UnitPriceInCopper));
+        Assert.Equal(capturedAtUtc.AddHours(1), collectionStates[19721].LatestPriceCapturedAtUtc);
+        Assert.Equal(capturedAtUtc, collectionStates[19721].LatestOrderBookCapturedAtUtc);
+        Assert.Null(collectionStates[19722].LatestPriceCapturedAtUtc);
+        Assert.Null(collectionStates[19722].LatestOrderBookCapturedAtUtc);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => store.AppendAsync(earlierPrice, CancellationToken.None));
         Assert.Equal(
