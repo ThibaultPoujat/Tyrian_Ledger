@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Preferences;
+using Gw2Tp.Application.Operations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,6 +37,7 @@ public static class UserSessionPreferencesServiceCollectionExtensions
 
         services.AddDbContextFactory<UserSessionPreferencesDbContext>(options => options.UseSqlite(connectionString));
         services.AddSingleton<IUserSessionPreferencesStore, SqliteUserSessionPreferencesStore>();
+        services.AddSingleton<IOperationHistoryStore, SqliteOperationHistoryStore>();
 
         return services;
     }
