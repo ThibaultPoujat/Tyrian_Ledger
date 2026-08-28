@@ -25,7 +25,7 @@ public sealed class MarketDataDiagnosticsEndpointTests
                 TotalRequestLatencyMilliseconds: 45,
                 AverageRequestLatencyMilliseconds: 11),
         ]);
-        using var factory = new WebApplicationFactory<Program>()
+        using var factory = new TestWebApplicationFactory()
             .WithWebHostBuilder(builder =>
             {
                 builder.ConfigureServices(services =>

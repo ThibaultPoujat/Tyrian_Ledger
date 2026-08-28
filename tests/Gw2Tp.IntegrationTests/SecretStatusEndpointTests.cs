@@ -14,7 +14,7 @@ public sealed class SecretStatusEndpointTests
     [Fact]
     public async Task Status_endpoint_never_serializes_a_configured_credential()
     {
-        using var factory = new WebApplicationFactory<Program>()
+        using var factory = new TestWebApplicationFactory()
             .WithWebHostBuilder(builder =>
             {
                 builder.ConfigureServices(services =>

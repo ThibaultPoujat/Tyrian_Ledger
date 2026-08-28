@@ -3,7 +3,9 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Gw2Tp.Application.AccountSnapshots;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.Operations;
+using Gw2Tp.Domain.MarketData;
 using Gw2Tp.Infrastructure.Preferences;
 using Gw2Tp.Testing;
 using Microsoft.AspNetCore.Hosting;
@@ -24,8 +26,20 @@ public sealed class AccountSnapshotClearingEndpointTests
         using var factory = CreateFactory(databasePath, cacheClearer);
         var client = factory.CreateClient();
         var operationHistoryStore = factory.Services.GetRequiredService<IOperationHistoryStore>();
+        var marketSnapshotStore = factory.Services.GetRequiredService<IMarketSnapshotStore>();
         await operationHistoryStore.CreateAsync(
             OperationHistoryStatisticsFixtures.CreatePopulated()[0],
+            CancellationToken.None);
+        var capturedAtUtc = new DateTimeOffset(2026, 8, 28, 9, 0, 0, TimeSpan.Zero);
+        await marketSnapshotStore.AppendAsync(
+            new MarketPriceSnapshot(
+                Guid.Parse("44444444-4444-4444-4444-444444444444"),
+                new MarketPrice(
+                    19721,
+                    true,
+                    new MarketOrderSummary(10, 100),
+                    new MarketOrderSummary(10, 110)),
+                new DataFreshness(capturedAtUtc, capturedAtUtc.AddMinutes(5))),
             CancellationToken.None);
 
         using var savePreferencesResponse = await client.PutAsJsonAsync("/api/preferences/user-session", new
@@ -57,6 +71,7 @@ public sealed class AccountSnapshotClearingEndpointTests
         historyResponse.EnsureSuccessStatusCode();
         using var historyDocument = JsonDocument.Parse(await historyResponse.Content.ReadAsStringAsync());
         Assert.Equal(1, historyDocument.RootElement.GetProperty("operationCount").GetInt32());
+        Assert.Single(await marketSnapshotStore.ListPriceSnapshotsAsync(19721, CancellationToken.None));
     }
 
     private static WebApplicationFactory<Program> CreateFactory(

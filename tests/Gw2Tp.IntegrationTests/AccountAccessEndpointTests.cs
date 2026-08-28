@@ -65,7 +65,7 @@ public sealed class AccountAccessEndpointTests
     }
 
     private static WebApplicationFactory<Program> CreateFactory(AccountAccessStatus status) =>
-        new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+        new TestWebApplicationFactory().WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {

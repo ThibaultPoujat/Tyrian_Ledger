@@ -3,6 +3,7 @@ using System;
 using Gw2Tp.Infrastructure.Preferences;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Gw2Tp.Infrastructure.Preferences.Migrations
 {
     [DbContext(typeof(UserSessionPreferencesDbContext))]
-    partial class UserSessionPreferencesDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260828165005_AddMarketSnapshots")]
+    partial class AddMarketSnapshots
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
