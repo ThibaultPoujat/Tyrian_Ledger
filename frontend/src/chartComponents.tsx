@@ -73,7 +73,6 @@ export function OpportunityLandscape({ opportunities }: { opportunities: Dashboa
               cx={x(opportunity.capitalRequiredCopper)}
               cy={y(opportunity.modeledNetProfitCopper)}
               r={radius(opportunity.liquidityPriceImpactCopper)}
-              tabIndex={0}
             >
               <title>{`${opportunity.label}: ${formatCopper(opportunity.modeledNetProfitCopper)} modeled profit, ${formatCopper(opportunity.capitalRequiredCopper)} capital`}</title>
             </circle>
@@ -305,11 +304,11 @@ export function ResearchBandChart({ items }: { items: MarketResearchWatchlistIte
               <text className="chart-point-label" x={0} y={y + 4}>#{item.itemId}</text>
               {renderBand(item.buyPrices, y - 12, 'research-buy', x)}
               {renderBand(item.sellPrices, y + 14, 'research-sell', x)}
-              <text className="chart-tick-label" x={margin.left} y={height - 5}>0g</text>
-              <text className="chart-tick-label" textAnchor="end" x={width - margin.right} y={height - 5}>{formatCopper(maxValue)}</text>
             </g>
           );
         })}
+        <text className="chart-tick-label" x={margin.left} y={height - 5}>0g</text>
+        <text className="chart-tick-label" textAnchor="end" x={width - margin.right} y={height - 5}>{formatCopper(maxValue)}</text>
       </svg>
       <div className="chart-legend"><span><i className="legend-line legend-buy" /> Buy</span><span><i className="legend-line legend-sell" /> Sell</span></div>
       <p className="chart-note">Observed local evidence only. No forecast or investment advice is shown.</p>

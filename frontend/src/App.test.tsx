@@ -441,7 +441,9 @@ describe('market dashboard preferences and filters', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Landscape' }));
 
-    expect(screen.getByTestId('opportunity-landscape')).toBeVisible();
+    const landscape = screen.getByTestId('opportunity-landscape');
+    expect(landscape).toBeVisible();
+    expect(landscape.querySelectorAll('circle[tabindex]')).toHaveLength(0);
     fireEvent.click(screen.getByText('View landscape data table'));
     expect(screen.getByRole('table', { name: 'Modeled opportunity landscape data' })).toBeVisible();
   });
@@ -465,7 +467,9 @@ describe('historical market research', () => {
     expect(research).toHaveTextContent('P10 0g 1s 0c · median 0g 1s 40c · P90 0g 1s 80c');
     expect(research).toHaveTextContent('Insufficient local sample (4 observed).');
     expect(research).toHaveTextContent('missing values are not treated as zero');
-    expect(screen.getByTestId('research-band-chart')).toBeVisible();
+    const bandChart = screen.getByTestId('research-band-chart');
+    expect(bandChart).toBeVisible();
+    expect(bandChart.querySelectorAll('text.chart-tick-label')).toHaveLength(2);
     expect(screen.getByTestId('research-liquidity-chart')).toBeVisible();
     expect(screen.getByTestId('research-coverage-chart')).toBeVisible();
   });
