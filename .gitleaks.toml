@@ -1,0 +1,8 @@
+title = "Tyrian Ledger Gitleaks configuration"
+
+[allowlist]
+  description = "The environment-variable identifier is not a credential value."
+  regexTarget = "line"
+  regexes = [
+    '''^    public const string Gw2ApiCredentialEnvironmentVariable = "TYRIAN_LEDGER_GW2_API_KEY";$''',
+  ]
