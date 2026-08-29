@@ -1,0 +1,21 @@
+# Permit direct Git commands to run outside the sandbox without an approval prompt.
+prefix_rule(
+    pattern = ["git"],
+    decision = "allow",
+    justification = "Pre-authorize all Git commands for this project.",
+    match = [
+        "git status",
+        "git push origin main",
+    ],
+)
+
+# Permit direct GitHub CLI commands to run outside the sandbox without an approval prompt.
+prefix_rule(
+    pattern = ["gh"],
+    decision = "allow",
+    justification = "Pre-authorize all GitHub CLI commands for this project.",
+    match = [
+        "gh pr view 1",
+        "gh pr create --title test --body test",
+    ],
+)
