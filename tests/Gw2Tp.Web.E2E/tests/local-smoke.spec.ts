@@ -1,7 +1,21 @@
 import { expect, test } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 
 const apiPort = process.env.TYRIAN_LEDGER_E2E_API_PORT ?? '5010';
 const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
+
+test.afterEach(async ({ request }) => {
+  const response = await request.put(`${apiBaseUrl}/api/preferences/user-session`, {
+    data: {
+      capitalLimitCopper: null,
+      minimumProfitCopper: null,
+      riskPreference: 'all',
+      strategyPreference: 'all',
+      allocationPercent: 100,
+    },
+  });
+  expect(response.status()).toBe(200);
+});
 
 test('local API health endpoint responds', async ({ page }) => {
   const response = await page.goto(`${apiBaseUrl}/healthz`);
@@ -116,4 +130,58 @@ test('opportunity detail explains the modeled scenario without implying an actua
   await expect(detail).toContainText('Human-readable calculation breakdown');
   await expect(detail).toContainText('Order-book impact and liquidity');
   await expect(detail).toContainText('Data age');
+});
+
+test('keyboard users can complete preference, detail, and confirmation flows with visible focus', async ({ page }) => {
+  await page.goto('/');
+
+  const capital = page.getByLabel(/available capital/i);
+  await capital.focus();
+  await expect(capital).toBeFocused();
+  await capital.fill('1200');
+
+  const allocation = page.getByLabel(/per-opportunity allocation/i);
+  await allocation.focus();
+  await allocation.fill('50');
+  await allocation.press('Enter');
+  await expect(page.getByTestId('opportunity-row')).toHaveCount(1);
+
+  const detailTrigger = page.getByRole('button', { name: 'View details for Sample market flip #900001' });
+  await detailTrigger.focus();
+  await detailTrigger.press('Enter');
+
+  const closeDetails = page.getByRole('button', { name: 'Close details' });
+  await expect(closeDetails).toBeFocused();
+  await closeDetails.press('Enter');
+  await expect(page.getByTestId('opportunity-detail')).toHaveCount(0);
+  await expect(detailTrigger).toBeFocused();
+
+  const clearTrigger = page.getByRole('button', { name: 'Clear account snapshot data' });
+  await clearTrigger.focus();
+  await clearTrigger.press('Space');
+  const confirmClear = page.getByRole('button', { name: 'Confirm clear account snapshots' });
+  await expect(confirmClear).toBeFocused();
+  await page.getByRole('button', { name: 'Cancel' }).press('Enter');
+  await expect(clearTrigger).toBeFocused();
+
+  await clearTrigger.press('Space');
+  await page.getByRole('button', { name: 'Confirm clear account snapshots' }).press('Enter');
+  await expect(page.getByText(/account snapshot data cleared/i)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Clear account snapshot data' })).toBeFocused();
+});
+
+test('dashboard and expanded detail meet WCAG 2.2 AA automated checks', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Market opportunities' })).toBeVisible();
+
+  await expect(new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+    .analyze()).resolves.toMatchObject({ violations: [] });
+
+  await page.getByRole('button', { name: 'View details for Sample market flip #900004' }).click();
+  await expect(page.getByTestId('opportunity-detail')).toBeVisible();
+
+  await expect(new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+    .analyze()).resolves.toMatchObject({ violations: [] });
 });

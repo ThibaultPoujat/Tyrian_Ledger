@@ -22,7 +22,16 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
   ],
+  workers: 1,
   webServer: [
     {
       command: `dotnet run --project ../../src/Gw2Tp.Web/Gw2Tp.Web.csproj --no-launch-profile --urls ${apiBaseUrl}`,

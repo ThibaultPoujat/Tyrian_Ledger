@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   clearAccountSnapshotData,
   addMarketResearchWatchlistItem,
@@ -82,6 +82,7 @@ export default function App() {
   const [preferenceMessage, setPreferenceMessage] = useState<string | null>(null);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<number | null>(null);
+  const selectedOpportunityTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -424,9 +425,16 @@ export default function App() {
                         <OpportunityRow
                           key={opportunity.itemId}
                           isSelected={opportunity.itemId === selectedOpportunityId}
-                          onSelect={() => setSelectedOpportunityId((current) => (
-                            current === opportunity.itemId ? null : opportunity.itemId
-                          ))}
+                          onSelect={(trigger) => {
+                            if (selectedOpportunityId === opportunity.itemId) {
+                              setSelectedOpportunityId(null);
+                              requestAnimationFrame(() => trigger.focus());
+                              return;
+                            }
+
+                            selectedOpportunityTriggerRef.current = trigger;
+                            setSelectedOpportunityId(opportunity.itemId);
+                          }}
                           opportunity={opportunity}
                         />
                       ))}
@@ -437,7 +445,11 @@ export default function App() {
 
               {selectedOpportunity !== null && (
                 <OpportunityDetail
-                  onClose={() => setSelectedOpportunityId(null)}
+                  onClose={() => {
+                    const trigger = selectedOpportunityTriggerRef.current;
+                    setSelectedOpportunityId(null);
+                    requestAnimationFrame(() => trigger?.focus());
+                  }}
                   opportunity={selectedOpportunity}
                 />
               )}
@@ -516,6 +528,14 @@ function LocalAccountDataPanel() {
   const [isConfirmationVisible, setIsConfirmationVisible] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const clearTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const confirmClearRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (isConfirmationVisible) {
+      confirmClearRef.current?.focus();
+    }
+  }, [isConfirmationVisible]);
 
   const clearSnapshots = () => {
     setIsClearing(true);
@@ -524,6 +544,7 @@ function LocalAccountDataPanel() {
       .then(() => {
         setIsConfirmationVisible(false);
         setMessage('Account snapshot data cleared. Saved operation history, preferences, public market cache, and your operating-system API key were kept.');
+        requestAnimationFrame(() => clearTriggerRef.current?.focus());
       })
       .catch(() => {
         setMessage('Account snapshot data could not be cleared. Your existing account snapshot cache may still be available.');
@@ -549,6 +570,7 @@ function LocalAccountDataPanel() {
             setMessage(null);
             setIsConfirmationVisible(true);
           }}
+          ref={clearTriggerRef}
           type="button"
         >
           Clear account snapshot data
@@ -561,13 +583,16 @@ function LocalAccountDataPanel() {
             Clear the current account snapshot cache? Future account analysis will fetch fresh data when needed.
           </p>
           <div className="local-data-actions">
-            <button className="local-data-clear" disabled={isClearing} onClick={clearSnapshots} type="button">
+            <button className="local-data-clear" disabled={isClearing} onClick={clearSnapshots} ref={confirmClearRef} type="button">
               {isClearing ? 'Clearing account snapshots…' : 'Confirm clear account snapshots'}
             </button>
             <button
               className="local-data-cancel"
               disabled={isClearing}
-              onClick={() => setIsConfirmationVisible(false)}
+              onClick={() => {
+                setIsConfirmationVisible(false);
+                requestAnimationFrame(() => clearTriggerRef.current?.focus());
+              }}
               type="button"
             >
               Cancel
@@ -871,7 +896,7 @@ function OpportunityRow({
   opportunity,
 }: {
   isSelected: boolean;
-  onSelect: () => void;
+  onSelect: (trigger: HTMLButtonElement) => void;
   opportunity: DashboardOpportunity;
 }) {
   return (
@@ -906,7 +931,7 @@ function OpportunityRow({
           aria-expanded={isSelected}
           aria-label={`${isSelected ? 'Hide' : 'View'} details for ${opportunity.label}`}
           className="detail-toggle"
-          onClick={onSelect}
+          onClick={(event) => onSelect(event.currentTarget)}
           type="button"
         >
           {isSelected ? 'Hide details' : 'View details'}
@@ -924,6 +949,11 @@ function OpportunityDetail({
   opportunity: DashboardOpportunity;
 }) {
   const { detail } = opportunity;
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
 
   return (
     <section
@@ -936,7 +966,7 @@ function OpportunityDetail({
           <p className="eyebrow">Calculation detail</p>
           <h2 id="opportunity-detail-title">{opportunity.label}</h2>
         </div>
-        <button className="detail-close" onClick={onClose} type="button">
+        <button className="detail-close" onClick={onClose} ref={closeButtonRef} type="button">
           Close details
         </button>
       </div>

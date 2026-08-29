@@ -367,11 +367,14 @@ describe('market dashboard preferences and filters', () => {
   it('renders the selected opportunity detail as a modeled scenario', async () => {
     await renderReadyDashboard();
 
-    fireEvent.click(screen.getByRole('button', {
+    const detailTrigger = screen.getByRole('button', {
       name: 'View details for Sample market flip #900004',
-    }));
+    });
+    detailTrigger.focus();
+    fireEvent.click(detailTrigger);
 
     const detail = screen.getByTestId('opportunity-detail');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close details' })).toHaveFocus());
     expect(detail).toHaveTextContent('Modeled scenario only.');
     expect(detail).toHaveTextContent('not an actual purchase, sale, fill, fee, or realized-profit outcome');
     expect(detail).toHaveTextContent('Take supplied sell levels: 5 of 5 items for 0g 8s 0c.');
@@ -382,6 +385,9 @@ describe('market dashboard preferences and filters', () => {
     expect(detail).toHaveTextContent('Total price impact0g 3s 0c');
     expect(detail).toHaveTextContent('Human-readable calculation breakdown');
     expect(detail).toHaveTextContent('Data age');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+    await waitFor(() => expect(detailTrigger).toHaveFocus());
   });
 });
 
@@ -519,7 +525,9 @@ describe('local account data control', () => {
 
     expect(screen.getByText(/clearing them stays on this device and never uploads data/i)).toBeVisible();
     expect(screen.getByText(/saved operation history, preferences, public market cache, and your operating-system api key are not removed/i)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear account snapshot data' }));
+    const clearTrigger = screen.getByRole('button', { name: 'Clear account snapshot data' });
+    clearTrigger.focus();
+    fireEvent.click(clearTrigger);
 
     expect(screen.getByRole('alert')).toHaveTextContent('Clear the current account snapshot cache?');
     expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE')).toBe(false);
@@ -529,6 +537,7 @@ describe('local account data control', () => {
     expect(await screen.findByText(/account snapshot data cleared/i)).toHaveTextContent(
       'Saved operation history, preferences, public market cache, and your operating-system API key were kept.',
     );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Clear account snapshot data' })).toHaveFocus());
     const clearCall = fetchMock.mock.calls.find(([input]) => getFetchUrl(input as RequestInfo | URL) === '/api/account/snapshots');
     expect((clearCall?.[1] as RequestInit).method).toBe('DELETE');
   });
