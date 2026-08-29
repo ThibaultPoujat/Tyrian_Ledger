@@ -14,7 +14,6 @@ playwright-report/
 test-results/
 
 # Local runtime/data
-.local/
 var/
 *.db
 *.db-shm
