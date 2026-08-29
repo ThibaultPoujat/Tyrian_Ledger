@@ -86,6 +86,7 @@ public sealed class AccountSnapshotClearingEndpointTests
                 builder.ConfigureServices(services =>
                 {
                     services.RemoveAll<IGw2ApiClient>();
+                    services.AddSingleton<IGw2ApiClient, UnavailableMarketClient>();
                     services.RemoveAll<IAccountSnapshotCacheClearer>();
                     services.AddSingleton(cacheClearer);
                 });

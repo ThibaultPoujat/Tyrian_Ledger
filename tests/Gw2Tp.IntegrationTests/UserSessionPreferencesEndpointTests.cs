@@ -31,6 +31,11 @@ public sealed class UserSessionPreferencesEndpointTests
             Assert.Equal("all", defaults.GetProperty("riskPreference").GetString());
             Assert.Equal("all", defaults.GetProperty("strategyPreference").GetString());
             Assert.Equal(100, defaults.GetProperty("allocationPercent").GetInt32());
+            Assert.Equal(1, defaults.GetProperty("analysisQuantity").GetInt32());
+            Assert.Equal(JsonValueKind.Null, defaults.GetProperty("listingFeeBasisPoints").ValueKind);
+            Assert.Equal(JsonValueKind.Null, defaults.GetProperty("listingFeeRounding").ValueKind);
+            Assert.Equal(JsonValueKind.Null, defaults.GetProperty("exchangeFeeBasisPoints").ValueKind);
+            Assert.Equal(JsonValueKind.Null, defaults.GetProperty("exchangeFeeRounding").ValueKind);
 
             using var saveResponse = await SavePreferencesAsync(
                 firstClient,
@@ -38,7 +43,12 @@ public sealed class UserSessionPreferencesEndpointTests
                 minimumProfitCopper: 500,
                 riskPreference: "normal",
                 strategyPreference: "market-flip",
-                allocationPercent: 65);
+                allocationPercent: 65,
+                analysisQuantity: 4,
+                listingFeeBasisPoints: 500,
+                listingFeeRounding: "down",
+                exchangeFeeBasisPoints: 1_000,
+                exchangeFeeRounding: "up");
             saveResponse.EnsureSuccessStatusCode();
         }
 
@@ -54,6 +64,11 @@ public sealed class UserSessionPreferencesEndpointTests
         Assert.Equal("normal", persisted.GetProperty("riskPreference").GetString());
         Assert.Equal("market-flip", persisted.GetProperty("strategyPreference").GetString());
         Assert.Equal(65, persisted.GetProperty("allocationPercent").GetInt32());
+        Assert.Equal(4, persisted.GetProperty("analysisQuantity").GetInt32());
+        Assert.Equal(500, persisted.GetProperty("listingFeeBasisPoints").GetInt32());
+        Assert.Equal("down", persisted.GetProperty("listingFeeRounding").GetString());
+        Assert.Equal(1_000, persisted.GetProperty("exchangeFeeBasisPoints").GetInt32());
+        Assert.Equal("up", persisted.GetProperty("exchangeFeeRounding").GetString());
     }
 
     [Fact]
@@ -68,6 +83,11 @@ public sealed class UserSessionPreferencesEndpointTests
             riskPreference = "high",
             strategyPreference = "speculation",
             allocationPercent = 101,
+            analysisQuantity = 0,
+            listingFeeBasisPoints = 10_001,
+            listingFeeRounding = "nearest",
+            exchangeFeeBasisPoints = 500,
+            exchangeFeeRounding = "down",
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -78,33 +98,33 @@ public sealed class UserSessionPreferencesEndpointTests
         Assert.True(errors.TryGetProperty("riskPreference", out _));
         Assert.True(errors.TryGetProperty("strategyPreference", out _));
         Assert.True(errors.TryGetProperty("allocationPercent", out _));
+        Assert.True(errors.TryGetProperty("analysisQuantity", out _));
+        Assert.True(errors.TryGetProperty("listingFeeBasisPoints", out _));
+        Assert.True(errors.TryGetProperty("listingFeeRounding", out _));
     }
 
     [Fact]
-    public async Task Saved_preferences_filter_and_rerank_dashboard_results_deterministically()
+    public async Task Preferences_endpoint_rejects_incomplete_fee_rules()
     {
         using var factory = CreateFactory(CreateDatabasePath());
         var client = factory.CreateClient();
-        using var saveResponse = await SavePreferencesAsync(
-            client,
-            capitalLimitCopper: 1_600,
-            minimumProfitCopper: 0,
-            riskPreference: "normal",
-            strategyPreference: "all",
-            allocationPercent: 50);
-        saveResponse.EnsureSuccessStatusCode();
+        using var response = await client.PutAsJsonAsync("/api/preferences/user-session", new
+        {
+            capitalLimitCopper = (long?)null,
+            minimumProfitCopper = (long?)null,
+            riskPreference = "all",
+            strategyPreference = "all",
+            allocationPercent = 100,
+            analysisQuantity = 1,
+            listingFeeBasisPoints = 500,
+            listingFeeRounding = "down",
+            exchangeFeeBasisPoints = (int?)null,
+            exchangeFeeRounding = (string?)null,
+        });
 
-        using var dashboardResponse = await client.GetAsync("/api/dashboard/opportunities");
-        dashboardResponse.EnsureSuccessStatusCode();
-        using var document = JsonDocument.Parse(await dashboardResponse.Content.ReadAsStringAsync());
-        var opportunities = document.RootElement.GetProperty("opportunities").EnumerateArray().ToArray();
-
-        Assert.Equal(2, opportunities.Length);
-        Assert.Equal([900_004, 900_001], opportunities.Select(opportunity => opportunity.GetProperty("itemId").GetInt32()));
-        Assert.Equal([1, 2], opportunities.Select(opportunity => opportunity.GetProperty("rank").GetInt32()));
-        Assert.All(
-            opportunities,
-            opportunity => Assert.Equal("normal", opportunity.GetProperty("confidence").GetString()));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(document.RootElement.GetProperty("errors").TryGetProperty("fees", out _));
     }
 
     private static WebApplicationFactory<Program> CreateFactory(string databasePath) =>
@@ -112,7 +132,11 @@ public sealed class UserSessionPreferencesEndpointTests
             .WithWebHostBuilder(builder =>
             {
                 builder.UseSetting(UserSessionPreferencesServiceCollectionExtensions.DatabasePathConfigurationKey, databasePath);
-                builder.ConfigureServices(services => services.RemoveAll<IGw2ApiClient>());
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<IGw2ApiClient>();
+                    services.AddSingleton<IGw2ApiClient, UnavailableMarketClient>();
+                });
             });
 
     private static Task<HttpResponseMessage> SavePreferencesAsync(
@@ -121,13 +145,23 @@ public sealed class UserSessionPreferencesEndpointTests
         long? minimumProfitCopper,
         string riskPreference,
         string strategyPreference,
-        int allocationPercent) => client.PutAsJsonAsync("/api/preferences/user-session", new
+        int allocationPercent,
+        int analysisQuantity,
+        int? listingFeeBasisPoints,
+        string? listingFeeRounding,
+        int? exchangeFeeBasisPoints,
+        string? exchangeFeeRounding) => client.PutAsJsonAsync("/api/preferences/user-session", new
         {
             capitalLimitCopper,
             minimumProfitCopper,
             riskPreference,
             strategyPreference,
             allocationPercent,
+            analysisQuantity,
+            listingFeeBasisPoints,
+            listingFeeRounding,
+            exchangeFeeBasisPoints,
+            exchangeFeeRounding,
         });
 
     private static string CreateDatabasePath() => Path.Combine(

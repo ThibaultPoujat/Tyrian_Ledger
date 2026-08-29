@@ -1,13 +1,13 @@
-using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Gw2Tp.Application.MarketData;
-using Gw2Tp.Application.Time;
+using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Infrastructure.Preferences;
-using Gw2Tp.Testing;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace Gw2Tp.IntegrationTests;
@@ -15,72 +15,76 @@ namespace Gw2Tp.IntegrationTests;
 public sealed class DashboardOpportunitiesEndpointTests
 {
     [Fact]
-    public async Task Dashboard_endpoint_returns_ranked_local_sample_data_without_the_gw2_client()
+    public async Task Dashboard_screens_tracked_prices_without_requesting_listings_until_fees_are_configured()
     {
-        using var factory = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting(
-                    UserSessionPreferencesServiceCollectionExtensions.DatabasePathConfigurationKey,
-                    CreateDatabasePath());
-                builder.ConfigureServices(services => services.RemoveAll<IGw2ApiClient>());
-            });
+        var marketClient = new RecordingMarketClient(
+            prices: SuccessfulPrices(
+                Price(900_002, buy: 90, sell: 100),
+                Price(900_001, buy: 250, sell: 100)),
+            listings: SuccessfulListings(Listing(900_001, buy: 250, sell: 100)));
+        using var factory = CreateFactory([Tracked(900_002), Tracked(900_001)], marketClient);
         var client = factory.CreateClient();
 
-        var firstResponse = await client.GetAsync("/api/dashboard/opportunities");
-        var secondResponse = await client.GetAsync("/api/dashboard/opportunities");
+        using var response = await client.GetAsync("/api/dashboard/opportunities");
 
-        firstResponse.EnsureSuccessStatusCode();
-        secondResponse.EnsureSuccessStatusCode();
-        using var firstDocument = JsonDocument.Parse(await firstResponse.Content.ReadAsStringAsync());
-        using var secondDocument = JsonDocument.Parse(await secondResponse.Content.ReadAsStringAsync());
-        var firstRoot = firstDocument.RootElement;
-        var firstOpportunities = firstRoot.GetProperty("opportunities");
-        var secondOpportunities = secondDocument.RootElement.GetProperty("opportunities");
-
-        Assert.True(firstRoot.GetProperty("isSampleData").GetBoolean());
-        Assert.Equal(
-            "Deterministic local sample data. No live market scan was performed.",
-            firstRoot.GetProperty("sourceDescription").GetString());
-        Assert.Equal(5, firstOpportunities.GetArrayLength());
-        Assert.Equal(
-            [1, 2, 3, 4, 5],
-            firstOpportunities.EnumerateArray().Select(opportunity => opportunity.GetProperty("rank").GetInt32()));
-        Assert.True(firstOpportunities.EnumerateArray()
-            .Select(opportunity => opportunity.GetProperty("scoreBasisPoints").GetInt32())
-            .Zip(
-                firstOpportunities.EnumerateArray()
-                    .Select(opportunity => opportunity.GetProperty("scoreBasisPoints").GetInt32())
-                    .Skip(1),
-                (current, next) => current >= next)
-            .All(isDescending => isDescending));
-        Assert.All(
-            firstOpportunities.EnumerateArray(),
-            opportunity => Assert.Equal("market-flip", opportunity.GetProperty("strategy").GetString()));
-        Assert.Contains(
-            firstOpportunities.EnumerateArray(),
-            opportunity => opportunity.GetProperty("freshness").GetString() == "current");
-        Assert.Contains(
-            firstOpportunities.EnumerateArray(),
-            opportunity => opportunity.GetProperty("freshness").GetString() == "stale");
-        Assert.Equal(
-            ["high", "low", "medium", "ongoing-patient", "very-low"],
-            firstOpportunities
-                .EnumerateArray()
-                .Select(opportunity => opportunity.GetProperty("effortCategory").GetString()
-                    ?? throw new InvalidOperationException("Dashboard effort category must be present."))
-                .Order(StringComparer.Ordinal)
-                .ToArray());
-        Assert.Equal(
-            firstOpportunities.EnumerateArray().Select(opportunity => opportunity.GetProperty("itemId").GetInt32()),
-            secondOpportunities.EnumerateArray().Select(opportunity => opportunity.GetProperty("itemId").GetInt32()));
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        Assert.Equal("fee-configuration-required", root.GetProperty("status").GetString());
+        Assert.Equal(2, root.GetProperty("trackedItemCount").GetInt32());
+        var screened = Assert.Single(root.GetProperty("screenedCandidates").EnumerateArray());
+        Assert.Equal(900_001, screened.GetProperty("itemId").GetInt32());
+        Assert.Empty(root.GetProperty("opportunities").EnumerateArray());
+        Assert.Equal(1, marketClient.PriceRequestCount);
+        Assert.Equal([900_001, 900_002], marketClient.PriceRequests.Single());
+        Assert.Equal(0, marketClient.ListingRequestCount);
     }
 
     [Fact]
-    public async Task Dashboard_detail_matches_the_known_deterministic_fixture()
+    public async Task Configured_dashboard_returns_live_ranked_scenarios_without_an_effort_category()
     {
-        var frozenNow = new DateTimeOffset(2026, 8, 27, 12, 0, 0, TimeSpan.Zero);
-        using var factory = new WebApplicationFactory<Program>()
+        var marketClient = new RecordingMarketClient(
+            prices: SuccessfulPrices(Price(900_001, buy: 250, sell: 100)),
+            listings: SuccessfulListings(Listing(900_001, buy: 250, sell: 100)));
+        using var factory = CreateFactory([Tracked(900_001)], marketClient);
+        var client = factory.CreateClient();
+
+        using var saveResponse = await client.PutAsJsonAsync("/api/preferences/user-session", new
+        {
+            capitalLimitCopper = (long?)null,
+            minimumProfitCopper = 0,
+            riskPreference = "all",
+            strategyPreference = "market-flip",
+            allocationPercent = 100,
+            analysisQuantity = 2,
+            listingFeeBasisPoints = 500,
+            listingFeeRounding = "down",
+            exchangeFeeBasisPoints = 1_000,
+            exchangeFeeRounding = "down",
+        });
+        saveResponse.EnsureSuccessStatusCode();
+
+        using var response = await client.GetAsync("/api/dashboard/opportunities");
+
+        response.EnsureSuccessStatusCode();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        Assert.Equal("complete", root.GetProperty("status").GetString());
+        Assert.Contains("Read-only live market scan", root.GetProperty("sourceDescription").GetString());
+        var opportunity = Assert.Single(root.GetProperty("opportunities").EnumerateArray());
+        Assert.Equal(900_001, opportunity.GetProperty("itemId").GetInt32());
+        Assert.Equal("Tracked market item #900001", opportunity.GetProperty("label").GetString());
+        Assert.False(opportunity.TryGetProperty("effortCategory", out _));
+        Assert.Equal(2, opportunity.GetProperty("detail").GetProperty("requestedQuantity").GetInt32());
+        Assert.Equal(1, marketClient.PriceRequestCount);
+        Assert.Equal(1, marketClient.ListingRequestCount);
+        Assert.Equal([900_001], marketClient.ListingRequests.Single());
+    }
+
+    private static WebApplicationFactory<Program> CreateFactory(
+        IReadOnlyList<MarketTrackedItem> trackedItems,
+        RecordingMarketClient marketClient) =>
+        new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
                 builder.UseSetting(
@@ -88,76 +92,97 @@ public sealed class DashboardOpportunitiesEndpointTests
                     CreateDatabasePath());
                 builder.ConfigureServices(services =>
                 {
+                    services.RemoveAll<IHostedService>();
+                    services.RemoveAll<IMarketWatchlistStore>();
                     services.RemoveAll<IGw2ApiClient>();
-                    services.RemoveAll<IClock>();
-                    services.AddSingleton<IClock>(new FrozenClock(frozenNow));
+                    services.AddSingleton<IMarketWatchlistStore>(new StubWatchlistStore(trackedItems));
+                    services.AddSingleton<IGw2ApiClient>(marketClient);
                 });
             });
-        var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/api/dashboard/opportunities");
-        response.EnsureSuccessStatusCode();
-        using var responseDocument = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        using var fixtureDocument = await new JsonFixtureLoader(
-                Path.Combine(AppContext.BaseDirectory, "Fixtures"))
-            .LoadAsync("dashboard/opportunity-detail.json");
+    private static MarketTrackedItem Tracked(int itemId) => new(itemId, MarketSamplingClass.Watchlist);
 
-        var actualDetail = responseDocument.RootElement
-            .GetProperty("opportunities")
-            .EnumerateArray()
-            .Single(opportunity => opportunity.GetProperty("itemId").GetInt32() == 900_004)
-            .GetProperty("detail");
+    private static MarketPrice Price(int itemId, int buy, int sell) =>
+        new(itemId, false, new MarketOrderSummary(20, buy), new MarketOrderSummary(20, sell));
 
-        Assert.True(
-            JsonElement.DeepEquals(fixtureDocument.RootElement, actualDetail),
-            "The dashboard detail must remain consistent with its deterministic fixture.");
-    }
+    private static MarketListing Listing(int itemId, int buy, int sell) =>
+        new(
+            itemId,
+            [new MarketOrderLevel(1, 20, buy)],
+            [new MarketOrderLevel(1, 20, sell)]);
 
-    [Fact]
-    public async Task Dashboard_endpoint_filters_the_session_shortlist_by_effort_category()
-    {
-        using var factory = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting(
-                    UserSessionPreferencesServiceCollectionExtensions.DatabasePathConfigurationKey,
-                    CreateDatabasePath());
-                builder.ConfigureServices(services => services.RemoveAll<IGw2ApiClient>());
-            });
-        var client = factory.CreateClient();
+    private static Gw2ApiResult<IReadOnlyList<MarketPrice>> SuccessfulPrices(params MarketPrice[] prices) =>
+        Gw2ApiResult<IReadOnlyList<MarketPrice>>.Success(
+            prices,
+            freshness: new Gw2Tp.Domain.MarketData.DataFreshness(
+                new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero),
+                new DateTimeOffset(2026, 8, 29, 12, 2, 0, TimeSpan.Zero)));
 
-        using var response = await client.GetAsync("/api/dashboard/opportunities?effortCategory=high");
-
-        response.EnsureSuccessStatusCode();
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var opportunity = Assert.Single(document.RootElement.GetProperty("opportunities").EnumerateArray());
-        Assert.Equal("high", opportunity.GetProperty("effortCategory").GetString());
-        Assert.Equal(1, opportunity.GetProperty("rank").GetInt32());
-    }
-
-    [Fact]
-    public async Task Dashboard_endpoint_rejects_unknown_effort_category_values()
-    {
-        using var factory = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting(
-                    UserSessionPreferencesServiceCollectionExtensions.DatabasePathConfigurationKey,
-                    CreateDatabasePath());
-                builder.ConfigureServices(services => services.RemoveAll<IGw2ApiClient>());
-            });
-        var client = factory.CreateClient();
-
-        using var response = await client.GetAsync("/api/dashboard/opportunities?effortCategory=minutes");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.True(document.RootElement.GetProperty("errors").TryGetProperty("effortCategory", out _));
-    }
+    private static Gw2ApiResult<IReadOnlyList<MarketListing>> SuccessfulListings(params MarketListing[] listings) =>
+        Gw2ApiResult<IReadOnlyList<MarketListing>>.Success(
+            listings,
+            freshness: new Gw2Tp.Domain.MarketData.DataFreshness(
+                new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero),
+                new DateTimeOffset(2026, 8, 29, 12, 2, 0, TimeSpan.Zero)));
 
     private static string CreateDatabasePath() => Path.Combine(
         Path.GetTempPath(),
         "TyrianLedger",
         "IntegrationTests",
-        $"dashboard-preferences-{Guid.NewGuid():N}.db");
+        $"dashboard-market-scan-{Guid.NewGuid():N}.db");
+
+    private sealed class StubWatchlistStore : IMarketWatchlistStore
+    {
+        private readonly IReadOnlyList<MarketTrackedItem> trackedItems;
+
+        public StubWatchlistStore(IReadOnlyList<MarketTrackedItem> trackedItems) => this.trackedItems = trackedItems;
+
+        public Task<IReadOnlyList<MarketTrackedItem>> ListAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(trackedItems);
+
+        public Task AddAsync(MarketTrackedItem item, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task UpdateSamplingClassAsync(int itemId, MarketSamplingClass samplingClass, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task RemoveAsync(int itemId, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class RecordingMarketClient : IGw2ApiClient
+    {
+        private readonly Gw2ApiResult<IReadOnlyList<MarketPrice>> prices;
+        private readonly Gw2ApiResult<IReadOnlyList<MarketListing>> listings;
+
+        public RecordingMarketClient(
+            Gw2ApiResult<IReadOnlyList<MarketPrice>> prices,
+            Gw2ApiResult<IReadOnlyList<MarketListing>> listings)
+        {
+            this.prices = prices;
+            this.listings = listings;
+        }
+
+        public List<IReadOnlyCollection<int>> PriceRequests { get; } = [];
+
+        public List<IReadOnlyCollection<int>> ListingRequests { get; } = [];
+
+        public int PriceRequestCount => PriceRequests.Count;
+
+        public int ListingRequestCount => ListingRequests.Count;
+
+        public Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>> GetPricesAsync(
+            IReadOnlyCollection<int> itemIds,
+            CancellationToken cancellationToken = default)
+        {
+            PriceRequests.Add(itemIds.ToArray());
+            return Task.FromResult(prices);
+        }
+
+        public Task<Gw2ApiResult<IReadOnlyList<MarketListing>>> GetListingsAsync(
+            IReadOnlyCollection<int> itemIds,
+            CancellationToken cancellationToken = default)
+        {
+            ListingRequests.Add(itemIds.ToArray());
+            return Task.FromResult(listings);
+        }
+    }
 }

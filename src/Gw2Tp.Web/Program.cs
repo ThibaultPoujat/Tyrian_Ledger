@@ -1,9 +1,9 @@
 using Gw2Tp.Application.AccountAccess;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.MarketScanning;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.Operations;
 using Gw2Tp.Application.Preferences;
-using Gw2Tp.Application.SessionPlanning;
 using Gw2Tp.Application.Secrets;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.MarketHistory;
@@ -15,6 +15,7 @@ using Gw2Tp.Web.Dashboard;
 using Gw2Tp.Web.History;
 using Gw2Tp.Web.MarketResearch;
 using Gw2Tp.Web.Preferences;
+using Microsoft.Extensions.Options;
 
 // Tyrian Ledger Web composition root. Public GW2 market access begins in M2.
 
@@ -25,8 +26,13 @@ builder.Services.AddTyrianLedgerSecretStore(builder.Environment);
 builder.Services.AddTyrianLedgerGw2ApiClient(builder.Configuration);
 builder.Services.AddTyrianLedgerUserSessionPreferences(builder.Configuration, builder.Environment);
 builder.Services.AddTyrianLedgerMarketHistoryCollection(builder.Configuration);
-builder.Services.AddSingleton<SessionPlanner>();
-builder.Services.AddSingleton<DashboardSampleOpportunityProvider>();
+builder.Services.AddSingleton<IValidateOptions<DashboardScoringOptions>, DashboardScoringOptionsValidator>();
+builder.Services
+    .AddOptions<DashboardScoringOptions>()
+    .Bind(builder.Configuration.GetSection(DashboardScoringOptions.ConfigurationSectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<MarketFlipScanService>();
+builder.Services.AddSingleton<DashboardOpportunityProvider>();
 builder.Services.AddSingleton<OperationHistoryStatisticsCalculator>();
 builder.Services.AddSingleton<HistoricalMarketAnalyticsCalculator>();
 var app = builder.Build();
@@ -66,21 +72,12 @@ app.MapGet("/api/history/statistics", async (
     return Results.Ok(OperationHistoryStatisticsResponse.From(statisticsCalculator.Calculate(operations)));
 });
 app.MapGet("/api/dashboard/opportunities", async (
-    string? effortCategory,
-    DashboardSampleOpportunityProvider provider,
+    DashboardOpportunityProvider provider,
     IUserSessionPreferencesStore preferencesStore,
     CancellationToken cancellationToken) =>
 {
-    if (!DashboardEffortCategoryValues.TryParse(effortCategory, out var selectedEffortCategory))
-    {
-        return Results.ValidationProblem(new Dictionary<string, string[]>(StringComparer.Ordinal)
-        {
-            ["effortCategory"] = ["Effort category must be very-low, low, medium, high, or ongoing-patient."],
-        });
-    }
-
     var preferences = await preferencesStore.GetAsync(cancellationToken);
-    return Results.Ok(provider.GetDashboard(preferences, selectedEffortCategory));
+    return Results.Ok(await provider.GetDashboardAsync(preferences, cancellationToken));
 });
 
 app.Run();

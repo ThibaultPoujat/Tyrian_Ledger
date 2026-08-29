@@ -61,7 +61,11 @@ public sealed class OperationHistoryStatisticsEndpointTests
                         "TyrianLedger",
                         "IntegrationTests",
                         $"operation-history-statistics-{Guid.NewGuid():N}.db"));
-                builder.ConfigureServices(services => services.RemoveAll<IGw2ApiClient>());
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<IGw2ApiClient>();
+                    services.AddSingleton<IGw2ApiClient, UnavailableMarketClient>();
+                });
             });
 
     private static Task<JsonDocument> LoadFixtureAsync(string fixtureName) =>
