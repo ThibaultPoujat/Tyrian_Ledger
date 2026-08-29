@@ -119,8 +119,8 @@ A qualitative or component-based indication of evidence quality. It MUST NOT be 
 - No API key is written to logs.
 - Core calculations are deterministic for identical inputs and configuration.
 - Tests MUST run without live GW2 API access.
-- UI MUST support current major desktop browsers. Exact browser matrix is a release configuration item.
-- Accessibility: keyboard navigation, readable contrast, semantic controls, sensible focus management.
+- UI MUST support current desktop Chrome, Firefox, and Safari. The automated release matrix uses Playwright Chromium, Firefox, and WebKit respectively; physical Safari validation remains a release-stage manual check when available.
+- Accessibility: keyboard navigation, semantic controls, sensible focus management, and WCAG 2.2 AA contrast (4.5:1 for normal text; 3:1 for large text and interactive UI indicators).
 - No decorative reuse of GW2 proprietary UI assets.
 
 ## 8. API verification policy
