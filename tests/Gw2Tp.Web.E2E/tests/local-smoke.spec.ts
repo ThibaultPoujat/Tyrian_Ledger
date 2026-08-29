@@ -18,6 +18,24 @@ test('browser API traffic never includes a credential', async ({ page }) => {
   const syntheticCredential = 'synthetic-gw2-api-credential-for-browser-boundary-audit';
   const inspectedResponses: string[] = [];
 
+  const statusResponse = await page.request.get(`${apiBaseUrl}/api/status`);
+  const statusBody = await statusResponse.text();
+
+  expect(statusResponse.ok()).toBeTruthy();
+  expect(statusBody).toContain('"credentialStatus":"configured"');
+  expect(statusBody).not.toContain(syntheticCredential);
+
+  await page.route('**/api/account/access', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      validationStatus: 'notconfigured',
+      keyId: null,
+      keyName: null,
+      permissions: [],
+      features: [],
+    }),
+  }));
+
   page.on('request', (request) => {
     if (request.url().includes('/api/')) {
       expect(request.url()).not.toContain(syntheticCredential);
