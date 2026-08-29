@@ -1,5 +1,6 @@
 using Gw2Tp.Application.AccountAccess;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.Operations;
 using Gw2Tp.Application.Preferences;
 using Gw2Tp.Application.SessionPlanning;
@@ -12,6 +13,7 @@ using Gw2Tp.Web;
 using Gw2Tp.Web.AccountSnapshots;
 using Gw2Tp.Web.Dashboard;
 using Gw2Tp.Web.History;
+using Gw2Tp.Web.MarketResearch;
 using Gw2Tp.Web.Preferences;
 
 // Tyrian Ledger Web composition root. Public GW2 market access begins in M2.
@@ -26,6 +28,7 @@ builder.Services.AddTyrianLedgerMarketHistoryCollection(builder.Configuration);
 builder.Services.AddSingleton<SessionPlanner>();
 builder.Services.AddSingleton<DashboardSampleOpportunityProvider>();
 builder.Services.AddSingleton<OperationHistoryStatisticsCalculator>();
+builder.Services.AddSingleton<HistoricalMarketAnalyticsCalculator>();
 var app = builder.Build();
 
 await app.Services.MigrateTyrianLedgerUserSessionPreferencesAsync();
@@ -53,6 +56,7 @@ app.MapGet("/api/diagnostics/market-data", (IMarketDataDiagnostics diagnostics) 
     Results.Ok(MarketDataDiagnosticsResponse.From(diagnostics.GetSnapshot())));
 app.MapAccountSnapshotEndpoints();
 app.MapUserSessionPreferencesEndpoints();
+app.MapMarketResearchEndpoints();
 app.MapGet("/api/history/statistics", async (
     IOperationHistoryStore operationHistoryStore,
     OperationHistoryStatisticsCalculator statisticsCalculator,

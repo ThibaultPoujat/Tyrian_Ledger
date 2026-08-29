@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   clearAccountSnapshotData,
+  addMarketResearchWatchlistItem,
   loadAccountAccessStatus,
   loadDashboardOpportunities,
+  loadMarketResearchWatchlist,
   loadOperationHistoryStatistics,
   loadUserSessionPreferences,
   saveUserSessionPreferences,
+  removeMarketResearchWatchlistItem,
   type DashboardEffortCategory,
   type DashboardOpportunitiesResponse,
   type DashboardOpportunity,
@@ -13,6 +16,10 @@ import {
   type OperationHistoryStatistics,
   type OperationLifecycleStatistics,
   type OperationProfitStatistics,
+  type MarketResearchWatchlist,
+  type MarketResearchCoverage,
+  type MarketResearchLiquidity,
+  type MarketResearchPriceStatistics,
   type UserSessionPreferences,
 } from './dashboardApi';
 import './App.css';
@@ -31,6 +38,11 @@ type HistoryStatisticsState =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'ready'; statistics: OperationHistoryStatistics };
+
+type MarketResearchState =
+  | { kind: 'loading' }
+  | { kind: 'error' }
+  | { kind: 'ready'; watchlist: MarketResearchWatchlist };
 
 interface DashboardFilters {
   freshness: 'all' | 'current' | 'stale';
@@ -62,6 +74,7 @@ export default function App() {
   const [state, setState] = useState<DashboardState>({ kind: 'loading' });
   const [accountAccess, setAccountAccess] = useState<AccountAccessState>({ kind: 'loading' });
   const [historyStatistics, setHistoryStatistics] = useState<HistoryStatisticsState>({ kind: 'loading' });
+  const [marketResearch, setMarketResearch] = useState<MarketResearchState>({ kind: 'loading' });
   const [requestVersion, setRequestVersion] = useState(0);
   const [filters, setFilters] = useState<DashboardFilters>(initialFilters);
   const [effortCategory, setEffortCategory] = useState<DashboardEffortFilter>('all');
@@ -117,6 +130,25 @@ export default function App() {
 
   useEffect(() => {
     const controller = new AbortController();
+    setMarketResearch({ kind: 'loading' });
+
+    void loadMarketResearchWatchlist(controller.signal)
+      .then((watchlist) => {
+        if (!controller.signal.aborted) {
+          setMarketResearch({ kind: 'ready', watchlist });
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setMarketResearch({ kind: 'error' });
+        }
+      });
+
+    return () => controller.abort();
+  }, [requestVersion]);
+
+  useEffect(() => {
+    const controller = new AbortController();
     setHistoryStatistics({ kind: 'loading' });
 
     void loadOperationHistoryStatistics(controller.signal)
@@ -155,6 +187,10 @@ export default function App() {
       </header>
 
       <OperationHistoryPanel historyStatistics={historyStatistics} />
+      <MarketResearchPanel
+        marketResearch={marketResearch}
+        onRefresh={() => setRequestVersion((version) => version + 1)}
+      />
       <LocalAccountDataPanel />
 
       {state.kind === 'loading' && (
@@ -549,6 +585,145 @@ function LocalAccountDataPanel() {
   );
 }
 
+function MarketResearchPanel({
+  marketResearch,
+  onRefresh,
+}: {
+  marketResearch: MarketResearchState;
+  onRefresh: () => void;
+}) {
+  const [itemId, setItemId] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  if (marketResearch.kind === 'loading') {
+    return (
+      <section className="research-panel" aria-label="Historical market research" aria-live="polite">
+        <p className="eyebrow">Local observations</p>
+        <h2>Historical market research</h2>
+        <p>Loading your local watchlist observations.</p>
+      </section>
+    );
+  }
+
+  if (marketResearch.kind === 'error') {
+    return (
+      <section className="research-panel research-panel-error" aria-label="Historical market research" role="status">
+        <p className="eyebrow">Local observations</p>
+        <h2>Historical market research is unavailable</h2>
+        <p>Local observations could not load. No market action has been attempted.</p>
+        <button onClick={onRefresh} type="button">Retry research</button>
+      </section>
+    );
+  }
+
+  const { watchlist } = marketResearch;
+  const addItem = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const parsedItemId = Number(itemId);
+    if (!Number.isSafeInteger(parsedItemId) || parsedItemId <= 0) {
+      setMessage('Enter a positive whole Guild Wars 2 item ID.');
+      return;
+    }
+
+    setIsSaving(true);
+    setMessage(null);
+    void addMarketResearchWatchlistItem(parsedItemId)
+      .then(() => {
+        setItemId('');
+        setMessage(`Item #${parsedItemId} is now collected locally for research.`);
+        onRefresh();
+      })
+      .catch(() => setMessage('That item could not be added. It may already be tracked or the local watchlist may be full.'))
+      .finally(() => setIsSaving(false));
+  };
+  const removeItem = (removedItemId: number) => {
+    setIsSaving(true);
+    setMessage(null);
+    void removeMarketResearchWatchlistItem(removedItemId)
+      .then(() => {
+        setMessage(`Item #${removedItemId} was removed from local research collection.`);
+        onRefresh();
+      })
+      .catch(() => setMessage('That item could not be removed from the local research watchlist.'))
+      .finally(() => setIsSaving(false));
+  };
+
+  return (
+    <section className="research-panel" aria-labelledby="research-title" data-testid="market-research">
+      <div className="research-panel-heading">
+        <div>
+          <p className="eyebrow">Local observations</p>
+          <h2 id="research-title">Historical market research</h2>
+        </div>
+        <output>{watchlist.items.length} research items; {watchlist.trackedItemCount} of {watchlist.maximumTrackedItemCount} tracked</output>
+      </div>
+      <p className="research-note">
+        Observed local prices and liquidity are descriptive evidence, not investment advice, a forecast, or a guarantee.
+      </p>
+
+      <form className="research-add-form" noValidate onSubmit={addItem}>
+        <label htmlFor="research-item-id">Guild Wars 2 item ID</label>
+        <input
+          id="research-item-id"
+          inputMode="numeric"
+          min="1"
+          onChange={(event) => setItemId(event.target.value)}
+          placeholder="e.g. 19721"
+          step="1"
+          type="number"
+          value={itemId}
+        />
+        <button disabled={isSaving} type="submit">Add to research watchlist</button>
+      </form>
+      {message !== null && <p aria-live="polite" className="research-message" role="status">{message}</p>}
+
+      {watchlist.items.length === 0 ? (
+        <p className="research-empty">No local research items yet. Add an item ID to begin collecting local observations.</p>
+      ) : (
+        <div className="research-table-wrapper">
+          <table className="research-table">
+            <thead>
+              <tr>
+                <th scope="col">Item</th>
+                <th scope="col">Local coverage</th>
+                <th scope="col">Observed buy band</th>
+                <th scope="col">Observed sell band</th>
+                <th scope="col">Liquidity variability</th>
+                <th scope="col">Watchlist</th>
+              </tr>
+            </thead>
+            <tbody>
+              {watchlist.items.map((item) => (
+                <tr data-testid="research-row" key={item.itemId}>
+                  <th scope="row">Item #{item.itemId}</th>
+                  <td>{formatCoverage(item.coverage)}</td>
+                  <td>{formatObservedBand(item.buyPrices)}</td>
+                  <td>{formatObservedBand(item.sellPrices)}</td>
+                  <td>{formatLiquidityVariability(item.buyLiquidity, item.sellLiquidity)}</td>
+                  <td>
+                    <button
+                      className="research-remove"
+                      disabled={isSaving}
+                      onClick={() => removeItem(item.itemId)}
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="research-note research-note-footer">
+        Percentiles and liquidity estimates appear only after enough local observations exist; missing values are not treated as zero.
+      </p>
+    </section>
+  );
+}
+
 function OperationHistoryPanel({ historyStatistics }: { historyStatistics: HistoryStatisticsState }) {
   if (historyStatistics.kind === 'loading') {
     return (
@@ -649,6 +824,36 @@ function formatExactProfitRatio(statistics: OperationProfitStatistics, unavailab
 
   const operationLabel = statistics.eligibleOperationCount === 1 ? 'operation' : 'operations';
   return `${formatCopper(statistics.totalCopper)} ÷ ${statistics.eligibleOperationCount} eligible ${operationLabel}`;
+}
+
+function formatCoverage(coverage: MarketResearchCoverage): string {
+  const sampleLabel = coverage.observationCount === 1 ? 'sample' : 'samples';
+  if (coverage.observationCount === 0) {
+    return 'No local observations yet.';
+  }
+
+  return `${coverage.observationCount} local ${sampleLabel}: ${formatDateTime(coverage.firstCapturedAtUtc ?? '')} through ${formatDateTime(coverage.lastCapturedAtUtc ?? '')}.`;
+}
+
+function formatObservedBand(statistics: MarketResearchPriceStatistics): string {
+  if (statistics.tenthPercentileCopper === null
+    || statistics.medianCopper === null
+    || statistics.ninetiethPercentileCopper === null) {
+    return `Insufficient local sample (${statistics.observationCount} observed).`;
+  }
+
+  return `P10 ${formatCopper(statistics.tenthPercentileCopper)} · median ${formatCopper(statistics.medianCopper)} · P90 ${formatCopper(statistics.ninetiethPercentileCopper)}`;
+}
+
+function formatLiquidityVariability(
+  buyLiquidity: MarketResearchLiquidity,
+  sellLiquidity: MarketResearchLiquidity,
+): string {
+  if (buyLiquidity.coefficientOfVariationPercent === null || sellLiquidity.coefficientOfVariationPercent === null) {
+    return 'Insufficient local sample.';
+  }
+
+  return `Buy ${formatPercentage(buyLiquidity.coefficientOfVariationPercent)} · sell ${formatPercentage(sellLiquidity.coefficientOfVariationPercent)}`;
 }
 
 function formatCompletionRatio(lifecycle: OperationLifecycleStatistics): string {
@@ -927,6 +1132,10 @@ function formatBasisPoints(basisPoints: number): string {
   const sign = basisPoints < 0 ? '−' : '';
 
   return `${sign}${wholePercent}.${fractionalPercent}%`;
+}
+
+function formatPercentage(value: number): string {
+  return `${value.toFixed(2)}%`;
 }
 
 function formatLiquidity(priceImpactCopper: number): string {
