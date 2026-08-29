@@ -347,6 +347,33 @@ describe('market dashboard preferences and filters', () => {
     fireEvent.change(screen.getByLabelText(/^freshness$/i), { target: { value: 'stale' } });
 
     expectOpportunityRows(['Tracked market item #900003']);
+    expect(screen.getByRole('button', { name: 'Remove freshness filter' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove freshness filter' }));
+    expectOpportunityRows([
+      'Tracked market item #900004',
+      'Tracked market item #900003',
+      'Tracked market item #900001',
+      'Tracked market item #900002',
+      'Tracked market item #900005',
+    ]);
+  });
+
+  it('adds an opportunity to the session shortlist and keeps effort labels approximate', async () => {
+    await renderReadyDashboard();
+
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Add Tracked market item #900004 to session plan',
+    }));
+
+    const plan = screen.getByTestId('session-plan');
+    expect(plan).toHaveTextContent('Tracked market item #900004');
+    expect(plan).toHaveTextContent('0g 8s 0c · no limit set');
+    expect(screen.getByRole('link', { name: /Plan 1/ })).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText('Effort label'), { target: { value: 'ongoing-patient' } });
+
+    expect(plan).toHaveTextContent('Ongoing / patient');
+    expect(plan).toHaveTextContent('These are your planning labels, not time estimates.');
   });
 
   it('does not show modeled profit before fee rules are configured', async () => {
@@ -360,11 +387,10 @@ describe('market dashboard preferences and filters', () => {
     )));
 
     render(<App />);
-    await screen.findByRole('heading', { name: 'Ranked opportunities' });
 
-    expect(screen.queryByLabelText(/session effort/i)).toBeNull();
-    expect(screen.getByTestId('screened-candidates')).toHaveTextContent('Configure both fee rules');
+    expect(await screen.findByTestId('screened-candidates')).toHaveTextContent('Configure both fee rules');
     expect(screen.queryByTestId('opportunity-row')).toBeNull();
+    expect(screen.queryByText(/^modeled profit$/i)).toBeNull();
   });
 
   it('renders the selected opportunity detail as a modeled scenario', async () => {
@@ -388,6 +414,9 @@ describe('market dashboard preferences and filters', () => {
     expect(detail).toHaveTextContent('Total price impact0g 3s 0c');
     expect(detail).toHaveTextContent('Human-readable calculation breakdown');
     expect(detail).toHaveTextContent('Data age');
+    expect(detail).toHaveTextContent('Liquidity proxy');
+    expect(screen.getByTestId('execution-depth-chart')).toBeVisible();
+    expect(screen.getByTestId('profit-waterfall')).toBeVisible();
 
     const replacementDetailTrigger = screen.getByRole('button', {
       name: 'View details for Tracked market item #900001',
@@ -398,6 +427,23 @@ describe('market dashboard preferences and filters', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
     await waitFor(() => expect(replacementDetailTrigger).toHaveFocus());
+  });
+
+  it('switches to the landscape orientation view without losing the ranked data', async () => {
+    await renderReadyDashboard();
+
+    expect(screen.getByRole('link', { name: 'Scan' })).toHaveAttribute('href', '#scan');
+    expect(screen.getByRole('link', { name: /Plan 0/ })).toHaveAttribute('href', '#plan');
+    expect(screen.getByRole('link', { name: 'History' })).toHaveAttribute('href', '#history');
+    expect(screen.getByRole('link', { name: 'Research' })).toHaveAttribute('href', '#research');
+    expect(screen.getByRole('link', { name: 'Account & settings' })).toHaveAttribute('href', '#account');
+    expect(screen.getAllByText('On this device')).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Landscape' }));
+
+    expect(screen.getByTestId('opportunity-landscape')).toBeVisible();
+    fireEvent.click(screen.getByText('View landscape data table'));
+    expect(screen.getByRole('table', { name: 'Modeled opportunity landscape data' })).toBeVisible();
   });
 });
 
@@ -419,6 +465,9 @@ describe('historical market research', () => {
     expect(research).toHaveTextContent('P10 0g 1s 0c · median 0g 1s 40c · P90 0g 1s 80c');
     expect(research).toHaveTextContent('Insufficient local sample (4 observed).');
     expect(research).toHaveTextContent('missing values are not treated as zero');
+    expect(screen.getByTestId('research-band-chart')).toBeVisible();
+    expect(screen.getByTestId('research-liquidity-chart')).toBeVisible();
+    expect(screen.getByTestId('research-coverage-chart')).toBeVisible();
   });
 
   it('adds, compares, and removes a small local research watchlist', async () => {
@@ -598,6 +647,7 @@ describe('personal history statistics', () => {
     expect(history).toHaveTextContent('Average modeled profit0g 0s 21c ÷ 2 eligible operations');
     expect(history).toHaveTextContent('Lifecycle completion rate1 completed ÷ 2 terminal operations');
     expect(history).toHaveTextContent('not guarantees');
+    expect(screen.getByTestId('history-lifecycle-chart')).toBeVisible();
   });
 
   it('explains that an empty local history does not reconstruct lifetime results', async () => {
