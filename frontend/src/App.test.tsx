@@ -59,15 +59,19 @@ const opportunityDetail: DashboardOpportunityDetail = {
 };
 
 const dashboardResponse: DashboardOpportunitiesResponse = {
-  isSampleData: true,
-  sourceDescription: 'Deterministic local sample data. No live market scan was performed.',
+  status: 'complete',
+  sourceDescription: 'Read-only live market scan of locally tracked items. Results are modeled scenarios, not orders, execution predictions, or profit guarantees.',
   generatedAtUtc: '2026-08-27T12:00:00Z',
+  trackedItemCount: 5,
+  screenedCandidates: [
+    { itemId: 900_001, bestBidCopper: 700, bestAskCopper: 500 },
+    { itemId: 900_004, bestBidCopper: 900, bestAskCopper: 600 },
+  ],
   opportunities: [
     {
       itemId: 900_004,
-      label: 'Sample market flip #900004',
+      label: 'Tracked market item #900004',
       strategy: 'market-flip',
-      effortCategory: 'medium',
       rank: 1,
       scoreBasisPoints: 9_000,
       capitalRequiredCopper: 800,
@@ -81,9 +85,8 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
     },
     {
       itemId: 900_003,
-      label: 'Sample market flip #900003',
+      label: 'Tracked market item #900003',
       strategy: 'market-flip',
-      effortCategory: 'ongoing-patient',
       rank: 2,
       scoreBasisPoints: 7_000,
       capitalRequiredCopper: 800,
@@ -102,9 +105,8 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
     },
     {
       itemId: 900_001,
-      label: 'Sample market flip #900001',
+      label: 'Tracked market item #900001',
       strategy: 'market-flip',
-      effortCategory: 'very-low',
       rank: 3,
       scoreBasisPoints: 6_000,
       capitalRequiredCopper: 500,
@@ -118,9 +120,8 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
     },
     {
       itemId: 900_002,
-      label: 'Sample market flip #900002',
+      label: 'Tracked market item #900002',
       strategy: 'market-flip',
-      effortCategory: 'low',
       rank: 4,
       scoreBasisPoints: 5_000,
       capitalRequiredCopper: 1_000,
@@ -134,9 +135,8 @@ const dashboardResponse: DashboardOpportunitiesResponse = {
     },
     {
       itemId: 900_005,
-      label: 'Sample craft #900005',
-      strategy: 'crafting',
-      effortCategory: 'high',
+      label: 'Tracked market item #900005',
+      strategy: 'market-flip',
       rank: 5,
       scoreBasisPoints: 4_000,
       capitalRequiredCopper: 1_500,
@@ -157,6 +157,11 @@ const defaultPreferences: UserSessionPreferences = {
   riskPreference: 'all',
   strategyPreference: 'all',
   allocationPercent: 100,
+  analysisQuantity: 1,
+  listingFeeBasisPoints: null,
+  listingFeeRounding: null,
+  exchangeFeeBasisPoints: null,
+  exchangeFeeRounding: null,
 };
 
 const marketResearchWatchlist: MarketResearchWatchlist = {
@@ -309,7 +314,7 @@ describe('market dashboard preferences and filters', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save and apply preferences' }));
 
     await waitFor(() => expect(screen.getAllByTestId('opportunity-row')).toHaveLength(2));
-    expectOpportunityRows(['Sample market flip #900004', 'Sample market flip #900001']);
+    expectOpportunityRows(['Tracked market item #900004', 'Tracked market item #900001']);
     const saveCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT');
     expect(saveCall).toBeDefined();
     expect(JSON.parse((saveCall?.[1] as RequestInit).body as string)).toEqual({
@@ -318,6 +323,11 @@ describe('market dashboard preferences and filters', () => {
       riskPreference: 'normal',
       strategyPreference: 'all',
       allocationPercent: 50,
+      analysisQuantity: 1,
+      listingFeeBasisPoints: null,
+      listingFeeRounding: null,
+      exchangeFeeBasisPoints: null,
+      exchangeFeeRounding: null,
     });
   });
 
@@ -336,39 +346,32 @@ describe('market dashboard preferences and filters', () => {
 
     fireEvent.change(screen.getByLabelText(/^freshness$/i), { target: { value: 'stale' } });
 
-    expectOpportunityRows(['Sample market flip #900003']);
+    expectOpportunityRows(['Tracked market item #900003']);
   });
 
-  it('requests a session-only effort shortlist and explains that categories are not time guarantees', async () => {
-    const highEffortResponse: DashboardOpportunitiesResponse = {
+  it('does not show modeled profit before fee rules are configured', async () => {
+    const unconfiguredFeesResponse: DashboardOpportunitiesResponse = {
       ...dashboardResponse,
-      opportunities: [{ ...dashboardResponse.opportunities[4], rank: 1 }],
+      status: 'fee-configuration-required',
+      opportunities: [],
     };
     fetchMock.mockImplementation((input: RequestInfo | URL) => Promise.resolve(successfulResponse(
-      getFetchUrl(input) === '/api/dashboard/opportunities?effortCategory=high'
-        ? highEffortResponse
-        : getFetchUrl(input) === '/api/dashboard/opportunities' ? dashboardResponse : defaultPreferences,
+      getFetchUrl(input) === '/api/dashboard/opportunities' ? unconfiguredFeesResponse : defaultPreferences,
     )));
 
     render(<App />);
     await screen.findByRole('heading', { name: 'Ranked opportunities' });
 
-    expect(screen.getByLabelText(/session effort/i)).toHaveValue('all');
-    expect(screen.getByText(/rough planning labels, not time, execution, fill, or profit guarantees/i)).toBeVisible();
-    fireEvent.change(screen.getByLabelText(/session effort/i), { target: { value: 'high' } });
-
-    await waitFor(() => expectOpportunityRows(['Sample craft #900005']));
-    expect(fetchMock.mock.calls.map(([input]) => getFetchUrl(input as RequestInfo | URL)))
-      .toContain('/api/dashboard/opportunities?effortCategory=high');
-    expect(fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')).toBe(false);
-    expect(screen.getByText('High')).toBeVisible();
+    expect(screen.queryByLabelText(/session effort/i)).toBeNull();
+    expect(screen.getByTestId('screened-candidates')).toHaveTextContent('Configure both fee rules');
+    expect(screen.queryByTestId('opportunity-row')).toBeNull();
   });
 
   it('renders the selected opportunity detail as a modeled scenario', async () => {
     await renderReadyDashboard();
 
     const detailTrigger = screen.getByRole('button', {
-      name: 'View details for Sample market flip #900004',
+      name: 'View details for Tracked market item #900004',
     });
     detailTrigger.focus();
     fireEvent.click(detailTrigger);
@@ -387,11 +390,11 @@ describe('market dashboard preferences and filters', () => {
     expect(detail).toHaveTextContent('Data age');
 
     const replacementDetailTrigger = screen.getByRole('button', {
-      name: 'View details for Sample market flip #900001',
+      name: 'View details for Tracked market item #900001',
     });
     fireEvent.click(replacementDetailTrigger);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Close details' })).toHaveFocus());
-    expect(detail).toHaveTextContent('Sample market flip #900001');
+    expect(detail).toHaveTextContent('Tracked market item #900001');
 
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
     await waitFor(() => expect(replacementDetailTrigger).toHaveFocus());
@@ -460,20 +463,20 @@ describe('historical market research', () => {
 });
 
 describe('market dashboard states', () => {
-  it('shows an explicit loading state before the sample feed responds', () => {
+  it('shows an explicit loading state before the live scan responds', () => {
     fetchMock.mockImplementation(() => new Promise(() => {}));
 
     render(<App />);
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading local deterministic sample opportunities.');
+    expect(screen.getByRole('status')).toHaveTextContent('Loading the bounded, read-only market scan.');
   });
 
-  it('shows an explicit error and retries the local sample feed', async () => {
+  it('shows an explicit error and retries the live market scan', async () => {
     let firstDashboardRequest = true;
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
       if (getFetchUrl(input) === '/api/dashboard/opportunities' && firstDashboardRequest) {
         firstDashboardRequest = false;
-        return Promise.reject(new Error('Sample feed unavailable.'));
+        return Promise.reject(new Error('Live market scan unavailable.'));
       }
 
       return Promise.resolve(successfulResponse(
@@ -486,7 +489,7 @@ describe('market dashboard states', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Dashboard data could not load');
     fireEvent.click(screen.getByRole('button', { name: 'Retry loading dashboard' }));
 
-    expect(await screen.findByText('Sample market flip #900004')).toBeVisible();
+    expect(await screen.findByText('Tracked market item #900004')).toBeVisible();
   });
 });
 

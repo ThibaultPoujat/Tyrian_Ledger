@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Preferences;
+using Gw2Tp.Analytics.Finance;
 using Microsoft.EntityFrameworkCore;
 
 namespace Gw2Tp.Infrastructure.Preferences;
@@ -45,6 +46,15 @@ internal sealed class SqliteUserSessionPreferencesStore : IUserSessionPreference
         entity.RiskPreference = ToStorageValue(preferences.RiskPreference);
         entity.StrategyPreference = ToStorageValue(preferences.StrategyPreference);
         entity.AllocationPercent = preferences.AllocationPercent;
+        entity.AnalysisQuantity = preferences.AnalysisQuantity;
+        entity.ListingFeeBasisPoints = preferences.ListingFeeBasisPoints;
+        entity.ListingFeeRounding = preferences.ListingFeeRounding is { } listingRounding
+            ? ToStorageValue(listingRounding)
+            : null;
+        entity.ExchangeFeeBasisPoints = preferences.ExchangeFeeBasisPoints;
+        entity.ExchangeFeeRounding = preferences.ExchangeFeeRounding is { } exchangeRounding
+            ? ToStorageValue(exchangeRounding)
+            : null;
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -54,7 +64,12 @@ internal sealed class SqliteUserSessionPreferencesStore : IUserSessionPreference
         entity.MinimumProfitCopper,
         ParseRiskPreference(entity.RiskPreference),
         ParseStrategyPreference(entity.StrategyPreference),
-        entity.AllocationPercent);
+        entity.AllocationPercent,
+        entity.AnalysisQuantity,
+        entity.ListingFeeBasisPoints,
+        ParseFeeRounding(entity.ListingFeeRounding),
+        entity.ExchangeFeeBasisPoints,
+        ParseFeeRounding(entity.ExchangeFeeRounding));
 
     private static OpportunityRiskPreference ParseRiskPreference(string value) => value switch
     {
@@ -84,5 +99,20 @@ internal sealed class SqliteUserSessionPreferencesStore : IUserSessionPreference
         OpportunityStrategyPreference.All => "all",
         OpportunityStrategyPreference.MarketFlip => "market-flip",
         _ => throw new ArgumentOutOfRangeException(nameof(value), value, "The strategy preference is not supported."),
+    };
+
+    private static FeeRounding? ParseFeeRounding(string? value) => value switch
+    {
+        null => null,
+        "down" => FeeRounding.Down,
+        "up" => FeeRounding.Up,
+        _ => throw new InvalidOperationException("The local user-session preference profile has an unsupported fee rounding mode."),
+    };
+
+    private static string ToStorageValue(FeeRounding value) => value switch
+    {
+        FeeRounding.Down => "down",
+        FeeRounding.Up => "up",
+        _ => throw new ArgumentOutOfRangeException(nameof(value), value, "The fee rounding mode is not supported."),
     };
 }

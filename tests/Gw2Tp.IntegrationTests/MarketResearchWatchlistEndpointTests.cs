@@ -93,7 +93,11 @@ public sealed class MarketResearchWatchlistEndpointTests
             .WithWebHostBuilder(builder =>
             {
                 builder.UseSetting(UserSessionPreferencesServiceCollectionExtensions.DatabasePathConfigurationKey, databasePath);
-                builder.ConfigureServices(services => services.RemoveAll<IGw2ApiClient>());
+                builder.ConfigureServices(services =>
+                {
+                    services.RemoveAll<IGw2ApiClient>();
+                    services.AddSingleton<IGw2ApiClient, UnavailableMarketClient>();
+                });
             });
 
     private static string CreateDatabasePath() => Path.Combine(

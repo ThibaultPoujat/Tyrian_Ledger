@@ -97,6 +97,36 @@ public sealed class CachingGw2ApiClientTests
     }
 
     [Fact]
+    public async Task Concurrent_listing_cache_misses_share_one_transport_fill()
+    {
+        var responseSource = new TaskCompletionSource<Gw2ApiResult<IReadOnlyList<MarketListing>>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new StubMarketTransport(
+            (_, _) => Task.FromResult(SuccessfulPrices()),
+            (_, _) => responseSource.Task);
+        var client = CreateClient(
+            transport,
+            new MutableClock(new DateTimeOffset(2026, 8, 27, 9, 0, 0, TimeSpan.Zero)));
+
+        var first = client.GetListingsAsync([900001]);
+        await transport.WaitForListingRequestAsync();
+
+        var second = client.GetListingsAsync([900001]);
+        await Task.Yield();
+        Assert.Equal(1, transport.ListingRequestCount);
+
+        responseSource.SetResult(SuccessfulListings());
+        var results = await Task.WhenAll(first, second);
+
+        Assert.All(results, result =>
+        {
+            Assert.True(result.IsSuccess);
+            Assert.NotNull(result.Freshness);
+        });
+        Assert.Equal(1, transport.ListingRequestCount);
+    }
+
+    [Fact]
     public async Task Cache_key_is_independent_of_item_id_order()
     {
         IReadOnlyCollection<int>? transmittedItemIds = null;
@@ -278,6 +308,8 @@ public sealed class CachingGw2ApiClientTests
             _getListingsAsync;
         private readonly TaskCompletionSource _priceRequestStarted = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _listingRequestStarted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         private int _priceRequestCount;
         private int _listingRequestCount;
 
@@ -298,6 +330,8 @@ public sealed class CachingGw2ApiClientTests
 
         public Task WaitForPriceRequestAsync() => _priceRequestStarted.Task;
 
+        public Task WaitForListingRequestAsync() => _listingRequestStarted.Task;
+
         public Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>> GetPricesAsync(
             IReadOnlyCollection<int> itemIds,
             CancellationToken cancellationToken = default)
@@ -312,6 +346,7 @@ public sealed class CachingGw2ApiClientTests
             CancellationToken cancellationToken = default)
         {
             Interlocked.Increment(ref _listingRequestCount);
+            _listingRequestStarted.TrySetResult();
             return _getListingsAsync(itemIds, cancellationToken);
         }
     }

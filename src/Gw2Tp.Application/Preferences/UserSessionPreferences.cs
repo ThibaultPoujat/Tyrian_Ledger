@@ -1,3 +1,5 @@
+using Gw2Tp.Analytics.Finance;
+
 namespace Gw2Tp.Application.Preferences;
 
 /// <summary>
@@ -9,26 +11,42 @@ public sealed record UserSessionPreferences
     public const long MaximumSafeIntegerCopper = 9_007_199_254_740_991;
     public const int MinimumAllocationPercent = 1;
     public const int MaximumAllocationPercent = 100;
+    public const int DefaultAnalysisQuantity = 1;
 
     public static UserSessionPreferences Default { get; } = Create(
         capitalLimitCopper: null,
         minimumProfitCopper: null,
         riskPreference: OpportunityRiskPreference.All,
         strategyPreference: OpportunityStrategyPreference.All,
-        allocationPercent: MaximumAllocationPercent);
+        allocationPercent: MaximumAllocationPercent,
+        analysisQuantity: DefaultAnalysisQuantity,
+        listingFeeBasisPoints: null,
+        listingFeeRounding: null,
+        exchangeFeeBasisPoints: null,
+        exchangeFeeRounding: null);
 
     private UserSessionPreferences(
         long? capitalLimitCopper,
         long? minimumProfitCopper,
         OpportunityRiskPreference riskPreference,
         OpportunityStrategyPreference strategyPreference,
-        int allocationPercent)
+        int allocationPercent,
+        int analysisQuantity,
+        int? listingFeeBasisPoints,
+        FeeRounding? listingFeeRounding,
+        int? exchangeFeeBasisPoints,
+        FeeRounding? exchangeFeeRounding)
     {
         CapitalLimitCopper = capitalLimitCopper;
         MinimumProfitCopper = minimumProfitCopper;
         RiskPreference = riskPreference;
         StrategyPreference = strategyPreference;
         AllocationPercent = allocationPercent;
+        AnalysisQuantity = analysisQuantity;
+        ListingFeeBasisPoints = listingFeeBasisPoints;
+        ListingFeeRounding = listingFeeRounding;
+        ExchangeFeeBasisPoints = exchangeFeeBasisPoints;
+        ExchangeFeeRounding = exchangeFeeRounding;
     }
 
     public long? CapitalLimitCopper { get; }
@@ -41,12 +59,27 @@ public sealed record UserSessionPreferences
 
     public int AllocationPercent { get; }
 
+    public int AnalysisQuantity { get; }
+
+    public int? ListingFeeBasisPoints { get; }
+
+    public FeeRounding? ListingFeeRounding { get; }
+
+    public int? ExchangeFeeBasisPoints { get; }
+
+    public FeeRounding? ExchangeFeeRounding { get; }
+
     public static UserSessionPreferences Create(
         long? capitalLimitCopper,
         long? minimumProfitCopper,
         OpportunityRiskPreference riskPreference,
         OpportunityStrategyPreference strategyPreference,
-        int allocationPercent)
+        int allocationPercent,
+        int analysisQuantity = DefaultAnalysisQuantity,
+        int? listingFeeBasisPoints = null,
+        FeeRounding? listingFeeRounding = null,
+        int? exchangeFeeBasisPoints = null,
+        FeeRounding? exchangeFeeRounding = null)
     {
         ValidateCopper(capitalLimitCopper, nameof(capitalLimitCopper));
         ValidateCopper(minimumProfitCopper, nameof(minimumProfitCopper));
@@ -66,17 +99,47 @@ public sealed record UserSessionPreferences
             throw new ArgumentOutOfRangeException(nameof(allocationPercent));
         }
 
+        if (analysisQuantity <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(analysisQuantity));
+        }
+
+        ValidateFeeConfiguration(
+            listingFeeBasisPoints,
+            listingFeeRounding,
+            exchangeFeeBasisPoints,
+            exchangeFeeRounding);
+
         return new UserSessionPreferences(
             capitalLimitCopper,
             minimumProfitCopper,
             riskPreference,
             strategyPreference,
-            allocationPercent);
+            allocationPercent,
+            analysisQuantity,
+            listingFeeBasisPoints,
+            listingFeeRounding,
+            exchangeFeeBasisPoints,
+            exchangeFeeRounding);
     }
 
     public long? GetPerOpportunityCapitalLimitCopper() => CapitalLimitCopper is { } capitalLimit
         ? checked(capitalLimit * AllocationPercent / MaximumAllocationPercent)
         : null;
+
+    public bool TryCreateTransactionFeePolicy(out TransactionFeePolicy? feePolicy)
+    {
+        if (ListingFeeBasisPoints is null)
+        {
+            feePolicy = null;
+            return false;
+        }
+
+        feePolicy = new TransactionFeePolicy(
+            new FeeRule(ListingFeeBasisPoints.Value, ListingFeeRounding!.Value),
+            new FeeRule(ExchangeFeeBasisPoints!.Value, ExchangeFeeRounding!.Value));
+        return true;
+    }
 
     private static void ValidateCopper(long? copper, string parameterName)
     {
@@ -84,6 +147,33 @@ public sealed record UserSessionPreferences
         {
             throw new ArgumentOutOfRangeException(parameterName);
         }
+    }
+
+    private static void ValidateFeeConfiguration(
+        int? listingFeeBasisPoints,
+        FeeRounding? listingFeeRounding,
+        int? exchangeFeeBasisPoints,
+        FeeRounding? exchangeFeeRounding)
+    {
+        var values = new object?[]
+        {
+            listingFeeBasisPoints,
+            listingFeeRounding,
+            exchangeFeeBasisPoints,
+            exchangeFeeRounding,
+        };
+        if (values.All(value => value is null))
+        {
+            return;
+        }
+
+        if (values.Any(value => value is null))
+        {
+            throw new ArgumentException("Listing and exchange fee rules must both be fully configured or both be absent.");
+        }
+
+        _ = new FeeRule(listingFeeBasisPoints!.Value, listingFeeRounding!.Value);
+        _ = new FeeRule(exchangeFeeBasisPoints!.Value, exchangeFeeRounding!.Value);
     }
 }
 

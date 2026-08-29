@@ -1,8 +1,9 @@
 export type DashboardConfidence = 'normal' | 'reduced';
 export type DashboardFreshness = 'current' | 'stale';
-export type DashboardEffortCategory = 'very-low' | 'low' | 'medium' | 'high' | 'ongoing-patient';
 export type DashboardRiskPreference = 'all' | DashboardConfidence;
 export type DashboardStrategyPreference = 'all' | 'market-flip';
+export type FeeRounding = 'down' | 'up';
+export type DashboardScanStatus = 'no-tracked-items' | 'fee-configuration-required' | 'complete' | 'unavailable';
 
 export interface UserSessionPreferences {
   capitalLimitCopper: number | null;
@@ -10,6 +11,11 @@ export interface UserSessionPreferences {
   riskPreference: DashboardRiskPreference;
   strategyPreference: DashboardStrategyPreference;
   allocationPercent: number;
+  analysisQuantity: number;
+  listingFeeBasisPoints: number | null;
+  listingFeeRounding: FeeRounding | null;
+  exchangeFeeBasisPoints: number | null;
+  exchangeFeeRounding: FeeRounding | null;
 }
 
 export type AccountAccessValidationStatus = 'notconfigured' | 'valid' | 'invalid' | 'unavailable';
@@ -85,7 +91,6 @@ export interface DashboardOpportunity {
   itemId: number;
   label: string;
   strategy: string;
-  effortCategory: DashboardEffortCategory;
   rank: number;
   scoreBasisPoints: number;
   capitalRequiredCopper: number;
@@ -149,20 +154,24 @@ export interface DashboardLiquidity {
 }
 
 export interface DashboardOpportunitiesResponse {
-  isSampleData: boolean;
+  status: DashboardScanStatus;
   sourceDescription: string;
   generatedAtUtc: string;
+  trackedItemCount: number;
+  screenedCandidates: DashboardScreenedCandidate[];
   opportunities: DashboardOpportunity[];
+}
+
+export interface DashboardScreenedCandidate {
+  itemId: number;
+  bestBidCopper: number;
+  bestAskCopper: number;
 }
 
 export async function loadDashboardOpportunities(
   signal: AbortSignal,
-  effortCategory?: DashboardEffortCategory,
 ): Promise<DashboardOpportunitiesResponse> {
-  const path = effortCategory === undefined
-    ? '/api/dashboard/opportunities'
-    : `/api/dashboard/opportunities?effortCategory=${encodeURIComponent(effortCategory)}`;
-  const response = await fetch(path, { signal });
+  const response = await fetch('/api/dashboard/opportunities', { signal });
   if (!response.ok) {
     throw new Error(`Dashboard request failed with status ${response.status}.`);
   }
@@ -283,9 +292,12 @@ export async function saveUserSessionPreferences(
 
 function isDashboardOpportunitiesResponse(value: unknown): value is DashboardOpportunitiesResponse {
   if (!isRecord(value)
-    || typeof value.isSampleData !== 'boolean'
+    || !isDashboardScanStatus(value.status)
     || typeof value.sourceDescription !== 'string'
     || typeof value.generatedAtUtc !== 'string'
+    || !isNonNegativeSafeInteger(value.trackedItemCount)
+    || !Array.isArray(value.screenedCandidates)
+    || !value.screenedCandidates.every(isDashboardScreenedCandidate)
     || !Array.isArray(value.opportunities)) {
     return false;
   }
@@ -303,7 +315,13 @@ function isUserSessionPreferences(value: unknown): value is UserSessionPreferenc
     && typeof value.allocationPercent === 'number'
     && Number.isSafeInteger(value.allocationPercent)
     && value.allocationPercent >= 1
-    && value.allocationPercent <= 100;
+    && value.allocationPercent <= 100
+    && isPositiveSafeInteger(value.analysisQuantity)
+    && isNullableFeeBasisPoints(value.listingFeeBasisPoints)
+    && isNullableFeeRounding(value.listingFeeRounding)
+    && isNullableFeeBasisPoints(value.exchangeFeeBasisPoints)
+    && isNullableFeeRounding(value.exchangeFeeRounding)
+    && hasCompleteFeeConfiguration(value);
 }
 
 function isAccountAccessStatus(value: unknown): value is AccountAccessStatus {
@@ -402,7 +420,6 @@ function isDashboardOpportunity(value: unknown): value is DashboardOpportunity {
     && typeof value.itemId === 'number'
     && typeof value.label === 'string'
     && typeof value.strategy === 'string'
-    && isDashboardEffortCategory(value.effortCategory)
     && typeof value.rank === 'number'
     && typeof value.scoreBasisPoints === 'number'
     && typeof value.capitalRequiredCopper === 'number'
@@ -415,12 +432,36 @@ function isDashboardOpportunity(value: unknown): value is DashboardOpportunity {
     && isDashboardOpportunityDetail(value.detail);
 }
 
-function isDashboardEffortCategory(value: unknown): value is DashboardEffortCategory {
-  return value === 'very-low'
-    || value === 'low'
-    || value === 'medium'
-    || value === 'high'
-    || value === 'ongoing-patient';
+function isDashboardScanStatus(value: unknown): value is DashboardScanStatus {
+  return value === 'no-tracked-items'
+    || value === 'fee-configuration-required'
+    || value === 'complete'
+    || value === 'unavailable';
+}
+
+function isDashboardScreenedCandidate(value: unknown): value is DashboardScreenedCandidate {
+  return isRecord(value)
+    && isPositiveSafeInteger(value.itemId)
+    && isNonNegativeSafeInteger(value.bestBidCopper)
+    && isNonNegativeSafeInteger(value.bestAskCopper);
+}
+
+function isNullableFeeBasisPoints(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 10_000);
+}
+
+function isNullableFeeRounding(value: unknown): value is FeeRounding | null {
+  return value === null || value === 'down' || value === 'up';
+}
+
+function hasCompleteFeeConfiguration(value: Record<string, unknown>): boolean {
+  const values = [
+    value.listingFeeBasisPoints,
+    value.listingFeeRounding,
+    value.exchangeFeeBasisPoints,
+    value.exchangeFeeRounding,
+  ];
+  return values.every((feeValue) => feeValue === null) || values.every((feeValue) => feeValue !== null);
 }
 
 function isDashboardOpportunityDetail(value: unknown): value is DashboardOpportunityDetail {

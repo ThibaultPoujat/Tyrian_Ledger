@@ -9,9 +9,9 @@ import {
   loadUserSessionPreferences,
   saveUserSessionPreferences,
   removeMarketResearchWatchlistItem,
-  type DashboardEffortCategory,
   type DashboardOpportunitiesResponse,
   type DashboardOpportunity,
+  type FeeRounding,
   type AccountAccessStatus,
   type OperationHistoryStatistics,
   type OperationLifecycleStatistics,
@@ -52,14 +52,17 @@ const initialFilters: DashboardFilters = {
   freshness: 'all',
 };
 
-type DashboardEffortFilter = 'all' | DashboardEffortCategory;
-
 interface PreferenceForm {
   capitalLimitCopper: string;
   minimumProfitCopper: string;
   riskPreference: UserSessionPreferences['riskPreference'];
   strategyPreference: UserSessionPreferences['strategyPreference'];
   allocationPercent: string;
+  analysisQuantity: string;
+  listingFeeBasisPoints: string;
+  listingFeeRounding: '' | FeeRounding;
+  exchangeFeeBasisPoints: string;
+  exchangeFeeRounding: '' | FeeRounding;
 }
 
 const initialPreferenceForm: PreferenceForm = {
@@ -68,6 +71,11 @@ const initialPreferenceForm: PreferenceForm = {
   riskPreference: 'all',
   strategyPreference: 'all',
   allocationPercent: '100',
+  analysisQuantity: '1',
+  listingFeeBasisPoints: '',
+  listingFeeRounding: '',
+  exchangeFeeBasisPoints: '',
+  exchangeFeeRounding: '',
 };
 
 export default function App() {
@@ -77,7 +85,6 @@ export default function App() {
   const [marketResearch, setMarketResearch] = useState<MarketResearchState>({ kind: 'loading' });
   const [requestVersion, setRequestVersion] = useState(0);
   const [filters, setFilters] = useState<DashboardFilters>(initialFilters);
-  const [effortCategory, setEffortCategory] = useState<DashboardEffortFilter>('all');
   const [preferences, setPreferences] = useState<PreferenceForm>(initialPreferenceForm);
   const [preferenceMessage, setPreferenceMessage] = useState<string | null>(null);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
@@ -89,10 +96,7 @@ export default function App() {
     setState({ kind: 'loading' });
 
     void Promise.all([
-      loadDashboardOpportunities(
-        controller.signal,
-        effortCategory === 'all' ? undefined : effortCategory,
-      ),
+      loadDashboardOpportunities(controller.signal),
       loadUserSessionPreferences(controller.signal),
     ])
       .then(([response, savedPreferences]) => {
@@ -108,7 +112,7 @@ export default function App() {
       });
 
     return () => controller.abort();
-  }, [effortCategory, requestVersion]);
+  }, [requestVersion]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -197,14 +201,14 @@ export default function App() {
       {state.kind === 'loading' && (
         <section className="dashboard-state" aria-live="polite" role="status">
           <h2>Loading dashboard</h2>
-          <p>Loading local deterministic sample opportunities.</p>
+          <p>Loading the bounded, read-only market scan.</p>
         </section>
       )}
 
       {state.kind === 'error' && (
         <section className="dashboard-state dashboard-error" role="alert">
           <h2>Dashboard data could not load</h2>
-          <p>The local sample feed was unavailable. No market action has been attempted.</p>
+          <p>Live market data could not load. No trade or account action has been attempted.</p>
           <button type="button" onClick={() => setRequestVersion((version) => version + 1)}>
             Retry loading dashboard
           </button>
@@ -213,8 +217,8 @@ export default function App() {
 
       {state.kind === 'ready' && (
         <>
-          <section className="sample-notice" aria-label="Data source notice">
-            <strong>Sample data</strong>
+          <section className="scan-notice" aria-label="Data source notice">
+            <strong>{state.response.status === 'complete' ? 'Live market data' : 'Market scan status'}</strong>
             <p>{state.response.sourceDescription}</p>
           </section>
 
@@ -287,6 +291,92 @@ export default function App() {
                   type="number"
                   value={preferences.minimumProfitCopper}
                 />
+
+                <label htmlFor="analysis-quantity">
+                  Analysis quantity
+                  <span>items</span>
+                </label>
+                <input
+                  id="analysis-quantity"
+                  min="1"
+                  name="analysisQuantity"
+                  onChange={(event) => setPreferences((current) => ({
+                    ...current,
+                    analysisQuantity: event.target.value,
+                  }))}
+                  step="1"
+                  type="number"
+                  value={preferences.analysisQuantity}
+                />
+
+                <fieldset className="fee-settings">
+                  <legend>Modeled fee rules</legend>
+                  <p>Configure both rules to request detailed listings and calculate modeled profit.</p>
+                  <label htmlFor="listing-fee-basis-points">
+                    Listing fee
+                    <span>basis points</span>
+                  </label>
+                  <input
+                    id="listing-fee-basis-points"
+                    max="10000"
+                    min="0"
+                    name="listingFeeBasisPoints"
+                    onChange={(event) => setPreferences((current) => ({
+                      ...current,
+                      listingFeeBasisPoints: event.target.value,
+                    }))}
+                    placeholder="Unconfigured"
+                    step="1"
+                    type="number"
+                    value={preferences.listingFeeBasisPoints}
+                  />
+                  <label htmlFor="listing-fee-rounding">Listing rounding</label>
+                  <select
+                    id="listing-fee-rounding"
+                    name="listingFeeRounding"
+                    onChange={(event) => setPreferences((current) => ({
+                      ...current,
+                      listingFeeRounding: event.target.value as PreferenceForm['listingFeeRounding'],
+                    }))}
+                    value={preferences.listingFeeRounding}
+                  >
+                    <option value="">Unconfigured</option>
+                    <option value="down">Round down</option>
+                    <option value="up">Round up</option>
+                  </select>
+                  <label htmlFor="exchange-fee-basis-points">
+                    Exchange fee
+                    <span>basis points</span>
+                  </label>
+                  <input
+                    id="exchange-fee-basis-points"
+                    max="10000"
+                    min="0"
+                    name="exchangeFeeBasisPoints"
+                    onChange={(event) => setPreferences((current) => ({
+                      ...current,
+                      exchangeFeeBasisPoints: event.target.value,
+                    }))}
+                    placeholder="Unconfigured"
+                    step="1"
+                    type="number"
+                    value={preferences.exchangeFeeBasisPoints}
+                  />
+                  <label htmlFor="exchange-fee-rounding">Exchange rounding</label>
+                  <select
+                    id="exchange-fee-rounding"
+                    name="exchangeFeeRounding"
+                    onChange={(event) => setPreferences((current) => ({
+                      ...current,
+                      exchangeFeeRounding: event.target.value as PreferenceForm['exchangeFeeRounding'],
+                    }))}
+                    value={preferences.exchangeFeeRounding}
+                  >
+                    <option value="">Unconfigured</option>
+                    <option value="down">Round down</option>
+                    <option value="up">Round up</option>
+                  </select>
+                </fieldset>
 
                 <label htmlFor="strategy">Strategy</label>
                 <select
@@ -365,25 +455,6 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="effort-filter">
-                  <label htmlFor="session-effort">Session effort</label>
-                  <select
-                    id="session-effort"
-                    name="effortCategory"
-                    onChange={(event) => setEffortCategory(event.target.value as DashboardEffortFilter)}
-                    value={effortCategory}
-                  >
-                    <option value="all">All effort categories</option>
-                    <option value="very-low">Very low effort</option>
-                    <option value="low">Low effort</option>
-                    <option value="medium">Medium effort</option>
-                    <option value="high">High effort</option>
-                    <option value="ongoing-patient">Ongoing / patient</option>
-                  </select>
-                  <p className="effort-note">
-                    Session-only filter. Effort categories are rough planning labels, not time, execution, fill, or profit guarantees.
-                  </p>
-                </div>
               </form>
             </aside>
 
@@ -394,15 +465,35 @@ export default function App() {
                   <h2 id="opportunities-title">Ranked opportunities</h2>
                 </div>
                 <output aria-live="polite">
-                  Showing {filteredOpportunities.length} of {opportunities.length}
+                  {state.response.trackedItemCount} tracked · {state.response.screenedCandidates.length} passed aggregate-price screening · {filteredOpportunities.length} ranked
                 </output>
               </div>
 
-              {filteredOpportunities.length === 0 ? (
+              {state.response.status === 'fee-configuration-required' && (
+                <ScreenedCandidates candidates={state.response.screenedCandidates} />
+              )}
+
+              {state.response.status === 'no-tracked-items' && (
                 <section className="empty-results" role="status">
-                  <h3>No opportunities match these filters</h3>
-                  <p>Broaden the saved capital, profit, strategy, confidence, allocation, or freshness criteria.</p>
+                  <h3>No tracked market items yet</h3>
+                  <p>Add an item to the local research watchlist to include it in a future live scan.</p>
                 </section>
+              )}
+
+              {state.response.status === 'unavailable' && (
+                <section className="empty-results" role="status">
+                  <h3>Live market data is unavailable</h3>
+                  <p>No partial or stale fallback opportunity has been shown.</p>
+                </section>
+              )}
+
+              {filteredOpportunities.length === 0 ? (
+                state.response.status === 'complete' && (
+                  <section className="empty-results" role="status">
+                    <h3>No opportunities match these filters</h3>
+                    <p>Broaden the saved capital, profit, strategy, confidence, allocation, or freshness criteria.</p>
+                  </section>
+                )
               ) : (
                 <div className="opportunity-table-wrapper">
                   <table id="opportunity-results">
@@ -410,7 +501,6 @@ export default function App() {
                       <tr>
                         <th scope="col">Rank</th>
                         <th scope="col">Opportunity</th>
-                        <th scope="col">Effort</th>
                         <th scope="col">Capital</th>
                         <th scope="col">Modeled profit</th>
                         <th scope="col">ROI</th>
@@ -890,6 +980,32 @@ function formatCompletionRatio(lifecycle: OperationLifecycleStatistics): string 
   return `${lifecycle.completedOperationCount} completed ÷ ${lifecycle.terminalOperationCount} terminal ${operationLabel}`;
 }
 
+function ScreenedCandidates({
+  candidates,
+}: {
+  candidates: DashboardOpportunitiesResponse['screenedCandidates'];
+}) {
+  return (
+    <section className="empty-results" data-testid="screened-candidates" role="status">
+      <h3>Fee configuration required</h3>
+      <p>
+        {candidates.length === 0
+          ? 'No tracked item passed the aggregate-price screen, so no detailed listings were requested.'
+          : `${candidates.length} tracked item${candidates.length === 1 ? '' : 's'} passed the aggregate-price screen. Configure both fee rules to request detailed listings and model profit.`}
+      </p>
+      {candidates.length > 0 && (
+        <ul>
+          {candidates.map((candidate) => (
+            <li key={candidate.itemId}>
+              Item #{candidate.itemId}: best bid {formatCopper(candidate.bestBidCopper)} · best ask {formatCopper(candidate.bestAskCopper)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function OpportunityRow({
   isSelected,
   onSelect,
@@ -906,11 +1022,6 @@ function OpportunityRow({
         <span className="opportunity-label">{opportunity.label}</span>
         <span className="opportunity-strategy">{formatStrategy(opportunity.strategy)}</span>
       </th>
-      <td>
-        <span className={`effort-chip effort-${opportunity.effortCategory}`}>
-          {formatEffortCategory(opportunity.effortCategory)}
-        </span>
-      </td>
       <td>{formatCopper(opportunity.capitalRequiredCopper)}</td>
       <td className="profit-cell">{formatCopper(opportunity.modeledNetProfitCopper)}</td>
       <td>{formatBasisPoints(opportunity.returnOnInvestmentBasisPoints)}</td>
@@ -1102,6 +1213,11 @@ function toPreferenceForm(preferences: UserSessionPreferences): PreferenceForm {
     riskPreference: preferences.riskPreference,
     strategyPreference: preferences.strategyPreference,
     allocationPercent: preferences.allocationPercent.toString(),
+    analysisQuantity: preferences.analysisQuantity.toString(),
+    listingFeeBasisPoints: preferences.listingFeeBasisPoints?.toString() ?? '',
+    listingFeeRounding: preferences.listingFeeRounding ?? '',
+    exchangeFeeBasisPoints: preferences.exchangeFeeBasisPoints?.toString() ?? '',
+    exchangeFeeRounding: preferences.exchangeFeeRounding ?? '',
   };
 }
 
@@ -1112,12 +1228,37 @@ function toUserSessionPreferences(form: PreferenceForm): {
   const capitalLimitCopper = parsePreferenceCopper(form.capitalLimitCopper, 'Available capital');
   const minimumProfitCopper = parsePreferenceCopper(form.minimumProfitCopper, 'Minimum modeled profit');
   const allocationPercent = Number(form.allocationPercent);
+  const analysisQuantity = Number(form.analysisQuantity);
+  const listingFeeBasisPoints = parseFeeBasisPoints(form.listingFeeBasisPoints, 'Listing fee');
+  const exchangeFeeBasisPoints = parseFeeBasisPoints(form.exchangeFeeBasisPoints, 'Exchange fee');
   const errors = [capitalLimitCopper.error, minimumProfitCopper.error].filter(
     (error): error is string => error !== null,
   );
 
   if (!Number.isSafeInteger(allocationPercent) || allocationPercent < 1 || allocationPercent > 100) {
     errors.push('Per-opportunity allocation must be an integer from 1 through 100.');
+  }
+
+  if (!Number.isSafeInteger(analysisQuantity) || analysisQuantity <= 0) {
+    errors.push('Analysis quantity must be a positive whole number.');
+  }
+
+  if (listingFeeBasisPoints.error !== null) {
+    errors.push(listingFeeBasisPoints.error);
+  }
+
+  if (exchangeFeeBasisPoints.error !== null) {
+    errors.push(exchangeFeeBasisPoints.error);
+  }
+
+  const feeValues = [
+    listingFeeBasisPoints.value,
+    form.listingFeeRounding || null,
+    exchangeFeeBasisPoints.value,
+    form.exchangeFeeRounding || null,
+  ];
+  if (!feeValues.every((value) => value === null) && !feeValues.every((value) => value !== null)) {
+    errors.push('Listing and exchange fee rules must both be fully configured or both be blank.');
   }
 
   return errors.length > 0
@@ -1130,6 +1271,11 @@ function toUserSessionPreferences(form: PreferenceForm): {
         riskPreference: form.riskPreference,
         strategyPreference: form.strategyPreference,
         allocationPercent,
+        analysisQuantity,
+        listingFeeBasisPoints: listingFeeBasisPoints.value,
+        listingFeeRounding: form.listingFeeRounding || null,
+        exchangeFeeBasisPoints: exchangeFeeBasisPoints.value,
+        exchangeFeeRounding: form.exchangeFeeRounding || null,
       },
     };
 }
@@ -1143,6 +1289,17 @@ function parsePreferenceCopper(value: string, label: string): { error: string | 
   return Number.isSafeInteger(parsedValue) && parsedValue >= 0
     ? { error: null, value: parsedValue }
     : { error: `${label} must be a non-negative whole-copper amount.`, value: null };
+}
+
+function parseFeeBasisPoints(value: string, label: string): { error: string | null; value: number | null } {
+  if (value.trim() === '') {
+    return { error: null, value: null };
+  }
+
+  const parsedValue = Number(value);
+  return Number.isSafeInteger(parsedValue) && parsedValue >= 0 && parsedValue <= 10_000
+    ? { error: null, value: parsedValue }
+    : { error: `${label} must be an integer from 0 through 10000 basis points.`, value: null };
 }
 
 function formatCopper(copper: number): string {
@@ -1187,21 +1344,6 @@ function formatStrategy(strategy: string): string {
     .split('-')
     .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
     .join(' ');
-}
-
-function formatEffortCategory(effortCategory: DashboardEffortCategory): string {
-  switch (effortCategory) {
-    case 'very-low':
-      return 'Very low';
-    case 'low':
-      return 'Low';
-    case 'medium':
-      return 'Medium';
-    case 'high':
-      return 'High';
-    case 'ongoing-patient':
-      return 'Ongoing / patient';
-  }
 }
 
 function formatDataAge(capturedAtUtc: string): string {

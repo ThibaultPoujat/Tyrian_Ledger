@@ -203,6 +203,16 @@ internal sealed class UserSessionPreferencesEntity
     public string StrategyPreference { get; set; } = null!;
 
     public int AllocationPercent { get; set; }
+
+    public int AnalysisQuantity { get; set; }
+
+    public int? ListingFeeBasisPoints { get; set; }
+
+    public string? ListingFeeRounding { get; set; }
+
+    public int? ExchangeFeeBasisPoints { get; set; }
+
+    public string? ExchangeFeeRounding { get; set; }
 }
 
 internal sealed class MarketPriceSnapshotEntity

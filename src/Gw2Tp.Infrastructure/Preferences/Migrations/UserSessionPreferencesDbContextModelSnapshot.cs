@@ -230,8 +230,23 @@ namespace Gw2Tp.Infrastructure.Preferences.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("AnalysisQuantity")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("AllocationPercent")
                         .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ExchangeFeeBasisPoints")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ExchangeFeeRounding")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ListingFeeBasisPoints")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ListingFeeRounding")
+                        .HasColumnType("TEXT");
 
                     b.Property<long?>("CapitalLimitCopper")
                         .HasColumnType("INTEGER");

@@ -67,66 +67,57 @@ test('browser API traffic never includes a credential', async ({ page }) => {
   });
 
   await page.goto('/');
-  await expect(page.getByText('Sample data', { exact: true })).toBeVisible();
+  await expect(page.getByText('Market scan status', { exact: true })).toBeVisible();
 
   await expect.poll(() => inspectedResponses.length).toBeGreaterThan(0);
   expect(inspectedResponses.join('\n')).not.toContain(syntheticCredential);
 });
 
-test('market dashboard saves local preferences and filters ranked sample opportunities', async ({ page }) => {
+test('market dashboard saves local preferences for the bounded live scan', async ({ page }) => {
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: 'Market opportunities' })).toBeVisible();
-  await expect(page.getByText('Sample data', { exact: true })).toBeVisible();
+  await expect(page.getByText('Market scan status', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No tracked market items yet' })).toBeVisible();
   await expect(page.getByTestId('personal-history')).toContainText('No local operation history yet.');
   await expect(page.getByTestId('personal-history')).toContainText('unknown lifetime history is not backfilled');
 
-  const opportunityRows = page.getByTestId('opportunity-row');
-  await expect(opportunityRows).toHaveCount(5);
-
   await page.getByLabel(/available capital/i).fill('1200');
   await page.getByLabel(/per-opportunity allocation/i).fill('50');
+  await page.getByLabel(/analysis quantity/i).fill('2');
+  await page.getByLabel(/listing fee/i).fill('500');
+  await page.getByLabel(/listing rounding/i).selectOption('down');
+  await page.getByLabel(/exchange fee/i).fill('1000');
+  await page.getByLabel(/exchange rounding/i).selectOption('up');
   await page.getByRole('button', { name: 'Save and apply preferences' }).click();
 
-  await expect(opportunityRows).toHaveCount(1);
-  await expect(opportunityRows).toContainText('Sample market flip #900001');
+  await expect(page.getByText('Preferences saved. Updating ranked opportunities.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No tracked market items yet' })).toBeVisible();
 
   await page.reload();
   await expect(page.getByLabel(/available capital/i)).toHaveValue('1200');
-  await expect(opportunityRows).toHaveCount(1);
-
+  await expect(page.getByLabel(/analysis quantity/i)).toHaveValue('2');
+  await expect(page.getByLabel(/listing fee/i)).toHaveValue('500');
+  await expect(page.getByLabel(/exchange rounding/i)).toHaveValue('up');
 });
 
-test('market dashboard filters the session shortlist by explicit effort category without promising a duration', async ({ page }) => {
+test('market dashboard has no effort filter and makes no profit claim before fee configuration', async ({ page }) => {
   await page.goto('/');
 
-  await page.getByLabel(/session effort/i).selectOption('high');
-
-  const opportunityRows = page.getByTestId('opportunity-row');
-  await expect(opportunityRows).toHaveCount(1);
-  await expect(opportunityRows).toContainText('Sample market flip #900005');
-  await expect(page.getByText(/rough planning labels, not time, execution, fill, or profit guarantees/i)).toBeVisible();
+  await expect(page.getByLabel(/session effort/i)).toHaveCount(0);
+  await expect(page.getByTestId('opportunity-row')).toHaveCount(0);
+  await expect(page.getByText(/no locally tracked market items are available to scan/i)).toBeVisible();
 });
 
-test('opportunity detail explains the modeled scenario without implying an actual outcome', async ({ page }) => {
+test('an empty tracked list does not expose a modeled opportunity detail', async ({ page }) => {
   await page.goto('/');
 
-  await page.getByRole('button', { name: 'View details for Sample market flip #900004' }).click();
-
-  const detail = page.getByTestId('opportunity-detail');
-  await expect(detail.getByRole('heading', { name: 'Sample market flip #900004' })).toBeVisible();
-  await expect(detail).toContainText('Modeled scenario only.');
-  await expect(detail).toContainText('not an actual purchase, sale, fill, fee, or realized-profit outcome');
-  await expect(detail).toContainText('Human-readable calculation breakdown');
-  await expect(detail).toContainText('Order-book impact and liquidity');
-  await expect(detail).toContainText('Data age');
-
-  await page.getByRole('button', { name: 'View details for Sample market flip #900001' }).click();
-  await expect(detail.getByRole('heading', { name: 'Sample market flip #900001' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Close details' })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'No tracked market items yet' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /view details for/i })).toHaveCount(0);
+  await expect(page.getByTestId('opportunity-detail')).toHaveCount(0);
 });
 
-test('keyboard users can complete preference, detail, and confirmation flows with visible focus', async ({ page }) => {
+test('keyboard users can complete preference and confirmation flows with visible focus', async ({ page }) => {
   await page.goto('/');
 
   const capital = page.getByLabel(/available capital/i);
@@ -134,21 +125,11 @@ test('keyboard users can complete preference, detail, and confirmation flows wit
   await expect(capital).toBeFocused();
   await capital.fill('1200');
 
-  const allocation = page.getByLabel(/per-opportunity allocation/i);
-  await allocation.focus();
-  await allocation.fill('50');
-  await allocation.press('Enter');
-  await expect(page.getByTestId('opportunity-row')).toHaveCount(1);
-
-  const detailTrigger = page.getByRole('button', { name: 'View details for Sample market flip #900001' });
-  await detailTrigger.focus();
-  await detailTrigger.press('Enter');
-
-  const closeDetails = page.getByRole('button', { name: 'Close details' });
-  await expect(closeDetails).toBeFocused();
-  await closeDetails.press('Enter');
-  await expect(page.getByTestId('opportunity-detail')).toHaveCount(0);
-  await expect(detailTrigger).toBeFocused();
+  const quantity = page.getByLabel(/analysis quantity/i);
+  await quantity.focus();
+  await quantity.fill('2');
+  await quantity.press('Enter');
+  await expect(page.getByRole('heading', { name: 'No tracked market items yet' })).toBeVisible();
 
   const clearTrigger = page.getByRole('button', { name: 'Clear account snapshot data' });
   await clearTrigger.focus();
@@ -164,7 +145,7 @@ test('keyboard users can complete preference, detail, and confirmation flows wit
   await expect(page.getByRole('button', { name: 'Clear account snapshot data' })).toBeFocused();
 });
 
-test('dashboard and expanded detail meet WCAG 2.2 AA automated checks', async ({ page }) => {
+test('empty dashboard meets WCAG 2.2 AA automated checks', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Market opportunities' })).toBeVisible();
 
@@ -172,10 +153,4 @@ test('dashboard and expanded detail meet WCAG 2.2 AA automated checks', async ({
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
     .analyze()).resolves.toMatchObject({ violations: [] });
 
-  await page.getByRole('button', { name: 'View details for Sample market flip #900004' }).click();
-  await expect(page.getByTestId('opportunity-detail')).toBeVisible();
-
-  await expect(new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
-    .analyze()).resolves.toMatchObject({ violations: [] });
 });
