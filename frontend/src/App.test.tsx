@@ -386,8 +386,15 @@ describe('market dashboard preferences and filters', () => {
     expect(detail).toHaveTextContent('Human-readable calculation breakdown');
     expect(detail).toHaveTextContent('Data age');
 
+    const replacementDetailTrigger = screen.getByRole('button', {
+      name: 'View details for Sample market flip #900001',
+    });
+    fireEvent.click(replacementDetailTrigger);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close details' })).toHaveFocus());
+    expect(detail).toHaveTextContent('Sample market flip #900001');
+
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
-    await waitFor(() => expect(detailTrigger).toHaveFocus());
+    await waitFor(() => expect(replacementDetailTrigger).toHaveFocus());
   });
 });
 

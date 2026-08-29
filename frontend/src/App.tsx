@@ -953,7 +953,7 @@ function OpportunityDetail({
 
   useEffect(() => {
     closeButtonRef.current?.focus();
-  }, []);
+  }, [opportunity.itemId]);
 
   return (
     <section

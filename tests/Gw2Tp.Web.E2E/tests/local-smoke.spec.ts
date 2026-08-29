@@ -73,7 +73,7 @@ test('browser API traffic never includes a credential', async ({ page }) => {
   expect(inspectedResponses.join('\n')).not.toContain(syntheticCredential);
 });
 
-test('market dashboard saves local preferences and filters ranked sample opportunities', async ({ page, request }) => {
+test('market dashboard saves local preferences and filters ranked sample opportunities', async ({ page }) => {
   await page.goto('/');
 
   await expect(page.getByRole('heading', { name: 'Market opportunities' })).toBeVisible();
@@ -95,16 +95,6 @@ test('market dashboard saves local preferences and filters ranked sample opportu
   await expect(page.getByLabel(/available capital/i)).toHaveValue('1200');
   await expect(opportunityRows).toHaveCount(1);
 
-  const resetResponse = await request.put(`${apiBaseUrl}/api/preferences/user-session`, {
-    data: {
-      capitalLimitCopper: null,
-      minimumProfitCopper: null,
-      riskPreference: 'all',
-      strategyPreference: 'all',
-      allocationPercent: 100,
-    },
-  });
-  expect(resetResponse.status()).toBe(200);
 });
 
 test('market dashboard filters the session shortlist by explicit effort category without promising a duration', async ({ page }) => {
@@ -130,6 +120,10 @@ test('opportunity detail explains the modeled scenario without implying an actua
   await expect(detail).toContainText('Human-readable calculation breakdown');
   await expect(detail).toContainText('Order-book impact and liquidity');
   await expect(detail).toContainText('Data age');
+
+  await page.getByRole('button', { name: 'View details for Sample market flip #900001' }).click();
+  await expect(detail.getByRole('heading', { name: 'Sample market flip #900001' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close details' })).toBeFocused();
 });
 
 test('keyboard users can complete preference, detail, and confirmation flows with visible focus', async ({ page }) => {
