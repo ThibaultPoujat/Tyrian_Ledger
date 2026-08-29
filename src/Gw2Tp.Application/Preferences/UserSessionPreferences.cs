@@ -129,16 +129,27 @@ public sealed record UserSessionPreferences
 
     public bool TryCreateTransactionFeePolicy(out TransactionFeePolicy? feePolicy)
     {
-        if (ListingFeeBasisPoints is null)
+        if (ListingFeeBasisPoints is not { } listingFeeBasisPoints ||
+            ListingFeeRounding is not { } listingFeeRounding ||
+            ExchangeFeeBasisPoints is not { } exchangeFeeBasisPoints ||
+            ExchangeFeeRounding is not { } exchangeFeeRounding)
         {
             feePolicy = null;
             return false;
         }
 
-        feePolicy = new TransactionFeePolicy(
-            new FeeRule(ListingFeeBasisPoints.Value, ListingFeeRounding!.Value),
-            new FeeRule(ExchangeFeeBasisPoints!.Value, ExchangeFeeRounding!.Value));
-        return true;
+        try
+        {
+            feePolicy = new TransactionFeePolicy(
+                new FeeRule(listingFeeBasisPoints, listingFeeRounding),
+                new FeeRule(exchangeFeeBasisPoints, exchangeFeeRounding));
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            feePolicy = null;
+            return false;
+        }
     }
 
     private static void ValidateCopper(long? copper, string parameterName)

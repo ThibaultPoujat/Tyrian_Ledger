@@ -59,17 +59,21 @@ internal sealed class SqliteUserSessionPreferencesStore : IUserSessionPreference
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    private static UserSessionPreferences ToModel(UserSessionPreferencesEntity entity) => UserSessionPreferences.Create(
-        entity.CapitalLimitCopper,
-        entity.MinimumProfitCopper,
-        ParseRiskPreference(entity.RiskPreference),
-        ParseStrategyPreference(entity.StrategyPreference),
-        entity.AllocationPercent,
-        entity.AnalysisQuantity,
-        entity.ListingFeeBasisPoints,
-        ParseFeeRounding(entity.ListingFeeRounding),
-        entity.ExchangeFeeBasisPoints,
-        ParseFeeRounding(entity.ExchangeFeeRounding));
+    private static UserSessionPreferences ToModel(UserSessionPreferencesEntity entity)
+    {
+        var fees = ReadFeeConfigurationOrAbsent(entity);
+        return UserSessionPreferences.Create(
+            entity.CapitalLimitCopper,
+            entity.MinimumProfitCopper,
+            ParseRiskPreference(entity.RiskPreference),
+            ParseStrategyPreference(entity.StrategyPreference),
+            entity.AllocationPercent,
+            entity.AnalysisQuantity,
+            fees.ListingFeeBasisPoints,
+            fees.ListingFeeRounding,
+            fees.ExchangeFeeBasisPoints,
+            fees.ExchangeFeeRounding);
+    }
 
     private static OpportunityRiskPreference ParseRiskPreference(string value) => value switch
     {
@@ -101,13 +105,50 @@ internal sealed class SqliteUserSessionPreferencesStore : IUserSessionPreference
         _ => throw new ArgumentOutOfRangeException(nameof(value), value, "The strategy preference is not supported."),
     };
 
-    private static FeeRounding? ParseFeeRounding(string? value) => value switch
+    private static StoredFeeConfiguration ReadFeeConfigurationOrAbsent(UserSessionPreferencesEntity entity)
     {
-        null => null,
-        "down" => FeeRounding.Down,
-        "up" => FeeRounding.Up,
-        _ => throw new InvalidOperationException("The local user-session preference profile has an unsupported fee rounding mode."),
-    };
+        if (entity.ListingFeeBasisPoints is not { } listingFeeBasisPoints ||
+            entity.ListingFeeRounding is not { } listingFeeRoundingValue ||
+            entity.ExchangeFeeBasisPoints is not { } exchangeFeeBasisPoints ||
+            entity.ExchangeFeeRounding is not { } exchangeFeeRoundingValue ||
+            !TryParseFeeRounding(listingFeeRoundingValue, out var listingFeeRounding) ||
+            !TryParseFeeRounding(exchangeFeeRoundingValue, out var exchangeFeeRounding))
+        {
+            return StoredFeeConfiguration.Absent;
+        }
+
+        try
+        {
+            _ = new FeeRule(listingFeeBasisPoints, listingFeeRounding);
+            _ = new FeeRule(exchangeFeeBasisPoints, exchangeFeeRounding);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return StoredFeeConfiguration.Absent;
+        }
+
+        return new StoredFeeConfiguration(
+            listingFeeBasisPoints,
+            listingFeeRounding,
+            exchangeFeeBasisPoints,
+            exchangeFeeRounding);
+    }
+
+    private static bool TryParseFeeRounding(string value, out FeeRounding rounding)
+    {
+        switch (value)
+        {
+            case "down":
+                rounding = FeeRounding.Down;
+                return true;
+            case "up":
+                rounding = FeeRounding.Up;
+                return true;
+            default:
+                rounding = default;
+                return false;
+        }
+    }
 
     private static string ToStorageValue(FeeRounding value) => value switch
     {
@@ -115,4 +156,13 @@ internal sealed class SqliteUserSessionPreferencesStore : IUserSessionPreference
         FeeRounding.Up => "up",
         _ => throw new ArgumentOutOfRangeException(nameof(value), value, "The fee rounding mode is not supported."),
     };
+
+    private readonly record struct StoredFeeConfiguration(
+        int? ListingFeeBasisPoints,
+        FeeRounding? ListingFeeRounding,
+        int? ExchangeFeeBasisPoints,
+        FeeRounding? ExchangeFeeRounding)
+    {
+        public static StoredFeeConfiguration Absent { get; } = new(null, null, null, null);
+    }
 }

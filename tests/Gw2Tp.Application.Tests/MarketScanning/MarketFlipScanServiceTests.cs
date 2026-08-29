@@ -101,6 +101,25 @@ public sealed class MarketFlipScanServiceTests
     }
 
     [Fact]
+    public async Task Missing_price_data_is_unavailable_and_not_followed_by_listing_requests()
+    {
+        var marketClient = new RecordingMarketClient
+        {
+            Prices = SuccessfulPrices(Price(1, buy: 200, sell: 100)),
+        };
+        var service = CreateService([Tracked(1), Tracked(2)], marketClient);
+
+        var result = await service.ScanAsync(ConfiguredPreferences(), ScoringConfiguration(), CancellationToken.None);
+
+        Assert.Equal(MarketFlipScanStatus.Unavailable, result.Status);
+        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, result.ErrorCategory);
+        Assert.Empty(result.ScreenedCandidates);
+        Assert.Empty(result.Opportunities);
+        Assert.Equal(1, marketClient.PriceRequestCount);
+        Assert.Equal(0, marketClient.ListingRequestCount);
+    }
+
+    [Fact]
     public async Task Configured_scan_rejects_zero_screened_candidates_without_requesting_listings()
     {
         var marketClient = new RecordingMarketClient

@@ -56,9 +56,30 @@ public sealed class MarketFlipScanService
             return MarketFlipScanResult.Unavailable(scannedAtUtc, prices.ErrorCategory, itemIds.Length);
         }
 
-        var screenedCandidates = prices.Value!
+        var requestedItemIds = itemIds.ToHashSet();
+        var pricesByItemId = new Dictionary<int, MarketPrice>();
+        foreach (var price in prices.Value.Where(price => requestedItemIds.Contains(price.ItemId)))
+        {
+            if (!pricesByItemId.TryAdd(price.ItemId, price))
+            {
+                return MarketFlipScanResult.Unavailable(
+                    scannedAtUtc,
+                    Gw2ApiErrorCategory.InvalidPayload,
+                    itemIds.Length);
+            }
+        }
+
+        if (itemIds.Any(itemId => !pricesByItemId.ContainsKey(itemId)))
+        {
+            return MarketFlipScanResult.Unavailable(
+                scannedAtUtc,
+                Gw2ApiErrorCategory.InvalidPayload,
+                itemIds.Length);
+        }
+
+        var screenedCandidates = itemIds
+            .Select(itemId => pricesByItemId[itemId])
             .Where(IsPotentiallyProfitableAtTopOfBook)
-            .OrderBy(price => price.ItemId)
             .Select(price => new MarketScreenedCandidate(
                 price.ItemId,
                 price.Buys.UnitPriceInCopper,
