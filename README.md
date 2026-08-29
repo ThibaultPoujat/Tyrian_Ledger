@@ -68,7 +68,7 @@ Requires the .NET 10 SDK and a recent Node.js. No credentials are required for t
 - Unit tests: `dotnet test TyrianLedger.slnx --configuration Release --filter "FullyQualifiedName!~Gw2Tp.IntegrationTests"`
 - Integration tests: `dotnet test tests/Gw2Tp.IntegrationTests/Gw2Tp.IntegrationTests.csproj --configuration Release`
 - Full .NET suite: `dotnet test TyrianLedger.slnx --configuration Release`
-- Run locally: `dotnet run --project src/Gw2Tp.Web`
+- Start the API: `dotnet run --project src/Gw2Tp.Web`
 
 For the credential boundary and the temporary Development/Testing environment
 override, see [local secrets](docs/development/local-secrets.md). A real GW2
@@ -83,6 +83,21 @@ the HTTP security baseline.
 - Install: `cd frontend && npm ci`
 - Dev server: `cd frontend && npm run dev`
 - Build: `cd frontend && npm run build`
+
+### Run the local application
+
+Use two terminals from the repository root. The API and frontend remain in the
+foreground, so their output is visible and they stop cleanly with `Ctrl+C`.
+
+```sh
+# Terminal 1
+dotnet run --project src/Gw2Tp.Web
+
+# Terminal 2
+npm --prefix frontend run dev
+```
+
+Open the loopback URL printed by Vite (normally `http://127.0.0.1:5173`).
 
 ### E2E
 
