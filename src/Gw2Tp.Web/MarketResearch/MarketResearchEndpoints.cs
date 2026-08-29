@@ -104,7 +104,7 @@ internal static class MarketResearchEndpoints
     private sealed record UpdateMarketResearchWatchlistRequest(int ItemId);
 
     private sealed record MarketResearchWatchlistResponse(
-        int MaximumWatchlistItemCount,
+        int MaximumTrackedItemCount,
         int TrackedItemCount,
         IReadOnlyList<MarketResearchWatchlistItemResponse> Items);
 

@@ -160,7 +160,7 @@ const defaultPreferences: UserSessionPreferences = {
 };
 
 const marketResearchWatchlist: MarketResearchWatchlist = {
-  maximumWatchlistItemCount: 25,
+  maximumTrackedItemCount: 25,
   trackedItemCount: 2,
   items: [
     {

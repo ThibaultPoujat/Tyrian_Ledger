@@ -76,7 +76,7 @@ export interface MarketResearchWatchlistItem {
 }
 
 export interface MarketResearchWatchlist {
-  maximumWatchlistItemCount: number;
+  maximumTrackedItemCount: number;
   trackedItemCount: number;
   items: MarketResearchWatchlistItem[];
 }
@@ -340,9 +340,9 @@ function isOperationHistoryStatistics(value: unknown): value is OperationHistory
 
 function isMarketResearchWatchlist(value: unknown): value is MarketResearchWatchlist {
   return isRecord(value)
-    && isNonNegativeSafeInteger(value.maximumWatchlistItemCount)
+    && isNonNegativeSafeInteger(value.maximumTrackedItemCount)
     && isNonNegativeSafeInteger(value.trackedItemCount)
-    && value.trackedItemCount <= value.maximumWatchlistItemCount
+    && value.trackedItemCount <= value.maximumTrackedItemCount
     && Array.isArray(value.items)
     && value.items.length <= value.trackedItemCount
     && value.items.every(isMarketResearchWatchlistItem);

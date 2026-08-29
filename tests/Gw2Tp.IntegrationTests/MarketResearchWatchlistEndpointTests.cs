@@ -39,7 +39,7 @@ public sealed class MarketResearchWatchlistEndpointTests
         response.EnsureSuccessStatusCode();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = document.RootElement;
-        Assert.Equal(MarketSamplingPolicy.MaximumTrackedItemCount, root.GetProperty("maximumWatchlistItemCount").GetInt32());
+        Assert.Equal(MarketSamplingPolicy.MaximumTrackedItemCount, root.GetProperty("maximumTrackedItemCount").GetInt32());
         Assert.Equal(2, root.GetProperty("trackedItemCount").GetInt32());
         var items = root.GetProperty("items").EnumerateArray().ToArray();
         Assert.Equal([101, 202], items.Select(item => item.GetProperty("itemId").GetInt32()));

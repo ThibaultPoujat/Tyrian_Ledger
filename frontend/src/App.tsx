@@ -656,7 +656,7 @@ function MarketResearchPanel({
           <p className="eyebrow">Local observations</p>
           <h2 id="research-title">Historical market research</h2>
         </div>
-        <output>{watchlist.items.length} research items; {watchlist.trackedItemCount} of {watchlist.maximumWatchlistItemCount} tracked</output>
+        <output>{watchlist.items.length} research items; {watchlist.trackedItemCount} of {watchlist.maximumTrackedItemCount} tracked</output>
       </div>
       <p className="research-note">
         Observed local prices and liquidity are descriptive evidence, not investment advice, a forecast, or a guarantee.
