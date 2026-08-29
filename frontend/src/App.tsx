@@ -22,6 +22,15 @@ import {
   type MarketResearchPriceStatistics,
   type UserSessionPreferences,
 } from './dashboardApi';
+import {
+  ExecutionDepthChart,
+  HistoryLifecycleChart,
+  OpportunityLandscape,
+  ProfitWaterfall,
+  ResearchBandChart,
+  ResearchCoverageChart,
+  ResearchLiquidityChart,
+} from './chartComponents';
 import './App.css';
 
 type DashboardState =
@@ -47,6 +56,10 @@ type MarketResearchState =
 interface DashboardFilters {
   freshness: 'all' | 'current' | 'stale';
 }
+
+type SessionEffort = 'very-low' | 'low' | 'medium' | 'high' | 'ongoing-patient';
+
+type OpportunityView = 'list' | 'landscape';
 
 const initialFilters: DashboardFilters = {
   freshness: 'all',
@@ -89,7 +102,17 @@ export default function App() {
   const [preferenceMessage, setPreferenceMessage] = useState<string | null>(null);
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<number | null>(null);
+  const [opportunityView, setOpportunityView] = useState<OpportunityView>('list');
+  const [plannedOpportunityIds, setPlannedOpportunityIds] = useState<number[]>([]);
+  const [plannedEfforts, setPlannedEfforts] = useState<Record<number, SessionEffort>>({});
+  const [activeSection, setActiveSection] = useState(() => window.location.hash.slice(1) || 'scan');
   const selectedOpportunityTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const syncActiveSection = () => setActiveSection(window.location.hash.slice(1) || 'scan');
+    window.addEventListener('hashchange', syncActiveSection);
+    return () => window.removeEventListener('hashchange', syncActiveSection);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -181,22 +204,43 @@ export default function App() {
     [opportunities, selectedOpportunityId],
   );
 
+  const addToPlan = (itemId: number) => {
+    setPlannedOpportunityIds((current) => current.includes(itemId) ? current : [...current, itemId]);
+    setPlannedEfforts((current) => current[itemId] ? current : { ...current, [itemId]: 'medium' });
+  };
+
+  const removeFromPlan = (itemId: number) => {
+    setPlannedOpportunityIds((current) => current.filter((plannedItemId) => plannedItemId !== itemId));
+    setPlannedEfforts((current) => {
+      const next = { ...current };
+      delete next[itemId];
+      return next;
+    });
+  };
+
   return (
     <main className="dashboard-shell">
       <header className="dashboard-header">
-        <p className="eyebrow">Tyrian Ledger · local read-only analysis</p>
+        <div className="brand-line">
+          <p className="eyebrow">Tyrian Ledger · local read-only analysis</p>
+          <span className="local-badge">On this device</span>
+        </div>
         <h1>Market opportunities</h1>
         <p className="dashboard-intro">
           Ranked modeled scenarios for planning—not orders, execution predictions, or profit guarantees.
         </p>
+        <nav aria-label="Primary" className="primary-navigation">
+          <a aria-current={activeSection === 'scan' ? 'location' : undefined} href="#scan" onClick={() => setActiveSection('scan')}>Scan</a>
+          <a aria-current={activeSection === 'plan' ? 'location' : undefined} href="#plan" onClick={() => setActiveSection('plan')}>Plan <span className="nav-count">{plannedOpportunityIds.length}</span></a>
+          <a aria-current={activeSection === 'history' ? 'location' : undefined} href="#history" onClick={() => setActiveSection('history')}>History</a>
+          <a aria-current={activeSection === 'research' ? 'location' : undefined} href="#research" onClick={() => setActiveSection('research')}>Research</a>
+          <a aria-current={activeSection === 'account' ? 'location' : undefined} href="#account" onClick={() => setActiveSection('account')}>Account &amp; settings</a>
+        </nav>
       </header>
 
-      <OperationHistoryPanel historyStatistics={historyStatistics} />
-      <MarketResearchPanel
-        marketResearch={marketResearch}
-        onRefresh={() => setRequestVersion((version) => version + 1)}
-      />
-      <LocalAccountDataPanel />
+      <WorkspaceStatusBar state={state} accountAccess={accountAccess} />
+
+      <section className="workspace-section" id="scan" aria-label="Market scan">
 
       {state.kind === 'loading' && (
         <section className="dashboard-state" aria-live="polite" role="status">
@@ -221,8 +265,6 @@ export default function App() {
             <strong>{state.response.status === 'complete' ? 'Live market data' : 'Market scan status'}</strong>
             <p>{state.response.sourceDescription}</p>
           </section>
-
-          <AccountAccessPanel accountAccess={accountAccess} />
 
           <section className="dashboard-layout" aria-label="Opportunity dashboard">
             <aside className="filter-panel" aria-labelledby="preferences-title">
@@ -487,14 +529,49 @@ export default function App() {
                 </section>
               )}
 
-              {filteredOpportunities.length === 0 ? (
-                state.response.status === 'complete' && (
-                  <section className="empty-results" role="status">
-                    <h3>No opportunities match these filters</h3>
-                    <p>Broaden the saved capital, profit, strategy, confidence, allocation, or freshness criteria.</p>
-                  </section>
-                )
-              ) : (
+              {state.response.status === 'complete' && (
+                <>
+              <div className="view-toolbar" aria-label="Opportunity view">
+                <span className="toolbar-label">View</span>
+                <button
+                  aria-pressed={opportunityView === 'list'}
+                  className={opportunityView === 'list' ? 'view-button view-button-active' : 'view-button'}
+                  onClick={() => setOpportunityView('list')}
+                  type="button"
+                >
+                  List
+                </button>
+                <button
+                  aria-pressed={opportunityView === 'landscape'}
+                  className={opportunityView === 'landscape' ? 'view-button view-button-active' : 'view-button'}
+                  onClick={() => setOpportunityView('landscape')}
+                  type="button"
+                >
+                  Landscape
+                </button>
+                <span className="toolbar-help">List is the precise view; landscape is for orientation.</span>
+                {filters.freshness !== 'all' && (
+                  <div className="active-filter-chips" aria-label="Active view filters">
+                    <button
+                      aria-label="Remove freshness filter"
+                      className="filter-chip"
+                      onClick={() => setFilters(initialFilters)}
+                      type="button"
+                    >
+                      Freshness: {filters.freshness === 'current' ? 'Current' : 'Stale'} ×
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {opportunityView === 'landscape' && <OpportunityLandscape opportunities={filteredOpportunities} />}
+
+              {opportunityView === 'list' && filteredOpportunities.length === 0 ? (
+                <section className="empty-results" role="status">
+                  <h3>No opportunities match these filters</h3>
+                  <p>Broaden the saved capital, profit, strategy, confidence, allocation, or freshness criteria.</p>
+                </section>
+              ) : opportunityView === 'list' ? (
                 <div className="opportunity-table-wrapper">
                   <table id="opportunity-results">
                     <thead>
@@ -507,6 +584,7 @@ export default function App() {
                         <th scope="col">Liquidity proxy</th>
                         <th scope="col">Confidence / risk</th>
                         <th scope="col">Data age</th>
+                        <th scope="col">Plan</th>
                         <th scope="col">Details</th>
                       </tr>
                     </thead>
@@ -525,12 +603,18 @@ export default function App() {
                             selectedOpportunityTriggerRef.current = trigger;
                             setSelectedOpportunityId(opportunity.itemId);
                           }}
+                          isPlanned={plannedOpportunityIds.includes(opportunity.itemId)}
+                          onTogglePlan={() => plannedOpportunityIds.includes(opportunity.itemId)
+                            ? removeFromPlan(opportunity.itemId)
+                            : addToPlan(opportunity.itemId)}
                           opportunity={opportunity}
                         />
                       ))}
                     </tbody>
                   </table>
                 </div>
+              ) : null}
+                </>
               )}
 
               {selectedOpportunity !== null && (
@@ -551,7 +635,241 @@ export default function App() {
           </section>
         </>
       )}
+      </section>
+
+      <section className="workspace-section" id="plan" aria-labelledby="plan-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Session planning</p>
+            <h2 id="plan-title">Build a practical shortlist</h2>
+          </div>
+          <p>Choose what fits today. Effort labels are approximations, not execution-time promises.</p>
+        </div>
+        <SessionPlanPanel
+          opportunities={opportunities}
+          plannedEfforts={plannedEfforts}
+          plannedOpportunityIds={plannedOpportunityIds}
+          onEffortChange={(itemId, effort) => setPlannedEfforts((current) => ({ ...current, [itemId]: effort }))}
+          onRemove={removeFromPlan}
+          capitalLimitCopper={parsePreferenceCopper(preferences.capitalLimitCopper, 'Available capital').value}
+        />
+      </section>
+
+      <section className="workspace-section" id="history" aria-labelledby="history-section-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Local history</p>
+            <h2 id="history-section-title">Personal history</h2>
+          </div>
+          <p>Recorded outcomes are separate from saved scenarios.</p>
+        </div>
+        <OperationHistoryPanel historyStatistics={historyStatistics} />
+      </section>
+
+      <section className="workspace-section" id="research" aria-labelledby="research-section-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Local observations</p>
+            <h2 id="research-section-title">Market research</h2>
+          </div>
+          <p>Descriptive evidence from this device—not forecasts or investment advice.</p>
+        </div>
+        <MarketResearchPanel
+          marketResearch={marketResearch}
+          onRefresh={() => setRequestVersion((version) => version + 1)}
+        />
+      </section>
+
+      <section className="workspace-section" id="account" aria-labelledby="account-section-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Account &amp; settings</p>
+            <h2 id="account-section-title">Optional account context</h2>
+          </div>
+          <p>Market scanning works without an API key. Account data stays local.</p>
+        </div>
+        <AccountAccessPanel accountAccess={accountAccess} />
+        <CraftingReadinessPanel accountAccess={accountAccess} />
+        <LocalAccountDataPanel />
+      </section>
     </main>
+  );
+}
+
+function WorkspaceStatusBar({ state, accountAccess }: { state: DashboardState; accountAccess: AccountAccessState }) {
+  const marketStatus = state.kind === 'loading'
+    ? 'Refreshing'
+    : state.kind === 'error'
+      ? 'Unavailable'
+      : state.response.status === 'complete'
+        ? 'Current scan'
+        : state.response.status === 'fee-configuration-required'
+          ? 'Fee setup needed'
+          : state.response.status === 'no-tracked-items'
+            ? 'No tracked items'
+            : 'Unavailable';
+  const lastRefresh = state.kind === 'ready' ? formatDateTime(state.response.generatedAtUtc) : state.kind === 'loading' ? 'Waiting for scan' : 'Unavailable';
+  const accountStatus = accountAccess.kind === 'loading'
+    ? 'Checking'
+    : accountAccess.kind === 'ready' && accountAccess.status.validationStatus === 'valid'
+      ? 'Connected'
+      : 'Optional';
+
+  return (
+    <section className="workspace-status-bar" aria-label="Workspace status">
+      <div className="workspace-status-item">
+        <span>Market snapshot</span>
+        <strong>{marketStatus}</strong>
+      </div>
+      <div className="workspace-status-item">
+        <span>Last refresh</span>
+        <strong>{lastRefresh}</strong>
+      </div>
+      <div className="workspace-status-item">
+        <span>Account context</span>
+        <strong>{accountStatus}</strong>
+      </div>
+      <div className="workspace-status-item">
+        <span>Storage</span>
+        <strong>On this device</strong>
+      </div>
+    </section>
+  );
+}
+
+function SessionPlanPanel({
+  opportunities,
+  plannedEfforts,
+  plannedOpportunityIds,
+  onEffortChange,
+  onRemove,
+  capitalLimitCopper,
+}: {
+  opportunities: DashboardOpportunity[];
+  plannedEfforts: Record<number, SessionEffort>;
+  plannedOpportunityIds: number[];
+  onEffortChange: (itemId: number, effort: SessionEffort) => void;
+  onRemove: (itemId: number) => void;
+  capitalLimitCopper: number | null;
+}) {
+  const [effortFilter, setEffortFilter] = useState<'all' | SessionEffort>('all');
+  const plannedOpportunities = plannedOpportunityIds
+    .map((itemId) => opportunities.find((opportunity) => opportunity.itemId === itemId))
+    .filter((opportunity): opportunity is DashboardOpportunity => opportunity !== undefined);
+  const visibleOpportunities = plannedOpportunities.filter((opportunity) => effortFilter === 'all' || plannedEfforts[opportunity.itemId] === effortFilter);
+  const totalCapitalCopper = plannedOpportunities.reduce((total, opportunity) => total + opportunity.capitalRequiredCopper, 0);
+
+  return (
+    <section className="plan-panel" data-testid="session-plan" aria-label="Session shortlist">
+      <div className="plan-controls">
+        <label htmlFor="plan-effort-filter">Effort preference</label>
+        <select
+          id="plan-effort-filter"
+          value={effortFilter}
+          onChange={(event) => setEffortFilter(event.target.value as 'all' | SessionEffort)}
+        >
+          <option value="all">All effort labels</option>
+          {effortOptions.map((effort) => <option key={effort.value} value={effort.value}>{effort.label}</option>)}
+        </select>
+        <p>These are your planning labels, not time estimates.</p>
+      </div>
+
+      <div className="plan-budget" aria-label="Planned capital allocation">
+        <div className="plan-budget-heading">
+          <span>Planned capital</span>
+          <strong>{formatCopper(totalCapitalCopper)}{capitalLimitCopper === null ? ' · no limit set' : ` of ${formatCopper(capitalLimitCopper)}`}</strong>
+        </div>
+        <div
+          aria-label={capitalLimitCopper === null
+            ? 'Capital allocation is not comparable until a capital limit is set.'
+            : `${formatCopper(totalCapitalCopper)} of ${formatCopper(capitalLimitCopper)} planned capital.`}
+          className={capitalLimitCopper !== null && totalCapitalCopper > capitalLimitCopper ? 'allocation-track allocation-track-over' : 'allocation-track'}
+          role="img"
+        >
+          {capitalLimitCopper !== null && capitalLimitCopper > 0 && plannedOpportunities.map((opportunity, index) => (
+            <span
+              className={`allocation-segment allocation-segment-${index % 4}`}
+              key={opportunity.itemId}
+              style={{ width: `${(opportunity.capitalRequiredCopper / capitalLimitCopper) * 100}%` }}
+              title={`${opportunity.label}: ${formatCopper(opportunity.capitalRequiredCopper)}`}
+            />
+          ))}
+        </div>
+        <p>{capitalLimitCopper === null
+          ? 'Set available capital in Scan to compare this shortlist with a budget.'
+          : totalCapitalCopper > capitalLimitCopper
+            ? `${formatCopper(totalCapitalCopper - capitalLimitCopper)} over the configured budget.`
+            : `${formatCopper(capitalLimitCopper - totalCapitalCopper)} remaining before the configured budget.`}</p>
+      </div>
+
+      {plannedOpportunities.length === 0 ? (
+        <div className="plan-empty">
+          <h3>Your shortlist is empty</h3>
+          <p>Add opportunities from the Scan view. They will stay selected while you review their details.</p>
+          <a className="secondary-action" href="#scan">Browse the market scan</a>
+        </div>
+      ) : visibleOpportunities.length === 0 ? (
+        <div className="plan-empty">
+          <h3>No items match this effort label</h3>
+          <p>Choose another label or update the effort label on an item in your shortlist.</p>
+        </div>
+      ) : (
+        <div className="plan-list">
+          {visibleOpportunities.map((opportunity, index) => (
+            <article className="plan-item" key={opportunity.itemId}>
+              <div className="plan-item-rank">{index + 1}</div>
+              <div className="plan-item-main">
+                <h3>{opportunity.label}</h3>
+                <p>{formatCopper(opportunity.modeledNetProfitCopper)} modeled profit · {formatCopper(opportunity.capitalRequiredCopper)} capital · {formatConfidence(opportunity.confidence)} confidence</p>
+              </div>
+              <label className="plan-effort-label" htmlFor={`effort-${opportunity.itemId}`}>
+                Effort label
+                <select id={`effort-${opportunity.itemId}`} value={plannedEfforts[opportunity.itemId] ?? 'medium'} onChange={(event) => onEffortChange(opportunity.itemId, event.target.value as SessionEffort)}>
+                  {effortOptions.map((effort) => <option key={effort.value} value={effort.value}>{effort.label}</option>)}
+                </select>
+              </label>
+              <button className="plan-remove" onClick={() => onRemove(opportunity.itemId)} type="button">Remove from plan</button>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const effortOptions: Array<{ value: SessionEffort; label: string }> = [
+  { value: 'very-low', label: 'Very low' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'ongoing-patient', label: 'Ongoing / patient' },
+];
+
+function CraftingReadinessPanel({ accountAccess }: { accountAccess: AccountAccessState }) {
+  const craftingEnabled = accountAccess.kind === 'ready'
+    && accountAccess.status.validationStatus === 'valid'
+    && accountAccess.status.features.some((feature) => feature.feature === 'account-crafting' && feature.isAvailable);
+
+  return (
+    <section className="crafting-panel" aria-labelledby="crafting-title" data-testid="crafting-readiness">
+      <div className="crafting-panel-heading">
+        <div>
+          <p className="eyebrow">Account-aware analysis</p>
+          <h2 id="crafting-title">Crafting analysis</h2>
+        </div>
+        <span className={`status-pill ${craftingEnabled ? 'status-ready' : 'status-pending'}`}>{craftingEnabled ? 'Access ready' : 'Needs account access'}</span>
+      </div>
+      {craftingEnabled ? (
+        <p>Account crafting access is ready. Recipe paths and owned-material comparisons will appear when a snapshot is available.</p>
+      ) : (
+        <p>Connect an API key with character and recipe permissions to compare buy-all, use-owned, and mixed crafting paths. Market scanning remains available without it.</p>
+      )}
+      <div className="crafting-preview-grid" aria-label="Crafting analysis preview">
+        <div><strong>Recipe path</strong><span>Output → recipe → ingredients</span></div>
+        <div><strong>Cost comparison</strong><span>Buy-all · owned · mixed</span></div>
+        <div><strong>Economic status</strong><span>Owned materials are not free</span></div>
+      </div>
+    </section>
   );
 }
 
@@ -793,6 +1111,12 @@ function MarketResearchPanel({
       </form>
       {message !== null && <p aria-live="polite" className="research-message" role="status">{message}</p>}
 
+      <div className="research-chart-grid">
+        <ResearchBandChart items={watchlist.items} />
+        <ResearchLiquidityChart items={watchlist.items} />
+        <ResearchCoverageChart items={watchlist.items} />
+      </div>
+
       {watchlist.items.length === 0 ? (
         <p className="research-empty">No local research items yet. Add an item ID to begin collecting local observations.</p>
       ) : (
@@ -911,6 +1235,8 @@ function OperationHistoryPanel({ historyStatistics }: { historyStatistics: Histo
         />
       </dl>
 
+      <HistoryLifecycleChart statistics={statistics} />
+
       <p className="history-note">
         Realized values use recorded acquisition, sale, and fee evidence. Modeled values remain saved scenarios,
         not guarantees. Averages and completion use exact ratios so no copper is rounded away.
@@ -1008,11 +1334,15 @@ function ScreenedCandidates({
 
 function OpportunityRow({
   isSelected,
+  isPlanned,
   onSelect,
+  onTogglePlan,
   opportunity,
 }: {
   isSelected: boolean;
+  isPlanned: boolean;
   onSelect: (trigger: HTMLButtonElement) => void;
+  onTogglePlan: () => void;
   opportunity: DashboardOpportunity;
 }) {
   return (
@@ -1036,6 +1366,17 @@ function OpportunityRow({
           {formatFreshness(opportunity.freshness)}
         </span>
         <time dateTime={opportunity.capturedAtUtc}>{formatDataAge(opportunity.capturedAtUtc)}</time>
+      </td>
+      <td>
+        <button
+          aria-pressed={isPlanned}
+          aria-label={`${isPlanned ? 'Remove' : 'Add'} ${opportunity.label} ${isPlanned ? 'from' : 'to'} session plan`}
+          className={isPlanned ? 'plan-toggle plan-toggle-active' : 'plan-toggle'}
+          onClick={onTogglePlan}
+          type="button"
+        >
+          {isPlanned ? 'Planned' : 'Add'}
+        </button>
       </td>
       <td>
         <button
@@ -1086,6 +1427,14 @@ function OpportunityDetail({
         <strong>Modeled scenario only.</strong> This uses the supplied order-book snapshot and configured fees.
         It is not an actual purchase, sale, fill, fee, or realized-profit outcome, and it does not guarantee one.
       </p>
+
+      <div className="detail-summary-grid" aria-label="Modeled opportunity summary">
+        <MetricCard label="Modeled profit" value={formatCopper(detail.financials.modeledNetProfitCopper)} note="Scenario result" />
+        <MetricCard label="Capital required" value={formatCopper(detail.financials.capitalRequiredCopper)} note="Modeled input" />
+        <MetricCard label="Modeled ROI" value={formatBasisPoints(detail.financials.returnOnInvestmentBasisPoints)} note="Based on modeled capital" />
+        <MetricCard label="Liquidity proxy" value={formatLiquidity(detail.liquidity.totalPriceImpactCopper)} note="Price impact, not execution odds" />
+        <MetricCard label="Data age" value={formatFreshness(detail.freshness)} note={formatDataAge(detail.capturedAtUtc)} />
+      </div>
 
       <div className="detail-grid">
         <section aria-labelledby="scenario-assumptions-title" className="detail-section">
@@ -1160,6 +1509,15 @@ function OpportunityDetail({
         </section>
       </div>
 
+      <div className="detail-chart-grid">
+        <ExecutionDepthChart acquisition={detail.acquisition} exit={detail.exit} />
+        <ProfitWaterfall
+          exchangeFeeCopper={detail.fees.exchangeFeeCopper}
+          financials={detail.financials}
+          listingFeeCopper={detail.fees.listingFeeCopper}
+        />
+      </div>
+
       <section aria-labelledby="calculation-breakdown-title" className="calculation-breakdown">
         <h3 id="calculation-breakdown-title">Human-readable calculation breakdown</h3>
         <p>
@@ -1198,6 +1556,16 @@ function DetailTerm({ label, value }: { label: string; value: string }) {
     <div>
       <dt>{label}</dt>
       <dd>{value}</dd>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="detail-summary-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <p>{note}</p>
     </div>
   );
 }
