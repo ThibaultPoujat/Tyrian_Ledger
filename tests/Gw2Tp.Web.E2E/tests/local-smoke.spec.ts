@@ -14,6 +14,51 @@ test('local API health endpoint responds', async ({ page }) => {
   await expect(page.locator('body')).toContainText('ok');
 });
 
+test('browser API traffic never includes a credential', async ({ page }) => {
+  const syntheticCredential = 'synthetic-gw2-api-credential-for-browser-boundary-audit';
+  const inspectedResponses: string[] = [];
+
+  const statusResponse = await page.request.get(`${apiBaseUrl}/api/status`);
+  const statusBody = await statusResponse.text();
+
+  expect(statusResponse.ok()).toBeTruthy();
+  expect(statusBody).toContain('"credentialStatus":"configured"');
+  expect(statusBody).not.toContain(syntheticCredential);
+
+  await page.route('**/api/account/access', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      validationStatus: 'notconfigured',
+      keyId: null,
+      keyName: null,
+      permissions: [],
+      features: [],
+    }),
+  }));
+
+  page.on('request', (request) => {
+    if (request.url().includes('/api/')) {
+      expect(request.url()).not.toContain(syntheticCredential);
+      expect(request.headers().authorization).toBeUndefined();
+      expect(request.postData() ?? '').not.toContain(syntheticCredential);
+    }
+  });
+
+  page.on('response', async (response) => {
+    if (!response.url().includes('/api/')) {
+      return;
+    }
+
+    inspectedResponses.push(await response.text());
+  });
+
+  await page.goto('/');
+  await expect(page.getByText('Sample data', { exact: true })).toBeVisible();
+
+  await expect.poll(() => inspectedResponses.length).toBeGreaterThan(0);
+  expect(inspectedResponses.join('\n')).not.toContain(syntheticCredential);
+});
+
 test('market dashboard saves local preferences and filters ranked sample opportunities', async ({ page, request }) => {
   await page.goto('/');
 
