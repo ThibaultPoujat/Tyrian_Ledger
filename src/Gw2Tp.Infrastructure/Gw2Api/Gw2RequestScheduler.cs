@@ -256,12 +256,6 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
         {
             lock (gate)
             {
-                if (completion.Task.IsCompleted)
-                {
-                    waiterCount++;
-                    return true;
-                }
-
                 if (cancellation.IsCancellationRequested)
                 {
                     return false;

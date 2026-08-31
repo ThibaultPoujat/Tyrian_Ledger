@@ -108,11 +108,16 @@ public sealed class Gw2RequestSchedulerTests
     public async Task Last_cancelled_waiter_interrupts_an_active_http_request()
     {
         var transportCancellation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var handler = new DelegateHttpMessageHandler(async (_, cancellationToken) =>
+        var pendingResponse = new TaskCompletionSource<HttpResponseMessage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new DelegateHttpMessageHandler((_, cancellationToken) =>
         {
-            using var registration = cancellationToken.Register(() => transportCancellation.TrySetResult());
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-            return CreateJsonResponse(HttpStatusCode.OK, "[]");
+            cancellationToken.Register(() =>
+            {
+                transportCancellation.TrySetResult();
+                pendingResponse.TrySetCanceled(cancellationToken);
+            });
+            return pendingResponse.Task;
         });
         using var httpClient = CreateHttpClient(handler);
         using var scheduler = CreateScheduler();
