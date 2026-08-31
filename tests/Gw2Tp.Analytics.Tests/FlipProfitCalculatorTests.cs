@@ -48,6 +48,25 @@ public sealed class FlipProfitCalculatorTests
         Assert.Equal(new Money(1), fees.ExchangeFee);
     }
 
+    [Theory]
+    [InlineData(0, 0, 0)]
+    [InlineData(1, 1, 1)]
+    [InlineData(101, 6, 11)]
+    public void Applies_positive_transaction_minimums_after_independent_ceiling_rounding(
+        long grossSaleCopper,
+        long expectedListingFeeCopper,
+        long expectedExchangeFeeCopper)
+    {
+        var policy = new TransactionFeePolicy(
+            new FeeRule(500, FeeRounding.Up, new Money(1)),
+            new FeeRule(1_000, FeeRounding.Up, new Money(1)));
+
+        var fees = policy.CalculateFees(new Money(grossSaleCopper));
+
+        Assert.Equal(new Money(expectedListingFeeCopper), fees.ListingFee);
+        Assert.Equal(new Money(expectedExchangeFeeCopper), fees.ExchangeFee);
+    }
+
     [Fact]
     public void Calculates_large_values_without_multiplication_overflow()
     {
@@ -69,6 +88,7 @@ public sealed class FlipProfitCalculatorTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new FeeRule(-1, FeeRounding.Down));
         Assert.Throws<ArgumentOutOfRangeException>(() => new FeeRule(10_001, FeeRounding.Down));
         Assert.Throws<ArgumentOutOfRangeException>(() => new FeeRule(1, (FeeRounding)42));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new FeeRule(1, FeeRounding.Down, new Money(-1)));
 
         var policy = new TransactionFeePolicy(
             new FeeRule(500, FeeRounding.Down),

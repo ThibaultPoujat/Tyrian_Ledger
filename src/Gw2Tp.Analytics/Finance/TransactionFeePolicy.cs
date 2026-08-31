@@ -4,7 +4,7 @@ namespace Gw2Tp.Analytics.Finance;
 
 /// <summary>
 /// Calculates separately configured listing and exchange fees. This policy intentionally
-/// provides no default fee schedule; callers own the rates and rounding they require.
+/// provides no default fee schedule; callers own the rates, rounding, and minimums they require.
 /// </summary>
 public sealed class TransactionFeePolicy
 {
@@ -20,6 +20,7 @@ public sealed class TransactionFeePolicy
 
     /// <summary>
     /// Calculates each fee independently against the supplied non-negative gross sale value.
+    /// A configured minimum applies only when the gross sale value is positive.
     /// </summary>
     public FeeBreakdown CalculateFees(Money grossSaleValue)
     {
@@ -48,6 +49,9 @@ public sealed class TransactionFeePolicy
             remainderFee = checked(remainderFee + 1);
         }
 
-        return new Money(checked(wholeFee + remainderFee));
+        var calculatedFee = new Money(checked(wholeFee + remainderFee));
+        return grossSaleValue.Copper > 0 && calculatedFee.Copper < rule.MinimumFee.Copper
+            ? rule.MinimumFee
+            : calculatedFee;
     }
 }
