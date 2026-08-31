@@ -39,7 +39,7 @@ public sealed class Gw2RequestSchedulerTests
     }
 
     [Fact]
-    public async Task Completed_shared_request_is_removed_after_completion_when_all_callers_cancel()
+    public async Task Completed_shared_request_is_removed_after_cancelled_callers_leave()
     {
         var responseSource = new TaskCompletionSource<Gw2ScheduledResult<int>>();
         using var firstCancellationSource = new CancellationTokenSource();
@@ -66,8 +66,13 @@ public sealed class Gw2RequestSchedulerTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => secondCancelledRequest);
         Assert.Equal(1, firstSendCount);
 
+        var completionObserver = scheduler.ScheduleAsync<int>(
+            new Gw2RequestKey("prices:900001"),
+            _ => throw new InvalidOperationException("The deduplicated send must not run."),
+            CancellationToken.None);
+
         responseSource.SetResult(new Gw2ScheduledResult<int>(1));
-        await Task.Yield();
+        Assert.Equal(1, await completionObserver);
 
         var nextRequest = await scheduler.ScheduleAsync<int>(
             new Gw2RequestKey("prices:900001"),

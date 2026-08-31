@@ -20,6 +20,7 @@ A ticket may be completed across multiple fresh sessions. See `docs/workflow/ai-
 | M6 | Personal history and reconciliation | [TKT-M6-01](M6/tickets/TKT-M6-01.md), [TKT-M6-02](M6/tickets/TKT-M6-02.md), [TKT-M6-03](M6/tickets/TKT-M6-03.md), [TKT-M6-04](M6/tickets/TKT-M6-04.md) |
 | M7 | Historical market data and investment research | [TKT-M7-01](M7/tickets/TKT-M7-01.md), [TKT-M7-02](M7/tickets/TKT-M7-02.md), [TKT-M7-03](M7/tickets/TKT-M7-03.md), [TKT-M7-04](M7/tickets/TKT-M7-04.md) |
 | M8 | Hardening, accessibility, release readiness | [TKT-M8-01](M8/tickets/TKT-M8-01.md), [TKT-M8-02](M8/tickets/TKT-M8-02.md), [TKT-M8-03](M8/tickets/TKT-M8-03.md), [TKT-M8-04](M8/tickets/TKT-M8-04.md) |
+| M9 | Beginner fast-flip MVP | [TKT-M9-00](M9/tickets/TKT-M9-00.md), [TKT-M9-01](M9/tickets/TKT-M9-01.md), [TKT-M9-02](M9/tickets/TKT-M9-02.md), [TKT-M9-03](M9/tickets/TKT-M9-03.md), [TKT-M9-04](M9/tickets/TKT-M9-04.md), [TKT-M9-05](M9/tickets/TKT-M9-05.md) |
 
 For any ticket, follow the repository-root `AGENTS.md`, the current milestone
 context, and the ticket itself.
