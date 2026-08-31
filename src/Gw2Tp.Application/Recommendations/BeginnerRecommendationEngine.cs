@@ -32,10 +32,11 @@ public sealed class BeginnerRecommendationEngine
 
         var profilePolicy = BeginnerRecommendationPolicy.GetRiskProfilePolicy(request.RiskProfile);
         var spendCap = BeginnerRecommendationPolicy.CalculateSpendCap(request.Capital, request.RiskProfile);
-        ValidateDistinctCandidateItems(request.Candidates);
+        var validCandidates = request.Candidates.Where(HasValidMarketInput).ToArray();
+        ValidateDistinctCandidateItems(validCandidates);
 
         var recommendations = new List<BeginnerRecommendation>();
-        foreach (var candidate in request.Candidates)
+        foreach (var candidate in validCandidates)
         {
             var recommendation = TryCreateRecommendation(candidate, spendCap, profilePolicy, request.ScanCompletedAtUtc);
             if (recommendation is not null)

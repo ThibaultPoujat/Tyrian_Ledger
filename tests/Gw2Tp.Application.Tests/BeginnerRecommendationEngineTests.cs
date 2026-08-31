@@ -174,6 +174,22 @@ public sealed class BeginnerRecommendationEngineTests
     }
 
     [Fact]
+    public void Excludes_an_invalid_duplicate_before_enforcing_independent_item_inputs()
+    {
+        var invalidDuplicate = new BeginnerRecommendationCandidate(
+            Metadata(1),
+            new MarketListing(99, [Level(100, 999)], [Level(100, 2_001)]));
+
+        var result = engine.Calculate(Request(
+            22_000,
+            BeginnerRiskProfile.Cautious,
+            invalidDuplicate,
+            StandardCandidate(itemId: 1)));
+
+        Assert.Equal(1, Assert.Single(result.Recommendations).ItemId);
+    }
+
+    [Fact]
     public void Ranks_equal_recommendations_stably_by_item_id_and_limits_the_global_result_set()
     {
         var result = engine.Calculate(Request(
