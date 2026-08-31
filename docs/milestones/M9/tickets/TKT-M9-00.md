@@ -3,7 +3,8 @@
 ## Goal
 
 Create the durable planning and implementation contracts for M9 without
-changing application behavior.
+changing M9 product behavior. The owner additionally authorized an isolated
+existing backend-test stabilization needed to restore this PR's CI.
 
 ## Dependencies
 
@@ -27,18 +28,21 @@ changing application behavior.
 - VERIFY-007 reflects M9's required public item metadata work.
 - VERIFY-013 records the unresolved Guild Wars 2 fee rounding/minimum
   contract required by the financial model.
-- No application code, production data, migration, existing milestone history,
-  or runtime configuration changes.
+- No M9 feature code, production data, migration, existing milestone history,
+  or runtime configuration changes. The only code change is the
+  owner-authorized stabilization of an existing scheduler cleanup test.
 
 ## Required validation
 
 - Confirm all new Markdown links and referenced ticket paths exist.
 - Run git diff --check.
-- Inspect the documentation-only diff for scope and secrets.
+- Inspect the scoped diff for unintended behavior changes and secrets.
+- Run the affected scheduler test and the backend test suite after the CI
+  stabilization.
 
 ## Non-goals
 
-- Implementing any M9 product behavior.
+- Implementing any M9 product behavior or unrelated backend behavior.
 - Resolving external API or fee-contract uncertainty.
 - Altering prior milestone plans or tickets.
 
