@@ -6,14 +6,12 @@ This repository is the planning and development package for a local, read-only G
 
 Build a browser-based local application that:
 
-- reads Guild Wars 2 public market data and, optionally, account data through the GW2 API;
-- minimizes API requests through batching, caching, deduplication, and scheduled refreshes;
+- reads Guild Wars 2 public market data through the typed GW2 API gateway;
+- minimizes player-triggered API work through batching, caching, deduplication, and rate limiting;
 - never automates gameplay, Trading Post actions, or API mutations;
-- calculates market and crafting opportunities deterministically;
-- makes assumptions, data age, uncertainty, liquidity, and opportunity cost visible;
-- persists local user history without requiring a server or cloud account;
-- may later support historical analysis and long-term investment research;
-- may later add an application-facing LLM, but no LLM integration is part of the MVP or current architecture.
+- will provide deterministic beginner fast-flip recommendations for manual in-game action;
+- retains only local preferences needed by the active feature; and
+- does not use account API keys, account data, historical market data, crafting, personal history, or an application LLM.
 
 ## Development with Codex
 
@@ -60,8 +58,8 @@ instructions.
 
 ## Local source-release handoff
 
-For a clean macOS setup, local two-process run, full test suite, credential and
-SQLite-data handling, clean-environment checklist, and known limitations, use
+For a clean macOS setup, local two-process run, full test suite, SQLite-data
+handling, clean-environment checklist, and known limitations, use
 the canonical [local source-release handoff](docs/development/local-source-release.md).
 
 The handoff is source-only and local: it is neither a distributable package nor

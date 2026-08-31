@@ -17,7 +17,7 @@ Alternative: Blazor Web App if a single-language C# stack is strongly preferred.
 
 Browser -> ASP.NET Core local server -> application services -> deterministic analytics / SQLite / GW2 API gateway
 
-No browser component calls GW2 authenticated endpoints directly.
+No browser component uses credentials or calls authenticated GW2 endpoints.
 
 ## Layers
 
@@ -27,7 +27,7 @@ Pure models and invariants. No HTTP, database, framework, or UI dependencies.
 
 ### Application
 
-Use cases and orchestration. Defines interfaces such as market data provider, account data provider, snapshot repository, clock, and secret store.
+Use cases and orchestration. Defines public-market data and recommendation interfaces, plus a clock where required.
 
 ### Infrastructure
 
@@ -35,7 +35,7 @@ GW2 HTTP implementation, caching, persistence, secret handling, filesystem confi
 
 ### Analytics
 
-Pure deterministic calculators: fees, market scenarios, order-book simulation, crafting path search, opportunity score, stale-data handling.
+Pure deterministic calculators: integer-copper fees, market scenarios, order-book simulation, and M9 recommendation rules.
 
 ### Web
 
@@ -85,9 +85,7 @@ Reference data: long TTL and explicit refresh/invalidation.
 
 Market data: short TTL and freshness metadata.
 
-Account snapshots: user-controlled refresh or moderate TTL.
-
-All cached authenticated responses are scoped to a local account identity/key identifier and are never mixed across account contexts.
+M9 market reads are current-scan inputs only. Cached public responses are transient process state and are never persisted as historical snapshots.
 
 ## Rate-limit strategy
 
@@ -105,7 +103,7 @@ On 429:
 
 SQLite is the default local store. Use migrations and schema versioning.
 
-Persist only information needed for the feature. Keep raw API snapshots only where they provide a clear debugging/historical value.
+Persist only local settings required for the active feature. M9 does not retain market snapshots, recommendation results, partial scans, account data, or personal history.
 
 ## Money
 
@@ -139,13 +137,10 @@ or best-bid baseline less actual liquidation proceeds. Insufficient depth
 returns the partial execution, its remaining quantity, and an explicit
 incomplete status.
 
-## Secrets
+## Credentials
 
-Use an OS-backed local secret store through an abstraction. The local host uses
-macOS Keychain, Windows Credential Manager, or the Linux Secret Service API as
-appropriate. The browser must never access the secret store or receive a
-credential value. For development, support an environment-variable override
-that is explicitly documented as local development only.
+M9 does not read, store, or require Guild Wars 2 API credentials. The browser
+receives only public-market data from the local server.
 
 ## Local network binding
 
@@ -157,8 +152,6 @@ Do not expose the application to the LAN by default.
 
 External failures should map to stable application error categories:
 
-- AuthenticationFailed
-- PermissionDenied
 - RateLimited
 - TemporarilyUnavailable
 - NotFound
@@ -180,7 +173,7 @@ Track:
 - number of candidates analyzed;
 - search truncation events.
 
-Never log API keys, authorization headers, or complete sensitive account payloads.
+Never log credentials, authorization headers, or private account payloads.
 
 ## LLM separation
 

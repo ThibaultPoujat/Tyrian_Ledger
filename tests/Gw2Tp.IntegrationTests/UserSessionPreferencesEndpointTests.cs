@@ -1,12 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Gw2Tp.Application.MarketData;
 using Gw2Tp.Infrastructure.Preferences;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
 
 namespace Gw2Tp.IntegrationTests;
@@ -132,11 +129,6 @@ public sealed class UserSessionPreferencesEndpointTests
             .WithWebHostBuilder(builder =>
             {
                 builder.UseSetting(UserSessionPreferencesServiceCollectionExtensions.DatabasePathConfigurationKey, databasePath);
-                builder.ConfigureServices(services =>
-                {
-                    services.RemoveAll<IGw2ApiClient>();
-                    services.AddSingleton<IGw2ApiClient, UnavailableMarketClient>();
-                });
             });
 
     private static Task<HttpResponseMessage> SavePreferencesAsync(
