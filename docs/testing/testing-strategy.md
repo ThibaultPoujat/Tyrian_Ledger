@@ -13,10 +13,7 @@ Required for all deterministic business logic:
 - Order-book depth simulation
 - Liquidity metrics
 - Freshness classification
-- Opportunity scoring
-- Session planning
-- Owned-item opportunity cost
-- Crafting graph/search
+- M9 recommendation eligibility and ranking
 - Data validation and normalization
 
 ### Integration tests
@@ -28,10 +25,6 @@ Cover:
 - prices
 - listings
 - recipes
-- account tokeninfo
-- bank/materials/inventory
-- character crafting/recipe availability
-- transaction history where used
 - 401/403/404/429/5xx
 - malformed JSON
 - missing/new fields
@@ -44,12 +37,10 @@ A controlled, manually triggered or release-stage suite MAY call the live API to
 
 Use Playwright to test the highest-value journeys:
 
-1. dashboard loads with fixture data;
-2. filters work;
-3. opportunity detail explains assumptions;
-4. API permission failure is understandable;
-5. no secret appears in HTML or network responses;
-6. data freshness is visible.
+1. Recommendations and Settings are the only active destinations;
+2. retired browser and API paths are unavailable;
+3. the M9 shell does not send credentials or initiate account requests;
+4. future recommendation details explain assumptions and freshness.
 
 ## Test fixture policy
 
@@ -79,8 +70,7 @@ The following cannot ship with failing tests:
 - copper arithmetic;
 - fee calculation;
 - order-book simulation;
-- crafting economic cost;
-- realized profit reconciliation.
+- M9 recommendation calculation and ranking.
 
 ## LLM testing
 

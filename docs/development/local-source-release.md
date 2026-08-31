@@ -31,7 +31,7 @@ npm --version
 
 `dotnet --version` must report a `10.*` SDK and `node --version` must report a
 `v22.*` runtime. No Guild Wars 2 credential is required to install, test, or
-start the empty local dashboard.
+start the local M9 shell.
 
 ## Clean setup and local run
 
@@ -71,18 +71,13 @@ public addresses.
 
 ## Configuration and local data
 
-The application starts without a credential. Public local functionality and
-the no-credential dashboard remain available; account-aware features require
-an optional, least-privilege Guild Wars 2 API key. For normal macOS use, put
-that key in Keychain as the generic-password service
-`com.tyrianledger.gw2-api-key`. Never put the key in source, `.env`, browser
-storage, application settings, logs, shell history, test data, or a backup.
-The exact OS-secret and temporary Development/Testing instructions are in
-[local secrets](local-secrets.md).
+M9 reads public market data only and does not require, read, or store a Guild
+Wars 2 API credential. If a pre-M9 installation has an old Tyrian Ledger
+credential in its operating system's secret store, remove it manually using
+the [retired credential cleanup](retired-credential-cleanup.md) guide.
 
-The SQLite database contains the local preference profile, recorded operation
-history, local market history, and watchlist. Its default location is the
-.NET local application-data directory under `TyrianLedger` as
+The SQLite database contains only the local preference profile. Its default
+location is the .NET local application-data directory under `TyrianLedger` as
 `user-session-preferences.db`. To select a known local location, set the
 configuration key only for the launch command:
 
@@ -104,17 +99,16 @@ created automatically. Test runs use isolated temporary database locations.
    current database, replace the database with the backup, then start the
    application. Required schema migrations run at startup.
 
-Account snapshots and public market-cache entries are in-memory only and are
-not backed up. Durable local market history is included; clearing account
-snapshots does not remove it. The OS-managed API credential is separate from
-the database. Backups and restores never upload data. Automated cloud backup
-is not provided.
+Public market-cache entries are in-memory only and are not backed up. M9 does
+not retain market snapshots, recommendations, partial scans, account data, or
+personal history. Backups and restores never upload data. Automated cloud
+backup is not provided.
 
 ## Test and release-smoke command set
 
-All automated tests use local fixtures, mocks, or synthetic credentials; they
-must not call the live Guild Wars 2 API. Run this complete command set before
-handing off a source release:
+All automated tests use local fixtures and mocks; they must not call the live
+Guild Wars 2 API. Run this complete command set before handing off a source
+release:
 
 ```sh
 dotnet test TyrianLedger.slnx --configuration Release
@@ -138,7 +132,7 @@ Use this checklist once from a fresh clone before each local handoff:
 - [ ] The .NET suite, frontend test/build, and complete Playwright browser
   matrix passed.
 - [ ] The two-process local run served `/healthz` on `127.0.0.1:5000` and the
-  dashboard loaded at Vite's loopback URL without a credential.
+  Recommendations shell loaded at Vite's loopback URL without a credential.
 - [ ] The repository contains no tracked `.env`, database, log, credential,
   private account payload, or generated dependency directory.
 - [ ] A source scan passed with the repository Gitleaks configuration:
@@ -155,18 +149,14 @@ Use this checklist once from a fresh clone before each local handoff:
 - This is a single-user, desktop-first, loopback-only source handoff. Mobile,
   public/multi-user hosting, TLS/HSTS, cloud persistence, and automated cloud
   backup are outside its scope.
-- Market and crafting results are modeled scenarios, not guarantees of price,
-  liquidity, profit, or execution time. The app never places or cancels Trading
-  Post orders and never automates gameplay.
-- Historical collection is opt-in, local, and limited to 25 tracked items.
-  Crafting analysis is intentionally bounded by configurable depth and
-  candidate-path limits; it reports truncation rather than claiming an
-  unrestricted result.
+- Future M9 recommendation results are modeled guidance, not guarantees of
+  price, liquidity, profit, or execution time. The app never places or cancels
+  Trading Post orders and never automates gameplay.
 - Current desktop Chrome, Firefox, and Safari are the supported browser
   targets. Playwright covers Chromium, Firefox, and WebKit; physical Safari is
   a manual check when available.
-- `VERIFY-004`, `VERIFY-005`, `VERIFY-006`, `VERIFY-007`, `VERIFY-008`,
-  `VERIFY-010`, `VERIFY-011`, and `VERIFY-012` remain open in the
+- `VERIFY-004`, `VERIFY-005`, `VERIFY-006`, `VERIFY-007`, `VERIFY-010`,
+  `VERIFY-011`, `VERIFY-012`, and `VERIFY-013` remain open in the
   [VERIFY register](../verification/VERIFY-REGISTER.md). They cover external
   endpoint, schema, rate-limit, paging, scope, and response-contract facts.
   They are explicitly carried forward by this local handoff and must be

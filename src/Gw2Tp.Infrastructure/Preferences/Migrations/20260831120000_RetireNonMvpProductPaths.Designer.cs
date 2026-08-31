@@ -2,15 +2,17 @@
 using Gw2Tp.Infrastructure.Preferences;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Gw2Tp.Infrastructure.Preferences.Migrations
 {
     [DbContext(typeof(UserSessionPreferencesDbContext))]
-    partial class UserSessionPreferencesDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260831120000_RetireNonMvpProductPaths")]
+    partial class RetireNonMvpProductPaths
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
