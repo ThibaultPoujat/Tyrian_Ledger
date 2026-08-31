@@ -1,14 +1,19 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.Recommendations;
+using Gw2Tp.Application.Scans;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.Preferences;
 using Gw2Tp.Web;
 using Gw2Tp.Web.Preferences;
+using Gw2Tp.Web.Recommendations;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseUrls(LocalServerBinding.ResolveUrls(builder.Configuration));
 builder.Services.AddValidation();
 builder.Services.AddTyrianLedgerGw2ApiClient(builder.Configuration);
 builder.Services.AddTyrianLedgerUserSessionPreferences(builder.Configuration, builder.Environment);
+builder.Services.AddSingleton<BeginnerRecommendationEngine>();
+builder.Services.AddSingleton<IPlayerMarketScanLifecycle, PlayerMarketScanLifecycle>();
 var app = builder.Build();
 
 await app.Services.MigrateTyrianLedgerUserSessionPreferencesAsync();
@@ -20,6 +25,7 @@ app.MapGet("/healthz", () => Results.Ok("ok"));
 app.MapGet("/api/diagnostics/market-data", (IMarketDataDiagnostics diagnostics) =>
     Results.Ok(MarketDataDiagnosticsResponse.From(diagnostics.GetSnapshot())));
 app.MapUserSessionPreferencesEndpoints();
+app.MapPlayerMarketScanEndpoints();
 
 app.Run();
 
