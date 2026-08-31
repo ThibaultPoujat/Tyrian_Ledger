@@ -147,7 +147,7 @@ public sealed class Gw2ApiClientTests
         var duplicate = await apiClient.GetPriceItemIdsAsync();
         var partial = await apiClient.GetPriceItemIdsAsync();
 
-        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, duplicate.ErrorCategory);
+        Assert.Equal(Gw2ApiErrorCategory.IncompleteData, duplicate.ErrorCategory);
         Assert.Equal(Gw2ApiErrorCategory.IncompleteData, partial.ErrorCategory);
     }
 

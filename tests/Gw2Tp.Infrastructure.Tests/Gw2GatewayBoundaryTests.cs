@@ -17,13 +17,20 @@ public sealed class Gw2GatewayBoundaryTests
         };
 
         var offendingFiles = featureSourceRoots
-            .SelectMany(root => Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+            .SelectMany(root => Directory
+                .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+                .Where(path => !IsBuildArtifact(path, root)))
             .Where(path => File.ReadAllText(path).Contains("api.guildwars2.com", StringComparison.OrdinalIgnoreCase))
             .Select(path => Path.GetRelativePath(repositoryRoot, path))
             .ToArray();
 
         Assert.Empty(offendingFiles);
     }
+
+    private static bool IsBuildArtifact(string path, string sourceRoot) =>
+        Path.GetRelativePath(sourceRoot, path)
+            .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar])
+            .Any(segment => segment is "bin" or "obj");
 
     private static string FindRepositoryRoot()
     {

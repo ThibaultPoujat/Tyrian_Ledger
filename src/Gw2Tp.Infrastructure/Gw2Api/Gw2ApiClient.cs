@@ -266,12 +266,16 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
                 SerializerOptions,
                 operationCancellationToken).ConfigureAwait(false);
 
-            if (itemIds is null || itemIds.Count == 0 ||
-                itemIds.Any(itemId => itemId <= 0) ||
-                itemIds.Distinct().Count() != itemIds.Count)
+            if (itemIds is null || itemIds.Count == 0 || itemIds.Any(itemId => itemId <= 0))
             {
                 return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
                     Gw2ApiResult<IReadOnlyList<int>>.Failure(Gw2ApiErrorCategory.InvalidPayload));
+            }
+
+            if (itemIds.Distinct().Count() != itemIds.Count)
+            {
+                return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
+                    Gw2ApiResult<IReadOnlyList<int>>.Failure(Gw2ApiErrorCategory.IncompleteData));
             }
 
             return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
