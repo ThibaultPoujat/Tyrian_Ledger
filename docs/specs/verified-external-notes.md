@@ -56,3 +56,25 @@ This confirms the global schema value used by the public prices/listings
 client. It does not settle batch limits, 206 behavior, rate-limit scope,
 burst/refill values, 429 headers, or a sustainable rate; those remain in the
 VERIFY register.
+
+## M9 public whole-market contract verification
+
+On 2026-08-31, TKT-M9-02 performed keyless, read-only public contract checks;
+no API response body was retained:
+
+- `GET https://api.guildwars2.com/v2.json?v=latest` returned HTTP 200. Its
+  public `routes` include active, unauthenticated `/v2/commerce/prices`,
+  `/v2/commerce/listings`, and `/v2/items`; its newest `schema_versions` entry
+  remains `2025-08-29T01:00:00.000Z`.
+- `GET https://api.guildwars2.com/v2/items?ids=19684,19709&v=latest` returned
+  HTTP 200 with `X-Result-Total`, `X-Result-Count`, and
+  `X-Rate-Limit-Limit: 600`. The item records exposed `id` and `name`, but no
+  per-item `max_stack` field.
+- The Guild Wars 2 Wiki’s public endpoint pages document that the
+  `/v2/commerce/prices` root returns item IDs, while `ids` requests for prices
+  and listings return response-object arrays. `ids` batching and HTTP 206 are
+  handled conservatively under VERIFY-004 rather than treated as settled.
+
+M9 pins `2025-08-29T01:00:00.000Z` for public prices, listings, and items. Its
+normal stack cap of 250 is owner-selected product policy, not external API
+metadata.

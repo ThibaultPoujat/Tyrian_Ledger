@@ -21,6 +21,21 @@ public sealed class FixtureLoadingTests
     }
 
     [Fact]
+    public async Task Whole_market_discovery_fixtures_are_synthetic_and_minimal()
+    {
+        var fixtureRoot = Path.Combine(AppContext.BaseDirectory, "Fixtures");
+        var fixtureLoader = new JsonFixtureLoader(fixtureRoot);
+
+        using var index = await fixtureLoader.LoadAsync("gw2/commerce/price-item-ids.json");
+        using var items = await fixtureLoader.LoadAsync("gw2/items/metadata.json");
+
+        Assert.Equal(JsonValueKind.Array, index.RootElement.ValueKind);
+        Assert.Equal(900001, index.RootElement[0].GetInt32());
+        Assert.Equal("Synthetic Mithril Widget", items.RootElement[0].GetProperty("name").GetString());
+        Assert.False(items.RootElement[0].TryGetProperty("max_stack", out _));
+    }
+
+    [Fact]
     public async Task Fixture_loader_rejects_paths_outside_the_fixture_root()
     {
         var fixtureLoader = new JsonFixtureLoader(AppContext.BaseDirectory);

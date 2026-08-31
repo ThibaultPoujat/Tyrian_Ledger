@@ -10,10 +10,6 @@ internal interface IMarketDataDiagnosticsRecorder : IMarketDataDiagnostics
 {
     void RecordRequest(Gw2MarketDataEndpoint endpoint, TimeSpan latency);
 
-    void RecordCacheHit(Gw2MarketDataEndpoint endpoint);
-
-    void RecordCacheMiss(Gw2MarketDataEndpoint endpoint);
-
     void RecordRateLimitedResponse(Gw2MarketDataEndpoint endpoint);
 
     void RecordParsingFailure(Gw2MarketDataEndpoint endpoint);
@@ -21,8 +17,10 @@ internal interface IMarketDataDiagnosticsRecorder : IMarketDataDiagnostics
 
 internal enum Gw2MarketDataEndpoint
 {
+    PriceIndex,
     Prices,
     Listings,
+    Items,
 }
 
 /// <summary>
@@ -31,13 +29,17 @@ internal enum Gw2MarketDataEndpoint
 /// </summary>
 internal sealed class MarketDataDiagnostics : IMarketDataDiagnosticsRecorder
 {
+    private readonly EndpointCounters _priceIndex = new();
     private readonly EndpointCounters _prices = new();
     private readonly EndpointCounters _listings = new();
+    private readonly EndpointCounters _items = new();
 
     public MarketDataDiagnosticsSnapshot GetSnapshot() => new(
-    [
+        [
+        _priceIndex.CreateSnapshot("commerce/prices/index"),
         _prices.CreateSnapshot("commerce/prices"),
         _listings.CreateSnapshot("commerce/listings"),
+        _items.CreateSnapshot("items"),
     ]);
 
     public void RecordRequest(Gw2MarketDataEndpoint endpoint, TimeSpan latency)
@@ -45,12 +47,6 @@ internal sealed class MarketDataDiagnostics : IMarketDataDiagnosticsRecorder
         var latencyMilliseconds = Math.Max(0L, latency.Ticks / TimeSpan.TicksPerMillisecond);
         GetCounters(endpoint).RecordRequest(latencyMilliseconds);
     }
-
-    public void RecordCacheHit(Gw2MarketDataEndpoint endpoint) =>
-        GetCounters(endpoint).RecordCacheHit();
-
-    public void RecordCacheMiss(Gw2MarketDataEndpoint endpoint) =>
-        GetCounters(endpoint).RecordCacheMiss();
 
     public void RecordRateLimitedResponse(Gw2MarketDataEndpoint endpoint) =>
         GetCounters(endpoint).RecordRateLimitedResponse();
@@ -60,16 +56,16 @@ internal sealed class MarketDataDiagnostics : IMarketDataDiagnosticsRecorder
 
     private EndpointCounters GetCounters(Gw2MarketDataEndpoint endpoint) => endpoint switch
     {
+        Gw2MarketDataEndpoint.PriceIndex => _priceIndex,
         Gw2MarketDataEndpoint.Prices => _prices,
         Gw2MarketDataEndpoint.Listings => _listings,
+        Gw2MarketDataEndpoint.Items => _items,
         _ => throw new ArgumentOutOfRangeException(nameof(endpoint), endpoint, "Unknown market endpoint."),
     };
 
     private sealed class EndpointCounters
     {
         private long _requestCount;
-        private long _cacheHitCount;
-        private long _cacheMissCount;
         private long _rateLimitedResponseCount;
         private long _parsingFailureCount;
         private long _latencySampleCount;
@@ -81,10 +77,6 @@ internal sealed class MarketDataDiagnostics : IMarketDataDiagnosticsRecorder
             Interlocked.Increment(ref _latencySampleCount);
             Interlocked.Add(ref _totalRequestLatencyMilliseconds, latencyMilliseconds);
         }
-
-        public void RecordCacheHit() => Interlocked.Increment(ref _cacheHitCount);
-
-        public void RecordCacheMiss() => Interlocked.Increment(ref _cacheMissCount);
 
         public void RecordRateLimitedResponse() => Interlocked.Increment(ref _rateLimitedResponseCount);
 
@@ -98,8 +90,6 @@ internal sealed class MarketDataDiagnostics : IMarketDataDiagnosticsRecorder
             return new MarketDataEndpointDiagnostics(
                 endpoint,
                 Interlocked.Read(ref _requestCount),
-                Interlocked.Read(ref _cacheHitCount),
-                Interlocked.Read(ref _cacheMissCount),
                 Interlocked.Read(ref _rateLimitedResponseCount),
                 Interlocked.Read(ref _parsingFailureCount),
                 latencySampleCount,
@@ -120,14 +110,6 @@ internal sealed class NullMarketDataDiagnostics : IMarketDataDiagnosticsRecorder
     public MarketDataDiagnosticsSnapshot GetSnapshot() => new([]);
 
     public void RecordRequest(Gw2MarketDataEndpoint endpoint, TimeSpan latency)
-    {
-    }
-
-    public void RecordCacheHit(Gw2MarketDataEndpoint endpoint)
-    {
-    }
-
-    public void RecordCacheMiss(Gw2MarketDataEndpoint endpoint)
     {
     }
 

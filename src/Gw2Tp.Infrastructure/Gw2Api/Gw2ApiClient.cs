@@ -76,6 +76,10 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
             MapPrice,
             cancellationToken);
 
+    public Task<Gw2ApiResult<IReadOnlyList<int>>> GetPriceItemIdsAsync(
+        CancellationToken cancellationToken = default) =>
+        SendIndexAsync(cancellationToken);
+
     public Task<Gw2ApiResult<IReadOnlyList<MarketListing>>> GetListingsAsync(
         IReadOnlyCollection<int> itemIds,
         CancellationToken cancellationToken = default) =>
@@ -84,6 +88,34 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
             itemIds,
             MapListing,
             cancellationToken);
+
+    public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(
+        IReadOnlyCollection<int> itemIds,
+        CancellationToken cancellationToken = default) =>
+        SendBatchAsync<ItemMetadataDto, MarketItemMetadata>(
+            "items",
+            itemIds,
+            MapItemMetadata,
+            cancellationToken);
+
+    private async Task<Gw2ApiResult<IReadOnlyList<int>>> SendIndexAsync(
+        CancellationToken cancellationToken)
+    {
+        var requestUri = CreateIndexRequestUri();
+
+        try
+        {
+            return await _requestScheduler.ScheduleAsync(
+                new Gw2RequestKey(requestUri.OriginalString),
+                operationCancellationToken => SendIndexAttemptAsync(requestUri, operationCancellationToken),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Gw2RequestSchedulerCapacityExceededException)
+        {
+            return Gw2ApiResult<IReadOnlyList<int>>.Failure(
+                Gw2ApiErrorCategory.UpstreamUnavailable);
+        }
+    }
 
     private async Task<Gw2ApiResult<IReadOnlyList<TMarket>>> SendBatchAsync<TDto, TMarket>(
         string resourcePath,
@@ -194,12 +226,98 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
         }
     }
 
+    private async Task<Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>> SendIndexAttemptAsync(
+        Uri requestUri,
+        CancellationToken operationCancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        try
+        {
+            using var response = await _createHttpClient().SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                operationCancellationToken).ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                _diagnostics.RecordRateLimitedResponse(Gw2MarketDataEndpoint.PriceIndex);
+            }
+
+            if (response.StatusCode == HttpStatusCode.PartialContent)
+            {
+                return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
+                    Gw2ApiResult<IReadOnlyList<int>>.Failure(Gw2ApiErrorCategory.IncompleteData));
+            }
+
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
+                    Gw2ApiResult<IReadOnlyList<int>>.Failure(MapErrorCategory(response.StatusCode)),
+                    GetRetryKind(response.StatusCode),
+                    GetRetryAfter(response));
+            }
+
+            await using var responseStream = await response.Content
+                .ReadAsStreamAsync(operationCancellationToken)
+                .ConfigureAwait(false);
+            var itemIds = await JsonSerializer.DeserializeAsync<List<int>>(
+                responseStream,
+                SerializerOptions,
+                operationCancellationToken).ConfigureAwait(false);
+
+            if (itemIds is null || itemIds.Count == 0 ||
+                itemIds.Any(itemId => itemId <= 0) ||
+                itemIds.Distinct().Count() != itemIds.Count)
+            {
+                return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
+                    Gw2ApiResult<IReadOnlyList<int>>.Failure(Gw2ApiErrorCategory.InvalidPayload));
+            }
+
+            return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
+                Gw2ApiResult<IReadOnlyList<int>>.Success(itemIds.OrderBy(itemId => itemId).ToArray()));
+        }
+        catch (JsonException)
+        {
+            _diagnostics.RecordParsingFailure(Gw2MarketDataEndpoint.PriceIndex);
+            return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
+                Gw2ApiResult<IReadOnlyList<int>>.Failure(Gw2ApiErrorCategory.InvalidPayload));
+        }
+        catch (OperationCanceledException) when (operationCancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (HttpRequestException)
+        {
+            return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
+                Gw2ApiResult<IReadOnlyList<int>>.Failure(Gw2ApiErrorCategory.TransportFailure));
+        }
+        catch (IOException)
+        {
+            return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
+                Gw2ApiResult<IReadOnlyList<int>>.Failure(Gw2ApiErrorCategory.TransportFailure));
+        }
+        catch (TaskCanceledException)
+        {
+            return new Gw2ScheduledResult<Gw2ApiResult<IReadOnlyList<int>>>(
+                Gw2ApiResult<IReadOnlyList<int>>.Failure(Gw2ApiErrorCategory.TransportFailure));
+        }
+        finally
+        {
+            _diagnostics.RecordRequest(Gw2MarketDataEndpoint.PriceIndex, stopwatch.Elapsed);
+        }
+    }
+
     private static Gw2MarketDataEndpoint GetEndpoint(string resourcePath) => resourcePath switch
     {
         "commerce/prices" => Gw2MarketDataEndpoint.Prices,
         "commerce/listings" => Gw2MarketDataEndpoint.Listings,
+        "items" => Gw2MarketDataEndpoint.Items,
         _ => throw new ArgumentOutOfRangeException(nameof(resourcePath), resourcePath, "Unknown market endpoint."),
     };
+
+    private static Uri CreateIndexRequestUri() =>
+        new($"commerce/prices?v={SchemaVersion}", UriKind.Relative);
 
     private static Uri CreateBatchRequestUri(
         string resourcePath,
@@ -230,7 +348,9 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
         // comma-separated value and pinned schema version are already safe
         // query components, so escaping the whole batch would only impose a
         // local input-length limit before the request reaches the gateway.
-        var query = $"ids={commaSeparatedIds}&v={SchemaVersion}";
+        var query = resourcePath == "items"
+            ? $"ids={commaSeparatedIds}&lang=en&v={SchemaVersion}"
+            : $"ids={commaSeparatedIds}&v={SchemaVersion}";
 
         return new Uri($"{resourcePath}?{query}", UriKind.Relative);
     }
@@ -260,6 +380,16 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
             dto.Id,
             dto.Buys.Select(MapListingLevel).ToArray(),
             dto.Sells.Select(MapListingLevel).ToArray());
+    }
+
+    private static MarketItemMetadata MapItemMetadata(ItemMetadataDto dto)
+    {
+        if (dto is null || dto.Id <= 0 || string.IsNullOrWhiteSpace(dto.Name))
+        {
+            throw new JsonException("The item metadata payload is structurally incomplete.");
+        }
+
+        return new MarketItemMetadata(dto.Id, dto.Name, MarketItemStackPolicy.NormalStackLimit);
     }
 
     private static MarketOrderLevel MapListingLevel(CommerceListingLevelDto dto)

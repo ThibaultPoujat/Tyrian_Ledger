@@ -34,11 +34,11 @@ being added to this table.
   **VERIFY** per-endpoint applicability and max page size in M2.
 - Schema version: production requests MUST pin a known schema version via
   `?v=<ISO-8601>` or `X-Schema-Version` (wiki-recommended; **VERIFY** the
-  chosen pinned versions per endpoint against `/v2.json?v=latest` in M2).
-  TKT-M2-01's bounded public probe established
-  `2025-08-29T01:00:00.000Z` as the current global version, which the public
-  prices and listings client pins. Other endpoint-specific pinning remains
-  **VERIFY-005**. If omitted, the API returns the earliest schema.
+  chosen pinned versions per endpoint against `/v2.json?v=latest`). TKT-M9-02
+  rechecked the public index on 2026-08-31: its newest `schema_versions` entry
+  remains `2025-08-29T01:00:00.000Z`, pinned by the public prices, listings,
+  and item clients. Remaining endpoint-specific verification is **VERIFY-005**.
+  If omitted, the API returns the earliest schema.
 - Auth: `Authorization: Bearer <API key>` header (server-side; preferred) or
   `?access_token=`. This application uses the header only, from the
   server-side secret store (ADR-006); the key is never sent to the browser.
@@ -69,8 +69,9 @@ informed by the wiki where stated. Freshness classes:
 
 | Endpoint | Method | Purpose in Tyrian Ledger | Required permission(s) | Batching | Expected freshness | Cache policy (ADR-004) | Authenticated |
 |---|---|---|---|---|---|---|---|
-| `/v2/commerce/prices` (+ `/v2/commerce/prices/{id}`, `?ids=`) | GET | Aggregated top-of-book buy/sell prices per item (`buys`/`sells` objects with `unit_price`, `quantity` in copper); candidate selection input (Journey A) | None (public) | Yes, `ids` (practical limit 200 — **VERIFY** hard limit) | hot (changes with every TP order) | Short TTL (minutes); refresh on dashboard refresh; capture time stored for freshness display | No |
-| `/v2/commerce/listings` (+ `/v2/commerce/listings/{id}`, `?ids=`) | GET | Full order book per item (`buys`/`sells` arrays with `listings`, `unit_price`, `quantity` in copper); depth/price-impact simulation (M3) | None (public) | Yes, `ids` (practical limit 200 — **VERIFY** hard limit) | hot | Short TTL (minutes); fetched on demand for shortlisted candidates only, never for the whole world (rate-limit control) | No |
+| `/v2/commerce/prices` (+ `/v2/commerce/prices/{id}`, `?ids=`) | GET | Root without `ids` returns the current public price-item ID index. Batches return aggregated top-of-book buy/sell prices (`buys`/`sells` objects with `unit_price`, `quantity` in copper) for whole-market discovery. | None (public) | Yes, `ids`; M9 sends deterministic batches of at most 200 IDs (**VERIFY-004** exact limit/206 details) | hot (changes with every TP order) | No completed-response cache; current values exist only while the active request/scan consumes them. The scheduler coalesces identical in-flight requests. | No |
+| `/v2/commerce/listings` (+ `/v2/commerce/listings/{id}`, `?ids=`) | GET | Full order book per finalist item (`buys`/`sells` arrays with `listings`, `unit_price`, `quantity` in copper); depth/price-impact input for M9. | None (public) | Yes, `ids`; M9 sends deterministic batches of at most 200 IDs (**VERIFY-004** exact limit/206 details) | hot | No completed-response cache; fetch only bounded finalists through the typed gateway. | No |
+| `/v2/items` (+ `/v2/items/{id}`, `?ids=`) | GET | English finalist display metadata: public item `id` and `name`. M9 supplies its normal stack cap as application policy; the response does not provide per-item `max_stack`. | None (public) | Yes, `ids`; M9 sends deterministic batches of at most 200 IDs (**VERIFY-004** exact limit/206 details) | slow | No completed-response cache; fetch only bounded finalists through the typed gateway. | No |
 | `/v2/commerce/transactions/current/buys|sells`, `/v2/commerce/transactions/history/buys|sells` (paged) | GET | Pending and 90-day fulfilled TP transactions for realized-profit reconciliation (M6) | `account` + `tradingpost` (wiki: results cached server-side ~5 min) | No (path navigation + paging only; `page`/`page_size`) | warm (server-cached ~5 min per wiki; history static, current changes with pending orders) | Per-key, per-sub-endpoint cache; history pages long TTL, `current` short TTL; paging cursors stored | Yes |
 | `/v2/recipes` (+ `/v2/recipes/{id}`, `?ids=`) | GET | Recipe definitions: type, output item, time_to_craft_ms, disciplines, min_rating, flags, ingredients (2022-03 schema with `type`/`id`/`count`); crafting graph core (M5) | None (public) | Yes, `ids` (practical limit 200 — **VERIFY** hard limit) | slow (changes only with game content; schema `2022-03-09T02:00:00.000Z` known to handle Currency ingredients) | Long TTL; pin schema `2022-03-09T02:00:00.000Z` (**VERIFY** this is the latest relevant version in M2) | No |
 | `/v2/recipes/search?input={itemId}` / `?output={itemId}` | GET | Resolve recipe IDs for a given input ingredient or output item (crafting graph search, M5) | None (public) | No (single `input` or single `output`; mutually exclusive) | slow | Long TTL, keyed by parameter | No |
@@ -82,14 +83,9 @@ informed by the wiki where stated. Freshness classes:
 
 Notes:
 
-- **No undocumented endpoints are used.** In particular, `v2/items` is
-  referenced by the wiki inside recipe responses (e.g. `output_item_id`
-  "resolvable against `/v2/items`") but is **not** in the project spec §8 list
-  and is not added as a dependency here. If item metadata (names, stacks,
-  rarity) is required for the UI in a later milestone, it must be proposed in
-  that ticket and added to this table with its own verification
-  (**VERIFY**: decide in M3/M4 whether `v2/items` is required and, if so,
-  re-run the contract review for it).
+- **No undocumented endpoints are used.** TKT-M9-02 added the verified public
+  `v2/items` dependency for finalist display metadata; its contract evidence
+  is retained under VERIFY-007.
 - `/v2/tokeninfo` is validated by TKT-M0-04 (permission verification flow) and
   is the connection-validation endpoint; it is listed below for completeness
   because Journey B step 2 depends on it.
@@ -131,6 +127,10 @@ All fixtures in this directory are **synthetic**: item IDs and prices are
 fictional values in integer copper; no real account, character, or key data
 appears in any fixture (ADR-006).
 
+TKT-M9-02 additionally adds synthetic `commerce/price-item-ids.json` and
+`items/metadata.json` fixtures for whole-market discovery. They contain only
+the ID-index and `id`/`name` shapes consumed by their contract tests.
+
 ## References
 
 | Page | URL | Status on 2026-08-21 |
@@ -138,6 +138,7 @@ appears in any fixture (ADR-006).
 | API:2 (resource access, paging, auth, schemas, errors) | https://wiki.guildwars2.com/wiki/API:2 | fetched OK (page source) |
 | API:2/commerce/prices | https://wiki.guildwars2.com/wiki/API:2/commerce/prices | fetched OK |
 | API:2/commerce/listings | https://wiki.guildwars2.com/wiki/API:2/commerce/listings | fetched OK |
+| API:2/items | https://wiki.guildwars2.com/wiki/API:2/items | public contract rechecked 2026-08-31 |
 | API:2/commerce/transactions | https://wiki.guildwars2.com/wiki/API:2/commerce/transactions | fetched OK |
 | API:2/recipes | https://wiki.guildwars2.com/wiki/API:2/recipes | fetched OK |
 | API:2/recipes/search | https://wiki.guildwars2.com/wiki/API:2/recipes/search | fetched OK |

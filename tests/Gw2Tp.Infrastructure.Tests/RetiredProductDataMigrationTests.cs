@@ -57,6 +57,22 @@ public sealed class RetiredProductDataMigrationTests
         }
     }
 
+    [Fact]
+    public void Whole_market_discovery_adds_no_persisted_market_entity()
+    {
+        var options = new DbContextOptionsBuilder<UserSessionPreferencesDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+        using var dbContext = new UserSessionPreferencesDbContext(options);
+
+        var tables = dbContext.Model.GetEntityTypes()
+            .Select(entityType => entityType.GetTableName() ?? throw new InvalidOperationException())
+            .OrderBy(tableName => tableName, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(["UserSessionPreferences"], tables);
+    }
+
     private static async Task SeedPreM9DataAsync(UserSessionPreferencesDbContext dbContext)
     {
         await dbContext.Database.ExecuteSqlRawAsync(

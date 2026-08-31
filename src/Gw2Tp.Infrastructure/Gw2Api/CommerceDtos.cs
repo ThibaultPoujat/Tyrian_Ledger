@@ -49,3 +49,17 @@ internal sealed class CommerceListingLevelDto
     [JsonPropertyName("unit_price")]
     public required int UnitPrice { get; init; }
 }
+
+/// <summary>
+/// The small, verified subset of the public /v2/items response used by M9.
+/// This intentionally does not model item fields that are not needed for
+/// public-market discovery.
+/// </summary>
+internal sealed class ItemMetadataDto
+{
+    [JsonPropertyName("id")]
+    public required int Id { get; init; }
+
+    [JsonPropertyName("name")]
+    public required string Name { get; init; }
+}

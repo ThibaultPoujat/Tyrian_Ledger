@@ -69,6 +69,89 @@ public sealed class Gw2ApiClientTests
     }
 
     [Fact]
+    public async Task Get_price_item_ids_uses_the_public_commerce_root_and_maps_the_id_index()
+    {
+        var payload = await LoadFixturePayloadAsync("gw2/commerce/price-item-ids.json");
+        var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, payload)));
+        using var httpClient = CreateHttpClient(handler);
+        var apiClient = CreateApiClient(httpClient);
+
+        var result = await apiClient.GetPriceItemIdsAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal([900001, 900002, 900003], result.Value);
+
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal("/v2/commerce/prices", request.RequestUri.AbsolutePath);
+        var queryParameters = GetQueryParameters(request.RequestUri);
+        Assert.DoesNotContain("ids", queryParameters.Keys);
+        Assert.Equal(Gw2ApiClient.SchemaVersion, queryParameters["v"]);
+    }
+
+    [Fact]
+    public async Task Get_item_metadata_uses_a_public_english_batch_and_maps_only_required_fields()
+    {
+        var payload = await LoadFixturePayloadAsync("gw2/items/metadata.json");
+        var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, payload)));
+        using var httpClient = CreateHttpClient(handler);
+        var apiClient = CreateApiClient(httpClient);
+
+        var result = await apiClient.GetItemMetadataAsync([900001, 900002]);
+
+        Assert.True(result.IsSuccess);
+        var metadata = Assert.IsAssignableFrom<IReadOnlyList<MarketItemMetadata>>(result.Value);
+        Assert.Equal("Synthetic Mithril Widget", metadata[0].Name);
+        Assert.Equal(MarketItemStackPolicy.NormalStackLimit, metadata[0].NormalStackLimit);
+
+        var request = Assert.Single(handler.Requests);
+        AssertBatchGetRequest(request, "items", "900001,900002");
+        Assert.Equal("en", GetQueryParameters(request.RequestUri)["lang"]);
+    }
+
+    [Fact]
+    public async Task Item_metadata_malformed_or_rate_limited_responses_use_the_stable_gateway_contract()
+    {
+        var responses = new Queue<HttpResponseMessage>(
+        [
+            CreateJsonResponse(HttpStatusCode.OK, "[{\"id\":900001,\"name\":\"   \"}]"),
+            CreateJsonResponse(HttpStatusCode.TooManyRequests, "{}"),
+        ]);
+        var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(responses.Dequeue()));
+        using var httpClient = CreateHttpClient(handler);
+        var apiClient = CreateApiClient(httpClient);
+
+        var malformed = await apiClient.GetItemMetadataAsync([900001]);
+        var rateLimited = await apiClient.GetItemMetadataAsync([900002]);
+
+        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, malformed.ErrorCategory);
+        Assert.Equal(Gw2ApiErrorCategory.RateLimited, rateLimited.ErrorCategory);
+    }
+
+    [Fact]
+    public async Task Price_item_index_rejects_duplicate_or_partial_payloads()
+    {
+        var responses = new Queue<HttpResponseMessage>(
+        [
+            CreateJsonResponse(HttpStatusCode.OK, "[900001,900001]"),
+            CreateJsonResponse(HttpStatusCode.PartialContent, "[900001]"),
+        ]);
+        var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(responses.Dequeue()));
+        using var httpClient = CreateHttpClient(handler);
+        var apiClient = CreateApiClient(httpClient);
+
+        var duplicate = await apiClient.GetPriceItemIdsAsync();
+        var partial = await apiClient.GetPriceItemIdsAsync();
+
+        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, duplicate.ErrorCategory);
+        Assert.Equal(Gw2ApiErrorCategory.IncompleteData, partial.ErrorCategory);
+    }
+
+    [Fact]
     public async Task Unknown_json_fields_are_ignored_when_the_required_market_shape_is_present()
     {
         const string payload = """
@@ -124,7 +207,7 @@ public sealed class Gw2ApiClientTests
     }
 
     [Fact]
-    public async Task Partial_content_is_a_successful_result_marked_as_partial()
+    public async Task Transport_marks_partial_content_for_the_application_gateway_to_reject()
     {
         var payload = await LoadFixturePayloadAsync("gw2/commerce/prices.json");
         var handler = new StubHttpMessageHandler(
@@ -284,7 +367,7 @@ public sealed class Gw2ApiClientTests
             .GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>()
             .Get(Gw2ApiClient.HttpClientName);
 
-        Assert.IsType<CachingGw2ApiClient>(client);
+        Assert.IsType<BatchingGw2ApiClient>(client);
         Assert.IsType<Gw2ApiClient>(provider.GetRequiredService<IGw2ApiTransport>());
         Assert.IsType<MarketDataDiagnostics>(diagnostics);
         Assert.True(httpClientOptions.ShouldRedactHeaderValue("Authorization"));

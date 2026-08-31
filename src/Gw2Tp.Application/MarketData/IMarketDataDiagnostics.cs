@@ -21,8 +21,6 @@ public sealed record MarketDataDiagnosticsSnapshot(
 public sealed record MarketDataEndpointDiagnostics(
     string Endpoint,
     long RequestCount,
-    long CacheHitCount,
-    long CacheMissCount,
     long RateLimitedResponseCount,
     long ParsingFailureCount,
     long LatencySampleCount,
