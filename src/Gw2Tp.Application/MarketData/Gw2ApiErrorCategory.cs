@@ -13,5 +13,6 @@ public enum Gw2ApiErrorCategory
     UpstreamUnavailable,
     TransportFailure,
     InvalidPayload,
+    IncompleteData,
     UnexpectedResponse,
 }

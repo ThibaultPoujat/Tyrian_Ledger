@@ -39,6 +39,9 @@ Recommendations -> player manually creates the in-game orders.
   post-trade tracking is provided.
 - Navigation is Recommendations and Settings. First visit uses guided,
   plain-language setup. Cards provide numbered manual steps but no copy button.
+- A normal item stack is a fixed M9 product cap of 250. The public
+  `/v2/items` response supplies item identity and display name but not a
+  per-item stack-limit field; this cap is not represented as ArenaNet data.
 
 ## Architectural invariants
 

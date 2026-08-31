@@ -37,8 +37,6 @@ internal sealed record MarketDataDiagnosticsResponse(
             .. snapshot.Endpoints.Select(endpoint => new MarketDataEndpointDiagnosticsResponse(
                 endpoint.Endpoint,
                 endpoint.RequestCount,
-                endpoint.CacheHitCount,
-                endpoint.CacheMissCount,
                 endpoint.RateLimitedResponseCount,
                 endpoint.ParsingFailureCount,
                 endpoint.LatencySampleCount,
@@ -51,8 +49,6 @@ internal sealed record MarketDataDiagnosticsResponse(
 internal sealed record MarketDataEndpointDiagnosticsResponse(
     string Endpoint,
     long RequestCount,
-    long CacheHitCount,
-    long CacheMissCount,
     long RateLimitedResponseCount,
     long ParsingFailureCount,
     long LatencySampleCount,

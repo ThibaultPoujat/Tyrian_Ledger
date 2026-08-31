@@ -23,6 +23,24 @@ public sealed record MarketListing(
     IReadOnlyList<MarketOrderLevel> Sells);
 
 /// <summary>
+/// Display metadata for one public-market item. The normal stack limit is an
+/// M9 product policy, not a field supplied by the GW2 API item response.
+/// </summary>
+public sealed record MarketItemMetadata(
+    int ItemId,
+    string Name,
+    int NormalStackLimit);
+
+/// <summary>
+/// M9's owner-selected cap for a normal in-game item stack. Quantity selection
+/// remains a later application concern.
+/// </summary>
+public static class MarketItemStackPolicy
+{
+    public const int NormalStackLimit = 250;
+}
+
+/// <summary>
 /// One public order-book price level. Monetary values are integer copper.
 /// </summary>
 public sealed record MarketOrderLevel(

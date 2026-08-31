@@ -17,8 +17,6 @@ public sealed class MarketDataDiagnosticsEndpointTests
             new MarketDataEndpointDiagnostics(
                 "commerce/prices",
                 RequestCount: 4,
-                CacheHitCount: 3,
-                CacheMissCount: 1,
                 RateLimitedResponseCount: 1,
                 ParsingFailureCount: 2,
                 LatencySampleCount: 4,
@@ -51,8 +49,6 @@ public sealed class MarketDataDiagnosticsEndpointTests
 
         Assert.Equal("commerce/prices", endpoint.GetProperty("endpoint").GetString());
         Assert.Equal(4, endpoint.GetProperty("requestCount").GetInt64());
-        Assert.Equal(3, endpoint.GetProperty("cacheHitCount").GetInt64());
-        Assert.Equal(1, endpoint.GetProperty("cacheMissCount").GetInt64());
         Assert.Equal(1, endpoint.GetProperty("rateLimitedResponseCount").GetInt64());
         Assert.Equal(2, endpoint.GetProperty("parsingFailureCount").GetInt64());
         Assert.Equal(4, endpoint.GetProperty("latencySampleCount").GetInt64());
@@ -61,8 +57,6 @@ public sealed class MarketDataDiagnosticsEndpointTests
         Assert.Equal(
         [
             "averageRequestLatencyMilliseconds",
-            "cacheHitCount",
-            "cacheMissCount",
             "endpoint",
             "latencySampleCount",
             "parsingFailureCount",
