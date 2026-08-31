@@ -111,9 +111,11 @@ public sealed class RetiredProductDataMigrationTests
         return Convert.ToInt64(await command.ExecuteScalarAsync());
     }
 
-    private static string CreateDatabasePath() => Path.Combine(
-        Path.GetTempPath(),
-        "TyrianLedger",
-        "InfrastructureTests",
-        $"retired-product-data-{Guid.NewGuid():N}.db");
+    private static string CreateDatabasePath()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "TyrianLedger", "InfrastructureTests");
+        Directory.CreateDirectory(directory);
+
+        return Path.Combine(directory, $"retired-product-data-{Guid.NewGuid():N}.db");
+    }
 }

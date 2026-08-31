@@ -41,7 +41,7 @@ test('retired API and browser routes are unavailable', async ({ page, request })
   await expect(page.getByTestId('unavailable-route')).toContainText('Route unavailable');
 });
 
-test('browser shell does not initiate retired API traffic', async ({ page }) => {
+test('browser shell does not initiate API traffic', async ({ page }) => {
   const apiRequests: string[] = [];
 
   page.on('request', (request) => {
