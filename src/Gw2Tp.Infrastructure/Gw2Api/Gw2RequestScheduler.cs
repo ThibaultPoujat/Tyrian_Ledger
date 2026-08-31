@@ -29,7 +29,7 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
     private readonly ConcurrencyLimiter _concurrencyLimiter;
     private readonly IGw2RequestDelay _delay;
     private readonly ILogger _logger;
-    private readonly ConcurrentDictionary<Gw2RequestKey, Task<object>> _inFlight = new();
+    private readonly ConcurrentDictionary<Gw2RequestKey, InFlightRequest> _inFlight = new();
 
     public Gw2RequestScheduler(
         IOptions<Gw2ApiSchedulerOptions> options,
@@ -84,20 +84,18 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
     {
         ArgumentNullException.ThrowIfNull(requestKey);
         ArgumentNullException.ThrowIfNull(sendAsync);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        // Callers may independently cancel their wait without cancelling the
-        // shared network operation needed by other deduplicated callers.
         while (true)
         {
             if (!_inFlight.TryGetValue(requestKey, out var inFlight))
             {
-                var completion = new TaskCompletionSource<object>(
-                    TaskCreationOptions.RunContinuationsAsynchronously);
+                var candidate = new InFlightRequest();
 
-                if (_inFlight.TryAdd(requestKey, completion.Task))
+                if (_inFlight.TryAdd(requestKey, candidate))
                 {
-                    _ = CompleteInFlightAsync(requestKey, completion, sendAsync);
-                    inFlight = completion.Task;
+                    _ = CompleteInFlightAsync(requestKey, candidate, sendAsync);
+                    inFlight = candidate;
                 }
                 else
                 {
@@ -105,7 +103,20 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
                 }
             }
 
-            return (T)await inFlight.WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (!inFlight.TryAddWaiter())
+            {
+                RemoveInFlight(requestKey, inFlight);
+                continue;
+            }
+
+            try
+            {
+                return (T)await inFlight.Completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                inFlight.RemoveWaiter();
+            }
         }
     }
 
@@ -117,36 +128,40 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
 
     private async Task CompleteInFlightAsync<T>(
         Gw2RequestKey requestKey,
-        TaskCompletionSource<object> completion,
+        InFlightRequest inFlight,
         Func<CancellationToken, Task<Gw2ScheduledResult<T>>> sendAsync)
     {
         try
         {
-            var result = await ExecuteBoxedAsync(sendAsync).ConfigureAwait(false);
-            completion.TrySetResult(result);
-            RemoveInFlight(requestKey, completion.Task);
+            var result = await ExecuteBoxedAsync(sendAsync, inFlight.CancellationToken).ConfigureAwait(false);
+            inFlight.TrySetResult(result);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (inFlight.CancellationToken.IsCancellationRequested)
         {
-            completion.TrySetCanceled();
-            RemoveInFlight(requestKey, completion.Task);
+            inFlight.TrySetCanceled(inFlight.CancellationToken);
         }
         catch (Exception exception)
         {
-            completion.TrySetException(exception);
-            RemoveInFlight(requestKey, completion.Task);
+            inFlight.TrySetException(exception);
+        }
+        finally
+        {
+            RemoveInFlight(requestKey, inFlight);
+            inFlight.Dispose();
         }
     }
 
     private async Task<object> ExecuteBoxedAsync<T>(
-        Func<CancellationToken, Task<Gw2ScheduledResult<T>>> sendAsync)
+        Func<CancellationToken, Task<Gw2ScheduledResult<T>>> sendAsync,
+        CancellationToken cancellationToken)
     {
         var attempt = 0;
 
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             attempt++;
-            var result = await ExecuteOnceAsync(sendAsync).ConfigureAwait(false);
+            var result = await ExecuteOnceAsync(sendAsync, cancellationToken).ConfigureAwait(false);
 
             if (result.RetryKind == Gw2RetryKind.RateLimited)
             {
@@ -161,15 +176,16 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
             }
 
             var delay = GetRetryDelay(result, retryOptions, attempt);
-            await _delay.DelayAsync(delay, CancellationToken.None).ConfigureAwait(false);
+            await _delay.DelayAsync(delay, cancellationToken).ConfigureAwait(false);
         }
     }
 
     private async Task<Gw2ScheduledResult<T>> ExecuteOnceAsync<T>(
-        Func<CancellationToken, Task<Gw2ScheduledResult<T>>> sendAsync)
+        Func<CancellationToken, Task<Gw2ScheduledResult<T>>> sendAsync,
+        CancellationToken cancellationToken)
     {
         using var concurrencyLease = await _concurrencyLimiter
-            .AcquireAsync(1, CancellationToken.None)
+            .AcquireAsync(1, cancellationToken)
             .ConfigureAwait(false);
         if (!concurrencyLease.IsAcquired)
         {
@@ -177,20 +193,22 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
         }
 
         using var rateLimitLease = await _rateLimiter
-            .AcquireAsync(1, CancellationToken.None)
+            .AcquireAsync(1, cancellationToken)
             .ConfigureAwait(false);
         if (!rateLimitLease.IsAcquired)
         {
             throw new Gw2RequestSchedulerCapacityExceededException();
         }
 
-        return await sendAsync(CancellationToken.None).ConfigureAwait(false);
+        var result = await sendAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
     }
 
-    private void RemoveInFlight(Gw2RequestKey requestKey, Task<object> expectedTask)
+    private void RemoveInFlight(Gw2RequestKey requestKey, InFlightRequest expectedRequest)
     {
-        if (_inFlight.TryGetValue(requestKey, out var currentTask) &&
-            ReferenceEquals(currentTask, expectedTask))
+        if (_inFlight.TryGetValue(requestKey, out var currentRequest) &&
+            ReferenceEquals(currentRequest, expectedRequest))
         {
             _inFlight.TryRemove(requestKey, out _);
         }
@@ -220,6 +238,65 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
             (long)retryOptions.InitialBackoffMs * multiplier,
             retryOptions.MaxBackoffMs);
         return TimeSpan.FromMilliseconds(calculatedMilliseconds);
+    }
+
+    private sealed class InFlightRequest : IDisposable
+    {
+        private readonly object gate = new();
+        private readonly CancellationTokenSource cancellation = new();
+        private readonly TaskCompletionSource<object> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private int waiterCount;
+
+        public Task<object> Completion => completion.Task;
+
+        public CancellationToken CancellationToken => cancellation.Token;
+
+        public bool TryAddWaiter()
+        {
+            lock (gate)
+            {
+                if (cancellation.IsCancellationRequested)
+                {
+                    return false;
+                }
+
+                waiterCount++;
+                return true;
+            }
+        }
+
+        public void RemoveWaiter()
+        {
+            lock (gate)
+            {
+                waiterCount--;
+                if (waiterCount < 0)
+                {
+                    throw new InvalidOperationException("A GW2 request waiter was removed more than once.");
+                }
+
+                if (waiterCount == 0 && !completion.Task.IsCompleted)
+                {
+                    cancellation.Cancel();
+                }
+            }
+        }
+
+        public void TrySetResult(object result) => completion.TrySetResult(result);
+
+        public void TrySetCanceled(CancellationToken cancellationToken) =>
+            completion.TrySetCanceled(cancellationToken);
+
+        public void TrySetException(Exception exception) => completion.TrySetException(exception);
+
+        public void Dispose()
+        {
+            lock (gate)
+            {
+                cancellation.Dispose();
+            }
+        }
     }
 }
 

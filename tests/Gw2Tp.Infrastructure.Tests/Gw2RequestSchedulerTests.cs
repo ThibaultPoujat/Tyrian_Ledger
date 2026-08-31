@@ -39,7 +39,7 @@ public sealed class Gw2RequestSchedulerTests
     }
 
     [Fact]
-    public async Task Completed_shared_request_is_removed_after_cancelled_callers_leave()
+    public async Task Last_cancelled_waiter_allows_a_fresh_request_without_reusing_cancelled_work()
     {
         var responseSource = new TaskCompletionSource<Gw2ScheduledResult<int>>();
         using var firstCancellationSource = new CancellationTokenSource();
@@ -66,15 +66,7 @@ public sealed class Gw2RequestSchedulerTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => secondCancelledRequest);
         Assert.Equal(1, firstSendCount);
 
-        var completionObserver = scheduler.ScheduleAsync<int>(
-            new Gw2RequestKey("prices:900001"),
-            _ => throw new InvalidOperationException("The deduplicated send must not run."),
-            CancellationToken.None);
-
-        responseSource.SetResult(new Gw2ScheduledResult<int>(1));
-        Assert.Equal(1, await completionObserver);
-
-        var nextRequest = await scheduler.ScheduleAsync<int>(
+        var nextRequest = scheduler.ScheduleAsync<int>(
             new Gw2RequestKey("prices:900001"),
             _ =>
             {
@@ -83,8 +75,83 @@ public sealed class Gw2RequestSchedulerTests
             },
             CancellationToken.None);
 
-        Assert.Equal(2, nextRequest);
+        responseSource.SetResult(new Gw2ScheduledResult<int>(1));
+
+        Assert.Equal(2, await nextRequest);
         Assert.Equal(2, firstSendCount);
+    }
+
+    [Fact]
+    public async Task A_remaining_deduplicated_waiter_keeps_the_shared_http_request_active()
+    {
+        var responseSource = new TaskCompletionSource<HttpResponseMessage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new DelegateHttpMessageHandler((_, _) => responseSource.Task);
+        using var httpClient = CreateHttpClient(handler);
+        using var scheduler = CreateScheduler();
+        var apiClient = new Gw2ApiClient(httpClient, scheduler);
+        using var cancelledCaller = new CancellationTokenSource();
+
+        var firstRequest = apiClient.GetPricesAsync([900001], cancelledCaller.Token);
+        await handler.WaitForRequestAsync();
+        var remainingRequest = apiClient.GetPricesAsync([900001]);
+
+        cancelledCaller.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => firstRequest);
+        responseSource.SetResult(CreateJsonResponse(HttpStatusCode.OK, "[]"));
+
+        Assert.True((await remainingRequest).IsSuccess);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Last_cancelled_waiter_interrupts_an_active_http_request()
+    {
+        var transportCancellation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pendingResponse = new TaskCompletionSource<HttpResponseMessage>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new DelegateHttpMessageHandler((_, cancellationToken) =>
+        {
+            cancellationToken.Register(() =>
+            {
+                transportCancellation.TrySetResult();
+                pendingResponse.TrySetCanceled(cancellationToken);
+            });
+            return pendingResponse.Task;
+        });
+        using var httpClient = CreateHttpClient(handler);
+        using var scheduler = CreateScheduler();
+        var apiClient = new Gw2ApiClient(httpClient, scheduler);
+        using var cancellation = new CancellationTokenSource();
+
+        var request = apiClient.GetPricesAsync([900001], cancellation.Token);
+        await handler.WaitForRequestAsync();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
+        await transportCancellation.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task Last_cancelled_waiter_interrupts_retry_backoff_before_another_attempt()
+    {
+        var delay = new BlockingDelay();
+        var handler = new SequenceHttpMessageHandler(
+            CreateJsonResponse(HttpStatusCode.TooManyRequests, "{}"),
+            CreateJsonResponse(HttpStatusCode.OK, "[]"));
+        using var httpClient = CreateHttpClient(handler);
+        using var scheduler = CreateScheduler(delay: delay);
+        var apiClient = new Gw2ApiClient(httpClient, scheduler);
+        using var cancellation = new CancellationTokenSource();
+
+        var request = apiClient.GetPricesAsync([900001], cancellation.Token);
+        await delay.WaitForDelayAsync();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => request);
+        await delay.WaitForCancellationAsync();
+        Assert.Equal(1, handler.RequestCount);
     }
 
     [Fact]
@@ -521,16 +588,24 @@ public sealed class Gw2RequestSchedulerTests
     private sealed class BlockingDelay : IGw2RequestDelay
     {
         private readonly TaskCompletionSource _delayStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task WaitForDelayAsync() => _delayStarted.Task;
+
+        public Task WaitForCancellationAsync() => _cancelled.Task;
 
         public void Release() => _release.TrySetResult();
 
         public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
         {
             _delayStarted.TrySetResult();
-            return _release.Task;
+            if (cancellationToken.CanBeCanceled)
+            {
+                cancellationToken.Register(() => _cancelled.TrySetResult());
+            }
+
+            return _release.Task.WaitAsync(cancellationToken);
         }
     }
 

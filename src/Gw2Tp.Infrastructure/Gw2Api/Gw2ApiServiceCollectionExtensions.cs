@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.Time;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
@@ -23,6 +24,7 @@ public static class Gw2ApiServiceCollectionExtensions
             .Bind(configuration.GetSection(Gw2ApiSchedulerOptions.ConfigurationSectionName))
             .ValidateOnStart();
         services.AddSingleton<IGw2RequestScheduler, Gw2RequestScheduler>();
+        services.AddSingleton<IClock, SystemClock>();
         services.AddSingleton<MarketDataDiagnostics>();
         services.AddSingleton<IMarketDataDiagnostics>(serviceProvider =>
             serviceProvider.GetRequiredService<MarketDataDiagnostics>());
