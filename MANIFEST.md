@@ -9,6 +9,7 @@
 - `docs/adr/ADR-005-money-copper.md`
 - `docs/adr/ADR-006-secrets.md`
 - `docs/adr/ADR-007-read-only-boundary.md`
+- `docs/adr/ADR-008-static-github-pages-hosting.md`
 - `docs/architecture/architecture.md`
 - `docs/architecture/gw2-endpoint-matrix.md`
 - `docs/context/context-template.md`

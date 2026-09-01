@@ -32,8 +32,9 @@ snapshot rather than from a player-triggered local scan.
   `develop` may select the immutable SHA of an open code PR in this repository.
   A trusted workflow validates the selection before it is published; invalid,
   closed, or merged selections use `develop` instead.
-- M10 will adopt a new ADR that supersedes the local-hosting assumptions in
-  ADR-001 and ADR-002. M9 is historical and must remain unchanged.
+- [ADR-008](../adr/ADR-008-static-github-pages-hosting.md) supersedes only the
+  local-hosting assumptions in ADR-001 and ADR-002. M9 is historical and must
+  remain unchanged.
 
 ## M10 invariants
 
@@ -62,8 +63,10 @@ fact.
 
 The test pyramid changes over the milestone: C# contract and generator tests;
 shared C#/browser golden vectors; static browser tests; workflow/configuration
-validation; and a live Pages smoke test in the independent review. M10-06
-also performs a full-history secret audit before release handoff.
+validation; and a live Pages smoke test in the independent review. Before the
+owner makes the repository or Pages site public, M10-05 must record the
+public-history audit gate defined by ADR-008 and the security baseline. M10-06
+repeats that audit independently before release handoff.
 
 ## Required Codex configuration
 

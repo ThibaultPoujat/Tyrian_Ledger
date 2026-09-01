@@ -20,6 +20,27 @@ References:
 4. Apply security controls proportionate to risk.
 5. Reassess legal/security scope before public or hosted deployment.
 
+## M10 public static deployment gate
+
+For M10, the repository and its complete Git history, the GitHub Pages site,
+generated market snapshot, and build artifacts are public deployment material.
+They must contain no credentials, tokens, API keys, player data, local paths,
+or sensitive generated artifacts.
+
+Before the owner makes the repository or Pages site public, the candidate
+commit must pass this full-history audit from the repository root:
+
+```sh
+gitleaks detect --source . --log-opts="--all" --redact --no-banner
+```
+
+The delivery record must include the Gitleaks version, candidate commit,
+command, scope, outcome, and targeted review of workflow files and the
+assembled Pages artifact. A failed or incomplete audit blocks the public
+deployment decision until the owner has reviewed and resolved it. This gate
+does not authorize Codex to change repository visibility, Pages settings,
+release state, or merge state.
+
 ## Best practices required by this project
 
 - API key stored outside source code;
