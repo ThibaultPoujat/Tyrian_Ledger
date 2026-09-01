@@ -13,10 +13,10 @@
 - `docs/architecture/gw2-endpoint-matrix.md`
 - `docs/context/context-template.md`
 - `docs/context/permanent-context.md`
-- `docs/context/milestone-context-M0.md` through `docs/context/milestone-context-M8.md`
+- `docs/context/milestone-context-M0.md` through `docs/context/milestone-context-M10.md`
 - `docs/milestones/INDEX.md`
-- `docs/milestones/M0.md` through `docs/milestones/M8.md`
-- `docs/milestones/M0/tickets/` through `docs/milestones/M8/tickets/`
+- `docs/milestones/M0.md` through `docs/milestones/M10.md`
+- `docs/milestones/M0/tickets/` through `docs/milestones/M10/tickets/`
 - `docs/rate-limiting/rate-limit-policy.md`
 - `docs/security/security.md`
 - `docs/specs/project-spec.md`
