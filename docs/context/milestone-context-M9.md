@@ -28,6 +28,10 @@ Recommendations -> player manually creates the in-game orders.
   use watchlists, automated refreshes, historical snapshots, or personal data.
 - Fetch cheap whole-market data first, then bounded detailed listings and item
   metadata for finalists through the typed gateway.
+- Apply a fixed beginner liquidity guard: at least 10 aggregate units per
+  side, planned sale no more than twice planned buy, then at least 3 listings
+  and 10 units per side in the detailed order book. This is current-book
+  evidence only, not a completed-sale or fill guarantee.
 - Publish no partial result set. Cancellation, rate limiting, and failures
   leave no recommendations and offer retry.
 - Show two groups: Can act now and Place an order and wait. Both prescribe

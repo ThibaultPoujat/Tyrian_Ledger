@@ -214,6 +214,7 @@ internal static class PlayerMarketScanEndpoints
         private static string ToResponseValue(BeginnerRecommendationAssumption assumption) => assumption switch
         {
             BeginnerRecommendationAssumption.CurrentOrderBookSnapshotOnly => "current-order-book-snapshot-only",
+            BeginnerRecommendationAssumption.CurrentOrderBookDepthAndSpreadGuard => "current-order-book-depth-and-spread-guard",
             BeginnerRecommendationAssumption.ManualInGameOrdersRequired => "manual-in-game-orders-required",
             BeginnerRecommendationAssumption.NoExecutionSaleOrProfitGuarantee => "no-execution-sale-or-profit-guarantee",
             BeginnerRecommendationAssumption.FeeRoundingPendingExternalVerification => "fee-rounding-pending-external-verification",

@@ -64,6 +64,7 @@ function recommendation(rank: number, route: Recommendation['route']): Recommend
     },
     assumptions: [
       'current-order-book-snapshot-only',
+      'current-order-book-depth-and-spread-guard',
       'manual-in-game-orders-required',
       'no-execution-sale-or-profit-guarantee',
     ],
@@ -141,6 +142,11 @@ describe('M9 beginner experience', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Set up my capital and risk' }));
 
+    expect(screen.getByRole('table', { name: 'Risk profile limits' })).toHaveTextContent('Cautious');
+    expect(screen.getByRole('table', { name: 'Risk profile limits' })).toHaveTextContent('10% of capital');
+    expect(screen.getByRole('table', { name: 'Risk profile limits' })).toHaveTextContent('12%');
+    expect(screen.getByRole('table', { name: 'Risk profile limits' })).toHaveTextContent('50 silver');
+
     fireEvent.change(screen.getByLabelText('Gold'), { target: { value: '00012' } });
     fireEvent.change(screen.getByLabelText('Silver'), { target: { value: '034' } });
     fireEvent.change(screen.getByLabelText('Copper'), { target: { value: '056' } });
@@ -204,6 +210,7 @@ describe('M9 beginner experience', () => {
     expect(screen.getAllByText('Listing fee')).toHaveLength(5);
     expect(screen.getAllByText('Total cost (buy order + listing fee)')).toHaveLength(5);
     expect(screen.getAllByText('63.6%')).toHaveLength(5);
+    expect(screen.getAllByText(/Passed fixed current order-book depth and relative-spread checks/i)).toHaveLength(5);
     expect(screen.getAllByRole('heading', { name: 'Manual in-game steps' })).toHaveLength(5);
     expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument();
   });

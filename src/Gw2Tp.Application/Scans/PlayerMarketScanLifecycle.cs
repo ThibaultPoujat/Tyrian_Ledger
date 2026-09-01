@@ -202,20 +202,32 @@ public sealed class PlayerMarketScanLifecycle : IPlayerMarketScanLifecycle
         ValidatePrices(itemIds, prices);
         return prices
             .Where(HasPotentialAggregateSpread)
-            .Select(price => new Finalist(price.ItemId, (long)price.Sells.UnitPriceInCopper - price.Buys.UnitPriceInCopper))
-            .OrderByDescending(finalist => finalist.AggregatePriceGap)
+            .Select(price => new Finalist(
+                price.ItemId,
+                Math.Min(price.Buys.Quantity, price.Sells.Quantity),
+                (long)price.Sells.UnitPriceInCopper - price.Buys.UnitPriceInCopper))
+            .OrderByDescending(finalist => finalist.MinimumAggregateSideQuantity)
+            .ThenByDescending(finalist => finalist.AggregatePriceGap)
             .ThenBy(finalist => finalist.ItemId)
             .Take(MaximumFinalistCount)
             .Select(finalist => finalist.ItemId)
             .ToArray();
     }
 
-    private static bool HasPotentialAggregateSpread(MarketPrice price) =>
-        price.Buys.Quantity > 0 &&
-        price.Sells.Quantity > 0 &&
-        price.Buys.UnitPriceInCopper > 0 &&
-        price.Sells.UnitPriceInCopper > 0 &&
-        (long)price.Sells.UnitPriceInCopper - price.Buys.UnitPriceInCopper >= 2;
+    private static bool HasPotentialAggregateSpread(MarketPrice price)
+    {
+        if (price.Buys.Quantity < BeginnerRecommendationPolicy.MinimumAggregateSideQuantity ||
+            price.Sells.Quantity < BeginnerRecommendationPolicy.MinimumAggregateSideQuantity ||
+            price.Buys.UnitPriceInCopper <= 0 || price.Sells.UnitPriceInCopper <= 1)
+        {
+            return false;
+        }
+
+        var plannedBuyPrice = checked((long)price.Buys.UnitPriceInCopper + 1);
+        var plannedSalePrice = checked((long)price.Sells.UnitPriceInCopper - 1);
+        return plannedSalePrice >= plannedBuyPrice &&
+            plannedSalePrice <= checked(plannedBuyPrice * BeginnerRecommendationPolicy.MaximumPlannedPriceSpreadMultiple);
+    }
 
     private static void ValidateRequest(PlayerMarketScanRequest? request)
     {
@@ -353,7 +365,7 @@ public sealed class PlayerMarketScanLifecycle : IPlayerMarketScanLifecycle
         new PlayerMarketScanProgress(stage, finalistCount),
         Result: null);
 
-    private sealed record Finalist(int ItemId, long AggregatePriceGap);
+    private sealed record Finalist(int ItemId, int MinimumAggregateSideQuantity, long AggregatePriceGap);
 
     private sealed class PlayerMarketScanGatewayException : Exception
     {

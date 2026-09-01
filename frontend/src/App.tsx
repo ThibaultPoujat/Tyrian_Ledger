@@ -23,9 +23,9 @@ import {
 type M9Route = 'recommendations' | 'settings';
 
 const profileDetails: Record<RiskProfile, { name: string; spend: string; roi: string; profit: string }> = {
-  cautious: { name: 'Cautious', spend: '10% of your capital', roi: '5% modeled ROI', profit: '10 silver modeled profit' },
-  balanced: { name: 'Balanced', spend: '25% of your capital', roi: '8% modeled ROI', profit: '25 silver modeled profit' },
-  adventurous: { name: 'Adventurous', spend: '50% of your capital', roi: '12% modeled ROI', profit: '50 silver modeled profit' },
+  cautious: { name: 'Cautious', spend: '10% of capital', roi: '5%', profit: '10 silver' },
+  balanced: { name: 'Balanced', spend: '25% of capital', roi: '8%', profit: '25 silver' },
+  adventurous: { name: 'Adventurous', spend: '50% of capital', roi: '12%', profit: '50 silver' },
 };
 
 function getRoute(pathname: string): M9Route | null {
@@ -184,6 +184,16 @@ function SettingsPage({
         <fieldset aria-describedby={errors.riskProfile ? 'risk-profile-error' : undefined}>
           <legend>Risk profile</legend>
           <p className="field-help">This sets the maximum spend and the minimum modeled return for each suggestion.</p>
+          <div className="risk-profile-table-wrapper">
+            <table className="risk-profile-table">
+              <caption>Risk profile limits</caption>
+              <thead><tr><th scope="col">Profile</th><th scope="col">Maximum spend</th><th scope="col">Minimum modeled ROI</th><th scope="col">Minimum modeled profit</th></tr></thead>
+              <tbody>{(Object.keys(profileDetails) as RiskProfile[]).map((profile) => {
+                const detail = profileDetails[profile];
+                return <tr key={profile}><th scope="row">{detail.name}</th><td>{detail.spend}</td><td>{detail.roi}</td><td>{detail.profit}</td></tr>;
+              })}</tbody>
+            </table>
+          </div>
           <div className="risk-options">
             {(Object.keys(profileDetails) as RiskProfile[]).map((profile) => {
               const detail = profileDetails[profile];
@@ -193,7 +203,7 @@ function SettingsPage({
                     setRiskProfile(profile);
                     setErrors((current) => ({ ...current, riskProfile: undefined }));
                   }} type="radio" value={profile} />
-                  <span><strong>{detail.name}</strong><span>Maximum spend: {detail.spend}. Minimum: {detail.roi} and {detail.profit}.</span></span>
+                  <span><strong>{detail.name}</strong><span>Maximum spend: {detail.spend}. Minimum modeled ROI: {detail.roi}. Minimum modeled profit: {detail.profit}.</span></span>
                 </label>
               );
             })}
@@ -431,6 +441,7 @@ function RecommendationCard({ recommendation }: { recommendation: Recommendation
 function assumptionMessage(assumption: string): string {
   const messages: Record<string, string> = {
     'current-order-book-snapshot-only': 'Uses the current order book snapshot only.',
+    'current-order-book-depth-and-spread-guard': 'Passed fixed current order-book depth and relative-spread checks. This does not guarantee a fill or sale.',
     'manual-in-game-orders-required': 'Every Trading Post action remains manual.',
     'no-execution-sale-or-profit-guarantee': 'No execution, sale, or profit is guaranteed.',
     'fee-rounding-pending-external-verification': 'Fee rounding is a current model assumption.',
