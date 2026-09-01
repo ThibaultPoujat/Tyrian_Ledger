@@ -391,7 +391,7 @@ function RecommendationCard({ recommendation }: { recommendation: Recommendation
         <div><dt>Quantity</dt><dd>{recommendation.quantity}</dd></div>
         <div><dt>Buy price</dt><dd>{formatCopper(recommendation.buyUnitPriceCopper)} each</dd></div>
         <div><dt>Sale price</dt><dd>{formatCopper(recommendation.saleUnitPriceCopper)} each</dd></div>
-        <div><dt>Total spend</dt><dd>{formatCopper(recommendation.totalCostCopper)}</dd></div>
+        <div><dt>Total cost (buy order + listing fee)</dt><dd>{formatCopper(recommendation.totalCostCopper)}</dd></div>
         <div><dt>Listing fee</dt><dd>{formatCopper(recommendation.listingFeeCopper)}</dd></div>
         <div><dt>Exchange fee</dt><dd>{formatCopper(recommendation.exchangeFeeCopper)}</dd></div>
         <div><dt>Modeled profit</dt><dd>{formatCopper(recommendation.modeledProfitCopper)}</dd></div>

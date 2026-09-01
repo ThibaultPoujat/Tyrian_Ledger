@@ -50,9 +50,9 @@ function card(rank: number, route: 'can-act-now' | 'place-order-and-wait') {
     listingFeeCopper: 200,
     exchangeFeeCopper: 400,
     netSaleProceedsCopper: 3400,
-    totalCostCopper: 2000,
+    totalCostCopper: 2200,
     modeledProfitCopper: 1400,
-    modeledRoi: { profitCopper: 1400, totalCostCopper: 2000 },
+    modeledRoi: { profitCopper: 1400, totalCostCopper: 2200 },
     scanCompletedAtUtc: '2026-08-31T16:00:00Z',
     routeEvidence: {
       sellerQuantityAtOrBelowBuyPrice: route === 'can-act-now' ? 2 : 1,

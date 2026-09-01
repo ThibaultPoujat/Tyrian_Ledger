@@ -54,9 +54,9 @@ function recommendation(rank: number, route: Recommendation['route']): Recommend
     listingFeeCopper: 200,
     exchangeFeeCopper: 400,
     netSaleProceedsCopper: 3_400,
-    totalCostCopper: 2_000,
+    totalCostCopper: 2_200,
     modeledProfitCopper: 1_400,
-    modeledRoi: { profitCopper: 1_400, totalCostCopper: 2_000 },
+    modeledRoi: { profitCopper: 1_400, totalCostCopper: 2_200 },
     scanCompletedAtUtc: '2026-08-31T16:00:00Z',
     routeEvidence: {
       sellerQuantityAtOrBelowBuyPrice: route === 'can-act-now' ? 2 : 1,
@@ -187,7 +187,8 @@ describe('M9 beginner experience', () => {
     expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible();
     expect(screen.queryByRole('heading', { name: 'Item 6' })).not.toBeInTheDocument();
     expect(screen.getAllByText('Listing fee')).toHaveLength(5);
-    expect(screen.getAllByText('70.0%')).toHaveLength(5);
+    expect(screen.getAllByText('Total cost (buy order + listing fee)')).toHaveLength(5);
+    expect(screen.getAllByText('63.6%')).toHaveLength(5);
     expect(screen.getAllByRole('heading', { name: 'Manual in-game steps' })).toHaveLength(5);
     expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument();
   });
