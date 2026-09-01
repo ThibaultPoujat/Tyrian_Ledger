@@ -21,6 +21,7 @@ A ticket may be completed across multiple fresh sessions. See `docs/workflow/ai-
 | M7 | Historical market data and investment research | [TKT-M7-01](M7/tickets/TKT-M7-01.md), [TKT-M7-02](M7/tickets/TKT-M7-02.md), [TKT-M7-03](M7/tickets/TKT-M7-03.md), [TKT-M7-04](M7/tickets/TKT-M7-04.md) |
 | M8 | Hardening, accessibility, release readiness | [TKT-M8-01](M8/tickets/TKT-M8-01.md), [TKT-M8-02](M8/tickets/TKT-M8-02.md), [TKT-M8-03](M8/tickets/TKT-M8-03.md), [TKT-M8-04](M8/tickets/TKT-M8-04.md) |
 | M9 | Beginner fast-flip MVP | [TKT-M9-00](M9/tickets/TKT-M9-00.md), [TKT-M9-01](M9/tickets/TKT-M9-01.md), [TKT-M9-02](M9/tickets/TKT-M9-02.md), [TKT-M9-03](M9/tickets/TKT-M9-03.md), [TKT-M9-04](M9/tickets/TKT-M9-04.md), [TKT-M9-05](M9/tickets/TKT-M9-05.md) |
+| M10 | Static GitHub Pages snapshot deployment | [TKT-M10-00](M10/tickets/TKT-M10-00.md), [TKT-M10-01](M10/tickets/TKT-M10-01.md), [TKT-M10-02](M10/tickets/TKT-M10-02.md), [TKT-M10-03](M10/tickets/TKT-M10-03.md), [TKT-M10-04](M10/tickets/TKT-M10-04.md), [TKT-M10-05](M10/tickets/TKT-M10-05.md), [TKT-M10-06](M10/tickets/TKT-M10-06.md) |
 
 For any ticket, follow the repository-root `AGENTS.md`, the current milestone
 context, and the ticket itself.
