@@ -214,13 +214,13 @@ function expectGoldenResult(
   generatedAtUtc: string,
 ): void {
   expect(actual.spendCapCopper.toString(), name).toBe(expected.spendCapCopper);
-  expect(actual.scanCompletedAtUtc, name).toBe(generatedAtUtc);
+  expect(actual.snapshotGeneratedAtUtc, name).toBe(generatedAtUtc);
   expect(actual.recommendations.map(toGoldenRecommendation), name).toEqual(expected.recommendations);
   expect(actual.canActNow, name).toEqual([]);
   expect(actual.placeOrderAndWait.map(toGoldenRecommendation), name).toEqual(expected.recommendations);
 
   for (const recommendation of actual.recommendations) {
-    expect(recommendation.scanCompletedAtUtc, name).toBe(generatedAtUtc);
+    expect(recommendation.snapshotGeneratedAtUtc, name).toBe(generatedAtUtc);
     expect(recommendation.modeledRoi, name).toEqual({
       profitCopper: recommendation.modeledProfitCopper,
       totalCostCopper: recommendation.totalCostCopper,

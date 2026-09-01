@@ -94,7 +94,7 @@ export interface SnapshotRecommendation {
   totalCostCopper: bigint;
   modeledProfitCopper: bigint;
   modeledRoi: SnapshotExactRoi;
-  scanCompletedAtUtc: string;
+  snapshotGeneratedAtUtc: string;
   routeEvidence: SnapshotRouteEvidence;
   assumptions: string[];
 }
@@ -103,7 +103,7 @@ export interface SnapshotRecommendationResult {
   capitalCopper: bigint;
   riskProfile: RiskProfile;
   spendCapCopper: bigint;
-  scanCompletedAtUtc: string;
+  snapshotGeneratedAtUtc: string;
   recommendations: SnapshotRecommendation[];
   canActNow: SnapshotRecommendation[];
   placeOrderAndWait: SnapshotRecommendation[];
@@ -225,7 +225,7 @@ export function calculateSnapshotRecommendations(
     capitalCopper: input.capitalCopper,
     riskProfile: input.riskProfile,
     spendCapCopper,
-    scanCompletedAtUtc: snapshot.generatedAtUtc,
+    snapshotGeneratedAtUtc: snapshot.generatedAtUtc,
     recommendations,
     canActNow: recommendations.filter((recommendation) => recommendation.route === 'can-act-now'),
     placeOrderAndWait: recommendations.filter((recommendation) => recommendation.route === 'place-order-and-wait'),
@@ -355,7 +355,7 @@ function createRecommendation(
       profitCopper: metrics.modeledProfitCopper,
       totalCostCopper: metrics.totalCostCopper,
     },
-    scanCompletedAtUtc: snapshot.generatedAtUtc,
+    snapshotGeneratedAtUtc: snapshot.generatedAtUtc,
     routeEvidence: { sellerQuantityAtOrBelowBuyPrice, coversSelectedQuantity },
     assumptions: [...recommendationAssumptions],
   };
