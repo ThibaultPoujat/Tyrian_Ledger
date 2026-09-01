@@ -1,512 +1,155 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import {
   formatCopper,
   formatModeledRoi,
   M9_SETTINGS_STORAGE_KEY,
-  SCAN_STATUS_POLL_INTERVAL_MS,
-  type CompletedScanResult,
-  type Recommendation,
-  type ScanSnapshot,
   validateSettings,
 } from './m9';
 
-const runningSnapshot: ScanSnapshot = {
-  state: 'running',
-  progress: { stage: 'reading-finalist-listings', finalistCount: 1 },
-  isRetryable: false,
-  result: null,
-};
+const generatedAtUtc = '2026-09-01T12:00:00.0000000Z';
+let nowMs = Date.parse('2026-09-01T12:30:00.000Z');
 
-const cancelledSnapshot: ScanSnapshot = {
-  state: 'cancelled',
-  progress: null,
-  isRetryable: true,
-  result: null,
-};
-
-const rateLimitedSnapshot: ScanSnapshot = {
-  state: 'rate-limited',
-  progress: null,
-  isRetryable: true,
-  result: null,
-};
-
-const incompleteSnapshot: ScanSnapshot = {
-  state: 'complete',
-  progress: null,
-  isRetryable: false,
-  result: null,
-};
-
-function recommendation(rank: number, route: Recommendation['route']): Recommendation {
+function snapshot(overrides: Record<string, unknown> = {}): unknown {
   return {
-    rank,
-    itemId: rank,
-    itemName: `Item ${rank}`,
-    route,
-    quantity: 2,
-    buyUnitPriceCopper: 1_000,
-    saleUnitPriceCopper: 2_000,
-    buyOrderReserveCopper: 2_000,
-    grossSaleCopper: 4_000,
-    listingFeeCopper: 200,
-    exchangeFeeCopper: 400,
-    netSaleProceedsCopper: 3_400,
-    totalCostCopper: 2_200,
-    modeledProfitCopper: 1_400,
-    modeledRoi: { profitCopper: 1_400, totalCostCopper: 2_200 },
-    scanCompletedAtUtc: '2026-08-31T16:00:00Z',
-    routeEvidence: {
-      sellerQuantityAtOrBelowBuyPrice: route === 'can-act-now' ? 2 : 1,
-      coversSelectedQuantity: route === 'can-act-now',
-    },
-    assumptions: [
-      'current-order-book-snapshot-only',
-      'current-order-book-depth-and-spread-guard',
-      'manual-in-game-orders-required',
-      'no-execution-sale-or-profit-guarantee',
-    ],
+    contractVersion: 1,
+    generatedAtUtc,
+    compatibility: { moneyUnit: 'copper', recommendationPolicyVersion: 'm9-v1', normalStackLimit: 250 },
+    capturePolicy: { requestsPerSecond: 2, maxConcurrentRequests: 2, burstBudget: 20 },
+    candidates: [{
+      itemId: 900001,
+      itemName: 'Synthetic public item',
+      buys: [{ listingCount: 3, quantity: 100, unitPriceInCopper: 1000 }],
+      sells: [{ listingCount: 3, quantity: 100, unitPriceInCopper: 1500 }],
+    }],
+    ...overrides,
   };
 }
 
-function completeSnapshot(recommendations: Recommendation[] = [recommendation(1, 'place-order-and-wait')]): ScanSnapshot {
-  const result: CompletedScanResult = {
-    capitalCopper: 123_456,
-    riskProfile: 'balanced',
-    spendCapCopper: 30_864,
-    scanCompletedAtUtc: '2026-08-31T16:00:00Z',
-    canActNow: recommendations.filter((item) => item.route === 'can-act-now'),
-    placeOrderAndWait: recommendations.filter((item) => item.route === 'place-order-and-wait'),
-  };
-  return { state: 'complete', progress: null, isRetryable: false, result };
+function response(payload: unknown, status = 200): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => payload } as unknown as Response;
 }
 
-function response(snapshot: ScanSnapshot, status = 200): Response {
-  return { ok: status >= 200 && status < 300, status, json: async () => snapshot } as unknown as Response;
-}
-
-function storeSettings() {
-  window.localStorage.setItem(M9_SETTINGS_STORAGE_KEY, JSON.stringify({
-    capital: { gold: '12', silver: '34', copper: '56' },
-    riskProfile: 'balanced',
-  }));
+function storeSettings(capital = { gold: '12', silver: '0', copper: '0' }, riskProfile = 'balanced') {
+  window.localStorage.setItem(M9_SETTINGS_STORAGE_KEY, JSON.stringify({ capital, riskProfile }));
 }
 
 beforeEach(() => {
+  nowMs = Date.parse('2026-09-01T12:30:00.000Z');
   window.localStorage.clear();
   window.history.replaceState({}, '', '/');
-  vi.stubGlobal('fetch', vi.fn());
+  vi.spyOn(Date, 'now').mockImplementation(() => nowMs);
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(snapshot())));
 });
 
 afterEach(() => {
   cleanup();
-  vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
-describe('M9 beginner experience', () => {
-  it('shows guided setup without initiating browser API traffic on a first visit', () => {
-    const fetchMock = vi.mocked(fetch);
+describe('static snapshot experience', () => {
+  it('shows an accessible loading state before the browser receives the published snapshot', async () => {
+    let resolveRequest: ((value: Response) => void) | undefined;
+    vi.mocked(fetch).mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveRequest = resolve; }));
+
     render(<App />);
 
+    expect(screen.getByRole('status')).toHaveTextContent('Loading the published market snapshot');
     expect(screen.getByText('A short guided setup')).toBeVisible();
-    expect(screen.getByText(/You will always create every buy order and sell listing yourself/i)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Set up my capital and risk' })).toBeVisible();
-    expect(fetchMock).not.toHaveBeenCalled();
+    resolveRequest?.(response(snapshot()));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Compatible snapshot loaded.'));
   });
 
-  it('validates denomination values and risk selection without floating-point conversion', () => {
-    const invalid = validateSettings({ gold: '-1', silver: '100', copper: '2.5' }, null);
-    expect(invalid.settings).toBeUndefined();
-    expect(invalid.errors).toMatchObject({
-      gold: 'Gold must be a non-negative whole number.',
-      silver: 'Silver must be between 0 and 99.',
-      copper: 'Copper must be a non-negative whole number.',
-      riskProfile: 'Choose the risk level that feels right for you.',
-    });
-
-    const valid = validateSettings({ gold: '00012', silver: '034', copper: '056' }, 'balanced');
-    expect(valid.settings).toMatchObject({
-      capital: { gold: '12', silver: '34', copper: '56' },
-      capitalCopper: 123_456,
-      riskProfile: 'balanced',
-    });
-    expect(validateSettings({ gold: '900719925475', silver: '0', copper: '0' }, 'cautious').errors.gold).toContain('too large');
-    expect(formatCopper(123_456)).toBe('12g 34s 56c');
-    expect(formatModeledRoi({ profitCopper: 1_400, totalCostCopper: 2_000 })).toBe('70.0%');
-  });
-
-  it('saves only canonical settings and makes the saved choice ready for a scan', () => {
+  it('uses browser-local BigInt preferences to render fresh compatible snapshot recommendations', async () => {
+    storeSettings();
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Set up my capital and risk' }));
 
-    expect(screen.getByRole('table', { name: 'Risk profile limits' })).toHaveTextContent('Cautious');
-    expect(screen.getByRole('table', { name: 'Risk profile limits' })).toHaveTextContent('10% of capital');
-    expect(screen.getByRole('table', { name: 'Risk profile limits' })).toHaveTextContent('12%');
-    expect(screen.getByRole('table', { name: 'Risk profile limits' })).toHaveTextContent('50 silver');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Synthetic public item' })).toBeVisible());
+    expect(screen.getByRole('status')).toHaveTextContent('Generated:');
+    expect(screen.getByRole('status')).toHaveTextContent('Data age: 30 minutes.');
+    expect(screen.getByText('12g 0s 0c')).toBeVisible();
+    expect(screen.queryAllByRole('button', { name: /scan/i })).toHaveLength(0);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain('/market-snapshot.json');
+  });
 
-    fireEvent.change(screen.getByLabelText('Gold'), { target: { value: '00012' } });
-    fireEvent.change(screen.getByLabelText('Silver'), { target: { value: '034' } });
-    fireEvent.change(screen.getByLabelText('Copper'), { target: { value: '056' } });
-    fireEvent.click(screen.getByRole('radio', { name: /Balanced/ }));
+  it('treats a snapshot older than 30 minutes as delayed and suppresses every recommendation', async () => {
+    nowMs = Date.parse('2026-09-01T12:30:00.001Z');
+    storeSettings();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Snapshot refresh is delayed.'));
+    expect(screen.getByRole('alert')).toHaveTextContent('30 minutes old');
+    expect(screen.queryByRole('heading', { name: 'Synthetic public item' })).not.toBeInTheDocument();
+  });
+
+  it('treats future timestamps as non-actionable and suppresses every recommendation', async () => {
+    nowMs = Date.parse('2026-09-01T11:59:59.999Z');
+    storeSettings();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Snapshot timestamp cannot be trusted.'));
+    expect(screen.queryByRole('heading', { name: 'Synthetic public item' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['incompatible', snapshot({ contractVersion: 2 }), 'not compatible'],
+    ['malformed', snapshot({ candidates: [{ itemId: 1 }] }), 'incomplete or malformed'],
+    ['unavailable', {}, 'snapshot is unavailable'],
+  ])('shows an actionable $0 snapshot message without cards', async (_state, payload, expectedMessage) => {
+    storeSettings();
+    vi.mocked(fetch).mockResolvedValueOnce(response(payload, expectedMessage === 'snapshot is unavailable' ? 404 : 200));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(expectedMessage));
+    expect(screen.queryByRole('heading', { name: 'Synthetic public item' })).not.toBeInTheDocument();
+  });
+
+  it('recalculates locally after a preference change without requesting another snapshot', async () => {
+    storeSettings();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Synthetic public item' })).toBeVisible());
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.change(screen.getByLabelText('Gold'), { target: { value: '4' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
 
-    expect(screen.getByRole('heading', { name: 'Recommendations' })).toBeVisible();
-    expect(screen.getByText('12g 34s 56c')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Scan the market' })).toBeEnabled();
-    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toEqual({
-      capital: { gold: '12', silver: '34', copper: '56' },
-      riskProfile: 'balanced',
-    });
-    expect(window.localStorage.length).toBe(1);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'No suggestions right now' })).toBeVisible());
+    expect(screen.getByText('4g 0s 0c')).toBeVisible();
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   });
 
-  it('resets the tutorial by removing only the saved M9 settings', () => {
+  it('keeps accessible settings validation and exact integer-copper formatting', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Set up my capital and risk' }));
+    fireEvent.change(screen.getByLabelText('Gold'), { target: { value: '-1' } });
+    fireEvent.change(screen.getByLabelText('Silver'), { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    expect(screen.getByText('Gold must be a non-negative whole number.')).toBeVisible();
+    expect(validateSettings({ gold: '00012', silver: '034', copper: '056' }, 'balanced').settings).toMatchObject({
+      capital: { gold: '12', silver: '34', copper: '56' }, capitalCopper: 123_456n, riskProfile: 'balanced',
+    });
+    expect(formatCopper(123_456n)).toBe('12g 34s 56c');
+    expect(formatModeledRoi({ profitCopper: 1_400n, totalCostCopper: 2_000n })).toBe('70.0%');
+  });
+
+  it('resets only local preferences and keeps unavailable routes unavailable', async () => {
     storeSettings();
     window.localStorage.setItem('unrelated-setting', 'keep');
-    const fetchMock = vi.mocked(fetch);
     render(<App />);
 
     fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Reset tutorial' }));
-
     expect(screen.getByText('A short guided setup')).toBeVisible();
     expect(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY)).toBeNull();
     expect(window.localStorage.getItem('unrelated-setting')).toBe('keep');
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
 
-  it('polls only an active player-started scan, groups complete results, and caps cards at five', async () => {
-    vi.useFakeTimers();
-    storeSettings();
-    const recommendations = [
-      recommendation(1, 'can-act-now'), recommendation(2, 'place-order-and-wait'),
-      recommendation(3, 'can-act-now'), recommendation(4, 'place-order-and-wait'),
-      recommendation(5, 'can-act-now'), recommendation(6, 'place-order-and-wait'),
-    ];
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
-    fetchMock.mockResolvedValueOnce(response(completeSnapshot(recommendations)));
-
-    render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await act(async () => {});
-
-    expect(screen.getByRole('status')).toHaveTextContent('1 finalist needs detailed checks');
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/recommendations/scan', expect.objectContaining({
-      method: 'POST', body: JSON.stringify({ capitalCopper: 123_456, riskProfile: 'balanced' }),
-    }));
-
-    await act(async () => { await vi.advanceTimersByTimeAsync(SCAN_STATUS_POLL_INTERVAL_MS); });
-
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/recommendations/scan');
-    expect(screen.getByRole('heading', { name: 'Can act now' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Place an order and wait' })).toBeVisible();
-    expect(screen.getAllByRole('article')).toHaveLength(5);
-    expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible();
-    expect(screen.queryByRole('heading', { name: 'Item 6' })).not.toBeInTheDocument();
-    expect(screen.getAllByText('Listing fee')).toHaveLength(5);
-    expect(screen.getAllByText('Total cost (buy order + listing fee)')).toHaveLength(5);
-    expect(screen.getAllByText('63.6%')).toHaveLength(5);
-    expect(screen.getAllByText(/Passed fixed current order-book depth and relative-spread checks/i)).toHaveLength(5);
-    expect(screen.getAllByRole('heading', { name: 'Manual in-game steps' })).toHaveLength(5);
-    expect(screen.queryByRole('button', { name: /copy/i })).not.toBeInTheDocument();
-  });
-
-  it('removes stale results immediately for cancellation and reports no recommendations', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
-    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
-    fetchMock.mockResolvedValueOnce(response(cancelledSnapshot));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Item 1' })).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel scan' }));
-
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Scan cancelled. No recommendations were kept.'));
-    expect(screen.queryByRole('heading', { name: 'Item 1' })).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/recommendations/scan', { method: 'DELETE' });
-  });
-
-  it('shows a rate-limit outcome without cards and retries only when the player asks', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(rateLimitedSnapshot));
-    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('asked us to slow down'));
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry scan' }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible());
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('treats an incomplete result as a failed scan and renders a safe empty completion', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(incompleteSnapshot));
-    fetchMock.mockResolvedValueOnce(response(completeSnapshot([])));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('The scan could not be started.'));
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry scan' }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'No suggestions right now' })).toBeVisible());
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
-  });
-
-  it('rejects malformed count values from an untrusted scan response', async () => {
-    storeSettings();
-    const invalidProgress: ScanSnapshot = {
-      ...runningSnapshot,
-      progress: { stage: 'reading-finalist-listings', finalistCount: -1 },
-    };
-    const invalidRouteEvidence = completeSnapshot();
-    invalidRouteEvidence.result!.placeOrderAndWait[0] = {
-      ...invalidRouteEvidence.result!.placeOrderAndWait[0],
-      routeEvidence: { sellerQuantityAtOrBelowBuyPrice: -1, coversSelectedQuantity: false },
-    };
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(invalidProgress));
-    fetchMock.mockResolvedValueOnce(response(invalidRouteEvidence));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('The scan could not be started.'));
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry scan' }));
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('The scan could not be started.'));
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('keeps a completed scan in memory while navigating, but not after an app reload', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
-    const firstApp = render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible());
-    expect(window.localStorage.length).toBe(1);
-    expect(window.localStorage.key(0)).toBe(M9_SETTINGS_STORAGE_KEY);
-
-    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
-    fireEvent.click(screen.getByRole('link', { name: 'Recommendations' }));
-    expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible();
-
-    firstApp.unmount();
-    render(<App />);
-    expect(screen.queryByRole('heading', { name: 'Item 1' })).not.toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('No scan has run yet.');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('continues polling a player-started scan while Settings is open', async () => {
-    vi.useFakeTimers();
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
-    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await act(async () => {});
-    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
-
-    await act(async () => { await vi.advanceTimersByTimeAsync(SCAN_STATUS_POLL_INTERVAL_MS); });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    fireEvent.click(screen.getByRole('link', { name: 'Recommendations' }));
-    expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible();
-  });
-
-  it('saves unchanged settings without prompting or clearing a completed result', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible());
-    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('confirms completed-result invalidation and retains cards when the player cancels', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible());
-    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    fireEvent.change(screen.getByLabelText('Gold', { exact: true }), { target: { value: '13' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-
-    const dialog = screen.getByRole('alertdialog');
-    expect(dialog).toHaveTextContent('remove the current scan result');
-    const keepButton = screen.getByRole('button', { name: 'Keep current settings' });
-    const confirmButton = screen.getByRole('button', { name: 'Save new settings and clear scan' });
-    expect(keepButton).toHaveFocus();
-    fireEvent.keyDown(keepButton, { key: 'Tab', shiftKey: true });
-    expect(confirmButton).toHaveFocus();
-    fireEvent.keyDown(confirmButton, { key: 'Tab' });
-    expect(keepButton).toHaveFocus();
-    fireEvent.keyDown(dialog, { key: 'Escape' });
-
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Gold', { exact: true })).toHaveValue('13');
-    await waitFor(() => expect(document.getElementById('save-settings')).toHaveFocus());
-    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({ capital: { gold: '12' } });
-
-    fireEvent.click(screen.getByRole('link', { name: 'Recommendations' }));
-    expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible();
-  });
-
-  it('clears completed cards only after the player confirms changed settings', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible());
-    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    fireEvent.change(screen.getByLabelText('Gold', { exact: true }), { target: { value: '13' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save new settings and clear scan' }));
-
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
-    expect(screen.queryByRole('heading', { name: 'Item 1' })).not.toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('No scan has run yet.');
-    expect(screen.getByText('13g 34s 56c')).toBeVisible();
-    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({ capital: { gold: '13' } });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('cancels an active scan before saving changed settings and ignores the delayed start response', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    let resolveStart: ((value: Response) => void) | undefined;
-    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveStart = resolve; }));
-    fetchMock.mockResolvedValueOnce(response(cancelledSnapshot));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('radio', { name: /Adventurous/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    expect(screen.getByRole('alertdialog')).toHaveTextContent('cancel the active scan');
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel scan and save settings' }));
-    expect(screen.getByRole('button', { name: 'Cancelling scan…' })).toBeDisabled();
-    await waitFor(() => expect(screen.getByRole('alertdialog')).toHaveFocus());
-    fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Tab' });
-    expect(screen.getByRole('alertdialog')).toHaveFocus();
-
-    await act(async () => { resolveStart?.(response(runningSnapshot)); });
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/recommendations/scan', { method: 'DELETE' });
-    expect(screen.getByText('12g 34s 56c')).toBeVisible();
-    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({ riskProfile: 'adventurous' });
-    expect(screen.queryByRole('heading', { name: 'Item 1' })).not.toBeInTheDocument();
-  });
-
-  it('keeps settings unchanged when an active scan cannot be cancelled', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
-    fetchMock.mockResolvedValueOnce(response(runningSnapshot, 409));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel scan' })).toBeVisible());
-    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('radio', { name: /Adventurous/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel scan and save settings' }));
-
-    await waitFor(() => expect(screen.getByRole('alertdialog')).toHaveTextContent('could not be cancelled safely'));
-    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({ riskProfile: 'balanced' });
-    expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
-  });
-
-  it('does not save changed settings after an ambiguous start request', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockRejectedValueOnce(new Error('Connection interrupted.'));
-    fetchMock.mockResolvedValueOnce(response(cancelledSnapshot));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('radio', { name: /Adventurous/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel scan and save settings' }));
-
-    await waitFor(() => expect(screen.getByRole('alertdialog')).toHaveTextContent('could not be cancelled safely'));
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/recommendations/scan', { method: 'DELETE' });
-    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({ riskProfile: 'balanced' });
-  });
-
-  it('cancels an active scan before resetting the tutorial', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
-    fetchMock.mockResolvedValueOnce(response(cancelledSnapshot));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel scan' })).toBeVisible());
-    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Reset tutorial' }));
-
-    await waitFor(() => expect(screen.getByText('A short guided setup')).toBeVisible());
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/recommendations/scan', { method: 'DELETE' });
-    expect(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY)).toBeNull();
-  });
-
-  it('explains when tutorial reset could not safely cancel an active scan', async () => {
-    storeSettings();
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
-    fetchMock.mockResolvedValueOnce(response(runningSnapshot, 409));
-    render(<App />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel scan' })).toBeVisible());
-    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Reset tutorial' }));
-
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('active scan could not be cancelled safely'));
-    expect(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY)).not.toBeNull();
-  });
-
-  it('keeps retired browser paths unavailable', () => {
+    cleanup();
     window.history.replaceState({}, '', '/history');
     render(<App />);
-
     expect(screen.getByTestId('unavailable-route')).toHaveTextContent('Route unavailable');
-    expect(screen.getByRole('link', { name: 'Go to Recommendations' })).toHaveAttribute('href', '/recommendations');
   });
 });
