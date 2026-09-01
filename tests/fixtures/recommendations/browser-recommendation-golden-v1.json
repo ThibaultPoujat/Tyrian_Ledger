@@ -1,0 +1,431 @@
+{
+  "formatVersion": 1,
+  "feeVectors": [
+    {
+      "name": "zero gross sale has no fees",
+      "grossSaleCopper": "0",
+      "listingFeeCopper": "0",
+      "exchangeFeeCopper": "0"
+    },
+    {
+      "name": "positive minimum fees",
+      "grossSaleCopper": "1",
+      "listingFeeCopper": "1",
+      "exchangeFeeCopper": "1"
+    },
+    {
+      "name": "independent ceiling rounding",
+      "grossSaleCopper": "101",
+      "listingFeeCopper": "6",
+      "exchangeFeeCopper": "11"
+    }
+  ],
+  "recommendationVectors": [
+    {
+      "name": "normal cautious recommendation",
+      "capitalCopper": "22000",
+      "riskProfile": "cautious",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": {
+          "moneyUnit": "copper",
+          "recommendationPolicyVersion": "m9-v1",
+          "normalStackLimit": 250
+        },
+        "capturePolicy": {
+          "requestsPerSecond": 2,
+          "maxConcurrentRequests": 2,
+          "burstBudget": 20
+        },
+        "candidates": [
+          {
+            "itemId": 1,
+            "itemName": "Synthetic cautious item",
+            "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }],
+            "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2001 }]
+          }
+        ]
+      },
+      "expected": {
+        "spendCapCopper": "2200",
+        "recommendations": [
+          {
+            "rank": 1,
+            "itemId": 1,
+            "itemName": "Synthetic cautious item",
+            "route": "place-order-and-wait",
+            "quantity": "2",
+            "buyUnitPriceCopper": "1000",
+            "saleUnitPriceCopper": "2000",
+            "buyOrderReserveCopper": "2000",
+            "grossSaleCopper": "4000",
+            "listingFeeCopper": "200",
+            "exchangeFeeCopper": "400",
+            "netSaleProceedsCopper": "3400",
+            "totalCostCopper": "2200",
+            "modeledProfitCopper": "1400",
+            "sellerQuantityAtOrBelowBuyPrice": "0",
+            "coversSelectedQuantity": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "normal balanced recommendation",
+      "capitalCopper": "17600",
+      "riskProfile": "balanced",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": [
+          {
+            "itemId": 2,
+            "itemName": "Synthetic balanced item",
+            "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }],
+            "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2001 }]
+          }
+        ]
+      },
+      "expected": {
+        "spendCapCopper": "4400",
+        "recommendations": [
+          {
+            "rank": 1,
+            "itemId": 2,
+            "itemName": "Synthetic balanced item",
+            "route": "place-order-and-wait",
+            "quantity": "4",
+            "buyUnitPriceCopper": "1000",
+            "saleUnitPriceCopper": "2000",
+            "buyOrderReserveCopper": "4000",
+            "grossSaleCopper": "8000",
+            "listingFeeCopper": "400",
+            "exchangeFeeCopper": "800",
+            "netSaleProceedsCopper": "6800",
+            "totalCostCopper": "4400",
+            "modeledProfitCopper": "2800",
+            "sellerQuantityAtOrBelowBuyPrice": "0",
+            "coversSelectedQuantity": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "normal adventurous recommendation",
+      "capitalCopper": "17600",
+      "riskProfile": "adventurous",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": [
+          {
+            "itemId": 3,
+            "itemName": "Synthetic adventurous item",
+            "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }],
+            "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2001 }]
+          }
+        ]
+      },
+      "expected": {
+        "spendCapCopper": "8800",
+        "recommendations": [
+          {
+            "rank": 1,
+            "itemId": 3,
+            "itemName": "Synthetic adventurous item",
+            "route": "place-order-and-wait",
+            "quantity": "8",
+            "buyUnitPriceCopper": "1000",
+            "saleUnitPriceCopper": "2000",
+            "buyOrderReserveCopper": "8000",
+            "grossSaleCopper": "16000",
+            "listingFeeCopper": "800",
+            "exchangeFeeCopper": "1600",
+            "netSaleProceedsCopper": "13600",
+            "totalCostCopper": "8800",
+            "modeledProfitCopper": "5600",
+            "sellerQuantityAtOrBelowBuyPrice": "0",
+            "coversSelectedQuantity": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "largest affordable quantity boundary below two",
+      "capitalCopper": "22350",
+      "riskProfile": "cautious",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": [
+          {
+            "itemId": 4,
+            "itemName": "Synthetic quantity boundary item",
+            "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }],
+            "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2355 }]
+          }
+        ]
+      },
+      "expected": {
+        "spendCapCopper": "2235",
+        "recommendations": [
+          {
+            "rank": 1,
+            "itemId": 4,
+            "itemName": "Synthetic quantity boundary item",
+            "route": "place-order-and-wait",
+            "quantity": "1",
+            "buyUnitPriceCopper": "1000",
+            "saleUnitPriceCopper": "2354",
+            "buyOrderReserveCopper": "1000",
+            "grossSaleCopper": "2354",
+            "listingFeeCopper": "118",
+            "exchangeFeeCopper": "236",
+            "netSaleProceedsCopper": "2000",
+            "totalCostCopper": "1118",
+            "modeledProfitCopper": "1000",
+            "sellerQuantityAtOrBelowBuyPrice": "0",
+            "coversSelectedQuantity": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "largest affordable quantity boundary at two",
+      "capitalCopper": "22360",
+      "riskProfile": "cautious",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": [
+          {
+            "itemId": 5,
+            "itemName": "Synthetic quantity boundary item",
+            "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }],
+            "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2355 }]
+          }
+        ]
+      },
+      "expected": {
+        "spendCapCopper": "2236",
+        "recommendations": [
+          {
+            "rank": 1,
+            "itemId": 5,
+            "itemName": "Synthetic quantity boundary item",
+            "route": "place-order-and-wait",
+            "quantity": "2",
+            "buyUnitPriceCopper": "1000",
+            "saleUnitPriceCopper": "2354",
+            "buyOrderReserveCopper": "2000",
+            "grossSaleCopper": "4708",
+            "listingFeeCopper": "236",
+            "exchangeFeeCopper": "471",
+            "netSaleProceedsCopper": "4001",
+            "totalCostCopper": "2236",
+            "modeledProfitCopper": "2001",
+            "sellerQuantityAtOrBelowBuyPrice": "0",
+            "coversSelectedQuantity": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "minimum profit exact boundary",
+      "capitalCopper": "11180",
+      "riskProfile": "cautious",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": [
+          {
+            "itemId": 6,
+            "itemName": "Synthetic profit boundary item",
+            "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }],
+            "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2355 }]
+          }
+        ]
+      },
+      "expected": {
+        "spendCapCopper": "1118",
+        "recommendations": [
+          {
+            "rank": 1,
+            "itemId": 6,
+            "itemName": "Synthetic profit boundary item",
+            "route": "place-order-and-wait",
+            "quantity": "1",
+            "buyUnitPriceCopper": "1000",
+            "saleUnitPriceCopper": "2354",
+            "buyOrderReserveCopper": "1000",
+            "grossSaleCopper": "2354",
+            "listingFeeCopper": "118",
+            "exchangeFeeCopper": "236",
+            "netSaleProceedsCopper": "2000",
+            "totalCostCopper": "1118",
+            "modeledProfitCopper": "1000",
+            "sellerQuantityAtOrBelowBuyPrice": "0",
+            "coversSelectedQuantity": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "below minimum profit has no recommendation",
+      "capitalCopper": "11180",
+      "riskProfile": "cautious",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": [
+          {
+            "itemId": 7,
+            "itemName": "Synthetic below profit item",
+            "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }],
+            "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2354 }]
+          }
+        ]
+      },
+      "expected": { "spendCapCopper": "1118", "recommendations": [] }
+    },
+    {
+      "name": "below exact ROI has no recommendation",
+      "capitalCopper": "212360",
+      "riskProfile": "cautious",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": [
+          {
+            "itemId": 8,
+            "itemName": "Synthetic ROI boundary item",
+            "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 19999 }],
+            "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 24709 }]
+          }
+        ]
+      },
+      "expected": { "spendCapCopper": "21236", "recommendations": [] }
+    },
+    {
+      "name": "high value stack cap",
+      "capitalCopper": "3000000000000",
+      "riskProfile": "cautious",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": [
+          {
+            "itemId": 9,
+            "itemName": "Synthetic high value item",
+            "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999999999 }],
+            "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2000000001 }]
+          }
+        ]
+      },
+      "expected": {
+        "spendCapCopper": "300000000000",
+        "recommendations": [
+          {
+            "rank": 1,
+            "itemId": 9,
+            "itemName": "Synthetic high value item",
+            "route": "place-order-and-wait",
+            "quantity": "250",
+            "buyUnitPriceCopper": "1000000000",
+            "saleUnitPriceCopper": "2000000000",
+            "buyOrderReserveCopper": "250000000000",
+            "grossSaleCopper": "500000000000",
+            "listingFeeCopper": "25000000000",
+            "exchangeFeeCopper": "50000000000",
+            "netSaleProceedsCopper": "425000000000",
+            "totalCostCopper": "275000000000",
+            "modeledProfitCopper": "175000000000",
+            "sellerQuantityAtOrBelowBuyPrice": "0",
+            "coversSelectedQuantity": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "equal recommendations are ordered by item ID and capped",
+      "capitalCopper": "22000",
+      "riskProfile": "cautious",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": [
+          { "itemId": 1, "itemName": "Synthetic ordered item 1", "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }], "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2001 }] },
+          { "itemId": 2, "itemName": "Synthetic ordered item 2", "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }], "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2001 }] },
+          { "itemId": 3, "itemName": "Synthetic ordered item 3", "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }], "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2001 }] },
+          { "itemId": 4, "itemName": "Synthetic ordered item 4", "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }], "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2001 }] },
+          { "itemId": 5, "itemName": "Synthetic ordered item 5", "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }], "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2001 }] },
+          { "itemId": 6, "itemName": "Synthetic ordered item 6", "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 999 }], "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 2001 }] }
+        ]
+      },
+      "expected": {
+        "spendCapCopper": "2200",
+        "recommendations": [
+          { "rank": 1, "itemId": 1, "itemName": "Synthetic ordered item 1", "route": "place-order-and-wait", "quantity": "2", "buyUnitPriceCopper": "1000", "saleUnitPriceCopper": "2000", "buyOrderReserveCopper": "2000", "grossSaleCopper": "4000", "listingFeeCopper": "200", "exchangeFeeCopper": "400", "netSaleProceedsCopper": "3400", "totalCostCopper": "2200", "modeledProfitCopper": "1400", "sellerQuantityAtOrBelowBuyPrice": "0", "coversSelectedQuantity": false },
+          { "rank": 2, "itemId": 2, "itemName": "Synthetic ordered item 2", "route": "place-order-and-wait", "quantity": "2", "buyUnitPriceCopper": "1000", "saleUnitPriceCopper": "2000", "buyOrderReserveCopper": "2000", "grossSaleCopper": "4000", "listingFeeCopper": "200", "exchangeFeeCopper": "400", "netSaleProceedsCopper": "3400", "totalCostCopper": "2200", "modeledProfitCopper": "1400", "sellerQuantityAtOrBelowBuyPrice": "0", "coversSelectedQuantity": false },
+          { "rank": 3, "itemId": 3, "itemName": "Synthetic ordered item 3", "route": "place-order-and-wait", "quantity": "2", "buyUnitPriceCopper": "1000", "saleUnitPriceCopper": "2000", "buyOrderReserveCopper": "2000", "grossSaleCopper": "4000", "listingFeeCopper": "200", "exchangeFeeCopper": "400", "netSaleProceedsCopper": "3400", "totalCostCopper": "2200", "modeledProfitCopper": "1400", "sellerQuantityAtOrBelowBuyPrice": "0", "coversSelectedQuantity": false },
+          { "rank": 4, "itemId": 4, "itemName": "Synthetic ordered item 4", "route": "place-order-and-wait", "quantity": "2", "buyUnitPriceCopper": "1000", "saleUnitPriceCopper": "2000", "buyOrderReserveCopper": "2000", "grossSaleCopper": "4000", "listingFeeCopper": "200", "exchangeFeeCopper": "400", "netSaleProceedsCopper": "3400", "totalCostCopper": "2200", "modeledProfitCopper": "1400", "sellerQuantityAtOrBelowBuyPrice": "0", "coversSelectedQuantity": false },
+          { "rank": 5, "itemId": 5, "itemName": "Synthetic ordered item 5", "route": "place-order-and-wait", "quantity": "2", "buyUnitPriceCopper": "1000", "saleUnitPriceCopper": "2000", "buyOrderReserveCopper": "2000", "grossSaleCopper": "4000", "listingFeeCopper": "200", "exchangeFeeCopper": "400", "netSaleProceedsCopper": "3400", "totalCostCopper": "2200", "modeledProfitCopper": "1400", "sellerQuantityAtOrBelowBuyPrice": "0", "coversSelectedQuantity": false }
+        ]
+      }
+    },
+    {
+      "name": "profit ranks before ROI",
+      "capitalCopper": "1000000",
+      "riskProfile": "cautious",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": [
+          { "itemId": 1, "itemName": "Synthetic lower ROI item", "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 89999 }], "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 114121 }] },
+          { "itemId": 2, "itemName": "Synthetic higher ROI item", "buys": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 54999 }], "sells": [{ "listingCount": 3, "quantity": 100, "unitPriceInCopper": 71801 }] }
+        ]
+      },
+      "expected": {
+        "spendCapCopper": "100000",
+        "recommendations": [
+          { "rank": 1, "itemId": 1, "itemName": "Synthetic lower ROI item", "route": "place-order-and-wait", "quantity": "1", "buyUnitPriceCopper": "90000", "saleUnitPriceCopper": "114120", "buyOrderReserveCopper": "90000", "grossSaleCopper": "114120", "listingFeeCopper": "5706", "exchangeFeeCopper": "11412", "netSaleProceedsCopper": "97002", "totalCostCopper": "95706", "modeledProfitCopper": "7002", "sellerQuantityAtOrBelowBuyPrice": "0", "coversSelectedQuantity": false },
+          { "rank": 2, "itemId": 2, "itemName": "Synthetic higher ROI item", "route": "place-order-and-wait", "quantity": "1", "buyUnitPriceCopper": "55000", "saleUnitPriceCopper": "71800", "buyOrderReserveCopper": "55000", "grossSaleCopper": "71800", "listingFeeCopper": "3590", "exchangeFeeCopper": "7180", "netSaleProceedsCopper": "61030", "totalCostCopper": "58590", "modeledProfitCopper": "6030", "sellerQuantityAtOrBelowBuyPrice": "0", "coversSelectedQuantity": false }
+        ]
+      }
+    },
+    {
+      "name": "complete empty snapshot has no recommendations",
+      "capitalCopper": "22000",
+      "riskProfile": "cautious",
+      "snapshot": {
+        "contractVersion": 1,
+        "generatedAtUtc": "2026-09-01T12:00:00.0000000Z",
+        "compatibility": { "moneyUnit": "copper", "recommendationPolicyVersion": "m9-v1", "normalStackLimit": 250 },
+        "capturePolicy": { "requestsPerSecond": 2, "maxConcurrentRequests": 2, "burstBudget": 20 },
+        "candidates": []
+      },
+      "expected": { "spendCapCopper": "2200", "recommendations": [] }
+    }
+  ]
+}
