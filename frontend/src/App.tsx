@@ -33,6 +33,8 @@ interface PendingSettingsChange {
   settings: ValidatedM9Settings;
 }
 
+type TutorialResetResult = 'reset' | 'cancellation-failed' | 'storage-failed';
+
 interface PlayerScanController {
   session: ScanSession;
   isActive: boolean;
@@ -174,14 +176,14 @@ export default function App() {
     window.setTimeout(() => document.getElementById('save-settings')?.focus());
   }
 
-  async function resetTutorial(): Promise<boolean> {
-    if (scan.isActive && !await scan.cancelForSettingsChange()) return false;
-    if (!clearSettings()) return false;
+  async function resetTutorial(): Promise<TutorialResetResult> {
+    if (scan.isActive && !await scan.cancelForSettingsChange()) return 'cancellation-failed';
+    if (!clearSettings()) return 'storage-failed';
 
     scan.discard();
     setSettings(null);
     navigate('recommendations');
-    return true;
+    return 'reset';
   }
 
   if (route === null) {
@@ -227,7 +229,7 @@ function SettingsPage({
 }: {
   settings: ValidatedM9Settings | null;
   onSave: (settings: ValidatedM9Settings) => boolean;
-  onResetTutorial: () => Promise<boolean>;
+  onResetTutorial: () => Promise<TutorialResetResult>;
 }) {
   const [capital, setCapital] = useState<CapitalInput>(() => settings?.capital ?? { gold: '', silver: '', copper: '' });
   const [riskProfile, setRiskProfile] = useState<RiskProfile | null>(() => settings?.riskProfile ?? null);
@@ -255,7 +257,10 @@ function SettingsPage({
   async function handleResetTutorial() {
     setSaveError(null);
     setResetError(null);
-    if (!await onResetTutorial()) {
+    const result = await onResetTutorial();
+    if (result === 'cancellation-failed') {
+      setResetError('The active scan could not be cancelled safely. Your current settings were kept.');
+    } else if (result === 'storage-failed') {
       setResetError('The tutorial could not be reset in this browser. Please try again.');
     }
   }
@@ -336,8 +341,9 @@ function SettingsChangeDialog({
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    cancelButtonRef.current?.focus();
-  }, []);
+    if (isBusy) dialogRef.current?.focus();
+    else cancelButtonRef.current?.focus();
+  }, [isBusy]);
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Escape' && !isBusy) {
@@ -346,7 +352,12 @@ function SettingsChangeDialog({
       return;
     }
 
-    if (event.key !== 'Tab' || isBusy) return;
+    if (event.key !== 'Tab') return;
+    if (isBusy) {
+      event.preventDefault();
+      dialogRef.current?.focus();
+      return;
+    }
     const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
     if (focusable.length === 0) return;
 
@@ -368,7 +379,7 @@ function SettingsChangeDialog({
 
   return (
     <div className="modal-backdrop">
-      <div aria-describedby="settings-change-description" aria-labelledby="settings-change-title" aria-modal="true" className="confirmation-dialog" onKeyDown={handleKeyDown} ref={dialogRef} role="alertdialog">
+      <div aria-describedby="settings-change-description" aria-labelledby="settings-change-title" aria-modal="true" className="confirmation-dialog" onKeyDown={handleKeyDown} ref={dialogRef} role="alertdialog" tabIndex={-1}>
         <p className="eyebrow">Confirm settings change</p>
         <h2 id="settings-change-title">Clear the current scan?</h2>
         <p id="settings-change-description">{description}</p>

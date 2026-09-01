@@ -216,6 +216,9 @@ test('a completed scan survives navigation and changed settings require an acces
 
 test('a player-started scan completes while Settings is open and changed settings cancel an active scan', async ({ page }) => {
   let deleteRequests = 0;
+  let signalDeleteStarted: (() => void) | undefined;
+  let releaseDelete: (() => void) | undefined;
+  const deleteStarted = new Promise<void>((resolve) => { signalDeleteStarted = resolve; });
   await page.route('**/api/recommendations/scan', async (route) => {
     if (route.request().method() === 'POST') {
       await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify(running) });
@@ -226,6 +229,8 @@ test('a player-started scan completes while Settings is open and changed setting
       return;
     }
     deleteRequests += 1;
+    signalDeleteStarted?.();
+    await new Promise<void>((resolve) => { releaseDelete = resolve; });
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify(cancelled) });
   });
   await page.goto('/');
@@ -243,6 +248,12 @@ test('a player-started scan completes while Settings is open and changed setting
   await page.getByRole('button', { name: 'Save settings' }).click();
   await expect(page.getByRole('alertdialog')).toContainText('cancel the active scan');
   await page.getByRole('button', { name: 'Cancel scan and save settings' }).click();
+  await deleteStarted;
+  const busyDialog = page.getByRole('alertdialog');
+  await expect(busyDialog).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(busyDialog).toBeFocused();
+  releaseDelete?.();
 
   await expect(page.getByRole('status')).toContainText('No scan has run yet.');
   expect(deleteRequests).toBe(1);

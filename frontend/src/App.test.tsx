@@ -420,6 +420,9 @@ describe('M9 beginner experience', () => {
     expect(screen.getByRole('alertdialog')).toHaveTextContent('cancel the active scan');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel scan and save settings' }));
     expect(screen.getByRole('button', { name: 'Cancelling scan…' })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toHaveFocus());
+    fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Tab' });
+    expect(screen.getByRole('alertdialog')).toHaveFocus();
 
     await act(async () => { resolveStart?.(response(runningSnapshot)); });
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
@@ -481,6 +484,22 @@ describe('M9 beginner experience', () => {
     await waitFor(() => expect(screen.getByText('A short guided setup')).toBeVisible());
     expect(fetchMock).toHaveBeenLastCalledWith('/api/recommendations/scan', { method: 'DELETE' });
     expect(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY)).toBeNull();
+  });
+
+  it('explains when tutorial reset could not safely cancel an active scan', async () => {
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
+    fetchMock.mockResolvedValueOnce(response(runningSnapshot, 409));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel scan' })).toBeVisible());
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset tutorial' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('active scan could not be cancelled safely'));
+    expect(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY)).not.toBeNull();
   });
 
   it('keeps retired browser paths unavailable', () => {
