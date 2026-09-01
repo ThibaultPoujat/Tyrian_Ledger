@@ -23,8 +23,11 @@ export function resolveMarketSnapshotUrl(
   const deploymentBase = new URL(baseUrl, currentOrigin);
   const path = configuredPath?.trim() || 'market-snapshot.json';
   const resolved = new URL(path, deploymentBase);
-  if (resolved.origin !== deploymentBase.origin) {
-    throw new Error('The configured market snapshot path must stay on this static site.');
+  const deploymentBasePath = deploymentBase.pathname.endsWith('/')
+    ? deploymentBase.pathname
+    : `${deploymentBase.pathname}/`;
+  if (resolved.origin !== deploymentBase.origin || !resolved.pathname.startsWith(deploymentBasePath)) {
+    throw new Error('The configured market snapshot path must stay within this static site deployment base.');
   }
 
   return resolved.toString();

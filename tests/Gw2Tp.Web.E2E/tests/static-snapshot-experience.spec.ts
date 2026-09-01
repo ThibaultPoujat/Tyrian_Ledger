@@ -30,7 +30,9 @@ test('uses one fresh static snapshot to calculate recommendations locally withou
   await fulfillSnapshot(page);
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.pathname.includes('/api/') || url.hostname.endsWith('guildwars2.com')) prohibitedRequests.push(request.url());
+    if (url.pathname === '/api' || url.pathname.startsWith('/api/') || url.hostname.endsWith('guildwars2.com')) {
+      prohibitedRequests.push(request.url());
+    }
   });
 
   await page.goto('/');

@@ -403,7 +403,7 @@ function RecommendationCard({ recommendation }: { recommendation: SnapshotRecomm
         <div><dt>Modeled profit</dt><dd>{formatCopper(recommendation.modeledProfitCopper)}</dd></div>
         <div><dt>Modeled ROI</dt><dd>{formatModeledRoi(recommendation.modeledRoi)}</dd></div>
       </dl>
-      <p className="snapshot-time">Snapshot generated: {formatSnapshotTime(recommendation.scanCompletedAtUtc)}</p>
+      <p className="snapshot-time">Snapshot generated: {formatSnapshotTime(recommendation.snapshotGeneratedAtUtc)}</p>
       <div className="manual-steps"><h4>Manual in-game steps</h4><ol>{manualSteps.map((step) => <li key={step}>{step}</li>)}</ol></div>
       <p className="card-disclaimer">This is modeled guidance from one published market snapshot. It does not guarantee a fill, sale, or profit.</p>
       <ul className="assumption-list" aria-label="Recommendation assumptions">{recommendation.assumptions.map((assumption) => <li key={assumption}>{assumptionMessage(assumption)}</li>)}</ul>

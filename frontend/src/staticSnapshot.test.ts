@@ -37,8 +37,11 @@ describe('static market snapshot loading', () => {
     expect(resolveMarketSnapshotUrl('/Tyrian_Ledger/', 'assets/current.json', 'https://example.github.io')).toBe(
       'https://example.github.io/Tyrian_Ledger/assets/current.json',
     );
+    expect(() => resolveMarketSnapshotUrl('/Tyrian_Ledger/', '../other-repo/market-snapshot.json', 'https://example.github.io')).toThrow(
+      'must stay within this static site deployment base',
+    );
     expect(() => resolveMarketSnapshotUrl('/', 'https://api.guildwars2.com/v2/items', 'https://example.github.io')).toThrow(
-      'must stay on this static site',
+      'must stay within this static site deployment base',
     );
   });
 
