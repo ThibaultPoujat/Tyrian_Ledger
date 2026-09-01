@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Application.Time;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,6 +47,28 @@ public static class Gw2ApiServiceCollectionExtensions
             serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
             serviceProvider.GetRequiredService<IMarketDataDiagnosticsRecorder>()));
         services.AddSingleton<IGw2ApiClient, BatchingGw2ApiClient>();
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the read-only public market gateway for static snapshot
+    /// capture. These limits are local capture policy and deliberately do not
+    /// assert an upstream Guild Wars 2 quota.
+    /// </summary>
+    public static IServiceCollection AddTyrianLedgerMarketSnapshotGateway(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        services.AddTyrianLedgerGw2ApiClient(configuration);
+        services.PostConfigure<Gw2ApiSchedulerOptions>(options =>
+        {
+            options.RateLimit.RefillTokensPerSecond = MarketSnapshotCapturePolicy.RequestsPerSecond;
+            options.RateLimit.MaxConcurrentRequests = MarketSnapshotCapturePolicy.MaxConcurrentRequests;
+            options.RateLimit.BurstSize = MarketSnapshotCapturePolicy.BurstBudget;
+        });
         return services;
     }
 }

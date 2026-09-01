@@ -21,6 +21,7 @@
 - `docs/rate-limiting/rate-limit-policy.md`
 - `docs/security/security.md`
 - `docs/specs/project-spec.md`
+- `docs/specs/market-snapshot-contract.md`
 - `docs/specs/verified-external-notes.md`
 - `docs/testing/testing-strategy.md`
 - `docs/ux/ux.md`

@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Application.Scans;
 using Gw2Tp.Infrastructure.Gw2Api;
@@ -13,6 +14,7 @@ builder.Services.AddValidation();
 builder.Services.AddTyrianLedgerGw2ApiClient(builder.Configuration);
 builder.Services.AddTyrianLedgerUserSessionPreferences(builder.Configuration, builder.Environment);
 builder.Services.AddSingleton<BeginnerRecommendationEngine>();
+builder.Services.AddSingleton<PublicMarketSnapshotCollector>();
 builder.Services.AddSingleton<IPlayerMarketScanLifecycle, PlayerMarketScanLifecycle>();
 var app = builder.Build();
 

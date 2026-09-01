@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Application.Preferences;
 using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Application.Scans;
@@ -261,9 +262,8 @@ public sealed class PlayerMarketScanLifecycleTests
 
         Assert.Equal(
         [
-            typeof(IGw2ApiClient),
+            typeof(PublicMarketSnapshotCollector),
             typeof(BeginnerRecommendationEngine),
-            typeof(Gw2Tp.Application.Time.IClock),
         ],
         parameterTypes);
         Assert.DoesNotContain(typeof(IUserSessionPreferencesStore), parameterTypes);
@@ -273,9 +273,8 @@ public sealed class PlayerMarketScanLifecycleTests
     }
 
     private static PlayerMarketScanLifecycle CreateLifecycle(StubMarketDataClient client) => new(
-        client,
-        new BeginnerRecommendationEngine(),
-        new FrozenClock(ScanTime));
+        new PublicMarketSnapshotCollector(client, new FrozenClock(ScanTime)),
+        new BeginnerRecommendationEngine());
 
     private static PlayerMarketScanRequest Request() => new(
         new Money(22_000),
