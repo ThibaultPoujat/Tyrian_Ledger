@@ -172,6 +172,94 @@ test('a rate-limit outcome stays empty until the player retries', async ({ page 
   expect(scanAttempts).toBe(2);
 });
 
+test('a completed scan survives navigation and changed settings require an accessible confirmation', async ({ page }) => {
+  await fulfillJson(page, complete, 202);
+  await page.goto('/');
+  await completeSetup(page);
+  await page.getByRole('button', { name: 'Scan the market' }).click();
+  await expect(page.getByRole('heading', { name: 'Browser item 1' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Object.keys(window.localStorage))).toEqual(['tyrian-ledger.m9.settings.v1']);
+
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('textbox', { name: 'Gold', exact: true }).fill('13');
+  await page.getByRole('button', { name: 'Save settings' }).click();
+  const dialog = page.getByRole('alertdialog');
+  const keepButton = page.getByRole('button', { name: 'Keep current settings' });
+  await expect(dialog).toContainText('remove the current scan result');
+  await expect(keepButton).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.getByRole('button', { name: 'Save new settings and clear scan' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(keepButton).toBeFocused();
+  await expect(new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+    .analyze()).resolves.toMatchObject({ violations: [] });
+  await page.keyboard.press('Escape');
+
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Gold', exact: true })).toHaveValue('13');
+  await expect(page.getByRole('button', { name: 'Save settings' })).toBeFocused();
+  await page.getByRole('link', { name: 'Recommendations' }).click();
+  await expect(page.getByRole('heading', { name: 'Browser item 1' })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await page.goForward();
+  await expect(page.getByRole('heading', { name: 'Browser item 1' })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('textbox', { name: 'Gold', exact: true }).fill('13');
+  await page.getByRole('button', { name: 'Save settings' }).click();
+  await page.getByRole('button', { name: 'Save new settings and clear scan' }).click();
+  await expect(page.getByRole('status')).toContainText('No scan has run yet.');
+  await expect(page.getByRole('heading', { name: 'Browser item 1' })).toHaveCount(0);
+});
+
+test('a player-started scan completes while Settings is open and changed settings cancel an active scan', async ({ page }) => {
+  let deleteRequests = 0;
+  let signalDeleteStarted: (() => void) | undefined;
+  let releaseDelete: (() => void) | undefined;
+  const deleteStarted = new Promise<void>((resolve) => { signalDeleteStarted = resolve; });
+  await page.route('**/api/recommendations/scan', async (route) => {
+    if (route.request().method() === 'POST') {
+      await route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify(running) });
+      return;
+    }
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ contentType: 'application/json', body: JSON.stringify(complete) });
+      return;
+    }
+    deleteRequests += 1;
+    signalDeleteStarted?.();
+    await new Promise<void>((resolve) => { releaseDelete = resolve; });
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify(cancelled) });
+  });
+  await page.goto('/');
+  await completeSetup(page);
+
+  await page.getByRole('button', { name: 'Scan the market' }).click();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.waitForTimeout(1_100);
+  await page.getByRole('link', { name: 'Recommendations' }).click();
+  await expect(page.getByRole('heading', { name: 'Browser item 1' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Scan the market' }).click();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('radio', { name: /Adventurous/ }).check();
+  await page.getByRole('button', { name: 'Save settings' }).click();
+  await expect(page.getByRole('alertdialog')).toContainText('cancel the active scan');
+  await page.getByRole('button', { name: 'Cancel scan and save settings' }).click();
+  await deleteStarted;
+  const busyDialog = page.getByRole('alertdialog');
+  await expect(busyDialog).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(busyDialog).toBeFocused();
+  releaseDelete?.();
+
+  await expect(page.getByRole('status')).toContainText('No scan has run yet.');
+  expect(deleteRequests).toBe(1);
+  await expect(page.getByRole('heading', { name: 'Browser item 1' })).toHaveCount(0);
+});
+
 test('keyboard setup flow and completed recommendations pass WCAG 2.2 AA automated checks', async ({ page }) => {
   await fulfillJson(page, complete, 202);
   await page.goto('/');

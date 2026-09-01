@@ -294,6 +294,214 @@ describe('M9 beginner experience', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps a completed scan in memory while navigating, but not after an app reload', async () => {
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
+    const firstApp = render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible());
+    expect(window.localStorage.length).toBe(1);
+    expect(window.localStorage.key(0)).toBe(M9_SETTINGS_STORAGE_KEY);
+
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
+    fireEvent.click(screen.getByRole('link', { name: 'Recommendations' }));
+    expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible();
+
+    firstApp.unmount();
+    render(<App />);
+    expect(screen.queryByRole('heading', { name: 'Item 1' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('No scan has run yet.');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('continues polling a player-started scan while Settings is open', async () => {
+    vi.useFakeTimers();
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
+    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(SCAN_STATUS_POLL_INTERVAL_MS); });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('link', { name: 'Recommendations' }));
+    expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible();
+  });
+
+  it('saves unchanged settings without prompting or clearing a completed result', async () => {
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible());
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('confirms completed-result invalidation and retains cards when the player cancels', async () => {
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible());
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.change(screen.getByLabelText('Gold', { exact: true }), { target: { value: '13' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(dialog).toHaveTextContent('remove the current scan result');
+    const keepButton = screen.getByRole('button', { name: 'Keep current settings' });
+    const confirmButton = screen.getByRole('button', { name: 'Save new settings and clear scan' });
+    expect(keepButton).toHaveFocus();
+    fireEvent.keyDown(keepButton, { key: 'Tab', shiftKey: true });
+    expect(confirmButton).toHaveFocus();
+    fireEvent.keyDown(confirmButton, { key: 'Tab' });
+    expect(keepButton).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Gold', { exact: true })).toHaveValue('13');
+    await waitFor(() => expect(document.getElementById('save-settings')).toHaveFocus());
+    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({ capital: { gold: '12' } });
+
+    fireEvent.click(screen.getByRole('link', { name: 'Recommendations' }));
+    expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible();
+  });
+
+  it('clears completed cards only after the player confirms changed settings', async () => {
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response(completeSnapshot()));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Item 1' })).toBeVisible());
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.change(screen.getByLabelText('Gold', { exact: true }), { target: { value: '13' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save new settings and clear scan' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(screen.queryByRole('heading', { name: 'Item 1' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('No scan has run yet.');
+    expect(screen.getByText('13g 34s 56c')).toBeVisible();
+    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({ capital: { gold: '13' } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels an active scan before saving changed settings and ignores the delayed start response', async () => {
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    let resolveStart: ((value: Response) => void) | undefined;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveStart = resolve; }));
+    fetchMock.mockResolvedValueOnce(response(cancelledSnapshot));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('radio', { name: /Adventurous/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('cancel the active scan');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel scan and save settings' }));
+    expect(screen.getByRole('button', { name: 'Cancelling scan…' })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toHaveFocus());
+    fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Tab' });
+    expect(screen.getByRole('alertdialog')).toHaveFocus();
+
+    await act(async () => { resolveStart?.(response(runningSnapshot)); });
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/recommendations/scan', { method: 'DELETE' });
+    expect(screen.getByText('12g 34s 56c')).toBeVisible();
+    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({ riskProfile: 'adventurous' });
+    expect(screen.queryByRole('heading', { name: 'Item 1' })).not.toBeInTheDocument();
+  });
+
+  it('keeps settings unchanged when an active scan cannot be cancelled', async () => {
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
+    fetchMock.mockResolvedValueOnce(response(runningSnapshot, 409));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel scan' })).toBeVisible());
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('radio', { name: /Adventurous/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel scan and save settings' }));
+
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toHaveTextContent('could not be cancelled safely'));
+    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({ riskProfile: 'balanced' });
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  });
+
+  it('does not save changed settings after an ambiguous start request', async () => {
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockRejectedValueOnce(new Error('Connection interrupted.'));
+    fetchMock.mockResolvedValueOnce(response(cancelledSnapshot));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('radio', { name: /Adventurous/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel scan and save settings' }));
+
+    await waitFor(() => expect(screen.getByRole('alertdialog')).toHaveTextContent('could not be cancelled safely'));
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/recommendations/scan', { method: 'DELETE' });
+    expect(JSON.parse(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY) ?? '{}')).toMatchObject({ riskProfile: 'balanced' });
+  });
+
+  it('cancels an active scan before resetting the tutorial', async () => {
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
+    fetchMock.mockResolvedValueOnce(response(cancelledSnapshot));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel scan' })).toBeVisible());
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset tutorial' }));
+
+    await waitFor(() => expect(screen.getByText('A short guided setup')).toBeVisible());
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/recommendations/scan', { method: 'DELETE' });
+    expect(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY)).toBeNull();
+  });
+
+  it('explains when tutorial reset could not safely cancel an active scan', async () => {
+    storeSettings();
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response(runningSnapshot));
+    fetchMock.mockResolvedValueOnce(response(runningSnapshot, 409));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel scan' })).toBeVisible());
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset tutorial' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('active scan could not be cancelled safely'));
+    expect(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY)).not.toBeNull();
+  });
+
   it('keeps retired browser paths unavailable', () => {
     window.history.replaceState({}, '', '/history');
     render(<App />);
