@@ -14,7 +14,7 @@ import {
 
 const runningSnapshot: ScanSnapshot = {
   state: 'running',
-  progress: { stage: 'reading-finalist-listings', finalistCount: 2 },
+  progress: { stage: 'reading-finalist-listings', finalistCount: 1 },
   isRetryable: false,
   result: null,
 };
@@ -188,7 +188,7 @@ describe('M9 beginner experience', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
     await act(async () => {});
 
-    expect(screen.getByRole('status')).toHaveTextContent('2 finalists need detailed checks');
+    expect(screen.getByRole('status')).toHaveTextContent('1 finalist needs detailed checks');
     expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/recommendations/scan', expect.objectContaining({
       method: 'POST', body: JSON.stringify({ capitalCopper: 123_456, riskProfile: 'balanced' }),
     }));
@@ -259,6 +259,32 @@ describe('M9 beginner experience', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry scan' }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'No suggestions right now' })).toBeVisible());
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  });
+
+  it('rejects malformed count values from an untrusted scan response', async () => {
+    storeSettings();
+    const invalidProgress: ScanSnapshot = {
+      ...runningSnapshot,
+      progress: { stage: 'reading-finalist-listings', finalistCount: -1 },
+    };
+    const invalidRouteEvidence = completeSnapshot();
+    invalidRouteEvidence.result!.placeOrderAndWait[0] = {
+      ...invalidRouteEvidence.result!.placeOrderAndWait[0],
+      routeEvidence: { sellerQuantityAtOrBelowBuyPrice: -1, coversSelectedQuantity: false },
+    };
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(response(invalidProgress));
+    fetchMock.mockResolvedValueOnce(response(invalidRouteEvidence));
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Scan the market' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('The scan could not be started.'));
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry scan' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('The scan could not be started.'));
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('keeps retired browser paths unavailable', () => {

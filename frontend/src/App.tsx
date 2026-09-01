@@ -369,7 +369,8 @@ function progressMessage(stage: string | undefined, finalistCount: number | null
     'calculating-recommendations': 'Calculating modeled costs, fees, and returns.',
   };
   const base = stageMessage[stage ?? ''] ?? 'Checking the current public market.';
-  return finalistCount === null ? base : `${base} ${finalistCount} finalists need detailed checks.`;
+  if (finalistCount === null) return base;
+  return `${base} ${finalistCount} finalist${finalistCount === 1 ? ' needs' : 's need'} detailed checks.`;
 }
 
 function terminalMessage(state: ScanSnapshot['state']): string {

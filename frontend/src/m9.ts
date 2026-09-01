@@ -266,7 +266,7 @@ function isScanProgress(value: unknown): value is ScanProgress {
   if (value === null || typeof value !== 'object') return false;
   const candidate = value as Partial<ScanProgress>;
   return typeof candidate.stage === 'string' &&
-    (candidate.finalistCount === null || typeof candidate.finalistCount === 'number');
+    (candidate.finalistCount === null || isNonNegativeSafeInteger(candidate.finalistCount));
 }
 
 function isCompletedScanResult(value: unknown): value is CompletedScanResult {
@@ -302,8 +302,12 @@ function isExactRoi(value: unknown): value is ExactRoi {
 function isRouteEvidence(value: unknown): value is RouteEvidence {
   if (value === null || typeof value !== 'object') return false;
   const candidate = value as Partial<RouteEvidence>;
-  return typeof candidate.sellerQuantityAtOrBelowBuyPrice === 'number' &&
+  return isNonNegativeSafeInteger(candidate.sellerQuantityAtOrBelowBuyPrice) &&
     typeof candidate.coversSelectedQuantity === 'boolean';
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
 function hasNumbers(value: object, fields: string[]): boolean {

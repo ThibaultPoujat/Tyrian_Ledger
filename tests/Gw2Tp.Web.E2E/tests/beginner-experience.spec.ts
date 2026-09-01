@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 
 const running = {
   state: 'running',
-  progress: { stage: 'reading-finalist-listings', finalistCount: 2 },
+  progress: { stage: 'reading-finalist-listings', finalistCount: 1 },
   isRetryable: false,
   result: null,
 };
@@ -100,7 +100,7 @@ test('first visit guides setup through a successful manual-market scan', async (
   await expect(page.getByText('12g 34s 56c')).toBeVisible();
 
   await page.getByRole('button', { name: 'Scan the market' }).click();
-  await expect(page.getByRole('status')).toContainText('2 finalists need detailed checks');
+  await expect(page.getByRole('status')).toContainText('1 finalist needs detailed checks');
   await expect(page.getByRole('heading', { name: 'Can act now' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Place an order and wait' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Browser item 1' })).toBeVisible();
