@@ -51,11 +51,13 @@ public sealed class UserSessionPreferencesPersistenceTests
         Assert.Null(feePolicy);
     }
 
-    private static string CreateDatabasePath() => Path.Combine(
-        Path.GetTempPath(),
-        "TyrianLedger",
-        "InfrastructureTests",
-        $"preferences-{Guid.NewGuid():N}.db");
+    private static string CreateDatabasePath()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "TyrianLedger", "InfrastructureTests");
+        Directory.CreateDirectory(directory);
+
+        return Path.Combine(directory, $"preferences-{Guid.NewGuid():N}.db");
+    }
 
     private sealed class TestDbContextFactory(
         DbContextOptions<UserSessionPreferencesDbContext> options)
