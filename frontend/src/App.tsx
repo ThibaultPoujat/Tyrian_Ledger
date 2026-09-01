@@ -1,4 +1,4 @@
-import { type FormEvent, type MouseEvent, useEffect, useState } from 'react';
+import { type FormEvent, type KeyboardEvent, type MouseEvent, type SetStateAction, useCallback, useEffect, useRef, useState } from 'react';
 import './App.css';
 import {
   cancelScan,
@@ -21,6 +21,33 @@ import {
 } from './m9';
 
 type M9Route = 'recommendations' | 'settings';
+
+interface ScanSession {
+  snapshot: ScanSnapshot;
+  isStarting: boolean;
+  isCancelling: boolean;
+  requestError: string | null;
+}
+
+interface PendingSettingsChange {
+  settings: ValidatedM9Settings;
+}
+
+interface PlayerScanController {
+  session: ScanSession;
+  isActive: boolean;
+  start: (settings: ValidatedM9Settings) => Promise<void>;
+  cancel: () => Promise<void>;
+  discard: () => void;
+  cancelForSettingsChange: () => Promise<boolean>;
+}
+
+const idleScanSession: ScanSession = {
+  snapshot: idleScanSnapshot,
+  isStarting: false,
+  isCancelling: false,
+  requestError: null,
+};
 
 const profileDetails: Record<RiskProfile, { name: string; spend: string; roi: string; profit: string }> = {
   cautious: { name: 'Cautious', spend: '10% of capital', roi: '5%', profit: '10 silver' },
@@ -63,9 +90,19 @@ function navigationTarget(route: M9Route): string {
   return route === 'recommendations' ? '/recommendations' : '/settings';
 }
 
+function settingsMatch(first: ValidatedM9Settings | null, second: ValidatedM9Settings): boolean {
+  return first !== null &&
+    first.capitalCopper === second.capitalCopper &&
+    first.riskProfile === second.riskProfile;
+}
+
 export default function App() {
   const [route, setRoute] = useState<M9Route | null>(() => getRoute(window.location.pathname));
   const [settings, setSettings] = useState<ValidatedM9Settings | null>(() => loadSettings());
+  const [pendingSettingsChange, setPendingSettingsChange] = useState<PendingSettingsChange | null>(null);
+  const [isConfirmingSettingsChange, setIsConfirmingSettingsChange] = useState(false);
+  const [settingsChangeError, setSettingsChangeError] = useState<string | null>(null);
+  const scan = usePlayerScan();
 
   useEffect(() => {
     const onPopState = () => setRoute(getRoute(window.location.pathname));
@@ -82,6 +119,69 @@ export default function App() {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     navigate(target);
+  }
+
+  function commitSettings(nextSettings: ValidatedM9Settings, settingsChanged: boolean): boolean {
+    try {
+      saveSettings(nextSettings);
+    } catch {
+      return false;
+    }
+
+    if (settingsChanged) scan.discard();
+    setSettings(nextSettings);
+    navigate('recommendations');
+    return true;
+  }
+
+  function requestSettingsSave(nextSettings: ValidatedM9Settings): boolean {
+    const settingsChanged = !settingsMatch(settings, nextSettings);
+    const hasCompletedResult = scan.session.snapshot.state === 'complete' && scan.session.snapshot.result !== null;
+    if (settingsChanged && (hasCompletedResult || scan.isActive)) {
+      setSettingsChangeError(null);
+      setPendingSettingsChange({ settings: nextSettings });
+      return true;
+    }
+
+    return commitSettings(nextSettings, settingsChanged);
+  }
+
+  async function confirmSettingsChange() {
+    if (pendingSettingsChange === null) return;
+
+    setSettingsChangeError(null);
+    setIsConfirmingSettingsChange(true);
+    if (scan.isActive && !await scan.cancelForSettingsChange()) {
+      setSettingsChangeError('The active scan could not be cancelled safely. Your current settings were kept.');
+      setIsConfirmingSettingsChange(false);
+      return;
+    }
+
+    if (!commitSettings(pendingSettingsChange.settings, true)) {
+      setSettingsChangeError('Your settings could not be saved in this browser. Please try again.');
+      setIsConfirmingSettingsChange(false);
+      return;
+    }
+
+    setPendingSettingsChange(null);
+    setIsConfirmingSettingsChange(false);
+  }
+
+  function dismissSettingsChange() {
+    if (isConfirmingSettingsChange) return;
+    setPendingSettingsChange(null);
+    setSettingsChangeError(null);
+    window.setTimeout(() => document.getElementById('save-settings')?.focus());
+  }
+
+  async function resetTutorial(): Promise<boolean> {
+    if (scan.isActive && !await scan.cancelForSettingsChange()) return false;
+    if (!clearSettings()) return false;
+
+    scan.discard();
+    setSettings(null);
+    navigate('recommendations');
+    return true;
   }
 
   if (route === null) {
@@ -107,16 +207,15 @@ export default function App() {
       </header>
 
       {route === 'recommendations'
-        ? <RecommendationsPage settings={settings} onOpenSettings={() => navigate('settings')} />
-        : <SettingsPage settings={settings} onSave={(nextSettings) => {
-          setSettings(nextSettings);
-          navigate('recommendations');
-        }} onResetTutorial={() => {
-          if (!clearSettings()) return false;
-          setSettings(null);
-          navigate('recommendations');
-          return true;
-        }} />}
+        ? <RecommendationsPage scan={scan} settings={settings} onOpenSettings={() => navigate('settings')} />
+        : <SettingsPage settings={settings} onSave={requestSettingsSave} onResetTutorial={resetTutorial} />}
+      {pendingSettingsChange !== null && <SettingsChangeDialog
+        error={settingsChangeError}
+        isBusy={isConfirmingSettingsChange}
+        isCancellingScan={scan.isActive}
+        onCancel={dismissSettingsChange}
+        onConfirm={() => void confirmSettingsChange()}
+      />}
     </main>
   );
 }
@@ -127,8 +226,8 @@ function SettingsPage({
   onResetTutorial,
 }: {
   settings: ValidatedM9Settings | null;
-  onSave: (settings: ValidatedM9Settings) => void;
-  onResetTutorial: () => boolean;
+  onSave: (settings: ValidatedM9Settings) => boolean;
+  onResetTutorial: () => Promise<boolean>;
 }) {
   const [capital, setCapital] = useState<CapitalInput>(() => settings?.capital ?? { gold: '', silver: '', copper: '' });
   const [riskProfile, setRiskProfile] = useState<RiskProfile | null>(() => settings?.riskProfile ?? null);
@@ -148,18 +247,15 @@ function SettingsPage({
     setErrors(validation.errors);
     if (validation.settings === undefined) return;
 
-    try {
-      saveSettings(validation.settings);
-      onSave(validation.settings);
-    } catch {
+    if (!onSave(validation.settings)) {
       setSaveError('Your settings could not be saved in this browser. Please try again.');
     }
   }
 
-  function handleResetTutorial() {
+  async function handleResetTutorial() {
     setSaveError(null);
     setResetError(null);
-    if (!onResetTutorial()) {
+    if (!await onResetTutorial()) {
       setResetError('The tutorial could not be reset in this browser. Please try again.');
     }
   }
@@ -214,12 +310,75 @@ function SettingsPage({
         {saveError && <p className="field-error" role="alert">{saveError}</p>}
         {resetError && <p className="field-error" role="alert">{resetError}</p>}
         <div className="settings-actions">
-          <button className="primary-action" type="submit">Save settings</button>
-          <button className="secondary-action" onClick={handleResetTutorial} type="button">Reset tutorial</button>
+          <button className="primary-action" id="save-settings" type="submit">Save settings</button>
+          <button className="secondary-action" onClick={() => void handleResetTutorial()} type="button">Reset tutorial</button>
         </div>
         <p className="field-help reset-tutorial-help">This clears only your saved capital and risk on this device, then returns you to the tutorial.</p>
       </form>
     </section>
+  );
+}
+
+function SettingsChangeDialog({
+  error,
+  isBusy,
+  isCancellingScan,
+  onCancel,
+  onConfirm,
+}: {
+  error: string | null;
+  isBusy: boolean;
+  isCancellingScan: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    cancelButtonRef.current?.focus();
+  }, []);
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === 'Escape' && !isBusy) {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+
+    if (event.key !== 'Tab' || isBusy) return;
+    const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  const confirmationLabel = isCancellingScan ? 'Cancel scan and save settings' : 'Save new settings and clear scan';
+  const description = isCancellingScan
+    ? 'Changing capital or risk will cancel the active scan before the new settings are saved. No recommendations from that scan will be kept.'
+    : 'Changing capital or risk will remove the current scan result. You can scan the market again with the new settings.';
+
+  return (
+    <div className="modal-backdrop">
+      <div aria-describedby="settings-change-description" aria-labelledby="settings-change-title" aria-modal="true" className="confirmation-dialog" onKeyDown={handleKeyDown} ref={dialogRef} role="alertdialog">
+        <p className="eyebrow">Confirm settings change</p>
+        <h2 id="settings-change-title">Clear the current scan?</h2>
+        <p id="settings-change-description">{description}</p>
+        {error !== null && <p className="field-error" role="alert">{error}</p>}
+        <div className="dialog-actions">
+          <button className="secondary-action" disabled={isBusy} onClick={onCancel} ref={cancelButtonRef} type="button">Keep current settings</button>
+          <button className="primary-action" disabled={isBusy} onClick={onConfirm} type="button">{isBusy ? 'Cancelling scan…' : confirmationLabel}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -249,68 +408,12 @@ function CapitalField({
 function RecommendationsPage({
   settings,
   onOpenSettings,
+  scan,
 }: {
   settings: ValidatedM9Settings | null;
   onOpenSettings: () => void;
+  scan: PlayerScanController;
 }) {
-  const [snapshot, setSnapshot] = useState<ScanSnapshot>(idleScanSnapshot);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
-  const [requestError, setRequestError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (snapshot.state !== 'running' || isStarting || isCancelling) return;
-    let active = true;
-    let timer: number | undefined;
-    const poll = async () => {
-      try {
-        const next = safeSnapshot(await getScanStatus());
-        if (!active) return;
-        setSnapshot(next);
-        if (next.state === 'running') timer = window.setTimeout(() => void poll(), SCAN_STATUS_POLL_INTERVAL_MS);
-      } catch {
-        if (!active) return;
-        setRequestError('The scan status could not be checked. No recommendations were kept.');
-        setSnapshot({ state: 'failed', progress: null, isRetryable: true, result: null });
-      }
-    };
-
-    timer = window.setTimeout(() => void poll(), SCAN_STATUS_POLL_INTERVAL_MS);
-    return () => {
-      active = false;
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
-  }, [isCancelling, isStarting, snapshot.state]);
-
-  async function handleStart() {
-    if (settings === null) return;
-    setRequestError(null);
-    setSnapshot(idleScanSnapshot);
-    setIsStarting(true);
-    try {
-      setSnapshot(safeSnapshot(await startScan(settings)));
-    } catch {
-      setRequestError('The scan could not be started. No recommendations were kept.');
-      setSnapshot({ state: 'failed', progress: null, isRetryable: true, result: null });
-    } finally {
-      setIsStarting(false);
-    }
-  }
-
-  async function handleCancel() {
-    setRequestError(null);
-    setIsCancelling(true);
-    setSnapshot((current) => ({ ...current, result: null }));
-    try {
-      setSnapshot(safeCancelledSnapshot(await cancelScan()));
-    } catch {
-      setRequestError('The scan could not be cancelled safely. No recommendations were kept.');
-      setSnapshot({ state: 'failed', progress: null, isRetryable: true, result: null });
-    } finally {
-      setIsCancelling(false);
-    }
-  }
-
   if (settings === null) {
     return (
       <section aria-labelledby="recommendations-title" className="m9-panel guided-setup">
@@ -324,6 +427,7 @@ function RecommendationsPage({
   }
 
   const profile = profileDetails[settings.riskProfile];
+  const { snapshot, isStarting, isCancelling, requestError } = scan.session;
   return (
     <section aria-labelledby="recommendations-title" className="recommendations-page">
       <div className="page-heading">
@@ -336,14 +440,191 @@ function RecommendationsPage({
       </div>
 
       <div className="scan-actions">
-        <button className="primary-action" disabled={isStarting || isCancelling || snapshot.state === 'running'} onClick={() => void handleStart()} type="button">{isStarting ? 'Starting scan…' : 'Scan the market'}</button>
-        {snapshot.state === 'running' && !isStarting && <button className="secondary-action" disabled={isCancelling} onClick={() => void handleCancel()} type="button">{isCancelling ? 'Cancelling scan…' : 'Cancel scan'}</button>}
+        <button className="primary-action" disabled={isStarting || isCancelling || snapshot.state === 'running'} onClick={() => void scan.start(settings)} type="button">{isStarting ? 'Starting scan…' : 'Scan the market'}</button>
+        {snapshot.state === 'running' && !isStarting && <button className="secondary-action" disabled={isCancelling} onClick={() => void scan.cancel()} type="button">{isCancelling ? 'Cancelling scan…' : 'Cancel scan'}</button>}
       </div>
 
-      <ScanStateNotice isCancelling={isCancelling} isStarting={isStarting} onRetry={() => void handleStart()} requestError={requestError} snapshot={snapshot} />
+      <ScanStateNotice isCancelling={isCancelling} isStarting={isStarting} onRetry={() => void scan.start(settings)} requestError={requestError} snapshot={snapshot} />
       {snapshot.state === 'complete' && snapshot.result !== null && <RecommendationResults result={snapshot.result} />}
     </section>
   );
+}
+
+function usePlayerScan(): PlayerScanController {
+  const [session, setScanSession] = useState<ScanSession>(idleScanSession);
+  const sessionRef = useRef(session);
+  const generationRef = useRef(0);
+  const startTaskRef = useRef<Promise<ScanSnapshot> | null>(null);
+
+  const updateSession = useCallback((next: SetStateAction<ScanSession>) => {
+    setScanSession((current) => {
+      const resolved = typeof next === 'function'
+        ? (next as (current: ScanSession) => ScanSession)(current)
+        : next;
+      sessionRef.current = resolved;
+      return resolved;
+    });
+  }, []);
+
+  const discard = useCallback(() => {
+    generationRef.current += 1;
+    updateSession(idleScanSession);
+  }, [updateSession]);
+
+  useEffect(() => () => {
+    generationRef.current += 1;
+  }, []);
+
+  useEffect(() => {
+    if (session.snapshot.state !== 'running' || session.isStarting || session.isCancelling) return;
+
+    let active = true;
+    let timer: number | undefined;
+    const generation = generationRef.current;
+    const poll = async () => {
+      try {
+        const next = safeSnapshot(await getScanStatus());
+        if (!active || generation !== generationRef.current) return;
+        updateSession((current) => ({ ...current, snapshot: next, requestError: null }));
+        if (next.state === 'running') timer = window.setTimeout(() => void poll(), SCAN_STATUS_POLL_INTERVAL_MS);
+      } catch {
+        if (!active || generation !== generationRef.current) return;
+        updateSession({
+          snapshot: { state: 'failed', progress: null, isRetryable: true, result: null },
+          isStarting: false,
+          isCancelling: false,
+          requestError: 'The scan status could not be checked. No recommendations were kept.',
+        });
+      }
+    };
+
+    timer = window.setTimeout(() => void poll(), SCAN_STATUS_POLL_INTERVAL_MS);
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [session.isCancelling, session.isStarting, session.snapshot.state, updateSession]);
+
+  const start = useCallback(async (settings: ValidatedM9Settings) => {
+    const current = sessionRef.current;
+    if (current.isStarting || current.isCancelling || current.snapshot.state === 'running') return;
+
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    updateSession({ ...idleScanSession, isStarting: true });
+    const task = startScan(settings).then(safeSnapshot);
+    startTaskRef.current = task;
+    try {
+      const next = await task;
+      if (generation !== generationRef.current) return;
+      updateSession({ snapshot: next, isStarting: false, isCancelling: false, requestError: null });
+    } catch {
+      if (generation !== generationRef.current) return;
+      updateSession({
+        snapshot: { state: 'failed', progress: null, isRetryable: true, result: null },
+        isStarting: false,
+        isCancelling: false,
+        requestError: 'The scan could not be started. No recommendations were kept.',
+      });
+    } finally {
+      if (startTaskRef.current === task) startTaskRef.current = null;
+    }
+  }, [updateSession]);
+
+  const cancel = useCallback(async () => {
+    if (sessionRef.current.snapshot.state !== 'running' || sessionRef.current.isStarting || sessionRef.current.isCancelling) return;
+
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    updateSession((current) => ({
+      ...current,
+      snapshot: { ...current.snapshot, result: null },
+      isCancelling: true,
+      requestError: null,
+    }));
+    try {
+      const next = safeCancelledSnapshot(await cancelScan());
+      if (generation !== generationRef.current) return;
+      updateSession({ snapshot: next, isStarting: false, isCancelling: false, requestError: null });
+    } catch {
+      if (generation !== generationRef.current) return;
+      updateSession({
+        snapshot: { state: 'failed', progress: null, isRetryable: true, result: null },
+        isStarting: false,
+        isCancelling: false,
+        requestError: 'The scan could not be cancelled safely. No recommendations were kept.',
+      });
+    }
+  }, [updateSession]);
+
+  const cancelForSettingsChange = useCallback(async (): Promise<boolean> => {
+    const source = sessionRef.current;
+    if (!source.isStarting && source.snapshot.state !== 'running') return true;
+
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    updateSession((current) => ({
+      ...current,
+      snapshot: { ...current.snapshot, result: null },
+      isCancelling: true,
+      requestError: null,
+    }));
+
+    const markCancellationFailure = () => {
+      if (generation === generationRef.current) {
+        updateSession({
+          snapshot: { state: 'failed', progress: null, isRetryable: true, result: null },
+          isStarting: false,
+          isCancelling: false,
+          requestError: 'The active scan could not be cancelled safely. Your settings were not changed.',
+        });
+      }
+    };
+
+    const startTask = startTaskRef.current;
+    let startedSnapshot: ScanSnapshot | null = null;
+    if (source.isStarting && startTask === null) {
+      markCancellationFailure();
+      return false;
+    }
+
+    if (startTask !== null) {
+      try {
+        startedSnapshot = await startTask;
+      } catch {
+        try {
+          await cancelScan();
+        } catch {
+          // The original request is still ambiguous either way, so settings stay unchanged.
+        }
+        markCancellationFailure();
+        return false;
+      }
+    }
+
+    const needsCancellation = (startedSnapshot ?? source.snapshot).state === 'running';
+    if (needsCancellation) {
+      try {
+        const terminalSnapshot = safeSnapshot(await cancelScan());
+        if (terminalSnapshot.state === 'running') throw new Error('Scan is still active.');
+      } catch {
+        markCancellationFailure();
+        return false;
+      }
+    }
+
+    if (generation === generationRef.current) updateSession(idleScanSession);
+    return true;
+  }, [updateSession]);
+
+  return {
+    session,
+    isActive: session.isStarting || session.isCancelling || session.snapshot.state === 'running',
+    start,
+    cancel,
+    discard,
+    cancelForSettingsChange,
+  };
 }
 
 function ScanStateNotice({

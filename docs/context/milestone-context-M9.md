@@ -43,6 +43,10 @@ Recommendations -> player manually creates the in-game orders.
   post-trade tracking is provided.
 - Navigation is Recommendations and Settings. First visit uses guided,
   plain-language setup. Cards provide numbered manual steps but no copy button.
+- Keep only the current scan session in browser memory while navigating within
+  a tab; never store scan progress, outcomes, or recommendations. A setting
+  change that would invalidate a completed result requires confirmation, and
+  an active scan is cancelled before such a change is saved.
 - A normal item stack is a fixed M9 product cap of 250. The public
   `/v2/items` response supplies item identity and display name but not a
   per-item stack-limit field; this cap is not represented as ArenaNet data.
