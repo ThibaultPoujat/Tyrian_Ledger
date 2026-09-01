@@ -41,6 +41,7 @@ public sealed class BeginnerRecommendationEngineTests
         Assert.Equal(new Money(expectedListingFeeCopper * 2), recommendation.ExchangeFee);
         Assert.Equal(ScanTime.ToUniversalTime(), recommendation.ScanCompletedAtUtc);
         Assert.Equal(BeginnerRecommendationRoute.PlaceOrderAndWait, recommendation.Route);
+        Assert.Contains(BeginnerRecommendationAssumption.CurrentOrderBookDepthAndSpreadGuard, recommendation.Assumptions);
         Assert.Contains(BeginnerRecommendationAssumption.FeeRoundingPendingExternalVerification, recommendation.Assumptions);
     }
 
@@ -164,6 +165,30 @@ public sealed class BeginnerRecommendationEngineTests
     }
 
     [Fact]
+    public void Rejects_candidates_without_minimum_detailed_order_book_depth()
+    {
+        var tooFewListings = new BeginnerRecommendationCandidate(
+            Metadata(1),
+            new MarketListing(1, [Level(100, 999, listings: 2)], [Level(100, 2_001, listings: 3)]));
+        var tooFewUnits = new BeginnerRecommendationCandidate(
+            Metadata(2),
+            new MarketListing(2, [Level(9, 999)], [Level(100, 2_001)]));
+        var sparseOutlier = new BeginnerRecommendationCandidate(
+            Metadata(3),
+            new MarketListing(3, [Level(100, 20_036)], [Level(1, 4_420_033, listings: 1)]));
+
+        var result = engine.Calculate(Request(
+            1_000_000,
+            BeginnerRiskProfile.Adventurous,
+            tooFewListings,
+            tooFewUnits,
+            sparseOutlier,
+            StandardCandidate(itemId: 4)));
+
+        Assert.Equal(4, Assert.Single(result.Recommendations).ItemId);
+    }
+
+    [Fact]
     public void Rejects_duplicate_item_inputs_to_keep_results_independent()
     {
         Assert.Throws<ArgumentException>(() => engine.Calculate(Request(
@@ -276,8 +301,8 @@ public sealed class BeginnerRecommendationEngineTests
         $"Item {itemId}",
         MarketItemStackPolicy.NormalStackLimit);
 
-    private static MarketOrderLevel Level(int quantity, int unitPriceInCopper) => new(
-        Listings: 1,
+    private static MarketOrderLevel Level(int quantity, int unitPriceInCopper, int listings = 3) => new(
+        Listings: listings,
         Quantity: quantity,
         UnitPriceInCopper: unitPriceInCopper);
 }

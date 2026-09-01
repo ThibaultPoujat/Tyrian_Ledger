@@ -60,6 +60,7 @@ function card(rank: number, route: 'can-act-now' | 'place-order-and-wait') {
     },
     assumptions: [
       'current-order-book-snapshot-only',
+      'current-order-book-depth-and-spread-guard',
       'manual-in-game-orders-required',
       'no-execution-sale-or-profit-guarantee',
     ],
@@ -96,6 +97,10 @@ test('first visit guides setup through a successful manual-market scan', async (
 
   await expect(page.getByText('A short guided setup')).toBeVisible();
   await expect(page.getByText(/always create every buy order and sell listing yourself/i)).toBeVisible();
+  await page.getByRole('button', { name: 'Set up my capital and risk' }).click();
+  await expect(page.getByRole('table', { name: 'Risk profile limits' })).toContainText('Adventurous');
+  await expect(page.getByRole('table', { name: 'Risk profile limits' })).toContainText('50% of capital');
+  await page.goBack();
   await completeSetup(page);
   await expect(page.getByText('12g 34s 56c')).toBeVisible();
 
@@ -105,6 +110,7 @@ test('first visit guides setup through a successful manual-market scan', async (
   await expect(page.getByRole('heading', { name: 'Place an order and wait' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Browser item 1' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Manual in-game steps' }).first()).toBeVisible();
+  await expect(page.getByText(/Passed fixed current order-book depth and relative-spread checks/i).first()).toBeVisible();
   await expect(page.getByRole('button', { name: /copy/i })).toHaveCount(0);
 });
 

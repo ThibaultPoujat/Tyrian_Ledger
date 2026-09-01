@@ -13,6 +13,7 @@ public sealed class BeginnerRecommendationEngine
     private static readonly IReadOnlyList<BeginnerRecommendationAssumption> Assumptions = Array.AsReadOnly(
     [
         BeginnerRecommendationAssumption.CurrentOrderBookSnapshotOnly,
+        BeginnerRecommendationAssumption.CurrentOrderBookDepthAndSpreadGuard,
         BeginnerRecommendationAssumption.ManualInGameOrdersRequired,
         BeginnerRecommendationAssumption.NoExecutionSaleOrProfitGuarantee,
         BeginnerRecommendationAssumption.FeeRoundingPendingExternalVerification,
@@ -82,6 +83,11 @@ public sealed class BeginnerRecommendationEngine
 
         try
         {
+            if (!HasMinimumDetailedOrderBookDepth(listing))
+            {
+                return null;
+            }
+
             var buyUnitPrice = new Money(checked((long)bestBuyerPrice + 1));
             var saleUnitPrice = new Money(checked((long)cheapestSellerPrice - 1));
             var maximumQuantity = GetMaximumQuantity(item.NormalStackLimit, spendCap, buyUnitPrice);
@@ -150,6 +156,23 @@ public sealed class BeginnerRecommendationEngine
 
     private static bool IsValidOrderLevel(MarketOrderLevel? level) =>
         level is not null && level.Quantity > 0 && level.UnitPriceInCopper > 0 && level.Listings > 0;
+
+    private static bool HasMinimumDetailedOrderBookDepth(MarketListing listing) =>
+        HasMinimumSideDepth(listing.Buys) && HasMinimumSideDepth(listing.Sells);
+
+    private static bool HasMinimumSideDepth(IReadOnlyList<MarketOrderLevel> levels)
+    {
+        long listings = 0;
+        long quantity = 0;
+        foreach (var level in levels)
+        {
+            listings = checked(listings + level.Listings);
+            quantity = checked(quantity + level.Quantity);
+        }
+
+        return listings >= BeginnerRecommendationPolicy.MinimumDetailedSideListings &&
+            quantity >= BeginnerRecommendationPolicy.MinimumDetailedSideQuantity;
+    }
 
     private static int GetMaximumQuantity(int stackLimit, Money spendCap, Money buyUnitPrice)
     {

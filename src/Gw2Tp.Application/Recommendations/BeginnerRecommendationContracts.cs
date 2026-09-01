@@ -28,6 +28,10 @@ public sealed record BeginnerRiskProfilePolicy(
 public static class BeginnerRecommendationPolicy
 {
     public const int MaximumRecommendationCount = 5;
+    public const int MinimumAggregateSideQuantity = 10;
+    public const int MaximumPlannedPriceSpreadMultiple = 2;
+    public const int MinimumDetailedSideListings = 3;
+    public const int MinimumDetailedSideQuantity = 10;
 
     public static BeginnerRiskProfilePolicy GetRiskProfilePolicy(BeginnerRiskProfile profile) => profile switch
     {
@@ -72,6 +76,7 @@ public enum BeginnerRecommendationRoute
 public enum BeginnerRecommendationAssumption
 {
     CurrentOrderBookSnapshotOnly,
+    CurrentOrderBookDepthAndSpreadGuard,
     ManualInGameOrdersRequired,
     NoExecutionSaleOrProfitGuarantee,
     FeeRoundingPendingExternalVerification,

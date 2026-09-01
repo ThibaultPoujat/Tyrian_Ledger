@@ -48,6 +48,7 @@ public sealed class PlayerMarketScanEndpointTests
         Assert.Equal(1, recommendation.GetProperty("itemId").GetInt32());
         Assert.True(recommendation.TryGetProperty("modeledProfitCopper", out _));
         Assert.True(recommendation.TryGetProperty("routeEvidence", out _));
+        Assert.Contains("current-order-book-depth-and-spread-guard", recommendation.GetProperty("assumptions").EnumerateArray().Select(value => value.GetString()));
         Assert.False(recommendation.TryGetProperty("buys", out _));
         Assert.False(recommendation.TryGetProperty("sells", out _));
         Assert.False(recommendation.TryGetProperty("whitelisted", out _));
@@ -120,6 +121,32 @@ public sealed class PlayerMarketScanEndpointTests
         await AssertScanStateAsync(failed, "failed", hasResult: false, isRetryable: true);
     }
 
+    [Fact]
+    public async Task Sparse_detailed_order_books_publish_a_complete_empty_result()
+    {
+        var gateway = new StubMarketDataClient(
+            listings: itemIds => Success(itemIds.Select(itemId => new MarketListing(
+                itemId,
+                [new MarketOrderLevel(3, 100, 999)],
+                [new MarketOrderLevel(1, 1, 4_420_033)]))));
+        using var factory = CreateFactory(gateway);
+        using var client = factory.CreateClient();
+
+        using var start = await client.PostAsJsonAsync("/api/recommendations/scan", new
+        {
+            capitalCopper = 1_000_000,
+            riskProfile = "adventurous",
+        });
+        Assert.Equal(HttpStatusCode.Accepted, start.StatusCode);
+
+        using var completed = await WaitForStateAsync(client, "complete");
+        using var document = JsonDocument.Parse(await completed.Content.ReadAsStringAsync());
+        var result = document.RootElement.GetProperty("result");
+
+        Assert.Empty(result.GetProperty("canActNow").EnumerateArray());
+        Assert.Empty(result.GetProperty("placeOrderAndWait").EnumerateArray());
+    }
+
     private static WebApplicationFactory<Program> CreateFactory(StubMarketDataClient gateway) =>
         new TestWebApplicationFactory()
             .WithWebHostBuilder(builder => builder.ConfigureServices(services =>
@@ -181,13 +208,16 @@ public sealed class PlayerMarketScanEndpointTests
     {
         private readonly Func<IReadOnlyCollection<int>, CancellationToken, Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>>> pricesAsync;
         private readonly Func<IReadOnlyCollection<int>, CancellationToken, Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>>> metadataAsync;
+        private readonly Func<IReadOnlyCollection<int>, Gw2ApiResult<IReadOnlyList<MarketListing>>> listings;
 
         public StubMarketDataClient(
             Func<IReadOnlyCollection<int>, CancellationToken, Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>>>? pricesAsync = null,
-            Func<IReadOnlyCollection<int>, CancellationToken, Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>>>? metadataAsync = null)
+            Func<IReadOnlyCollection<int>, CancellationToken, Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>>>? metadataAsync = null,
+            Func<IReadOnlyCollection<int>, Gw2ApiResult<IReadOnlyList<MarketListing>>>? listings = null)
         {
             this.pricesAsync = pricesAsync ?? ((itemIds, _) => Task.FromResult(Success(itemIds.Select(Price))));
             this.metadataAsync = metadataAsync ?? ((itemIds, _) => Task.FromResult(Success(itemIds.Select(Metadata))));
+            this.listings = listings ?? (itemIds => Success(itemIds.Select(Listing)));
         }
 
         public TaskCompletionSource MetadataStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -209,7 +239,7 @@ public sealed class PlayerMarketScanEndpointTests
         public Task<Gw2ApiResult<IReadOnlyList<MarketListing>>> GetListingsAsync(
             IReadOnlyCollection<int> itemIds,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult(Success(itemIds.Select(Listing)));
+            Task.FromResult(listings(itemIds));
 
         public async Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(
             IReadOnlyCollection<int> itemIds,
@@ -227,8 +257,8 @@ public sealed class PlayerMarketScanEndpointTests
 
         private static MarketListing Listing(int itemId) => new(
             itemId,
-            [new MarketOrderLevel(1, 100, 999)],
-            [new MarketOrderLevel(1, 100, 2_001)]);
+            [new MarketOrderLevel(3, 100, 999)],
+            [new MarketOrderLevel(3, 100, 2_001)]);
     }
 
     private static MarketItemMetadata Metadata(int itemId) => new(

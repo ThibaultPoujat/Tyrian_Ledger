@@ -62,6 +62,12 @@ input[aria-invalid='true'] { border-width: 2px; border-color: #ffbcad; }
 .field-error { margin: 0; color: #ffd2c8; font-weight: 700; }
 
 .risk-options { display: grid; gap: 0.75rem; }
+.risk-profile-table-wrapper { overflow-x: auto; margin: 0 0 1rem; }
+.risk-profile-table { width: 100%; min-width: 42rem; border-collapse: collapse; color: #eff7f2; text-align: left; }
+.risk-profile-table caption { padding: 0 0 0.65rem; color: #cfe4d6; font-weight: 700; text-align: left; }
+.risk-profile-table th, .risk-profile-table td { padding: 0.65rem; border: 1px solid #577665; vertical-align: top; }
+.risk-profile-table thead th { color: #fffaf0; background: rgb(41 70 56 / 88%); }
+.risk-profile-table tbody th { color: #fffaf0; }
 .risk-option { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem; border: 1px solid #719683; border-radius: 0.6rem; cursor: pointer; }
 .risk-option:hover { border-color: #f6d68f; background: rgb(91 139 108 / 22%); }
 .risk-option input { width: 1.2rem; height: 1.2rem; margin-top: 0.15rem; accent-color: #1c754b; }

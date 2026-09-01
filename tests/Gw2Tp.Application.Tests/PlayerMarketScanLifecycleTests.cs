@@ -56,7 +56,7 @@ public sealed class PlayerMarketScanLifecycleTests
     }
 
     [Fact]
-    public async Task Screening_selects_at_most_two_hundred_finalists_by_gap_then_item_id()
+    public async Task Screening_selects_at_most_two_hundred_finalists_by_gap_then_item_id_when_depth_is_equal()
     {
         var itemIds = Enumerable.Range(1, 205).Reverse().ToArray();
         var client = new StubMarketDataClient(
@@ -64,8 +64,8 @@ public sealed class PlayerMarketScanLifecycleTests
             prices: ids => Success(ids.Select(itemId => new MarketPrice(
                 itemId,
                 IsWhitelisted: false,
-                new MarketOrderSummary(10, 1_000),
-                new MarketOrderSummary(10, 2_000 + itemId)))));
+                new MarketOrderSummary(10, 2_000),
+                new MarketOrderSummary(10, 3_000 + itemId)))));
         var lifecycle = CreateLifecycle(client);
 
         Assert.True(lifecycle.TryStart(Request(), out _));
@@ -77,6 +77,47 @@ public sealed class PlayerMarketScanLifecycleTests
         Assert.Equal(205, finalists[0]);
         Assert.Equal(6, finalists[^1]);
         Assert.Equal(finalists, Assert.Single(client.MetadataRequests));
+    }
+
+    [Fact]
+    public async Task Screening_requires_balanced_aggregate_depth_and_planned_price_spread()
+    {
+        var client = new StubMarketDataClient(
+            itemIds: [1, 2, 3],
+            prices: _ => Success(
+            [
+                new MarketPrice(1, false, new MarketOrderSummary(10, 999), new MarketOrderSummary(10, 2_001)),
+                new MarketPrice(2, false, new MarketOrderSummary(9, 999), new MarketOrderSummary(10, 2_001)),
+                new MarketPrice(3, false, new MarketOrderSummary(10, 999), new MarketOrderSummary(10, 2_002)),
+            ]));
+        var lifecycle = CreateLifecycle(client);
+
+        Assert.True(lifecycle.TryStart(Request(), out _));
+        var completed = await WaitForTerminalAsync(lifecycle);
+
+        Assert.Equal(PlayerMarketScanState.Complete, completed.State);
+        Assert.Equal([1], Assert.Single(client.ListingRequests));
+        Assert.Equal([1], Assert.Single(client.MetadataRequests));
+    }
+
+    [Fact]
+    public async Task Screening_prioritizes_two_sided_depth_before_raw_price_gap()
+    {
+        var client = new StubMarketDataClient(
+            itemIds: [1, 2, 3],
+            prices: _ => Success(
+            [
+                new MarketPrice(1, false, new MarketOrderSummary(15, 1_000), new MarketOrderSummary(15, 1_800)),
+                new MarketPrice(2, false, new MarketOrderSummary(30, 1_000), new MarketOrderSummary(30, 1_200)),
+                new MarketPrice(3, false, new MarketOrderSummary(50, 1_000), new MarketOrderSummary(30, 1_300)),
+            ]));
+        var lifecycle = CreateLifecycle(client);
+
+        Assert.True(lifecycle.TryStart(Request(), out _));
+        var completed = await WaitForTerminalAsync(lifecycle);
+
+        Assert.Equal(PlayerMarketScanState.Complete, completed.State);
+        Assert.Equal([3, 2, 1], Assert.Single(client.ListingRequests));
     }
 
     [Theory]
@@ -334,8 +375,8 @@ public sealed class PlayerMarketScanLifecycleTests
 
         private static MarketListing StandardListing(int itemId) => new(
             itemId,
-            [new MarketOrderLevel(1, 100, 999)],
-            [new MarketOrderLevel(1, 100, 2_001)]);
+            [new MarketOrderLevel(3, 100, 999)],
+            [new MarketOrderLevel(3, 100, 2_001)]);
 
         private static MarketItemMetadata StandardMetadata(int itemId) => new(
             itemId,
