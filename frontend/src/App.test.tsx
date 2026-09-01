@@ -157,6 +157,21 @@ describe('M9 beginner experience', () => {
     expect(window.localStorage.length).toBe(1);
   });
 
+  it('resets the tutorial by removing only the saved M9 settings', () => {
+    storeSettings();
+    window.localStorage.setItem('unrelated-setting', 'keep');
+    const fetchMock = vi.mocked(fetch);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset tutorial' }));
+
+    expect(screen.getByText('A short guided setup')).toBeVisible();
+    expect(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY)).toBeNull();
+    expect(window.localStorage.getItem('unrelated-setting')).toBe('keep');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('polls only an active player-started scan, groups complete results, and caps cards at five', async () => {
     vi.useFakeTimers();
     storeSettings();

@@ -168,6 +168,15 @@ export function saveSettings(settings: ValidatedM9Settings): void {
   window.localStorage.setItem(M9_SETTINGS_STORAGE_KEY, JSON.stringify(stored));
 }
 
+export function clearSettings(): boolean {
+  try {
+    window.localStorage.removeItem(M9_SETTINGS_STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isStoredSettings(value: unknown): value is M9Settings {
   if (value === null || typeof value !== 'object') return false;
   const candidate = value as Partial<M9Settings>;

@@ -49,6 +49,8 @@ p { color: #d6e5dc; line-height: 1.55; }
 .guided-setup .primary-action { margin-top: 1.25rem; }
 
 .settings-form { display: grid; gap: 1.75rem; margin-top: 2rem; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.reset-tutorial-help { margin: -1rem 0 0; }
 fieldset { min-width: 0; margin: 0; padding: 1.25rem; border: 1px solid #719683; border-radius: 0.75rem; }
 legend { padding: 0 0.35rem; color: #fffaf0; font-size: 1.15rem; font-weight: 800; }
 .field-help { margin: 0 0 1rem; color: #c4d4cb; }

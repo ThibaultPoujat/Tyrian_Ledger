@@ -2,6 +2,7 @@ import { type FormEvent, type MouseEvent, useEffect, useState } from 'react';
 import './App.css';
 import {
   cancelScan,
+  clearSettings,
   formatCopper,
   formatModeledRoi,
   formatScanTime,
@@ -110,6 +111,11 @@ export default function App() {
         : <SettingsPage settings={settings} onSave={(nextSettings) => {
           setSettings(nextSettings);
           navigate('recommendations');
+        }} onResetTutorial={() => {
+          if (!clearSettings()) return false;
+          setSettings(null);
+          navigate('recommendations');
+          return true;
         }} />}
     </main>
   );
@@ -118,14 +124,17 @@ export default function App() {
 function SettingsPage({
   settings,
   onSave,
+  onResetTutorial,
 }: {
   settings: ValidatedM9Settings | null;
   onSave: (settings: ValidatedM9Settings) => void;
+  onResetTutorial: () => boolean;
 }) {
   const [capital, setCapital] = useState<CapitalInput>(() => settings?.capital ?? { gold: '', silver: '', copper: '' });
   const [riskProfile, setRiskProfile] = useState<RiskProfile | null>(() => settings?.riskProfile ?? null);
   const [errors, setErrors] = useState<ReturnType<typeof validateSettings>['errors']>({});
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   function updateCapital(field: keyof CapitalInput, value: string) {
     setCapital((current) => ({ ...current, [field]: value }));
@@ -144,6 +153,14 @@ function SettingsPage({
       onSave(validation.settings);
     } catch {
       setSaveError('Your settings could not be saved in this browser. Please try again.');
+    }
+  }
+
+  function handleResetTutorial() {
+    setSaveError(null);
+    setResetError(null);
+    if (!onResetTutorial()) {
+      setResetError('The tutorial could not be reset in this browser. Please try again.');
     }
   }
 
@@ -185,7 +202,12 @@ function SettingsPage({
         </fieldset>
 
         {saveError && <p className="field-error" role="alert">{saveError}</p>}
-        <button className="primary-action" type="submit">Save settings</button>
+        {resetError && <p className="field-error" role="alert">{resetError}</p>}
+        <div className="settings-actions">
+          <button className="primary-action" type="submit">Save settings</button>
+          <button className="secondary-action" onClick={handleResetTutorial} type="button">Reset tutorial</button>
+        </div>
+        <p className="field-help reset-tutorial-help">This clears only your saved capital and risk on this device, then returns you to the tutorial.</p>
       </form>
     </section>
   );

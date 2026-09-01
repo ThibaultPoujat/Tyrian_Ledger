@@ -108,6 +108,17 @@ test('first visit guides setup through a successful manual-market scan', async (
   await expect(page.getByRole('button', { name: /copy/i })).toHaveCount(0);
 });
 
+test('Settings can reset the guided tutorial without starting a scan', async ({ page }) => {
+  await page.goto('/');
+  await completeSetup(page);
+
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Reset tutorial' }).click();
+
+  await expect(page.getByText('A short guided setup')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Scan the market' })).toHaveCount(0);
+});
+
 test('cancelling a running scan removes recommendations and offers an explicit retry', async ({ page }) => {
   await page.route('**/api/recommendations/scan', async (route) => {
     const method = route.request().method();
