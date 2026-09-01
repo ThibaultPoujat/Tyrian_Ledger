@@ -59,4 +59,18 @@ public sealed class MarketSnapshotContractsTests
             GeneratedAtUtc = "2026-09-01T12:00:00Z",
         }).Validate());
     }
+
+    [Fact]
+    public void Create_rejects_a_snapshot_larger_than_the_bounded_finalist_set()
+    {
+        var candidates = Enumerable.Range(1, MarketSnapshotContract.MaximumCandidateCount + 1)
+            .Select(itemId => new MarketSnapshotCandidate(
+                itemId,
+                $"Synthetic {itemId}",
+                [],
+                []))
+            .ToArray();
+
+        Assert.Throws<ArgumentException>(() => MarketSnapshotContract.Create(GeneratedAt, candidates));
+    }
 }

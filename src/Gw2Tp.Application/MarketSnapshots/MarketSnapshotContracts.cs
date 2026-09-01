@@ -9,6 +9,7 @@ namespace Gw2Tp.Application.MarketSnapshots;
 public static class MarketSnapshotContract
 {
     public const int Version = 1;
+    public const int MaximumCandidateCount = 200;
     public const string MoneyUnit = "copper";
     public const string RecommendationPolicyVersion = "m9-v1";
 
@@ -118,6 +119,13 @@ public static class MarketSnapshotContract
         if (candidates is null)
         {
             throw new ArgumentNullException(nameof(candidates));
+        }
+
+        if (candidates.Count > MaximumCandidateCount)
+        {
+            throw new ArgumentException(
+                $"A market snapshot cannot contain more than {MaximumCandidateCount} candidates.",
+                nameof(candidates));
         }
 
         var previousItemId = 0;

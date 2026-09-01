@@ -22,7 +22,7 @@ public static class MarketSnapshotGeneratorHost
         builder.Services.AddSingleton<MarketSnapshotJsonWriter>();
         builder.Services.AddSingleton<MarketSnapshotGeneratorCommand>();
 
-        using var serviceProvider = builder.Services.BuildServiceProvider();
+        await using var serviceProvider = builder.Services.BuildServiceProvider();
         var command = serviceProvider.GetRequiredService<MarketSnapshotGeneratorCommand>();
         return await command.RunAsync(
             args,

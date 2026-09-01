@@ -10,7 +10,7 @@ namespace Gw2Tp.Application.MarketSnapshots;
 /// </summary>
 public sealed class PublicMarketSnapshotCollector
 {
-    public const int MaximumFinalistCount = 200;
+    public const int MaximumFinalistCount = MarketSnapshotContract.MaximumCandidateCount;
 
     private readonly IGw2ApiClient marketDataClient;
     private readonly IClock clock;
