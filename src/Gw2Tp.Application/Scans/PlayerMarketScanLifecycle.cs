@@ -1,6 +1,6 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Application.Recommendations;
-using Gw2Tp.Application.Time;
 
 namespace Gw2Tp.Application.Scans;
 
@@ -10,25 +10,22 @@ namespace Gw2Tp.Application.Scans;
 /// </summary>
 public sealed class PlayerMarketScanLifecycle : IPlayerMarketScanLifecycle
 {
-    public const int MaximumFinalistCount = 200;
+    public const int MaximumFinalistCount = PublicMarketSnapshotCollector.MaximumFinalistCount;
 
     private readonly object gate = new();
-    private readonly IGw2ApiClient marketDataClient;
+    private readonly PublicMarketSnapshotCollector marketSnapshotCollector;
     private readonly BeginnerRecommendationEngine recommendationEngine;
-    private readonly IClock clock;
 
     private PlayerMarketScanSnapshot snapshot = PlayerMarketScanSnapshot.Idle;
     private CancellationTokenSource? activeCancellation;
     private Task? activeWorker;
 
     public PlayerMarketScanLifecycle(
-        IGw2ApiClient marketDataClient,
-        BeginnerRecommendationEngine recommendationEngine,
-        IClock clock)
+        PublicMarketSnapshotCollector marketSnapshotCollector,
+        BeginnerRecommendationEngine recommendationEngine)
     {
-        this.marketDataClient = marketDataClient ?? throw new ArgumentNullException(nameof(marketDataClient));
+        this.marketSnapshotCollector = marketSnapshotCollector ?? throw new ArgumentNullException(nameof(marketSnapshotCollector));
         this.recommendationEngine = recommendationEngine ?? throw new ArgumentNullException(nameof(recommendationEngine));
-        this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
     }
 
     public PlayerMarketScanSnapshot GetSnapshot()
@@ -85,70 +82,30 @@ public sealed class PlayerMarketScanLifecycle : IPlayerMarketScanLifecycle
         var cancellationToken = cancellation.Token;
         try
         {
-            var itemIds = await GetRequiredValueAsync(
-                marketDataClient.GetPriceItemIdsAsync(cancellationToken),
+            var collection = await marketSnapshotCollector.CollectAsync(
+                progress => SetRunningProgress(
+                    cancellation,
+                    ToPlayerMarketScanStage(progress.Stage),
+                    progress.FinalistCount),
                 cancellationToken).ConfigureAwait(false);
-            ValidatePriceItemIds(itemIds);
-
-            SetRunningProgress(cancellation, PlayerMarketScanStage.DiscoveringAggregatePrices, finalistCount: null);
-            var prices = await GetRequiredValueAsync(
-                marketDataClient.GetPricesAsync(itemIds, cancellationToken),
-                cancellationToken).ConfigureAwait(false);
-            SetRunningProgress(cancellation, PlayerMarketScanStage.ScreeningCandidates, finalistCount: null);
-            var finalists = SelectFinalists(itemIds, prices);
-
-            if (finalists.Length == 0)
-            {
-                PublishComplete(cancellation, recommendationEngine.Calculate(new BeginnerRecommendationRequest(
-                    request.Capital,
-                    request.RiskProfile,
-                    clock.UtcNow,
-                    [])));
-                return;
-            }
-
-            SetRunningProgress(
-                cancellation,
-                PlayerMarketScanStage.ReadingFinalistListings,
-                finalists.Length);
-            var listings = await GetRequiredValueAsync(
-                marketDataClient.GetListingsAsync(finalists, cancellationToken),
-                cancellationToken).ConfigureAwait(false);
-            ValidateListings(finalists, listings);
-
-            SetRunningProgress(
-                cancellation,
-                PlayerMarketScanStage.ReadingFinalistMetadata,
-                finalists.Length);
-            var metadata = await GetRequiredValueAsync(
-                marketDataClient.GetItemMetadataAsync(finalists, cancellationToken),
-                cancellationToken).ConfigureAwait(false);
-            ValidateMetadata(finalists, metadata);
 
             SetRunningProgress(
                 cancellation,
                 PlayerMarketScanStage.CalculatingRecommendations,
-                finalists.Length);
+                collection.Candidates.Count);
             cancellationToken.ThrowIfCancellationRequested();
-            var metadataByItemId = metadata.ToDictionary(item => item.ItemId);
-            var candidates = listings
-                .OrderBy(listing => listing.ItemId)
-                .Select(listing => new BeginnerRecommendationCandidate(
-                    metadataByItemId[listing.ItemId],
-                    listing))
-                .ToArray();
             var result = recommendationEngine.Calculate(new BeginnerRecommendationRequest(
                 request.Capital,
                 request.RiskProfile,
-                clock.UtcNow,
-                candidates));
+                collection.GeneratedAtUtc,
+                collection.Candidates.Select(ToRecommendationCandidate).ToArray()));
             PublishComplete(cancellation, result);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             SetTerminal(cancellation, PlayerMarketScanState.Cancelled);
         }
-        catch (PlayerMarketScanGatewayException exception)
+        catch (PublicMarketSnapshotCollectionException exception)
         {
             SetTerminal(
                 cancellation,
@@ -180,54 +137,32 @@ public sealed class PlayerMarketScanLifecycle : IPlayerMarketScanLifecycle
         }
     }
 
-    private static async Task<T> GetRequiredValueAsync<T>(
-        Task<Gw2ApiResult<T>> responseTask,
-        CancellationToken cancellationToken)
+    private static BeginnerRecommendationCandidate ToRecommendationCandidate(
+        MarketSnapshotCandidate candidate) => new(
+        new MarketItemMetadata(
+            candidate.ItemId,
+            candidate.ItemName,
+            MarketItemStackPolicy.NormalStackLimit),
+        new MarketListing(
+            candidate.ItemId,
+            candidate.Buys.Select(ToMarketOrderLevel).ToArray(),
+            candidate.Sells.Select(ToMarketOrderLevel).ToArray()));
+
+    private static MarketOrderLevel ToMarketOrderLevel(MarketSnapshotOrderLevel level) => new(
+        level.ListingCount,
+        level.Quantity,
+        level.UnitPriceInCopper);
+
+    private static PlayerMarketScanStage ToPlayerMarketScanStage(
+        PublicMarketSnapshotCollectionStage stage) => stage switch
     {
-        var response = await responseTask.ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!response.IsSuccess || response.IsPartialData || response.Value is null)
-        {
-            throw new PlayerMarketScanGatewayException(
-                response.ErrorCategory ?? Gw2ApiErrorCategory.IncompleteData);
-        }
-
-        return response.Value;
-    }
-
-    private static int[] SelectFinalists(
-        IReadOnlyList<int> itemIds,
-        IReadOnlyList<MarketPrice> prices)
-    {
-        ValidatePrices(itemIds, prices);
-        return prices
-            .Where(HasPotentialAggregateSpread)
-            .Select(price => new Finalist(
-                price.ItemId,
-                Math.Min(price.Buys.Quantity, price.Sells.Quantity),
-                (long)price.Sells.UnitPriceInCopper - price.Buys.UnitPriceInCopper))
-            .OrderByDescending(finalist => finalist.MinimumAggregateSideQuantity)
-            .ThenByDescending(finalist => finalist.AggregatePriceGap)
-            .ThenBy(finalist => finalist.ItemId)
-            .Take(MaximumFinalistCount)
-            .Select(finalist => finalist.ItemId)
-            .ToArray();
-    }
-
-    private static bool HasPotentialAggregateSpread(MarketPrice price)
-    {
-        if (price.Buys.Quantity < BeginnerRecommendationPolicy.MinimumAggregateSideQuantity ||
-            price.Sells.Quantity < BeginnerRecommendationPolicy.MinimumAggregateSideQuantity ||
-            price.Buys.UnitPriceInCopper <= 0 || price.Sells.UnitPriceInCopper <= 1)
-        {
-            return false;
-        }
-
-        var plannedBuyPrice = checked((long)price.Buys.UnitPriceInCopper + 1);
-        var plannedSalePrice = checked((long)price.Sells.UnitPriceInCopper - 1);
-        return plannedSalePrice >= plannedBuyPrice &&
-            plannedSalePrice <= checked(plannedBuyPrice * BeginnerRecommendationPolicy.MaximumPlannedPriceSpreadMultiple);
-    }
+        PublicMarketSnapshotCollectionStage.DiscoveringPriceItemIds => PlayerMarketScanStage.DiscoveringPriceItemIds,
+        PublicMarketSnapshotCollectionStage.DiscoveringAggregatePrices => PlayerMarketScanStage.DiscoveringAggregatePrices,
+        PublicMarketSnapshotCollectionStage.ScreeningCandidates => PlayerMarketScanStage.ScreeningCandidates,
+        PublicMarketSnapshotCollectionStage.ReadingFinalistListings => PlayerMarketScanStage.ReadingFinalistListings,
+        PublicMarketSnapshotCollectionStage.ReadingFinalistMetadata => PlayerMarketScanStage.ReadingFinalistMetadata,
+        _ => throw new ArgumentOutOfRangeException(nameof(stage), stage, "Unknown public market collection stage."),
+    };
 
     private static void ValidateRequest(PlayerMarketScanRequest? request)
     {
@@ -240,74 +175,6 @@ public sealed class PlayerMarketScanLifecycle : IPlayerMarketScanLifecycle
         if (!Enum.IsDefined(request.RiskProfile))
         {
             throw new ArgumentOutOfRangeException(nameof(request), "The scan risk profile is not supported.");
-        }
-    }
-
-    private static void ValidatePriceItemIds(IReadOnlyList<int>? itemIds)
-    {
-        if (itemIds is null || itemIds.Count == 0 || itemIds.Any(itemId => itemId <= 0) ||
-            itemIds.Distinct().Count() != itemIds.Count)
-        {
-            throw new PlayerMarketScanGatewayException(Gw2ApiErrorCategory.IncompleteData);
-        }
-    }
-
-    private static void ValidatePrices(
-        IReadOnlyList<int> expectedItemIds,
-        IReadOnlyList<MarketPrice>? prices)
-    {
-        ValidateExactItemSet(expectedItemIds, prices, price => price.ItemId);
-        if (prices!.Any(price => price is null || price.Buys is null || price.Sells is null ||
-            price.Buys.Quantity < 0 || price.Sells.Quantity < 0 ||
-            price.Buys.UnitPriceInCopper < 0 || price.Sells.UnitPriceInCopper < 0))
-        {
-            throw new PlayerMarketScanGatewayException(Gw2ApiErrorCategory.InvalidPayload);
-        }
-    }
-
-    private static void ValidateListings(
-        IReadOnlyList<int> expectedItemIds,
-        IReadOnlyList<MarketListing>? listings)
-    {
-        ValidateExactItemSet(expectedItemIds, listings, listing => listing.ItemId);
-        if (listings!.Any(listing => listing is null || listing.Buys is null || listing.Sells is null ||
-            listing.Buys.Any(level => level is null || level.Listings <= 0 || level.Quantity <= 0 || level.UnitPriceInCopper <= 0) ||
-            listing.Sells.Any(level => level is null || level.Listings <= 0 || level.Quantity <= 0 || level.UnitPriceInCopper <= 0)))
-        {
-            throw new PlayerMarketScanGatewayException(Gw2ApiErrorCategory.InvalidPayload);
-        }
-    }
-
-    private static void ValidateMetadata(
-        IReadOnlyList<int> expectedItemIds,
-        IReadOnlyList<MarketItemMetadata>? metadata)
-    {
-        ValidateExactItemSet(expectedItemIds, metadata, item => item.ItemId);
-        if (metadata!.Any(item => item is null || string.IsNullOrWhiteSpace(item.Name) ||
-            item.NormalStackLimit != MarketItemStackPolicy.NormalStackLimit))
-        {
-            throw new PlayerMarketScanGatewayException(Gw2ApiErrorCategory.InvalidPayload);
-        }
-    }
-
-    private static void ValidateExactItemSet<T>(
-        IReadOnlyList<int> expectedItemIds,
-        IReadOnlyList<T>? values,
-        Func<T, int> getItemId)
-    {
-        if (values is null || values.Count != expectedItemIds.Count)
-        {
-            throw new PlayerMarketScanGatewayException(Gw2ApiErrorCategory.IncompleteData);
-        }
-
-        var expected = expectedItemIds.ToHashSet();
-        var received = new HashSet<int>();
-        foreach (var value in values)
-        {
-            if (value is null || !received.Add(getItemId(value)) || !expected.Contains(getItemId(value)))
-            {
-                throw new PlayerMarketScanGatewayException(Gw2ApiErrorCategory.IncompleteData);
-            }
         }
     }
 
@@ -364,16 +231,4 @@ public sealed class PlayerMarketScanLifecycle : IPlayerMarketScanLifecycle
         PlayerMarketScanState.Running,
         new PlayerMarketScanProgress(stage, finalistCount),
         Result: null);
-
-    private sealed record Finalist(int ItemId, int MinimumAggregateSideQuantity, long AggregatePriceGap);
-
-    private sealed class PlayerMarketScanGatewayException : Exception
-    {
-        public PlayerMarketScanGatewayException(Gw2ApiErrorCategory errorCategory)
-        {
-            ErrorCategory = errorCategory;
-        }
-
-        public Gw2ApiErrorCategory ErrorCategory { get; }
-    }
 }
