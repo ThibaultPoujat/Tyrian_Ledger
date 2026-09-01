@@ -142,6 +142,13 @@ describe('market snapshot parser', () => {
     invalidDate.generatedAtUtc = '2026-02-30T12:00:00.0000000Z';
     expectParseFailure(invalidDate, 'malformed-snapshot');
 
+    const maximumSafeCopper = clone(validSnapshot) as Record<string, unknown>;
+    const maximumSafeCandidate = (maximumSafeCopper.candidates as Array<Record<string, unknown>>)[0];
+    ((maximumSafeCandidate.buys as Array<Record<string, unknown>>)[0]).unitPriceInCopper = Number.MAX_SAFE_INTEGER;
+    expect(parseMarketSnapshot(maximumSafeCopper).candidates[0].buys[0].unitPriceInCopper).toBe(
+      BigInt(Number.MAX_SAFE_INTEGER),
+    );
+
     const unsafeCopper = clone(validSnapshot) as Record<string, unknown>;
     const unsafeCandidate = (unsafeCopper.candidates as Array<Record<string, unknown>>)[0];
     ((unsafeCandidate.buys as Array<Record<string, unknown>>)[0]).unitPriceInCopper = Number.MAX_SAFE_INTEGER + 1;
