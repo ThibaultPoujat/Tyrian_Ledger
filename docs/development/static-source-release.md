@@ -31,6 +31,11 @@ npm --prefix frontend run build
 npm --prefix frontend run preview -- --host 127.0.0.1
 ```
 
+To exercise the project-Pages asset base locally, add
+`VITE_SITE_BASE_PATH=/Tyrian_Ledger/` to the build command. The workflow also
+sets a revisioned `VITE_MARKET_SNAPSHOT_PATH` for each generated snapshot; the
+browser always keeps that path within the configured static deployment base.
+
 The preview intentionally reports an unavailable snapshot until a
 `market-snapshot.json` is available beside the static assets. For a local
 fixture preview, copy the synthetic test artifact only into the ignored build
@@ -58,7 +63,9 @@ dotnet run --project src/Gw2Tp.MarketSnapshotGenerator -- --output /path/to/mark
 It enforces the M10 policy of two requests per second, at most two concurrent
 requests, and burst budget 20. A non-zero exit means no complete artifact was
 published. Scheduled generation and GitHub Pages publication are owned by
-TKT-M10-05; do not treat this local command as a deployment workflow.
+TKT-M10-05; do not treat this local command as a deployment workflow. See the
+[GitHub Pages deployment guide](github-pages-deployment.md) for its trusted
+workflow, static-artifact validation, and owner-controlled publication gate.
 
 ## Validation
 

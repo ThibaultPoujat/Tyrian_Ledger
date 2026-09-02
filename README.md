@@ -63,5 +63,9 @@ For a clean setup, static build and preview, generator workflow, full test
 suite, clean-environment checklist, and known limitations, use the canonical
 [static development handoff](docs/development/static-source-release.md).
 
+For the trusted scheduled capture, shared Pages deployment, selector review,
+fallback, and pre-publication owner gate, see the
+[GitHub Pages deployment guide](docs/development/github-pages-deployment.md).
+
 The handoff is source-only: it is neither a public deployment nor a claim that
 all external Guild Wars 2 API contracts have been revalidated.

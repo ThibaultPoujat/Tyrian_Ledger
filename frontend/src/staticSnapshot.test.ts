@@ -65,7 +65,7 @@ describe('static market snapshot loading', () => {
       kind: 'ready',
       snapshot: { generatedAtUtc, candidates: [{ itemName: 'Synthetic public item' }] },
     });
-    expect(request).toHaveBeenCalledWith('https://example.github.io/market-snapshot.json');
+    expect(request).toHaveBeenCalledWith('https://example.github.io/market-snapshot.json', { cache: 'no-store' });
   });
 
   it('distinguishes unavailable, incompatible, malformed, and invalid JSON snapshot states', async () => {
