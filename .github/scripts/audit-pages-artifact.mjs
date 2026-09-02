@@ -14,6 +14,8 @@ const PROHIBITED_CONTENT_PATTERNS = [
   { label: 'a local filesystem path', pattern: /(?:\/Users\/|\/home\/runner\/|[A-Za-z]:\\)/ },
 ];
 
+const MAXIMUM_CANDIDATE_COUNT = 200;
+
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
@@ -33,10 +35,50 @@ function assertPositiveSafeInteger(value, description) {
   assert(Number.isSafeInteger(value) && value > 0, `${description} must be a positive safe integer.`);
 }
 
+function assertNonBlankString(value, description) {
+  assert(typeof value === 'string' && value.trim().length > 0, `${description} must be a non-blank string.`);
+}
+
+function assertCanonicalUtcTimestamp(value) {
+  const match = typeof value === 'string'
+    ? /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\.(\d{7})Z$/u.exec(value)
+    : null;
+  assert(match !== null && !value.startsWith('0000'), 'The market snapshot generation time must be a canonical UTC ISO-8601 timestamp.');
+
+  const parsed = new Date(value);
+  assert(
+    !Number.isNaN(parsed.getTime()) && parsed.toISOString() === `${match[1]}.${match[2].slice(0, 3)}Z`,
+    'The market snapshot generation time must be a canonical UTC ISO-8601 timestamp.',
+  );
+}
+
+function compareOrderLevels(left, right) {
+  return left.unitPriceInCopper - right.unitPriceInCopper ||
+    left.quantity - right.quantity ||
+    left.listingCount - right.listingCount;
+}
+
+function validateOrderLevels(levels, side, itemId) {
+  assert(Array.isArray(levels), `Candidate ${side} must be an array.`);
+  assert(levels.length > 0, `Candidate ${itemId} must include complete buy and sell order-book data.`);
+
+  let previous = null;
+  for (const level of levels) {
+    assertExactKeys(level, ['listingCount', 'quantity', 'unitPriceInCopper'], `A candidate ${side} level`);
+    assertPositiveSafeInteger(level.listingCount, `A candidate ${side} listing count`);
+    assertPositiveSafeInteger(level.quantity, `A candidate ${side} quantity`);
+    assertPositiveSafeInteger(level.unitPriceInCopper, `A candidate ${side} unit price`);
+    if (previous !== null) {
+      assert(compareOrderLevels(previous, level) <= 0, `Candidate ${itemId} ${side} levels must use canonical ordering.`);
+    }
+    previous = level;
+  }
+}
+
 export function validateSnapshotContract(payload) {
   assertExactKeys(payload, ['candidates', 'capturePolicy', 'compatibility', 'contractVersion', 'generatedAtUtc'], 'The market snapshot');
   assert(payload.contractVersion === 1, 'The market snapshot contract version must be 1.');
-  assert(typeof payload.generatedAtUtc === 'string' && /Z$/.test(payload.generatedAtUtc) && Number.isFinite(Date.parse(payload.generatedAtUtc)), 'The market snapshot generation time must be UTC ISO-8601.');
+  assertCanonicalUtcTimestamp(payload.generatedAtUtc);
 
   assertExactKeys(payload.compatibility, ['moneyUnit', 'normalStackLimit', 'recommendationPolicyVersion'], 'The compatibility block');
   assert(payload.compatibility.moneyUnit === 'copper', 'The market snapshot must use copper.');
@@ -47,19 +89,16 @@ export function validateSnapshotContract(payload) {
   assert(payload.capturePolicy.requestsPerSecond === 2 && payload.capturePolicy.maxConcurrentRequests === 2 && payload.capturePolicy.burstBudget === 20, 'The market snapshot does not record the required M10 capture policy.');
 
   assert(Array.isArray(payload.candidates), 'The market snapshot candidates must be an array.');
+  assert(payload.candidates.length <= MAXIMUM_CANDIDATE_COUNT, `The market snapshot cannot contain more than ${MAXIMUM_CANDIDATE_COUNT} candidates.`);
+  let previousItemId = 0;
   for (const candidate of payload.candidates) {
     assertExactKeys(candidate, ['buys', 'itemId', 'itemName', 'sells'], 'A market snapshot candidate');
     assertPositiveSafeInteger(candidate.itemId, 'A candidate item ID');
-    assert(typeof candidate.itemName === 'string', 'A candidate item name must be a string.');
-    for (const [side, levels] of [['buys', candidate.buys], ['sells', candidate.sells]]) {
-      assert(Array.isArray(levels), `Candidate ${side} must be an array.`);
-      for (const level of levels) {
-        assertExactKeys(level, ['listingCount', 'quantity', 'unitPriceInCopper'], `A candidate ${side} level`);
-        assertPositiveSafeInteger(level.listingCount, `A candidate ${side} listing count`);
-        assertPositiveSafeInteger(level.quantity, `A candidate ${side} quantity`);
-        assertPositiveSafeInteger(level.unitPriceInCopper, `A candidate ${side} unit price`);
-      }
-    }
+    assert(candidate.itemId > previousItemId, 'Snapshot candidates must have distinct, ascending item IDs.');
+    assertNonBlankString(candidate.itemName, 'A candidate item name');
+    validateOrderLevels(candidate.buys, 'buys', candidate.itemId);
+    validateOrderLevels(candidate.sells, 'sells', candidate.itemId);
+    previousItemId = candidate.itemId;
   }
 }
 

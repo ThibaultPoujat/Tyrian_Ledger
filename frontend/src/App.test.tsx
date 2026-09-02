@@ -148,7 +148,7 @@ describe('static snapshot experience', () => {
     expect(window.localStorage.getItem('unrelated-setting')).toBe('keep');
 
     cleanup();
-    window.history.replaceState({}, '', '/history');
+    window.history.replaceState({}, '', '/#/history');
     render(<App />);
     expect(screen.getByTestId('unavailable-route')).toHaveTextContent('Route unavailable');
   });

@@ -86,3 +86,16 @@ test('keyboard setup and fresh static recommendations meet WCAG 2.2 AA automated
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
     .analyze()).resolves.toMatchObject({ violations: [] });
 });
+
+test('uses a project Pages base path and hash routes that survive a reload', async ({ page }) => {
+  await fulfillSnapshot(page);
+  await page.goto('/Tyrian_Ledger/');
+  await expect(page).toHaveURL(/\/Tyrian_Ledger\/$/);
+
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL(/\/Tyrian_Ledger\/#\/settings$/);
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+});

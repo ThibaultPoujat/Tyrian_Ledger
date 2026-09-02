@@ -35,8 +35,9 @@ const profileDetails: Record<RiskProfile, { name: string; spend: string; roi: st
   adventurous: { name: 'Adventurous', spend: '50% of capital', roi: '12%', profit: '50 silver' },
 };
 
-function getRoute(pathname: string): StaticRoute | null {
-  switch (pathname) {
+function getRoute(hash: string): StaticRoute | null {
+  const routePath = hash === '' ? '/' : hash.startsWith('#') ? hash.slice(1) : null;
+  switch (routePath) {
     case '/':
     case '/recommendations':
       return 'recommendations';
@@ -48,18 +49,22 @@ function getRoute(pathname: string): StaticRoute | null {
 }
 
 function navigationTarget(route: StaticRoute): string {
-  return route === 'recommendations' ? '/recommendations' : '/settings';
+  return route === 'recommendations' ? '#/recommendations' : '#/settings';
 }
 
 export default function App() {
-  const [route, setRoute] = useState<StaticRoute | null>(() => getRoute(window.location.pathname));
+  const [route, setRoute] = useState<StaticRoute | null>(() => getRoute(window.location.hash));
   const [settings, setSettings] = useState<ValidatedM9Settings | null>(() => loadSettings());
   const staticSnapshot = useStaticMarketSnapshot();
 
   useEffect(() => {
-    const onPopState = () => setRoute(getRoute(window.location.pathname));
+    const onPopState = () => setRoute(getRoute(window.location.hash));
     window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
+    window.addEventListener('hashchange', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('hashchange', onPopState);
+    };
   }, []);
 
   function navigate(target: StaticRoute) {
@@ -106,7 +111,7 @@ export default function App() {
         <p className="eyebrow">Tyrian Ledger</p>
         <h1>Route unavailable</h1>
         <p>This route is not part of the static market snapshot experience.</p>
-        <a href="/recommendations" onClick={(event) => handleNavigation(event, 'recommendations')}>Go to Recommendations</a>
+        <a href="#/recommendations" onClick={(event) => handleNavigation(event, 'recommendations')}>Go to Recommendations</a>
       </main>
     );
   }
@@ -117,8 +122,8 @@ export default function App() {
       <header className="m9-header">
         <p className="eyebrow">Tyrian Ledger</p>
         <nav aria-label="Primary navigation">
-          <a aria-current={isRecommendations ? 'page' : undefined} href="/recommendations" onClick={(event) => handleNavigation(event, 'recommendations')}>Recommendations</a>
-          <a aria-current={isRecommendations ? undefined : 'page'} href="/settings" onClick={(event) => handleNavigation(event, 'settings')}>Settings</a>
+          <a aria-current={isRecommendations ? 'page' : undefined} href="#/recommendations" onClick={(event) => handleNavigation(event, 'recommendations')}>Recommendations</a>
+          <a aria-current={isRecommendations ? undefined : 'page'} href="#/settings" onClick={(event) => handleNavigation(event, 'settings')}>Settings</a>
         </nav>
       </header>
 

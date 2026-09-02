@@ -4,8 +4,8 @@ on:
   push:
     branches: [develop]
   schedule:
-    # Every 15 minutes, offset from the top of the hour where GitHub warns that schedules can be delayed.
-    - cron: '7,22,37,52 * * * *'
+    # Every 15 minutes in UTC. GitHub may delay scheduled runs under high load.
+    - cron: '0,15,30,45 * * * *'
 
 concurrency:
   group: pages-publication
