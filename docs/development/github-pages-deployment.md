@@ -7,9 +7,11 @@ has no local API, hosted API, account data, key, or player data.
 
 ## Trusted workflow design
 
-`.github/workflows/pages.yml` runs on pushes to `develop` and at minutes 0,
-15, 30, and 45 of every UTC hour. This produces a 15-minute capture interval.
-Scheduled runs use the default branch; this repository's default is `develop`.
+`.github/workflows/pages.yml` runs on pushes to `develop`, manually through
+the Actions UI, and at minutes 7, 22, 37, and 52 of every UTC hour. This
+produces a 15-minute capture interval while avoiding the busiest top-of-hour
+boundary. Scheduled runs use the default branch; this repository's default is
+`develop`.
 
 Each run is exclusive (`pages-publication`, cancelling an older in-progress
 run) and performs these stages:
@@ -85,6 +87,11 @@ continues to serve the last successful deployment. Clear the selector or
 revert the relevant `develop` change to trigger a new known-good deployment;
 this workflow never promotes an arbitrary historical artifact.
 
+GitHub can delay or drop scheduled events under load. When the displayed
+snapshot is delayed, an owner may use **Run workflow** in the Actions UI to
+invoke the `workflow_dispatch` recovery path on `develop`; it follows the same
+trusted selection, capture, audit, and deployment stages as a scheduled run.
+
 The React build is given the project Pages base path and a SHA-256 revision of
 the generated snapshot. It fetches that snapshot with `cache: 'no-store'`.
 GitHub Pages and browser caches can still delay the new HTML or bundle, so the
@@ -118,7 +125,9 @@ Do not change repository visibility or enable/configure Pages as part of this
 ticket. Once the owner has deliberately enabled Pages after that gate, inspect
 the first push-triggered run and a later scheduled run, record their source
 selection, capture-policy log, artifact audit, deployment URL, and snapshot
-timestamp under VERIFY-014. A schedule, Pages setting, or public-history audit
-is not considered verified merely because the workflow source exists.
+timestamp under VERIFY-014. A manual recovery run may restore fresh data but
+does not replace the scheduled-run evidence. A schedule, Pages setting, or
+public-history audit is not considered verified merely because the workflow
+source exists.
 
 GitHub documents [full-SHA action pinning](https://docs.github.com/en/actions/reference/security/secure-use), the [minimum Pages deployment permissions](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages), and the fact that [scheduled runs use the default branch and can be delayed](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).
