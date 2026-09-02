@@ -76,6 +76,7 @@ export default function App() {
   }, [selectedRecommendation]);
 
   function navigate(target: StaticRoute) {
+    if (target !== 'recommendations') returnFocusRef.current = null;
     setSelectedRecommendation(null);
     window.history.pushState({}, '', navigationTarget(target));
     setRoute(target);
@@ -122,6 +123,13 @@ export default function App() {
       riskProfile: settings.riskProfile,
     });
   }, [settings, staticSnapshot]);
+  const canShowSelectedRecommendation = selectedRecommendation !== null && route === 'recommendations' && recommendations !== null;
+
+  useEffect(() => {
+    if (selectedRecommendation === null || canShowSelectedRecommendation) return;
+    returnFocusRef.current = null;
+    setSelectedRecommendation(null);
+  }, [canShowSelectedRecommendation, selectedRecommendation]);
 
   if (route === null) {
     return (
@@ -140,7 +148,7 @@ export default function App() {
   const isRecommendations = route === 'recommendations';
   return (
     <div className="app-page">
-      <a className="skip-link" href="#main-content">Skip to recommendations</a>
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <div className="m9-shell">
         <header className="m9-header">
           <a aria-label="Tyrian Ledger home" className="brand-lockup" href="#/recommendations" onClick={(event) => handleNavigation(event, 'recommendations')}>
@@ -168,7 +176,7 @@ export default function App() {
         </main>
       </div>
       <SiteFooter />
-      {selectedRecommendation !== null && <OpportunityDetail onClose={closeRecommendation} recommendation={selectedRecommendation} />}
+      {canShowSelectedRecommendation && selectedRecommendation !== null && <OpportunityDetail onClose={closeRecommendation} recommendation={selectedRecommendation} />}
     </div>
   );
 }

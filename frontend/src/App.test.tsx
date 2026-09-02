@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import {
@@ -171,5 +171,43 @@ describe('static snapshot experience', () => {
     fireEvent.keyDown(dialog, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(planButton).toHaveFocus();
+  });
+
+  it('closes an open trade plan as soon as the published snapshot expires', async () => {
+    const nativeSetTimeout = window.setTimeout;
+    let expireSnapshot: (() => void) | undefined;
+    nowMs = Date.parse(generatedAtUtc) + 30 * 60_000 - 1;
+    vi.spyOn(window, 'setTimeout').mockImplementation(((handler: TimerHandler, timeout?: number) => {
+      if (timeout === 2 && typeof handler === 'function') {
+        expireSnapshot = () => handler();
+        return 0 as unknown as number;
+      }
+      return nativeSetTimeout(handler, timeout);
+    }) as typeof window.setTimeout);
+    storeSettings();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View manual trade plan' })).toBeVisible());
+    fireEvent.click(screen.getByRole('button', { name: 'View manual trade plan' }));
+    expect(screen.getByRole('dialog', { name: 'Synthetic public item' })).toBeVisible();
+    nowMs += 2;
+    act(() => expireSnapshot?.());
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveTextContent('Snapshot refresh is delayed.');
+  });
+
+  it('closes an open trade plan when hash history moves to Settings', async () => {
+    storeSettings();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'View manual trade plan' })).toBeVisible());
+    fireEvent.click(screen.getByRole('button', { name: 'View manual trade plan' }));
+    expect(screen.getByRole('dialog', { name: 'Synthetic public item' })).toBeVisible();
+    window.history.pushState({}, '', '#/settings');
+    window.dispatchEvent(new Event('hashchange'));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: 'Set your trading guardrails' })).toBeVisible();
   });
 });
