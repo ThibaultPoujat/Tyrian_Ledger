@@ -57,7 +57,7 @@ describe('static snapshot experience', () => {
     render(<App />);
 
     expect(screen.getByRole('status')).toHaveTextContent('Loading the published market snapshot');
-    expect(screen.getByText('A short guided setup')).toBeVisible();
+    expect(screen.getByText('Start here')).toBeVisible();
     resolveRequest?.(response(snapshot()));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Compatible snapshot loaded.'));
   });
@@ -114,7 +114,7 @@ describe('static snapshot experience', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Synthetic public item' })).toBeVisible());
     fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
     fireEvent.change(screen.getByLabelText('Gold'), { target: { value: '4' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save preferences' }));
 
     await waitFor(() => expect(screen.getByRole('heading', { name: 'No suggestions right now' })).toBeVisible());
     expect(screen.getByText('4g 0s 0c')).toBeVisible();
@@ -123,10 +123,10 @@ describe('static snapshot experience', () => {
 
   it('keeps accessible settings validation and exact integer-copper formatting', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Set up my capital and risk' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Set up capital and risk' }));
     fireEvent.change(screen.getByLabelText('Gold'), { target: { value: '-1' } });
     fireEvent.change(screen.getByLabelText('Silver'), { target: { value: '100' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save preferences' }));
 
     expect(screen.getByText('Gold must be a non-negative whole number.')).toBeVisible();
     expect(validateSettings({ gold: '00012', silver: '034', copper: '056' }, 'balanced').settings).toMatchObject({
@@ -142,8 +142,8 @@ describe('static snapshot experience', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('link', { name: 'Settings' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Reset tutorial' }));
-    expect(screen.getByText('A short guided setup')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear local preferences' }));
+    expect(screen.getByText('Start here')).toBeVisible();
     expect(window.localStorage.getItem(M9_SETTINGS_STORAGE_KEY)).toBeNull();
     expect(window.localStorage.getItem('unrelated-setting')).toBe('keep');
 
@@ -151,5 +151,25 @@ describe('static snapshot experience', () => {
     window.history.replaceState({}, '', '/#/history');
     render(<App />);
     expect(screen.getByTestId('unavailable-route')).toHaveTextContent('Route unavailable');
+  });
+
+  it('opens a transparent manual trade plan and restores keyboard focus when it closes', async () => {
+    storeSettings();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Synthetic public item' })).toBeVisible());
+    const planButton = screen.getByRole('button', { name: 'View manual trade plan' });
+    planButton.focus();
+    fireEvent.click(planButton);
+
+    const dialog = screen.getByRole('dialog', { name: 'Synthetic public item' });
+    expect(dialog).toHaveTextContent('Pricing and fees');
+    expect(dialog).toHaveTextContent('Liquidity guard');
+    expect(dialog).toHaveTextContent('Follow this checklist manually');
+    expect(screen.getByRole('button', { name: 'Close manual trade plan' })).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(planButton).toHaveFocus();
   });
 });
