@@ -2,9 +2,9 @@
 
 ## Mission
 
-Build a local, read-only Guild Wars 2 Trading Post analysis application. Codex
-is the development agent only; it is never part of the application runtime or
-the source of financial truth.
+Build a read-only, static Guild Wars 2 Trading Post analysis application.
+Codex is the development agent only; it is never part of the application
+runtime or the source of financial truth.
 
 ## Read order for a ticket
 

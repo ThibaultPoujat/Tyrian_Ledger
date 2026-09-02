@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Text.Json;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Infrastructure.Gw2Api;
@@ -365,11 +364,10 @@ public sealed class Gw2RequestSchedulerTests
     }
 
     [Fact]
-    public async Task Diagnostics_and_rate_limit_logging_never_expose_authorization_values()
+    public async Task Rate_limit_logging_never_exposes_authorization_values()
     {
         const string syntheticApiKey = "synthetic-api-key-that-must-never-be-logged";
         var logger = new CapturingLogger();
-        var diagnostics = new MarketDataDiagnostics();
         var handler = new SequenceHttpMessageHandler(
             CreateJsonResponse(HttpStatusCode.TooManyRequests, "{}"),
             CreateJsonResponse(HttpStatusCode.OK, "[]"));
@@ -378,21 +376,17 @@ public sealed class Gw2RequestSchedulerTests
             "Bearer",
             syntheticApiKey);
         using var scheduler = CreateScheduler(delay: new RecordingDelay(), logger: logger);
-        var apiClient = new Gw2ApiClient(httpClient, scheduler, diagnostics);
+        var apiClient = new Gw2ApiClient(httpClient, scheduler);
 
         var result = await apiClient.GetPricesAsync([900001]);
 
         Assert.True(result.IsSuccess);
         Assert.NotEmpty(logger.Entries);
-        var serializedDiagnostics = JsonSerializer.Serialize(diagnostics.GetSnapshot());
-
         Assert.All(logger.Entries, logEntry =>
         {
             Assert.DoesNotContain(syntheticApiKey, logEntry, StringComparison.Ordinal);
             Assert.DoesNotContain("Authorization", logEntry, StringComparison.OrdinalIgnoreCase);
         });
-        Assert.DoesNotContain(syntheticApiKey, serializedDiagnostics, StringComparison.Ordinal);
-        Assert.DoesNotContain("Authorization", serializedDiagnostics, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

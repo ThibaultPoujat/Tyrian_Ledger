@@ -13,12 +13,6 @@ dist/
 playwright-report/
 test-results/
 
-# Local runtime/data
-var/
-*.db
-*.db-shm
-*.db-wal
-
 # Secrets
 .env
 .env.*

@@ -2,7 +2,7 @@
 
 ## Identity
 
-This is a local Guild Wars 2 Trading Post analysis application. Codex is a
+This is a static Guild Wars 2 Trading Post analysis application. Codex is a
 development tool only; it is not part of the application runtime.
 
 ## Hard constraints
@@ -22,9 +22,9 @@ development tool only; it is not part of the application runtime.
 
 ## Target stack
 
-- ASP.NET Core / .NET 10 LTS
+- .NET 10 LTS generator and calculation libraries
 - React + TypeScript
-- SQLite
+- versioned public market snapshots
 - xUnit
 - Playwright for browser tests
 
@@ -38,7 +38,9 @@ on a local coding-model runtime.
 
 ## Current architecture
 
-Browser -> Web API -> Application services -> Analytics/Infrastructure -> SQLite/GW2 API.
+Scheduled generator -> Application services -> Analytics/typed GW2 gateway -> public market snapshot.
+
+Browser -> static React assets plus the published market snapshot.
 
 ## Lightweight agent workflow
 

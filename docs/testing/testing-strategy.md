@@ -16,18 +16,17 @@ Required for all deterministic business logic:
 - M9 recommendation eligibility and ranking
 - Data validation and normalization
 
-### Integration tests
+### Gateway and generator tests
 
 Use recorded fixtures or mocks for GW2 responses. Normal automated tests must not call live endpoints.
 
 Cover:
 
-- prices
-- listings
-- recipes
+- public prices, listings, and item metadata
 - 401/403/404/429/5xx
 - malformed JSON
 - missing/new fields
+- bounded snapshot collection, contract validation, and atomic generator output
 
 ### Contract/smoke tests
 
@@ -38,9 +37,9 @@ A controlled, manually triggered or release-stage suite MAY call the live API to
 Use Playwright to test the highest-value journeys:
 
 1. Recommendations and Settings are the only active destinations;
-2. retired browser and API paths are unavailable;
-3. the M9 shell does not send credentials or initiate account requests;
-4. future recommendation details explain assumptions and freshness.
+2. static snapshot loading covers fresh, delayed, malformed, and unavailable states;
+3. browser traffic never reaches `/api` or Guild Wars 2;
+4. keyboard operation and accessibility remain covered.
 
 ## Test fixture policy
 
