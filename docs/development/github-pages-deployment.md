@@ -7,11 +7,9 @@ has no local API, hosted API, account data, key, or player data.
 
 ## Trusted workflow design
 
-`.github/workflows/pages.yml` runs on pushes to `develop` and at minutes 7,
-22, 37, and 52 of every UTC hour. The offset still produces a 15-minute
-capture interval while avoiding the top-of-hour delay risk documented by
-GitHub. Scheduled runs use the default branch; this repository's default is
-`develop`.
+`.github/workflows/pages.yml` runs on pushes to `develop` and at minutes 0,
+15, 30, and 45 of every UTC hour. This produces a 15-minute capture interval.
+Scheduled runs use the default branch; this repository's default is `develop`.
 
 Each run is exclusive (`pages-publication`, cancelling an older in-progress
 run) and performs these stages:

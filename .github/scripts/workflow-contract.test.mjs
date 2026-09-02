@@ -31,6 +31,25 @@ test('the Pages publication workflow is develop-only, scheduled every 15 minutes
   assert.match(content, /cancel-in-progress:\s*true/);
 });
 
+test('the static base and revision are exported before the React build step', async () => {
+  const content = await workflow('pages.yml');
+  const configurationStart = content.indexOf('- name: Export static build configuration');
+  const buildStart = content.indexOf('- name: Build React assets against this snapshot revision');
+  const assemblyStart = content.indexOf('- name: Assemble static artifact');
+
+  assert.ok(configurationStart >= 0, 'The Pages workflow must export static build configuration.');
+  assert.ok(buildStart > configurationStart, 'The React build must run after static build configuration is exported.');
+  assert.ok(assemblyStart > buildStart, 'The static artifact must be assembled after the React build.');
+
+  const configuration = content.slice(configurationStart, buildStart);
+  assert.match(configuration, /VITE_SITE_BASE_PATH=.*\$GITHUB_ENV/);
+  assert.match(configuration, /VITE_MARKET_SNAPSHOT_PATH=.*\$GITHUB_ENV/);
+
+  const build = content.slice(buildStart, assemblyStart);
+  assert.match(build, /npm --prefix frontend run build/);
+  assert.doesNotMatch(build, /\$GITHUB_ENV/, 'GitHub environment exports apply only to later steps.');
+});
+
 test('only the deployment job holds Pages or OIDC permission, and it uses trusted develop scripts', async () => {
   const content = await workflow('pages.yml');
   assert.match(content, /resolve-source:[\s\S]*?pull-requests:\s*read/);
