@@ -254,40 +254,6 @@ public sealed class Gw2ApiClientTests
     }
 
     [Fact]
-    public async Task Mock_http_responses_increment_request_rate_limit_and_parsing_counters()
-    {
-        var responses = new Queue<HttpResponseMessage>(
-        [
-            new HttpResponseMessage(HttpStatusCode.TooManyRequests),
-            CreateJsonResponse(HttpStatusCode.OK, "{"),
-        ]);
-        var handler = new StubHttpMessageHandler(
-            (_, _) => Task.FromResult(responses.Dequeue()));
-        using var httpClient = CreateHttpClient(handler);
-        var diagnostics = new MarketDataDiagnostics();
-        var apiClient = new Gw2ApiClient(
-            httpClient,
-            PassthroughRequestScheduler.Instance,
-            diagnostics);
-
-        var rateLimited = await apiClient.GetPricesAsync([900001]);
-        var invalidPayload = await apiClient.GetPricesAsync([900002]);
-
-        Assert.Equal(Gw2ApiErrorCategory.RateLimited, rateLimited.ErrorCategory);
-        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, invalidPayload.ErrorCategory);
-
-        var prices = diagnostics.GetSnapshot().Endpoints.Single(endpoint =>
-            endpoint.Endpoint == "commerce/prices");
-        Assert.Equal("commerce/prices", prices.Endpoint);
-        Assert.Equal(2, prices.RequestCount);
-        Assert.Equal(1, prices.RateLimitedResponseCount);
-        Assert.Equal(1, prices.ParsingFailureCount);
-        Assert.Equal(2, prices.LatencySampleCount);
-        Assert.True(prices.TotalRequestLatencyMilliseconds >= 0);
-        Assert.True(prices.AverageRequestLatencyMilliseconds >= 0);
-    }
-
-    [Fact]
     public async Task Response_body_transport_failures_map_to_a_stable_category()
     {
         var handler = new StubHttpMessageHandler(
@@ -362,14 +328,12 @@ public sealed class Gw2ApiClientTests
         using var provider = services.BuildServiceProvider();
 
         var client = provider.GetRequiredService<IGw2ApiClient>();
-        var diagnostics = provider.GetRequiredService<IMarketDataDiagnostics>();
         var httpClientOptions = provider
             .GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>()
             .Get(Gw2ApiClient.HttpClientName);
 
         Assert.IsType<BatchingGw2ApiClient>(client);
         Assert.IsType<Gw2ApiClient>(provider.GetRequiredService<IGw2ApiTransport>());
-        Assert.IsType<MarketDataDiagnostics>(diagnostics);
         Assert.True(httpClientOptions.ShouldRedactHeaderValue("Authorization"));
         Assert.True(httpClientOptions.ShouldRedactHeaderValue("X-Any-Header"));
     }

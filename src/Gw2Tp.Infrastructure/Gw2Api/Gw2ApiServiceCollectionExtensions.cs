@@ -26,12 +26,6 @@ public static class Gw2ApiServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IGw2RequestScheduler, Gw2RequestScheduler>();
         services.AddSingleton<IClock, SystemClock>();
-        services.AddSingleton<MarketDataDiagnostics>();
-        services.AddSingleton<IMarketDataDiagnostics>(serviceProvider =>
-            serviceProvider.GetRequiredService<MarketDataDiagnostics>());
-        services.AddSingleton<IMarketDataDiagnosticsRecorder>(serviceProvider =>
-            serviceProvider.GetRequiredService<MarketDataDiagnostics>());
-
         services.AddHttpClient(Gw2ApiClient.HttpClientName, (serviceProvider, httpClient) =>
         {
             httpClient.BaseAddress = Gw2ApiBaseAddress;
@@ -44,8 +38,7 @@ public static class Gw2ApiServiceCollectionExtensions
             options.ShouldRedactHeaderValue = static _ => true);
         services.AddSingleton<IGw2ApiTransport>(serviceProvider => new Gw2ApiClient(
             serviceProvider.GetRequiredService<IHttpClientFactory>(),
-            serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
-            serviceProvider.GetRequiredService<IMarketDataDiagnosticsRecorder>()));
+            serviceProvider.GetRequiredService<IGw2RequestScheduler>()));
         services.AddSingleton<IGw2ApiClient, BatchingGw2ApiClient>();
         return services;
     }

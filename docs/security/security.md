@@ -2,9 +2,12 @@
 
 ## Scope
 
-The initial application is local and personal. This is intentionally not a multi-user web service.
+The application is a public static market-analysis site. It has no account
+system, credential store, local API, or server-side database.
 
-For a genuinely personal/household activity, GDPR Article 2(2)(c) can exclude the activity from GDPR scope. That conclusion is context-dependent and must be reassessed if the application is commercialized, shared, hosted, or used for other persons' data.
+The current static delivery must contain no personal data. If a future feature
+collects, shares, hosts, or otherwise processes personal data, GDPR and French
+data-protection obligations must be reassessed before that feature is enabled.
 
 References:
 - https://eur-lex.europa.eu/eli/reg/2016/679/oj
@@ -15,8 +18,10 @@ References:
 ## Mandatory/conditional requirements
 
 1. Comply with current Guild Wars 2 API and website/content terms.
-2. If the scope becomes non-personal, apply GDPR/French data-protection obligations appropriate to that deployment.
-3. Protect API credentials against unauthorized access.
+2. Apply GDPR/French data-protection obligations before introducing any
+   personal-data processing.
+3. Do not introduce API credentials, player data, or personal data into the
+   static site, generator artifacts, source, logs, or tests.
 4. Apply security controls proportionate to risk.
 5. Reassess legal/security scope before public or hosted deployment.
 
@@ -43,53 +48,42 @@ release state, or merge state.
 
 ## Best practices required by this project
 
-- API key stored outside source code;
-- persistent local credentials use the host OS secret service (Keychain,
-  Credential Manager, or Secret Service), never a plaintext application file;
-- no secret in browser JavaScript;
-- loopback-only server by default;
+- no credential or token support in the browser or generator;
+- no secret in source, workflow files, snapshots, browser storage, logs, or
+  fixtures;
 - redacted logs;
-- minimal local data retention;
-- explicit clear-data action;
+- browser-local capital and risk preferences only;
 - dependency updates;
 - test fixtures free of real API keys;
 - no analytics/telemetry sent remotely without explicit future decision;
-- secure default headers where compatible with local development;
-- input validation on all locally exposed HTTP endpoints;
+- static-artifact and snapshot-contract validation before browser use;
 - no unsafe HTML rendering of API-controlled names or text.
-
-## API token specifics
-
-The current GW2 tokeninfo documentation warns that the key name is not escaped and can contain HTML/JavaScript. Render it as text only.
-
-Permissions required by the application must be declared per feature. The key validator should show missing permissions and disable corresponding functionality instead of repeatedly attempting unauthorized calls.
 
 ## Data minimization
 
 Prefer storing:
 
-- opaque account identifier or local profile ID;
-- selected account-derived facts needed for current analysis;
-- timestamps;
-- user-entered preferences;
-- saved operation outcomes.
+- public market fields required by the versioned snapshot;
+- snapshot generation timestamp and compatibility metadata;
+- browser-local capital and risk preferences.
 
-Avoid storing full raw authenticated payloads indefinitely.
+Do not store account identifiers, authenticated payloads, player history,
+credentials, or server-side preference profiles.
 
 ## Threat model
 
 Threats include:
 
 - accidental Git secret commit;
-- malicious local webpage attempting to call the local server;
-- XSS from API-derived strings;
-- compromised local process reading secrets;
+- XSS from snapshot-derived strings;
+- compromised publication workflow or generated artifact;
 - dependency vulnerability;
-- unauthorized LAN access if binding changes;
 - stale/corrupt market data causing bad decisions.
 
 ## Read-only enforcement
 
-The application should not expose an HTTP client abstraction that can issue arbitrary authenticated methods/URLs. Restrict the API adapter to a typed allow-list of known GET resources.
+Only the scheduled snapshot generator may access Guild Wars 2 through a typed
+allow-list of known GET resources. Browser code must not have an API client
+for Guild Wars 2 or a local service.
 
 The project should include a regression test that no write-capable API method exists in the GW2 adapter surface.

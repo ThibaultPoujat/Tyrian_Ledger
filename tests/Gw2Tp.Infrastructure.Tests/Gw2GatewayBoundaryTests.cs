@@ -13,7 +13,6 @@ public sealed class Gw2GatewayBoundaryTests
             Path.Combine(repositoryRoot, "src", "Gw2Tp.Application"),
             Path.Combine(repositoryRoot, "src", "Gw2Tp.Analytics"),
             Path.Combine(repositoryRoot, "src", "Gw2Tp.Domain"),
-            Path.Combine(repositoryRoot, "src", "Gw2Tp.Web"),
         };
 
         var offendingFiles = featureSourceRoots

@@ -4,20 +4,22 @@
 
 Recommended baseline:
 
-- .NET 10 LTS backend with ASP.NET Core
-- React + TypeScript frontend
-- SQLite via EF Core or a narrowly-scoped persistence abstraction
+- .NET 10 LTS snapshot generator and deterministic calculation libraries
+- React + TypeScript static frontend
+- versioned public market snapshot artifact
 - xUnit for .NET tests
 - Playwright for browser smoke/end-to-end tests
 - built-in structured logging with redaction rules
 
-Alternative: Blazor Web App if a single-language C# stack is strongly preferred. Do not switch to Blazor solely because it looks simpler on day one; the current specification benefits from a clear browser/client boundary and TypeScript ecosystem.
+No server-rendered or dynamic web framework is part of the static delivery.
 
 ## Runtime topology
 
-Browser -> ASP.NET Core local server -> application services -> deterministic analytics / SQLite / GW2 API gateway
+Scheduled generator -> application services -> deterministic analytics / typed GW2 API gateway -> market-snapshot.json
 
-No browser component uses credentials or calls authenticated GW2 endpoints.
+Browser -> static React assets plus market-snapshot.json
+
+No browser component uses credentials, calls Guild Wars 2, or calls a local API.
 
 ## Layers
 
@@ -31,32 +33,29 @@ Use cases and orchestration. Defines public-market data and recommendation inter
 
 ### Infrastructure
 
-GW2 HTTP implementation, caching, persistence, secret handling, filesystem configuration, external adapters.
+GW2 HTTP implementation, transient capture caching, scheduler, filesystem output,
+and external adapters used by the generator.
 
 ### Analytics
 
 Pure deterministic calculators: integer-copper fees, market scenarios, order-book simulation, and M9 recommendation rules.
-
-### Web
-
-HTTP endpoints, DTO mapping, UI, validation, presentation.
 
 ## Recommended repository structure
 
 ```text
 /
   src/
-    Gw2Tp.Web/
     Gw2Tp.Application/
     Gw2Tp.Domain/
     Gw2Tp.Analytics/
     Gw2Tp.Infrastructure/
+    Gw2Tp.MarketSnapshotGenerator/
   tests/
     Gw2Tp.Domain.Tests/
     Gw2Tp.Application.Tests/
     Gw2Tp.Analytics.Tests/
     Gw2Tp.Infrastructure.Tests/
-    Gw2Tp.IntegrationTests/
+    Gw2Tp.MarketSnapshotGenerator.Tests/
     Gw2Tp.Web.E2E/
   docs/
 ```
@@ -85,7 +84,9 @@ Reference data: long TTL and explicit refresh/invalidation.
 
 Market data: short TTL and freshness metadata.
 
-M9 market reads are current-scan inputs only. Cached public responses are transient process state and are never persisted as historical snapshots.
+Market reads are scheduled-capture inputs only. Cached public responses are
+transient generator process state and are never persisted as historical
+snapshots.
 
 ## Rate-limit strategy
 
@@ -101,9 +102,9 @@ On 429:
 
 ## Persistence
 
-SQLite is the default local store. Use migrations and schema versioning.
-
-Persist only local settings required for the active feature. M9 does not retain market snapshots, recommendation results, partial scans, account data, or personal history.
+The static site has no server-side database or persistence layer. Capital and
+risk settings are browser-local; generated market data is the current
+publishable snapshot artifact rather than retained application history.
 
 ## Money
 
@@ -139,14 +140,8 @@ incomplete status.
 
 ## Credentials
 
-M9 does not read, store, or require Guild Wars 2 API credentials. The browser
-receives only public-market data from the local server.
-
-## Local network binding
-
-Default server address: `127.0.0.1`.
-
-Do not expose the application to the LAN by default.
+The browser does not read, store, or require Guild Wars 2 API credentials. It
+receives only public-market data from the published static snapshot.
 
 ## Error taxonomy
 
