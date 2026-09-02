@@ -39,7 +39,7 @@ export async function loadStaticMarketSnapshot(
 ): Promise<StaticSnapshotLoadState> {
   let response: Response;
   try {
-    response = await request(url);
+    response = await request(url, { cache: 'no-store' });
   } catch {
     return { kind: 'unavailable', message: 'The published market snapshot could not be reached. Recommendations are unavailable.' };
   }
