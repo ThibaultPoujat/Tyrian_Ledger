@@ -7,14 +7,15 @@ has no local API, hosted API, account data, key, or player data.
 
 ## Trusted workflow design
 
-`.github/workflows/pages.yml` runs on pushes to `develop`, manually through
-the Actions UI, and at minutes 7, 22, 37, and 52 of every UTC hour. This
-produces a 15-minute capture interval while avoiding the busiest top-of-hour
-boundary. Scheduled runs use the default branch; this repository's default is
-`develop`.
+`.github/workflows/pages.yml` runs on pushes to `develop` and manually through
+the Actions UI. The independent Cloudflare Worker Cron in
+`ops/pages-snapshot-scheduler` is the sole periodic trigger: at minutes 7, 22,
+37, and 52 of every UTC hour it dispatches this same workflow on `develop`.
+GitHub Actions remains the only live Guild Wars 2 client.
 
-Each run is exclusive (`pages-publication`, cancelling an older in-progress
-run) and performs these stages:
+Each run is exclusive (`pages-publication`) and performs these stages. A newer
+dispatch never cancels an in-progress capture; GitHub retains only the newest
+pending refresh while that capture finishes.
 
 1. Resolve the reviewed selector from trusted `develop` code.
 2. Generate the snapshot and build React assets from the selected immutable
@@ -32,7 +33,38 @@ deployment job checks out `github.sha` from `develop` and never executes
 selected pull-request code. There is no `pull_request_target` trigger and no
 repository, organization, or user secret. GitHub's short-lived job token is
 used only for repository read access, selector lookup, artifact transfer, and
-the documented Pages deployment permissions.
+the documented Pages deployment permissions. The Worker is not part of this
+trust boundary: it cannot read the snapshot, access Guild Wars 2, or deploy to
+Pages. It can only ask GitHub to start this workflow on `develop`.
+
+## External scheduler
+
+The private Cloudflare Worker has no public route (`workers_dev: false`) and
+uses only its `scheduled()` handler. Its Cron expression is
+`7,22,37,52 * * * *` (UTC). It uses a GitHub App installed only on this
+repository, with no webhook subscriptions and only **Actions: write**
+permission. For each invocation it creates a short-lived App installation token
+and posts the fixed `workflow_dispatch` request for `pages.yml` with
+`{ "ref": "develop" }`.
+
+`GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and the PKCS#8
+`GITHUB_APP_PRIVATE_KEY` are encrypted Cloudflare Worker secrets, never source
+or GitHub Actions secrets. `SCHEDULER_ENABLED` is also a Worker secret; only
+the exact value `true` permits a dispatch. The Worker logs only the operation
+and HTTP status, never a credential, authorization header, or response body.
+
+Before merging a scheduler cutover, the owner must create the App and install
+it only on `Tyrian_Ledger`, prepare Cloudflare Worker secrets and platform
+error alerts, and have a validated `wrangler deploy` session ready. The merge
+itself produces a fresh push deployment. Immediately afterwards the owner
+deploys the Worker, sets the secrets, and enables it before that snapshot
+reaches the 30-minute delayed threshold. Cloudflare Worker error alerts and
+GitHub Actions failure notifications are the operational failure signals.
+
+To rotate or revoke access, the owner disables `SCHEDULER_ENABLED`, revokes the
+GitHub App key or removes the App installation, replaces the Cloudflare secret,
+then re-enables only after a successful manual dispatch verification. The
+manual **Run workflow** path remains available throughout.
 
 Every third-party action is pinned to a full commit SHA, with a release-family
 comment next to the pin. The current immutable pins cover checkout, .NET and
@@ -87,10 +119,11 @@ continues to serve the last successful deployment. Clear the selector or
 revert the relevant `develop` change to trigger a new known-good deployment;
 this workflow never promotes an arbitrary historical artifact.
 
-GitHub can delay or drop scheduled events under load. When the displayed
-snapshot is delayed, an owner may use **Run workflow** in the Actions UI to
-invoke the `workflow_dispatch` recovery path on `develop`; it follows the same
-trusted selection, capture, audit, and deployment stages as a scheduled run.
+When the displayed snapshot is delayed, an owner may use **Run workflow** in
+the Actions UI to invoke the `workflow_dispatch` recovery path on `develop`; it
+follows the same trusted selection, capture, audit, and deployment stages as
+the external Cron dispatch. The native GitHub `schedule` event is intentionally
+absent, because it can be delayed or dropped under load.
 
 The React build is given the project Pages base path and a SHA-256 revision of
 the generated snapshot. It fetches that snapshot with `cache: 'no-store'`.
@@ -122,12 +155,10 @@ gitleaks detect --source . --log-opts="--all" --redact --no-banner
 ```
 
 Do not change repository visibility or enable/configure Pages as part of this
-ticket. Once the owner has deliberately enabled Pages after that gate, inspect
-the first push-triggered run and a later scheduled run, record their source
-selection, capture-policy log, artifact audit, deployment URL, and snapshot
-timestamp under VERIFY-014. A manual recovery run may restore fresh data but
-does not replace the scheduled-run evidence. A schedule, Pages setting, or
-public-history audit is not considered verified merely because the workflow
-source exists.
+ticket. M10's native-schedule evidence remains recorded under VERIFY-014. M11
+must separately record two consecutive Cloudflare Cron dispatches, their
+resulting GitHub runs, source selection, capture policy, artifact audits,
+deployment URLs, and snapshot timestamps under VERIFY-015. An external
+scheduler is not verified merely because its Worker source exists.
 
 GitHub documents [full-SHA action pinning](https://docs.github.com/en/actions/reference/security/secure-use), the [minimum Pages deployment permissions](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages), and the fact that [scheduled runs use the default branch and can be delayed](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).

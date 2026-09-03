@@ -21,15 +21,16 @@ test('every GitHub Action is pinned to an immutable full commit SHA', async () =
   }
 });
 
-test('the Pages publication workflow is develop-only, has an offset 15-minute schedule and manual recovery, and never uses pull_request_target', async () => {
+test('the Pages publication workflow is develop-only, accepts trusted external dispatch and manual recovery, and never uses pull_request_target', async () => {
   const content = await workflow('pages.yml');
   assert.match(content, /branches:\s*\[develop\]/);
-  assert.match(content, /cron:\s*'7,22,37,52 \* \* \* \*'/);
   assert.match(content, /workflow_dispatch:\s*\{\}/);
   assert.match(content, /if:\s*github\.ref == 'refs\/heads\/develop'/);
   assert.doesNotMatch(content, /pull_request(?:_target)?:/);
+  assert.doesNotMatch(content, /^\s+schedule:/m);
   assert.match(content, /permissions:\s*\{\}/);
-  assert.match(content, /cancel-in-progress:\s*true/);
+  assert.match(content, /cancel-in-progress:\s*false/);
+  assert.doesNotMatch(content, /queue:\s*max/);
 });
 
 test('the static base and revision are exported before the React build step', async () => {
