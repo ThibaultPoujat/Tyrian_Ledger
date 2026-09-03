@@ -3,14 +3,13 @@ name: Publish static Pages snapshot
 on:
   push:
     branches: [develop]
-  schedule:
-    # Every 15 minutes in UTC, offset from the busiest top-of-hour boundary.
-    - cron: '7,22,37,52 * * * *'
   workflow_dispatch: {}
 
 concurrency:
   group: pages-publication
-  cancel-in-progress: true
+  # A new external dispatch keeps the active capture intact and replaces only
+  # an older pending refresh, so slow trusted captures are never interrupted.
+  cancel-in-progress: false
 
 permissions: {}
 

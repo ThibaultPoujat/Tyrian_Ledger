@@ -25,6 +25,22 @@ References:
 4. Apply security controls proportionate to risk.
 5. Reassess legal/security scope before public or hosted deployment.
 
+## External scheduler boundary
+
+The external Cloudflare Worker used to request periodic Pages captures is an
+operations-only component, not an application runtime or Guild Wars 2 client.
+It must not expose an HTTP endpoint, process player or browser data, fetch a
+snapshot, or make any ArenaNet request. Its only permitted egress is GitHub's
+API to create an installation token and dispatch the fixed `pages.yml` workflow
+on `develop`.
+
+The Worker uses an owner-created GitHub App installed on this repository only,
+with no webhook subscriptions and only the required Actions write permission.
+Its App ID, installation ID, and PKCS#8 private key live solely as encrypted
+Cloudflare Worker secrets. They must never be copied into repository secrets,
+workflow files, source, tests, fixtures, logs, screenshots, support messages,
+or Git history. Disable the Worker before revoking or rotating the App key.
+
 ## M10 public static deployment gate
 
 For M10, the repository and its complete Git history, the GitHub Pages site,

@@ -38,7 +38,7 @@ on a local coding-model runtime.
 
 ## Current architecture
 
-Scheduled generator -> Application services -> Analytics/typed GW2 gateway -> public market snapshot.
+External Cron dispatcher -> trusted GitHub Actions generator -> Application services -> Analytics/typed GW2 gateway -> public market snapshot.
 
 Browser -> static React assets plus the published market snapshot.
 
