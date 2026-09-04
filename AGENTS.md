@@ -39,6 +39,12 @@ requires it.
   prompts, tests, commits, pull requests, or SQLite.
 - The browser MUST NOT be a secret-store client. It receives safe status and
   structured application results from the loopback host.
+- Normal hosting MUST bind only to explicit loopback addresses and validate
+  approved Host values (`AllowedHosts` or equivalent); loopback binding alone
+  is not DNS-rebinding protection.
+- Production frontend/API MUST be same-origin. Development CORS MUST allow only
+  exact configured trusted origins. State-changing local endpoints MUST have
+  cross-origin request/anti-forgery protection independent of CORS.
 - All ArenaNet access MUST pass through typed gateway abstractions. Feature code
   MUST NOT construct ArenaNet URLs directly.
 - External DTOs MUST remain separate from domain/application models.
@@ -120,10 +126,11 @@ model name. Choose effort by risk:
 - **Normal implementation:** GPT-5.6 Terra, High.
 - **Complex cross-layer implementation:** GPT-5.6 Sol, High when available; a
   strong equivalent is acceptable.
-- **Financial, accounting, persistence migration, security, statistical,
-  recommendation, or architecture review:** use a fresh flagship-model review,
-  normally GPT-5.6 Sol at XHigh. If a stronger flagship model such as GPT-6
-  Astra is available to the owner, it MAY replace Sol for these review gates.
+- **Financial, accounting, persistence migration, security, private-data,
+  statistical, recommendation, network-exposure, or architecture-authority
+  work:** classify as R3 and use a fresh flagship-model review, normally
+  GPT-5.6 Sol at XHigh. If a stronger flagship model such as GPT-6 Astra is
+  available to the owner, it MAY replace Sol for these review gates.
 - Use Max only when XHigh has produced unresolved ambiguity or the ticket is
   unusually difficult; do not pay for Max mechanically.
 

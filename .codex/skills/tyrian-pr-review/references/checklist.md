@@ -18,7 +18,13 @@ Apply only relevant sections; do not generate noise from inapplicable checks.
   frontend payloads, logs, fixtures, snapshots, exceptions, or test output.
 - Browser cannot request/recover secret value.
 - Secret injection occurs at infrastructure HTTP boundary.
-- Local host remains loopback by default unless separately approved.
+- Local host binds explicit loopback addresses only by default unless separately
+  approved; normal configuration rejects wildcard/LAN listeners.
+- Host validation rejects unapproved values/DNS-rebinding-shaped requests.
+- Production frontend/API are same-origin and development CORS allows exact
+  trusted origins only.
+- State-changing local endpoints have cross-origin request/anti-forgery
+  protection independent of CORS.
 - Private account payloads are minimized/redacted.
 
 ## ArenaNet gateway

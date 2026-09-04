@@ -12,6 +12,10 @@ receive a fresh audit. Backup/restore is exercised on populated data.
 Recommendation evaluation distinguishes observed user-executed outcomes from
 unexecuted suggestions and preserves rule/configuration versions.
 
+Whole-product hardening follows the complete dashboard, scanner,
+recommendation, personal-learning, investment, crafting, and alert feature set.
+Outcome evaluation begins only after that hardening gate.
+
 ## Exit
 
 Critical E2E journeys pass, clean-machine start/recovery is documented, and the

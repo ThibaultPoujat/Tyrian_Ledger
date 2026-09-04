@@ -1,6 +1,11 @@
 # GitHub Pages static deployment
 
-This is the operational guide for the single shared GitHub Pages deployment.
+> **Historical / superseded:** This M10-M11 operational guide is retained as
+> deployment evidence only. ADR-010 and the M12 product pivot retire this
+> Pages/Cloudflare topology; do not use this guide for active operation or new
+> implementation. TKT-M12-02 removes the retired runtime.
+
+This was the operational guide for the single shared GitHub Pages deployment.
 It complements the local-only [static development handoff](static-source-release.md).
 The site contains only React assets and one public `market-snapshot.json`; it
 has no local API, hosted API, account data, key, or player data.

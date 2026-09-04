@@ -32,6 +32,11 @@ Required for deterministic business logic, including as introduced:
 High-risk formulas need independent expected vectors/edge cases, not tests that
 merely restate the implementation expression.
 
+While VERIFY-013 is open, fee tests verify the configured provisional model,
+not external GW2 rounding behavior. A test becomes evidence of implementation
+correctness only; authoritative fee status requires the external evidence and
+register update defined by TKT-M15-01.
+
 ### Gateway tests
 
 Use synthetic recorded fixtures or mocked HTTP for:
@@ -68,6 +73,13 @@ Cover:
 Cover:
 
 - loopback default binding;
+- rejection of wildcard/non-loopback normal bindings;
+- explicit Host validation, including rejection of unapproved/spoofed Host
+  values;
+- same-origin production frontend/API behavior;
+- exact trusted-origin development CORS with untrusted origins rejected;
+- cross-origin/anti-forgery rejection for state-changing endpoints independent
+  of CORS;
 - startup without API key where supported;
 - health/status endpoint;
 - safe key-status/result payloads;

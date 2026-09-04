@@ -7,9 +7,12 @@ value, and 7/30/90-day performance from stored personal transactions.
 
 ## Invariants
 
-Canonical fees are verified and centralized. Integer copper only. FIFO is
-initial accepted lot policy. Partial matches work. Unknown historical basis is
-not zero. Realized and unrealized P&L never mix.
+Canonical fees are centralized. They become externally verified only if
+TKT-M15-01 records sufficient authoritative rounding evidence and resolves
+VERIFY-013; otherwise the centralized behavior and all derived results remain
+explicitly modeled/provisional. Integer copper only. FIFO is the initial
+accepted lot policy. Partial matches work. Unknown historical basis is not zero.
+Realized and unrealized P&L never mix.
 
 ## Review
 

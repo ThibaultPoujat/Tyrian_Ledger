@@ -55,8 +55,9 @@ static product. Reuse them in the local-first architecture where compatible.
 ## Review rule
 
 Every implementation PR receives a fresh independent review. Use
-`.codex/skills/tyrian-pr-review/SKILL.md`. High-risk financial/security/data
-changes should receive a flagship-model XHigh review.
+`.codex/skills/tyrian-pr-review/SKILL.md`. R3 financial, security, private-data,
+network-exposure, and architecture-authority changes require a fresh
+flagship-model XHigh review.
 
 ## Owner actions outside the repository
 

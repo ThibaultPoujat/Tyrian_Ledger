@@ -59,8 +59,8 @@ possible value.
 
 Defaults are starting points chosen for a single local, read-only user; the
 real sustainable rate is whatever the live API confirms (VERIFY-006,
-VERIFY-011). After the safe live check in M2, defaults MUST be re-examined and
-recorded in this file.
+VERIFY-011). TKT-M18-02 owns re-examining and recording these defaults when the
+safe live check can be performed against the active local runtime.
 
 ## 3. 429 handling and retry behavior
 
@@ -137,7 +137,7 @@ Rules:
   `docs/specs/verified-external-notes.md` and update VERIFY-006 / VERIFY-010 /
   VERIFY-011 in `docs/verification/VERIFY-REGISTER.md`.
 
-Execution timing: the safe live check is scheduled with the M2 gateway work
-(when a secret store and real key are available) so its results can
-immediately adjust the §2 defaults. It may be run earlier as step 1 only
-(no key involved) if the human approves.
+Execution timing: the public and keyed checks are now owned by TKT-M18-02 after
+TKT-M13-02 provides the supported secret path. Any keyed check still requires
+explicit owner approval and must immediately update §2 plus VERIFY-006,
+VERIFY-010, and VERIFY-011 when it yields sufficient evidence.

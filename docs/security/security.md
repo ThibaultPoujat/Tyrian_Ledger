@@ -26,13 +26,18 @@ active personal runtime.
    in ADR-006. The browser and SQLite are never secret stores.
 4. **Loopback by default.** Local HTTP endpoints must not be exposed to LAN or
    Internet by normal configuration.
-5. **Data minimization.** Persist normalized personal fields required by product
+5. **Validated local origin.** The host must reject unapproved `Host` values;
+   loopback binding alone does not prevent DNS rebinding.
+6. **Explicit browser boundary.** Production UI/API are same-origin,
+   development CORS names only exact trusted origins, and state-changing local
+   requests have anti-forgery/cross-origin protection independent of CORS.
+7. **Data minimization.** Persist normalized personal fields required by product
    behavior, not indefinite raw private account payloads.
-6. **Safe failure.** Raw upstream exceptions/headers/private payloads do not
+8. **Safe failure.** Raw upstream exceptions/headers/private payloads do not
    leak into browser responses or logs.
-7. **Local ownership.** Backups remain user-controlled local artifacts unless a
+9. **Local ownership.** Backups remain user-controlled local artifacts unless a
    future approved design says otherwise.
-8. **No silent analytics.** No remote telemetry/analytics containing personal
+10. **No silent analytics.** No remote telemetry/analytics containing personal
    or trading data without an explicit owner decision and data-protection review.
 
 ## Secret boundary
@@ -92,9 +97,21 @@ Security review should verify actual data flow:
 
 The key must never flow in the reverse direction toward the browser.
 
-CORS/origin and local binding should be as narrow as practical for the chosen
-React development/production topology. Any explicit developer override that
-binds beyond loopback is not a supported normal-use security posture.
+Normal configuration must listen only on explicit IPv4/IPv6 loopback addresses,
+never wildcard or LAN interfaces. The host must validate `Host` against an
+explicit local allowlist (`AllowedHosts` or an equivalent control) and reject
+unrecognized values to reduce DNS-rebinding risk.
+
+Production frontend and API must be same-origin. Development CORS may allow
+only exact, explicitly configured trusted development origins; it must not use
+wildcards or reflect arbitrary origins. State-changing endpoints (including
+settings, sync commands, watchlists, backup/restore, and data clearing) must
+enforce a separate cross-origin request/anti-forgery control. CORS headers alone
+must never be treated as CSRF protection.
+
+Any explicit developer override that binds beyond loopback is not a supported
+normal-use security posture and requires an owner-approved architecture and
+security decision.
 
 ## ArenaNet/API failure handling
 
@@ -147,6 +164,8 @@ Key threats now include:
 
 - accidental credential/Git/log/browser disclosure;
 - local host accidentally exposed beyond loopback;
+- DNS rebinding or a spoofed `Host` reaching the local API;
+- cross-origin state-changing requests from an untrusted site;
 - XSS/untrusted upstream text;
 - corrupted/destructive SQLite migration or sync;
 - partial API failure deleting valid personal state;

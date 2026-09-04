@@ -15,7 +15,8 @@ pattern.
 
 ## Commits
 
-Every normal ticket commit starts with the exact ticket identifier:
+Every ticket commit, including commits on an authorized bootstrap/pivot branch,
+starts with the exact ticket identifier:
 
 `[TKT-Mxx-yy] Short description`
 
@@ -60,8 +61,7 @@ clear.
 - [ ] Relevant validation performed.
 - [ ] Diff reviewed for scope expansion, secrets, data/migration risk, and stale
       contradictory docs.
-- [ ] Ticket commits use the ticket prefix (except an explicitly authorized
-      bootstrap branch).
+- [ ] Every ticket commit uses the exact ticket prefix.
 - [ ] Branch pushed.
 - [ ] PR created and existence verified.
 - [ ] PR not merged.

@@ -101,8 +101,18 @@ services. Endpoints validate transport-level input, invoke Application use
 cases, and return structured view/query models. Financial formulas do not live
 in controllers/minimal API handlers.
 
-The host binds loopback by default. LAN/Internet exposure requires a future
+The host binds loopback by default and rejects wildcard/LAN/Internet listeners
+in normal configuration. It validates `Host` against an explicit allowlist (for
+example ASP.NET Core `AllowedHosts`) so loopback binding is not treated as
+sufficient DNS-rebinding protection. LAN/Internet exposure requires a future
 owner-approved security/architecture decision.
+
+Production serves React and the API from one origin. A separate development
+server may use CORS only for exact configured trusted development origins;
+wildcard or reflected origins are forbidden. Every state-changing local
+endpoint also requires an explicit cross-origin request defense, such as
+validated same-origin metadata plus an anti-forgery token/custom-header policy.
+CORS is not CSRF protection.
 
 ### React frontend
 

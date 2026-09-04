@@ -37,7 +37,8 @@ work, include edge/regression evidence rather than only happy-path tests.
 
 - [ ] Fresh review session used `.codex/skills/tyrian-pr-review/SKILL.md`.
 - [ ] Review findings are resolved or explicitly accepted by owner.
-- [ ] R3 work received fresh flagship XHigh review.
+- [ ] R3 financial/data/security/network-exposure/architecture-authority work
+      received fresh flagship XHigh review.
 
 ## Owner review
 

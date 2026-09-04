@@ -41,7 +41,9 @@ those observations as evidence with explicit sample counts and confidence.
    backup.
 3. **Deterministic financial truth.** Money uses integer copper. Fees, cost
    basis, profit, ROI, allocation, and recommendations are deterministic and
-   covered by tests.
+   covered by tests. Until VERIFY-013 is resolved with sufficient external
+   evidence, GW2 fee and rounding output is explicitly modeled/provisional;
+   tests of the configured model do not make the external behavior verified.
 4. **Explainability before cleverness.** Every score/action exposes the evidence
    and rule components that produced it. No runtime LLM or opaque ML model owns
    financial truth.
@@ -212,6 +214,12 @@ be reproducible or versioned from authoritative inputs.
 ## 7. Non-functional requirements
 
 - Local host binds to loopback by default.
+- Host-header validation permits only explicit local host values to prevent
+  DNS-rebinding access.
+- Production frontend and API are same-origin. Development CORS allowlists only
+  exact configured trusted development origins; wildcard origins are forbidden.
+- State-changing local endpoints have explicit cross-origin request/anti-forgery
+  protection independent of CORS.
 - Current desktop Chrome, Firefox, and Safari-compatible browser behavior remains
   a target; automated browser coverage uses the supported Playwright engines.
 - UI supports keyboard navigation, semantic controls, sensible focus, and WCAG

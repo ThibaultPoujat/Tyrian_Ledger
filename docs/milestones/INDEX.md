@@ -5,7 +5,7 @@ trading-assistant pivot continues the existing sequence at **M12**.
 
 A ticket file is the implementation contract. One implementation ticket should
 normally be executed in one fresh coding-agent session, followed by a fresh
-independent review session. See `AGENTS.md`, `CURRENT.md`, and
+independent review session. See `CURRENT.md`, `AGENTS.md`, and
 `docs/workflow/ai-development-workflow.md`.
 
 ## Historical milestones
@@ -62,8 +62,11 @@ M12 pivot
 
 Some later tickets have narrower dependencies and may technically start earlier,
 but the default owner workflow follows this sequence to minimize simultaneous
-architectural risk. After TKT-M18-02 lands, keep the local collector running
-while subsequent milestones are developed so history accumulates.
+architectural risk. The backend-persisted M17 watchlist depends on the M14
+persistence foundation. M22 whole-product hardening follows all user-facing
+feature branches and gates recommendation-outcome evaluation. After TKT-M18-02
+lands, keep the local collector running while subsequent milestones are
+developed so history accumulates.
 
 ## GitHub Milestone objects
 

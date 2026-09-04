@@ -23,6 +23,12 @@ formulas.
 No broad rewrite. No account/runtime feature before the post-pivot baseline is
 clean. Historical ADRs remain readable but superseded guidance is not active.
 
+## Review
+
+TKT-M12-01 establishes architecture/security authority and is R3 despite being
+documentation-only; it requires a fresh flagship XHigh review. Mechanical
+follow-up documentation does not lower the risk class of the boundary it sets.
+
 ## Exit
 
 TKT-M12-03 records a passing clean-checkout baseline and `CURRENT.md` points to

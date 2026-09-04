@@ -1,8 +1,12 @@
 # Trading Rules and Recommendation Policy
 
 This document defines the behavioral rules that financially authoritative code
-must implement. Exact external Guild Wars 2 fee facts remain subject to the
-VERIFY process until TKT-M15-01 establishes the canonical verified policy.
+must implement. VERIFY-013 is open: the current GW2 model uses separate 5%
+listing and 10% exchange fees, a 1-copper minimum for each, and owner-approved
+per-fee round-up behavior. The rates/minimums have documented wiki support, but
+fractional-copper rounding remains externally unverified. Therefore all current
+fee-derived results are **modeled/provisional**, not verified external behavior,
+until TKT-M15-01 records sufficient evidence and resolves VERIFY-013.
 
 ## 1. Money and precision
 
@@ -21,9 +25,11 @@ For a completed sale scenario:
 
 `net profit = net sale proceeds - acquisition cost`
 
-The canonical listing/exchange fee rates, minimums, and whole-copper rounding
-come from one verified policy. Generic fee primitives remain reusable, but
-feature/UI code must never duplicate fee constants.
+Listing/exchange fee rates, minimums, and whole-copper rounding come from one
+central application policy. Generic fee primitives remain reusable, but
+feature/UI code must never duplicate fee constants. Tests must distinguish
+correct implementation of the current provisional policy from external
+verification of the real GW2 rounding contract.
 
 Listing fees matter twice to behavior:
 

@@ -52,12 +52,21 @@ Git, fixtures, prompts, logs, or frontend payloads. The application remains
 read-only toward Guild Wars 2: it may recommend a manual action, but it never
 places, modifies, or cancels a Trading Post order.
 
+The normal production topology serves the frontend and API from the same
+loopback origin. The host validates the `Host` header (for example with an
+explicit `AllowedHosts` allowlist), development CORS permits only explicitly
+configured trusted origins, and state-changing local endpoints require a
+separate cross-origin request/anti-forgery defense; CORS is not treated as CSRF
+protection.
+
 ## Financial truth
 
 Authoritative financial behavior is deterministic and tested:
 
 - money is integer copper;
-- Trading Post fees are centralized and independently verified;
+- Trading Post fees are centralized; the current GW2 rates/minimums and
+  per-fee rounding are a modeled, provisional policy while VERIFY-013 remains
+  open, not independently verified external behavior;
 - realized accounting uses explicit transaction history and deterministic lot
   matching;
 - unknown cost basis stays unknown rather than becoming zero;
@@ -71,8 +80,8 @@ See `docs/specs/trading-rules.md` for the canonical behavioral rules.
 
 For every new coding-agent session, read in this order:
 
-1. `AGENTS.md`
-2. `CURRENT.md`
+1. `CURRENT.md`
+2. `AGENTS.md`
 3. `docs/context/permanent-context.md`
 4. the current milestone context under `docs/context/`
 5. the assigned ticket under `docs/milestones/<M>/tickets/`

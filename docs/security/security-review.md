@@ -1,5 +1,10 @@
 # Security review and secret-leak audit
 
+> **Historical evidence:** This TKT-M8-01 sign-off predates the M12 pivot. It
+> does not approve the new host. TKT-M13-01 must newly verify loopback binding,
+> Host validation, exact development origins, same-origin production, and
+> state-changing-request protection before private account work begins.
+
 ## TKT-M8-01 sign-off — 2026-08-29
 
 ### Repository and delivery surfaces
@@ -35,9 +40,9 @@
 
 ## Remaining risks
 
-- An explicit `--urls` or `ASPNETCORE_URLS` override can bind beyond loopback.
-  This remains a documented developer escape hatch and must not be used for
-  normal operation.
+- The retired host allowed an explicit `--urls` or `ASPNETCORE_URLS` override
+  beyond loopback. That historical escape hatch is not approved for the M13+
+  host; non-loopback exposure now requires the owner decision in ADR-010.
 - The local-only HTTP host intentionally does not configure TLS or HSTS.
 - Gitleaks and these tests reduce accidental disclosure; they do not guarantee
   that all vulnerabilities or sensitive-data paths are absent.

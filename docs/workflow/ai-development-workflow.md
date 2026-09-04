@@ -57,7 +57,8 @@ The reviewer starts from the ticket, canonical docs, Git diff, and validation
 evidence rather than the implementation explanation. Default review is
 read-only and findings-first.
 
-For R3 work, use a fresh flagship-model XHigh review. See
+For R3 financial, data, security, network-exposure, or architecture-authority
+work, use a fresh flagship-model XHigh review. See
 `docs/workflow/model-effort-guide.md`.
 
 If findings require fixes, the owner may ask for a scoped review-and-fix pass on
@@ -91,7 +92,9 @@ R3 tickets require edge/regression cases appropriate to their authority. A
 financial formula with only happy-path tests is incomplete.
 
 For documentation tickets, validate consistency, links/read order, acceptance
-criteria, and stale contradictory guidance rather than inventing runtime tests.
+criteria, ticket structure, dependency validity/cycles, and stale contradictory
+guidance rather than inventing runtime tests. Documentation that changes an
+architecture/security authority boundary remains R3 review work.
 
 Never weaken/delete a test merely to obtain green CI.
 

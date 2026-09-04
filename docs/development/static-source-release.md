@@ -1,5 +1,10 @@
 # Static development handoff
 
+> **Historical / superseded:** This M10-M11 source/release guide is retained as
+> evidence only. ADR-010 and the M12 product pivot retire the static Pages
+> release path; do not follow it for active development or deployment.
+> TKT-M12-02 removes the retired runtime.
+
 Tyrian Ledger is a static, read-only Guild Wars 2 Trading Post analysis site.
 The browser loads React assets and a published `market-snapshot.json`; it does
 not run or contact a local API. This guide describes local source development,

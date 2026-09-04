@@ -14,6 +14,9 @@ in runtime financial truth.
 - No secret value in source, browser code/storage, frontend payloads, logs,
   fixtures, prompts, tests, commits, PRs, or SQLite.
 - Browser never accesses the OS secret store or ArenaNet directly.
+- The normal host binds only to loopback, validates allowed Host values,
+  serves production UI/API same-origin, allowlists exact development origins,
+  and separately protects state-changing endpoints from cross-origin requests.
 - All ArenaNet access goes through typed gateway abstractions with request
   policy/rate limiting.
 - External DTOs stay separate from domain/application models.

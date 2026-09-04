@@ -31,6 +31,13 @@ The application may use a dedicated ArenaNet API key for verified read-only
 personal endpoints. Credentials remain outside browser/source/database and use
 the secret boundary in ADR-006.
 
+Normal hosting binds only to explicit loopback addresses and validates allowed
+Host values to mitigate DNS rebinding. Production serves frontend and API from
+one origin. Development CORS allowlists exact trusted origins only, and every
+state-changing local endpoint uses explicit cross-origin request/anti-forgery
+protection independent of CORS. Any non-loopback exposure requires a separate
+owner-approved architecture/security decision.
+
 The product will progressively add:
 
 - personal current/completed Trading Post synchronization;
@@ -75,5 +82,7 @@ explicit.
   is a first-class requirement.
 - Security review expands from public-site secrecy to private account-data and
   local-host boundaries.
-- Independent review is mandatory for each PR and especially strong for
-  financial/accounting/persistence/security/statistical/recommendation changes.
+- Independent review is mandatory for each PR. Financial, accounting,
+  persistence, security, private-data, statistical, recommendation, network-
+  exposure, and architecture-authority changes are R3 and require a fresh
+  flagship XHigh review.

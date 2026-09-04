@@ -16,9 +16,10 @@ Default references:
 - routine/mechanical: GPT-5.6 Terra Medium/High;
 - normal implementation: Terra High;
 - complex implementation: Terra High or GPT-5.6 Sol High;
-- financial/accounting/persistence/security/statistical/recommendation review:
-  fresh flagship XHigh, normally Sol XHigh; GPT-6 Astra may replace Sol when it
-  is available to the owner.
+- financial/accounting/persistence/security/private-data/statistical/
+  recommendation/network-exposure/architecture-authority review: fresh
+  flagship XHigh, normally Sol XHigh; GPT-6 Astra may replace Sol when it is
+  available to the owner.
 
 Independent context is more important than asking the implementation session to
 self-review at higher effort.

@@ -28,10 +28,11 @@ default.
 
 ## Risk classes
 
-### R0 - Mechanical
+### R0 - Mechanical/low-consequence maintenance
 
 Examples: formatting, link repair, straightforward documentation, moving a file
-without semantic change.
+without semantic change. Documentation that establishes architecture, security,
+network exposure, financial policy, or another authority boundary is not R0.
 
 - Implementation: Terra Medium.
 - Review: Terra Medium/High when a review is still required.
@@ -46,21 +47,24 @@ refactors with good tests.
 
 ### R2 - Complex cross-layer or stateful work
 
-Examples: authenticated gateway additions, sync orchestration, background
-scheduler, complex order-book integration, backup/restore, significant UI/API
-contracts.
+Examples: non-secret public gateway additions, sync orchestration, background
+scheduler, complex order-book integration, backup/restore, and significant
+UI/API contracts that do not establish an R3 authority boundary.
 
 - Implementation: Terra High or Sol High.
 - Review: fresh Sol High/XHigh according to consequence.
 
-### R3 - Financial/data/security authority
+### R3 - Financial/data/security/architecture authority
 
 Examples:
 
 - fee policy/rounding;
 - FIFO matching and realized P&L;
 - destructive or non-trivial database migrations;
-- secret handling/network exposure;
+- secret handling, private-data boundaries, Host/origin/CSRF controls, or
+  network exposure;
+- architecture contracts and ADRs that establish or materially change a
+  security, network, persistence, or financial authority boundary;
 - historical statistical formulas;
 - opportunity scoring;
 - bankroll/position sizing;
@@ -94,3 +98,6 @@ Every active M12+ ticket contains a `Recommended Codex configuration` section
 with its risk class and suggested implementation/review choice. Treat that as a
 starting point. If model availability differs, preserve the **risk class and
 independence requirement**.
+
+When a ticket spans classes, use the highest applicable class. Documentation-
+only scope does not lower an architecture/security authority change below R3.
