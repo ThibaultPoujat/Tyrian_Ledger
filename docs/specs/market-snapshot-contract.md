@@ -1,34 +1,41 @@
-# Market Snapshot Contract v1
+# Market Snapshot Contract v1 - Historical M10-M11 Contract
 
-`market-snapshot.json` is the versioned public input for the static Tyrian
-Ledger browser. It contains a complete, bounded collection of public Guild
-Wars 2 market data; it never contains an API key, account data, preferences,
+## Status
+
+**Superseded for the active product runtime by ADR-010.** This contract remains
+historical/transition evidence until TKT-M12-02 retires the static Pages path.
+Do not design new personal-assistant features around `market-snapshot.json`.
+Reusable market-collection/order-book concepts may be adapted into the local
+ASP.NET/SQLite architecture.
+
+## Historical contract
+
+`market-snapshot.json` was the versioned public input for the static Tyrian
+Ledger browser. It contained a complete, bounded collection of public Guild
+Wars 2 market data; it never contained an API key, account data, preferences,
 player identity, or generated recommendations.
 
-## Generation
+### Generation
 
-Run the no-key generator with a caller-selected artifact path:
+The historical no-key generator accepted a caller-selected artifact path:
 
 ```sh
 dotnet run --project src/Gw2Tp.MarketSnapshotGenerator -- --output /path/to/market-snapshot.json
 ```
 
-The command exits non-zero for invalid arguments, unavailable or incomplete
-gateway data, or an unwritable target. It serializes a temporary file in the
-target directory and atomically replaces the output only after collection and
-serialization succeed.
+It exited non-zero for invalid arguments, unavailable/incomplete gateway data,
+or an unwritable target, serialized a temporary file, and atomically replaced
+the output only after successful collection/serialization.
 
-The typed gateway is the only source of Guild Wars 2 data. Capture policy is
-an application-level conservative limit, not a claim about the upstream API:
-2 requests per second, at most 2 concurrent requests, and burst budget 20.
-The artifact records those values for run evidence.
+The typed gateway was the only source of Guild Wars 2 data. The recorded M10
+capture policy was an application conservative limit rather than an upstream API
+claim: 2 requests/second, at most 2 concurrent, burst budget 20.
 
-## JSON shape
+### JSON shape
 
-All property names are camel case. IDs, listing counts, quantities, and copper
-prices are JSON integers within the JavaScript safe-integer range. Browser
-code must validate that range before converting values to `BigInt` for
-calculation.
+All property names were camel case. IDs, listing counts, quantities, and copper
+prices were JSON integers within JavaScript safe-integer range because the M10
+browser validated them before converting to `BigInt`.
 
 ```json
 {
@@ -59,19 +66,11 @@ calculation.
 }
 ```
 
-`contractVersion` must equal `1`. Consumers must reject unsupported contract
-versions and compatibility metadata. `generatedAtUtc` is a canonical UTC
-ISO-8601 timestamp ending in `Z`. `moneyUnit` is `copper`,
-`recommendationPolicyVersion` is `m9-v1`, and `normalStackLimit` is `250`.
-The capture-policy values must exactly match the v1 policy above.
+`contractVersion` equaled `1`; `moneyUnit` was `copper`, the recommendation
+policy was `m9-v1`, and candidates were bounded M9 finalists. Partial/missing
+finalist data was invalid and never written.
 
-Candidates are the M9 finalist set, bounded to 200 entries after aggregate
-price screening. They are strictly ascending by `itemId`; each buy and sell
-array is ordered by `unitPriceInCopper`, then `quantity`, then
-`listingCount`. Every order level value is positive. Empty candidate arrays
-are valid when no public item satisfies the finalist screen; partial or
-missing finalist data is invalid and is never written.
-
-The browser recalculates recommendations from this input and its local capital
-and risk settings. It must not treat the snapshot as a recommendation,
-financial guarantee, or instruction to place a trade.
+The M10 browser recalculated recommendations from this artifact plus local
+capital/risk settings. That browser-side authoritative calculation path is
+specifically scheduled for retirement in TKT-M12-02; future React code consumes
+backend-authoritative structured calculations instead.
