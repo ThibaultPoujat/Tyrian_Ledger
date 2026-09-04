@@ -1,28 +1,72 @@
 # Milestone and Ticket Index
 
-Tickets are grouped by milestone to keep agent context bounded and reduce
-navigation noise.
+Milestones M0-M11 are retained as project history. The active personal
+trading-assistant pivot continues the existing sequence at **M12**.
 
-Each milestone directory contains:
+A ticket file is the implementation contract. One implementation ticket should
+normally be executed in one fresh coding-agent session, followed by a fresh
+independent review session. See `AGENTS.md`, `CURRENT.md`, and
+`docs/workflow/ai-development-workflow.md`.
 
-- `tickets/` — authoritative ticket definitions and execution contracts.
+## Historical milestones
 
-A ticket may be completed across multiple fresh sessions. See `docs/workflow/ai-development-workflow.md` and `docs/workflow/codex-collaboration.md`.
+| Milestone | Name |
+|---|---|
+| M0 | Discovery and external-contract validation |
+| M1 | Repository and development foundation |
+| M2 | GW2 data gateway and caching |
+| M3 | Deterministic market engine |
+| M4 | Dashboard and session planning |
+| M5 | Account-aware analysis and crafting (historical plan) |
+| M6 | Personal history and reconciliation (historical plan) |
+| M7 | Historical market data and investment research (historical plan) |
+| M8 | Hardening, accessibility, release readiness |
+| M9 | Beginner fast-flip MVP |
+| M10 | Static GitHub Pages snapshot deployment |
+| M11 | Published snapshot reliability |
+
+Historical ticket files remain useful evidence but are not active backlog
+contracts unless a current ticket explicitly references them.
+
+## Active pivot roadmap
 
 | Milestone | Name | Tickets |
 |---|---|---|
-| M0 | Discovery and external-contract validation | [TKT-M0-01](M0/tickets/TKT-M0-01.md), [TKT-M0-02](M0/tickets/TKT-M0-02.md), [TKT-M0-03](M0/tickets/TKT-M0-03.md), [TKT-M0-04](M0/tickets/TKT-M0-04.md), [TKT-M0-SETUP-01](M0/tickets/TKT-M0-SETUP-01.md) |
-| M1 | Repository and development foundation | [TKT-M1-00](M1/tickets/TKT-M1-00.md), [TKT-M1-01](M1/tickets/TKT-M1-01.md), [TKT-M1-02](M1/tickets/TKT-M1-02.md), [TKT-M1-03](M1/tickets/TKT-M1-03.md), [TKT-M1-04](M1/tickets/TKT-M1-04.md) |
-| M2 | GW2 data gateway and caching | [TKT-M2-01](M2/tickets/TKT-M2-01.md), [TKT-M2-02](M2/tickets/TKT-M2-02.md), [TKT-M2-03](M2/tickets/TKT-M2-03.md), [TKT-M2-04](M2/tickets/TKT-M2-04.md) |
-| M3 | Deterministic market engine | [TKT-M3-01](M3/tickets/TKT-M3-01.md), [TKT-M3-02](M3/tickets/TKT-M3-02.md), [TKT-M3-03](M3/tickets/TKT-M3-03.md), [TKT-M3-04](M3/tickets/TKT-M3-04.md) |
-| M4 | Dashboard and session planning | [TKT-M4-01](M4/tickets/TKT-M4-01.md), [TKT-M4-02](M4/tickets/TKT-M4-02.md), [TKT-M4-03](M4/tickets/TKT-M4-03.md), [TKT-M4-04](M4/tickets/TKT-M4-04.md) |
-| M5 | Account-aware analysis and crafting | [TKT-M5-01](M5/tickets/TKT-M5-01.md), [TKT-M5-02](M5/tickets/TKT-M5-02.md), [TKT-M5-03](M5/tickets/TKT-M5-03.md), [TKT-M5-04](M5/tickets/TKT-M5-04.md) |
-| M6 | Personal history and reconciliation | [TKT-M6-01](M6/tickets/TKT-M6-01.md), [TKT-M6-02](M6/tickets/TKT-M6-02.md), [TKT-M6-03](M6/tickets/TKT-M6-03.md), [TKT-M6-04](M6/tickets/TKT-M6-04.md) |
-| M7 | Historical market data and investment research | [TKT-M7-01](M7/tickets/TKT-M7-01.md), [TKT-M7-02](M7/tickets/TKT-M7-02.md), [TKT-M7-03](M7/tickets/TKT-M7-03.md), [TKT-M7-04](M7/tickets/TKT-M7-04.md) |
-| M8 | Hardening, accessibility, release readiness | [TKT-M8-01](M8/tickets/TKT-M8-01.md), [TKT-M8-02](M8/tickets/TKT-M8-02.md), [TKT-M8-03](M8/tickets/TKT-M8-03.md), [TKT-M8-04](M8/tickets/TKT-M8-04.md) |
-| M9 | Beginner fast-flip MVP | [TKT-M9-00](M9/tickets/TKT-M9-00.md), [TKT-M9-01](M9/tickets/TKT-M9-01.md), [TKT-M9-02](M9/tickets/TKT-M9-02.md), [TKT-M9-03](M9/tickets/TKT-M9-03.md), [TKT-M9-04](M9/tickets/TKT-M9-04.md), [TKT-M9-05](M9/tickets/TKT-M9-05.md) |
-| M10 | Static GitHub Pages snapshot deployment | [TKT-M10-00](M10/tickets/TKT-M10-00.md), [TKT-M10-01](M10/tickets/TKT-M10-01.md), [TKT-M10-02](M10/tickets/TKT-M10-02.md), [TKT-M10-03](M10/tickets/TKT-M10-03.md), [TKT-M10-04](M10/tickets/TKT-M10-04.md), [TKT-M10-05](M10/tickets/TKT-M10-05.md), [TKT-M10-06](M10/tickets/TKT-M10-06.md) |
-| M11 | Published snapshot reliability | [TKT-M11-01](M11/tickets/TKT-M11-01.md) |
+| M12 | Controlled Personal-Assistant Pivot | [TKT-M12-01](M12/tickets/TKT-M12-01.md), [TKT-M12-02](M12/tickets/TKT-M12-02.md), [TKT-M12-03](M12/tickets/TKT-M12-03.md) |
+| M13 | Local Runtime and Authenticated Read-Only Gateway | [TKT-M13-01](M13/tickets/TKT-M13-01.md), [TKT-M13-02](M13/tickets/TKT-M13-02.md), [TKT-M13-03](M13/tickets/TKT-M13-03.md) |
+| M14 | Durable Personal Data | [TKT-M14-01](M14/tickets/TKT-M14-01.md), [TKT-M14-02](M14/tickets/TKT-M14-02.md), [TKT-M14-03](M14/tickets/TKT-M14-03.md) |
+| M15 | Trustworthy Accounting | [TKT-M15-01](M15/tickets/TKT-M15-01.md), [TKT-M15-02](M15/tickets/TKT-M15-02.md), [TKT-M15-03](M15/tickets/TKT-M15-03.md) |
+| M16 | Personal Dashboard and Current Orders | [TKT-M16-01](M16/tickets/TKT-M16-01.md) |
+| M17 | Live Market Intelligence | [TKT-M17-01](M17/tickets/TKT-M17-01.md), [TKT-M17-02](M17/tickets/TKT-M17-02.md), [TKT-M17-03](M17/tickets/TKT-M17-03.md) |
+| M18 | Owned Historical Market Dataset | [TKT-M18-01](M18/tickets/TKT-M18-01.md), [TKT-M18-02](M18/tickets/TKT-M18-02.md), [TKT-M18-03](M18/tickets/TKT-M18-03.md) |
+| M19 | Core Recommendation Product | [TKT-M19-01](M19/tickets/TKT-M19-01.md), [TKT-M19-02](M19/tickets/TKT-M19-02.md), [TKT-M19-03](M19/tickets/TKT-M19-03.md), [TKT-M19-04](M19/tickets/TKT-M19-04.md) |
+| M20 | Personal Learning and Investments | [TKT-M20-01](M20/tickets/TKT-M20-01.md), [TKT-M20-02](M20/tickets/TKT-M20-02.md), [TKT-M20-03](M20/tickets/TKT-M20-03.md) |
+| M21 | Crafting Intelligence | [TKT-M21-01](M21/tickets/TKT-M21-01.md), [TKT-M21-02](M21/tickets/TKT-M21-02.md), [TKT-M21-03](M21/tickets/TKT-M21-03.md) |
+| M22 | Convenience, Hardening, and Evaluation | [TKT-M22-01](M22/tickets/TKT-M22-01.md), [TKT-M22-02](M22/tickets/TKT-M22-02.md), [TKT-M22-03](M22/tickets/TKT-M22-03.md) |
 
-For any ticket, follow the repository-root `AGENTS.md`, the current milestone
-context, and the ticket itself.
+## Dependency spine
+
+```text
+M12 pivot
+ -> M13 local host/account gateway
+ -> M14 durable personal data
+ -> M15 accounting
+ -> M16 personal dashboard
+ -> M17 live scanner
+ -> M18 owned market history
+ -> M19 recommendation product
+ -> M20 personal learning/investments
+ -> M21 crafting
+ -> M22 hardening/evaluation
+```
+
+Some later tickets have narrower dependencies and may technically start earlier,
+but the default owner workflow follows this sequence to minimize simultaneous
+architectural risk. After TKT-M18-02 lands, keep the local collector running
+while subsequent milestones are developed so history accumulates.
+
+## GitHub Milestone objects
+
+The Markdown sequence and ticket IDs are authoritative. GitHub Milestone objects
+may be created manually with matching names `M12` through `M22` and assigned to
+the corresponding issues. Their absence does not change ticket dependencies.
