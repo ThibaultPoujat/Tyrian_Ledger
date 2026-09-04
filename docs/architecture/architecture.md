@@ -1,175 +1,276 @@
-# Architecture
+# Architecture - Personal Local-First Runtime
 
-## Target stack
+## 1. Target stack
 
-Recommended baseline:
-
-- .NET 10 LTS snapshot generator and deterministic calculation libraries
-- React + TypeScript static frontend
-- versioned public market snapshot artifact
+- .NET 10 / ASP.NET Core local host
+- existing C# Domain, Application, Analytics, and Infrastructure libraries
+- React + TypeScript frontend
+- SQLite local persistence
 - xUnit for .NET tests
-- Playwright for browser smoke/end-to-end tests
-- built-in structured logging with redaction rules
+- frontend unit/component tests
+- Playwright for browser end-to-end coverage
+- built-in structured logging with secret/account-data redaction rules
 
-No server-rendered or dynamic web framework is part of the static delivery.
+The M10-M11 static GitHub Pages topology is superseded by ADR-010 and is
+transition code to retire during M12.
 
-## Runtime topology
+## 2. Runtime topology
 
-Scheduled generator -> application services -> deterministic analytics / typed GW2 API gateway -> market-snapshot.json
+```text
+Browser / React
+      |
+      | loopback HTTP only by default
+      v
+ASP.NET Core local host
+      |
+      +--> Application orchestration
+      |       |
+      |       +--> deterministic Analytics / Domain
+      |       +--> persistence abstractions
+      |       +--> ArenaNet gateway abstractions
+      |
+      +--> Infrastructure
+              +--> SQLite
+              +--> OS secret store
+              +--> typed ArenaNet HTTP clients
+              +--> request scheduler/cache/batching/retry
+              +--> background market-history collector
+```
 
-Browser -> static React assets plus market-snapshot.json
+No public hosted API or cloud database is required for V1.
 
-No browser component uses credentials, calls Guild Wars 2, or calls a local API.
-
-## Layers
+## 3. Layer responsibilities
 
 ### Domain
 
-Pure models and invariants. No HTTP, database, framework, or UI dependencies.
+Pure value types, invariants, and domain state. No HTTP, SQLite, ASP.NET, React,
+or external DTO dependencies.
 
-### Application
-
-Use cases and orchestration. Defines public-market data and recommendation interfaces, plus a clock where required.
-
-### Infrastructure
-
-GW2 HTTP implementation, transient capture caching, scheduler, filesystem output,
-and external adapters used by the generator.
+Money remains an exact integer-copper value. Domain types should prefer explicit
+unknown/unsupported states over sentinel values.
 
 ### Analytics
 
-Pure deterministic calculators: integer-copper fees, market scenarios, order-book simulation, and M9 recommendation rules.
+Pure deterministic calculators such as:
 
-## Recommended repository structure
+- Trading Post fees and completed-sale scenarios;
+- order-book execution/depth/price-impact simulation;
+- FIFO lot matching and realized/unrealized calculations where the dependency
+  direction remains clean;
+- historical statistics;
+- opportunity score components;
+- position/risk sizing.
 
-```text
-/
-  src/
-    Gw2Tp.Application/
-    Gw2Tp.Domain/
-    Gw2Tp.Analytics/
-    Gw2Tp.Infrastructure/
-    Gw2Tp.MarketSnapshotGenerator/
-  tests/
-    Gw2Tp.Domain.Tests/
-    Gw2Tp.Application.Tests/
-    Gw2Tp.Analytics.Tests/
-    Gw2Tp.Infrastructure.Tests/
-    Gw2Tp.MarketSnapshotGenerator.Tests/
-    Gw2Tp.Web.E2E/
-  docs/
-```
+Analytics must be reproducible from explicit inputs and straightforward to unit
+test.
 
-## External API gateway
+### Application
 
-All GW2 API calls MUST pass through one abstraction:
+Use cases and orchestration:
 
-`IGw2ApiClient`
+- account/key status;
+- personal TP synchronization;
+- dashboard queries;
+- scanner orchestration;
+- historical collection policy;
+- recommendation orchestration;
+- backup/restore commands;
+- later investment/crafting workflows.
 
-with internal components:
+Application defines interfaces for infrastructure concerns and stable result/error
+contracts for the local host.
 
-- request scheduler;
-- cache;
-- deduplicator;
-- batching coordinator;
-- retry/backoff policy;
+### Infrastructure
+
+External adapters:
+
+- ArenaNet HTTP DTOs/clients;
+- authentication-header injection;
+- OS-backed secret storage;
+- SQLite repositories/migrations;
+- filesystem backup/restore;
+- clocks/schedulers;
+- structured logging/metrics.
+
+External DTOs never leak directly to Domain or React.
+
+### Local host
+
+ASP.NET Core provides thin local endpoints and hosts/coordinates background
+services. Endpoints validate transport-level input, invoke Application use
+cases, and return structured view/query models. Financial formulas do not live
+in controllers/minimal API handlers.
+
+The host binds loopback by default. LAN/Internet exposure requires a future
+owner-approved security/architecture decision.
+
+### React frontend
+
+React owns presentation, user input, navigation, filtering/sorting of already
+structured safe results where doing so cannot change financial truth, and
+accessible interaction states.
+
+React must not:
+
+- receive/store the ArenaNet API key;
+- construct ArenaNet requests;
+- own canonical fee/profit/cost-basis/recommendation formulas;
+- treat browser localStorage as the authoritative financial database.
+
+## 4. ArenaNet gateway
+
+All Guild Wars 2 calls pass through typed abstractions. Public-market and
+personal/authenticated operations may be split into narrower interfaces as the
+surface grows, but they share common infrastructure policy where appropriate:
+
+- bounded concurrency/request budget;
+- batching;
+- cache/deduplication;
+- retry/backoff;
+- `Retry-After` handling;
 - response validation;
-- metrics/logging.
+- stable error taxonomy;
+- metrics/logging with secret redaction.
 
-Feature code must never construct an ArenaNet URL itself.
+Feature code never constructs ArenaNet URLs.
 
-## API caching
+Authenticated personal requests obtain credentials from the host/infrastructure
+secret provider. The key is applied at the HTTP boundary and never included in
+application result objects.
 
-Reference data: long TTL and explicit refresh/invalidation.
+## 5. Persistence
 
-Market data: short TTL and freshness metadata.
+SQLite is the durable source for locally owned data. Initial areas include:
 
-Market reads are scheduled-capture inputs only. Cached public responses are
-transient generator process state and are never persisted as historical
-snapshots.
+- local account profile/scope;
+- completed personal TP transactions;
+- current personal TP order snapshots;
+- user settings/watchlists;
+- schema/version metadata;
+- later market-history observations, lots/matches, positions, recommendation
+  snapshots, and personal-performance observations.
 
-## Rate-limit strategy
+See `docs/architecture/data-model.md`.
 
-The request scheduler should support a configurable token bucket. Current documented/community limits must be verified before release, not hard-coded as immutable facts.
+Persistence rules:
 
-On 429:
+- UTC timestamps;
+- integer-copper prices;
+- uniqueness constraints for authoritative external IDs;
+- migration tests;
+- transaction-safe writes;
+- incomplete sync must not wipe prior good data;
+- no API key in SQLite;
+- destructive migration/retention behavior requires explicit owner approval.
 
-1. record the event;
-2. respect server-provided retry information when available;
-3. apply bounded exponential backoff;
-4. suppress duplicate concurrent requests;
-5. surface a useful UI state.
+Derived data should be rebuildable or versioned from authoritative inputs.
 
-## Persistence
+## 6. Personal TP synchronization
 
-The static site has no server-side database or persistence layer. Capital and
-risk settings are browser-local; generated market data is the current
-publishable snapshot artifact rather than retained application history.
+Sync must be idempotent.
 
-## Money
+Completed transaction history is append/upsert by authoritative external ID.
+Current order state is updated only after a successful complete read of the
+relevant endpoint set. An order disappearing from a current-order response is
+not automatically a completed trade; completion requires appropriate history
+evidence.
 
-Represent money in integer copper using a dedicated value type or equivalent. No floating-point arithmetic for gold/silver/copper calculations.
+Locally imported completed history is retained after it falls outside the
+remote API's accessible history window.
 
-Transaction-fee policy is provided by the caller as independent listing and
-exchange rules, each expressed in basis points with explicit whole-copper
-rounding. The application does not embed a default Guild Wars 2 fee schedule.
+## 7. Market-history collection
 
-A flip-profit scenario models a completed sale for total transaction values:
+The local host eventually owns a background scheduler using the existing ArenaNet
+request scheduler/gateway.
 
-`net sale proceeds = gross sale value - listing fee - exchange fee`
+Sampling tiers:
 
-`net profit = net sale proceeds - acquisition cost`
+1. current personal orders and held positions;
+2. watchlist/approved markets;
+3. broader tradable universe;
+4. detailed full order books only for shortlisted/high-interest items.
 
-The listing fee is included as an up-front cost in this completed-sale model.
-Unsold or cancelled listings are not represented by this scenario.
+Best-price snapshots are much cheaper to retain than complete books. Collection
+policy, retention, and storage growth are explicit and configurable.
 
-## Order-book simulation
+A failed/partial capture never overwrites or fabricates an observation.
 
-Order-book calculations model immediate execution against a supplied snapshot;
-they are scenarios, not guarantees of a real-world fill. Acquisition consumes
-sell levels from the lowest unit price upward, and liquidation consumes buy
-levels from the highest unit price downward, regardless of source ordering.
+## 8. Financial/recommendation boundary
 
-The weighted average unit price remains exact as total copper divided by the
-filled quantity; no floating-point or whole-copper rounding is applied. Price
-impact is a total-copper comparison against filling the executed quantity at
-the best available level: actual acquisition cost less the best-ask baseline,
-or best-bid baseline less actual liquidation proceeds. Insufficient depth
-returns the partial execution, its remaining quantity, and an explicit
-incomplete status.
+The backend produces authoritative structures containing calculations,
+components, explanations, and confidence. React displays them.
 
-## Credentials
+Recommendations combine independent tested components rather than embedding one
+large untestable controller/service. Examples:
 
-The browser does not read, store, or require Guild Wars 2 API credentials. It
-receives only public-market data from the published static snapshot.
+- fee/profit scenario;
+- current depth/liquidity evidence;
+- historical statistics;
+- personal performance evidence;
+- risk/position sizing;
+- action-state orchestration.
 
-## Error taxonomy
+This allows a reviewer to verify each layer separately.
 
-External failures should map to stable application error categories:
+## 9. Secrets and privacy
 
-- RateLimited
-- TemporarilyUnavailable
-- NotFound
-- InvalidRemoteData
-- UnsupportedSchema
-- LocalConfigurationError
+ADR-006 remains active. Supported OS-backed secret storage is preferred; an
+environment variable is development/test fallback only. No plaintext-file
+fallback is allowed merely for convenience.
 
-## Observability
+Logs must never contain:
 
-Track:
+- API keys/authorization headers;
+- raw private account payloads unless an explicitly sanitized debug fixture is
+  created outside production data;
+- secrets from environment or OS secret stores.
 
-- API request count by endpoint category;
+Browser network payloads contain only the minimum safe account/status/result
+information required by the UI.
+
+## 10. Error taxonomy
+
+Use stable application-level categories such as:
+
+- `RateLimited`
+- `TemporarilyUnavailable`
+- `NotFound`
+- `InvalidRemoteData`
+- `IncompleteData`
+- `MissingPermission`
+- `UnsupportedSchema`
+- `LocalConfigurationError`
+- `PersistenceFailure`
+
+Do not surface raw secret-bearing upstream exceptions to the browser.
+
+## 11. Observability
+
+Useful local metrics/logs include:
+
+- API requests by endpoint category;
 - cache hit/miss;
-- request latency;
-- 429 count;
-- failed parsing;
-- market data age;
+- latency and 429 count;
+- parse/validation failures;
+- personal sync age/coverage;
+- market-history last success and tracked count;
+- scanner candidate counts/truncation;
 - analytics duration;
-- number of candidates analyzed;
-- search truncation events.
+- database migration/backup status.
 
-Never log credentials, authorization headers, or private account payloads.
+Observability stays privacy-minimized and local by default.
 
-## LLM separation
+## 12. Transition from M10-M11
 
-No application LLM in current scope. The coding model is an external development dependency. If a future LLM feature is added, it must consume structured application output through an adapter and must not access secrets or mutate state.
+During M12:
+
+- keep reusable C# financial/gateway/order-book code and tests;
+- keep reusable React accessibility/UI pieces;
+- retire Pages publication workflow/scripts/scheduler;
+- retire static snapshot loading/publication contracts that exist only for the
+  public site;
+- retire duplicate browser authoritative recommendation calculations after
+  equivalent server-side behavior is protected by tests;
+- preserve old ADRs/docs as explicitly superseded history where useful.
+
+Do not perform a broad rewrite just to match a new directory diagram.

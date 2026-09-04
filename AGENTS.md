@@ -1,72 +1,165 @@
-# Tyrian Ledger - Codex Instructions
+# Tyrian Ledger - Coding Agent Instructions
 
 ## Mission
 
-Build a read-only, static Guild Wars 2 Trading Post analysis application.
-Codex is the development agent only; it is never part of the application
-runtime or the source of financial truth.
+Build Tyrian Ledger as a **local-first personal Guild Wars 2 Trading Post
+assistant**. The application helps one player understand personal performance,
+research markets, allocate capital, and decide what manual action to take next.
+The coding model is a development tool only. It is never part of runtime
+financial truth and never executes gameplay or Trading Post actions.
 
-## Read order for a ticket
+M0-M11 are historical milestones. The active pivot starts at M12. Static Pages
+artifacts and documentation may still exist while M12 retires them; follow the
+active source-of-truth documents rather than inferring architecture from old
+files.
 
-1. This file.
-2. `docs/context/permanent-context.md`.
-3. The current milestone context.
-4. `docs/verification/VERIFY-REGISTER.md`.
-5. One assigned ticket under `docs/milestones/<M>/tickets/`.
-6. Only the specialized documents and source files needed to satisfy that
-   ticket.
+## Read order for an implementation ticket
 
-The ticket is the task contract. Do not load the whole specification or
-unrelated tickets unless the assigned work cannot be resolved without them.
+1. `CURRENT.md`.
+2. This file.
+3. `docs/context/permanent-context.md`.
+4. `docs/context/milestone-context-<M>.md` for the assigned milestone.
+5. The assigned ticket under `docs/milestones/<M>/tickets/`.
+6. `docs/verification/VERIFY-REGISTER.md`.
+7. Only the specialized specifications, ADRs, tests, and source files needed to
+   satisfy that ticket.
 
-## Non-negotiable boundaries
+The ticket is the implementation contract. Do not load every historical ticket
+or the entire repository documentation unless the assigned work genuinely
+requires it.
 
-- The application is read-only: no Guild Wars 2 API writes, gameplay
-  automation, or Trading Post automation.
-- Never put credentials or tokens in source, browser code/storage, logs,
-  fixtures, prompts, tests, commits, or pull requests.
-- All Guild Wars 2 access goes through the typed gateway. Feature code must
-  not construct ArenaNet URLs.
-- Keep external DTOs separate from domain models.
-- Financial calculations are deterministic and use integer copper; no
-  floating-point money arithmetic.
-- Do not add an application LLM or alter an ADR silently.
-- Tests are required for changed behaviour. Never weaken or remove a test just
+## Active product boundaries
+
+- The local application MAY use a dedicated ArenaNet API key for verified
+  read-only account/Trading Post endpoints.
+- The application MUST NOT automate gameplay, place/cancel/update Trading Post
+  orders, or use ArenaNet mutation/write operations.
+- API keys, authorization headers, credentials, and secret values MUST NOT
+  appear in source, browser code/storage, frontend payloads, logs, fixtures,
+  prompts, tests, commits, pull requests, or SQLite.
+- The browser MUST NOT be a secret-store client. It receives safe status and
+  structured application results from the loopback host.
+- All ArenaNet access MUST pass through typed gateway abstractions. Feature code
+  MUST NOT construct ArenaNet URLs directly.
+- External DTOs MUST remain separate from domain/application models.
+- Authoritative money arithmetic MUST use integer copper. Do not use floating
+  point for purchase cost, sale value, fee, profit, cost basis, or position
+  sizing.
+- Trading fees and financial policy MUST be centralized. Never add scattered
+  `0.85`, `15%`, or equivalent fee shortcuts to features or React.
+- Unknown historical cost basis MUST remain explicit; never treat it as free.
+- Recommendation logic MUST be deterministic, explainable, and testable. Do not
+  add an application LLM or opaque ML ranking model.
+- Market statistics describe observed history; they MUST NOT be presented as
+  guarantees or fabricated for windows with insufficient coverage.
+- Tests are required for changed financial, accounting, persistence,
+  statistical, security, or recommendation behavior. Never weaken a test just
   to obtain a pass.
-- Record material external uncertainty in the VERIFY register. Do not invent
-  API fields, permissions, quotas, endpoints, or behaviour.
+- Material uncertainty about ArenaNet endpoints, permissions, quotas, schemas,
+  timestamps, cache behavior, or fees belongs in the VERIFY register. Do not
+  invent external contracts.
 
-## Working style
+## Architecture direction
 
-- Work on one ticket in one isolated worktree/branch. Do not concurrently edit
-  the same files from multiple tasks.
-- Use a short plan (at most five steps), implement a coherent slice, validate
-  it, inspect the diff, then stop. A ticket may use separate implementation,
-  test, and review tasks.
-- Use Git state, tests, tickets, and ADRs as the hand-off; do not depend on a
-  long conversation for project memory.
-- Prefer targeted reads, lean prompts, and a fresh review task over duplicated
-  instructions or repeated summaries.
+Target runtime:
 
-## Authority and decision gates
+`React UI -> loopback ASP.NET Core host/API -> Application/Analytics -> SQLite + typed ArenaNet gateway`
 
-An assigned ticket authorizes in-scope local edits, tests, commits, branch
-pushes, and a pull request following `docs/workflow/delivery-protocol.md`.
-The owner must decide before a change that materially alters product scope,
-an ADR, Guild Wars 2 permissions or live-key use, financial policy, persistence
-schema/data retention, network exposure, a paid or production dependency, or
-release/merge/deletion behaviour. Report the decision required and the viable
-options; do not guess.
+Keep Domain and Analytics deterministic and framework-independent where
+practical. Keep persistence and HTTP in Infrastructure. Keep endpoints thin.
+React renders structured results and user interactions; it does not duplicate
+financial truth.
 
-## Codex configuration
+See:
 
-The normal owner-selected Codex configuration is GPT-5.6 Terra with High
-reasoning effort. Use a fresh XHigh review task only for security-sensitive,
-financial, architectural, or unusually difficult work. Model selection does
-not relax any project boundary.
+- `docs/specs/project-spec.md`
+- `docs/specs/trading-rules.md`
+- `docs/architecture/architecture.md`
+- `docs/architecture/data-model.md`
+- `docs/adr/ADR-010-personal-local-first-pivot.md`
 
-## Completion report
+## Ticket and session discipline
 
-Report: user-visible outcome, files changed, acceptance-criteria status,
-validation commands/results, VERIFY changes, risks/limitations, required owner
-decision (if any), and the pull-request URL. Do not merge the pull request.
+Default rule: **one implementation ticket = one implementation session**.
+
+Use one isolated worktree/branch. Inspect Git state, make a short plan of no
+more than five steps, implement one coherent ticket, run the required
+validation, inspect the diff, commit/push/open a PR, write the required report,
+and stop.
+
+Do not begin the next ticket in the same implementation session. Durable handoff
+comes from Git, the ticket, `CURRENT.md`, tests, and ADRs rather than chat
+memory.
+
+A separate focused test/fix session is allowed when the implementation session
+cannot finish safely, but it must remain scoped to the same ticket and record a
+clear handoff.
+
+## Independent review
+
+Every implementation PR receives a **fresh review session** that did not
+implement the change. Use `.codex/skills/tyrian-pr-review/SKILL.md` as the
+standard review playbook.
+
+The default review is read-only: inspect the ticket, source of truth, diff,
+validation evidence, and relevant tests; report findings before making any
+corrective edits. If the owner explicitly requests review-and-fix, corrective
+commits may follow without expanding ticket scope.
+
+The reviewer must prioritize correctness over style and pay special attention
+to secret boundaries, integer money, fee semantics, migration/data loss,
+idempotent sync, accounting reconstruction, statistical sufficiency,
+recommendation explanations, and acceptance-criteria coverage.
+
+## Model and reasoning guidance
+
+Model availability changes; the ticket contract is authoritative regardless of
+model name. Choose effort by risk:
+
+- **Mechanical docs/repository maintenance:** GPT-5.6 Terra, Medium or High.
+- **Normal implementation:** GPT-5.6 Terra, High.
+- **Complex cross-layer implementation:** GPT-5.6 Sol, High when available; a
+  strong equivalent is acceptable.
+- **Financial, accounting, persistence migration, security, statistical,
+  recommendation, or architecture review:** use a fresh flagship-model review,
+  normally GPT-5.6 Sol at XHigh. If a stronger flagship model such as GPT-6
+  Astra is available to the owner, it MAY replace Sol for these review gates.
+- Use Max only when XHigh has produced unresolved ambiguity or the ticket is
+  unusually difficult; do not pay for Max mechanically.
+
+Never lower testing or review standards because a stronger model was selected.
+Never assume a larger model makes an independent review unnecessary.
+
+## Decision gates reserved for the owner
+
+Pause and present concise options before materially changing:
+
+- product scope or milestone intent;
+- an accepted ADR or architectural boundary;
+- ArenaNet permission/key requirements;
+- canonical fee/accounting policy;
+- persistence retention, destructive migration, or data clearing behavior;
+- network exposure beyond loopback;
+- production/paid external dependencies;
+- automated gameplay/Trading Post boundaries;
+- release, merge, destructive branch/data deletion, or public deployment.
+
+Routine implementation choices inside an accepted ticket do not require owner
+confirmation.
+
+## Completion report - required for every implementation ticket
+
+End with a short report containing:
+
+1. **Functional summary** — 2-6 sentences in plain language describing what the
+   ticket now lets the user do or what project capability changed. Avoid file
+   lists as the summary.
+2. **Files changed** — concise paths/components.
+3. **Acceptance criteria** — passed/not passed with any exception.
+4. **Validation** — exact commands/checks and results.
+5. **VERIFY changes** — added/resolved/carried forward IDs.
+6. **Risks or limitations** — only material remaining issues.
+7. **Owner decision required** — `None` if no decision remains.
+8. **Pull request URL**.
+
+Do not merge the pull request.
