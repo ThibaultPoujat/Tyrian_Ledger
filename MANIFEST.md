@@ -12,6 +12,7 @@
 - `docs/milestones/INDEX.md` — M0-M11 history plus active M12-M22 roadmap.
 - `docs/verification/VERIFY-REGISTER.md` — external-contract uncertainty register.
 - `docs/development/validation.md` — exact clean-checkout build, test, retired-runtime audit, and secret-scan procedure.
+- `docs/development/local-runtime.md` — concrete development/publish commands and local host security configuration.
 
 ## Active ADRs
 

@@ -114,6 +114,35 @@ endpoint also requires an explicit cross-origin request defense, such as
 validated same-origin metadata plus an anti-forgery token/custom-header policy.
 CORS is not CSRF protection.
 
+The concrete host is `src/Gw2Tp.Web/Gw2Tp.Web.csproj`. It references
+Application and Infrastructure, exposes the structured `GET /api/health`
+transport contract, and contains only host/bootstrap security policy at this
+stage. `tests/Gw2Tp.Web.Tests` exercises its startup and browser-facing network
+boundary.
+
+Normal startup reads `TyrianLedger:Host`, validates explicit IPv4/IPv6 loopback
+listen addresses, and configures Kestrel directly. Generic URL, HTTP/HTTPS port,
+and `Kestrel:Endpoints` overrides are rejected to prevent configuration from
+bypassing that validation. The default reloadable Kestrel endpoint loader is
+replaced with an empty, non-reloadable source so a later configuration reload
+cannot add a listener outside the validated policy. Host filtering uses the
+separately explicit `AllowedHosts` list and rejects ASP.NET Core's wildcard host
+aliases. Production enables no CORS policy; Development permits only the exact
+`TrustedDevelopmentOrigins` entries.
+
+Unsafe HTTP methods pass through origin protection before endpoint execution.
+They require an exact same-origin `Origin`, with exact configured development
+origins additionally accepted only in Development, plus the explicit
+`X-Tyrian-Ledger-Request: 1` application-request header. This control is
+independent of CORS and applies before any future state-changing endpoint is
+introduced.
+
+Vite proxies relative `/api` calls to the loopback host for development. A
+Release publish builds React into the host output; the production host serves
+those assets plus the API from one origin and falls back to `index.html` for
+client routes. Operational commands and configuration are documented in
+`docs/development/local-runtime.md`.
+
 ### React frontend
 
 React owns presentation, user input, navigation, filtering/sorting of already

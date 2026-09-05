@@ -3,7 +3,7 @@
 ## Purpose
 
 This is the active validation procedure for Tyrian Ledger after the M12
-static-runtime retirement. Run it from a clean checkout before reporting an
+static-runtime retirement and M13 local-host introduction. Run it from a clean checkout before reporting an
 implementation ticket complete or treating `develop` as a known-good baseline.
 
 The commands exercise only local code and synthetic fixtures. They do not need
@@ -60,9 +60,17 @@ npm test
 cd ../..
 ```
 
-The Playwright command runs the active transition-shell checks in Chromium,
+The Playwright command builds React, starts the production ASP.NET Core host,
+and verifies the same-origin React/health contract plus the shell in Chromium,
 Firefox, and WebKit. The suite must not be reduced to one browser when claiming
 the complete baseline.
+
+The .NET solution suite includes `Gw2Tp.Web.Tests`. Its integration coverage
+starts the host without an ArenaNet key, exercises real IPv4 and IPv6 loopback
+listeners, rejects unsafe listener overrides and spoofed Host values, verifies
+the exact Development CORS allowlist and Production same-origin policy, checks
+unsafe-method origin protection independently of CORS, and serves a built-shell
+fixture through the production fallback path.
 
 ### CI contracts and retired-runtime audit
 

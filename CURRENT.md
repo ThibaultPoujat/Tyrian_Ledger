@@ -19,20 +19,20 @@ new architecture to extend.
 
 ## Active milestone
 
-**M12 - Controlled Personal-Assistant Pivot (quality checkpoint)**
+**M13 - Local Runtime and Authenticated Gateway**
 
-TKT-M12-03 records the post-pivot known-good baseline on its implementation
-branch. The active .NET solution, React frontend, browser suite, CI contracts,
-and full-history secret scan pass after TKT-M12-02 retired the static Pages
-runtime. The exact clean-checkout procedure is documented in
-`docs/development/validation.md`.
+TKT-M13-01 adds the concrete `Gw2Tp.Web` loopback ASP.NET Core host, keyless
+health contract, React development proxy, same-origin production asset path,
+and the initial Host/origin security boundary on its implementation branch.
+The exact local start and validation procedures are documented under
+`docs/development/`.
 
-After TKT-M12-03 receives its required fresh independent review and owner merge,
-the next implementation ticket is:
+After TKT-M13-01 receives its required fresh flagship XHigh review and owner
+merge, the next implementation ticket is:
 
-**TKT-M13-01 - Add the local ASP.NET Core application host.**
+**TKT-M13-02 - Add OS-backed API-key storage and safe key status.**
 
-Do not begin TKT-M13-01 on this branch or before the review/merge handoff is
+Do not begin TKT-M13-02 on this branch or before the review/merge handoff is
 complete.
 
 ## Known-good baseline
@@ -47,8 +47,9 @@ Validated on 2026-09-05 from clean `develop` revision
 - CI workflow contracts: 3 tests passed, including retired-runtime absence;
 - Gitleaks: all 163 reachable commits scanned with no leaks.
 
-The TKT-M12-03 branch and pull-request CI must pass the same matrix before the
-ticket is handed to independent review.
+TKT-M12-03 was merged in PR #101. TKT-M13-01 must pass the expanded host,
+frontend, browser, CI-contract, and full-history secret checks before its
+independent review handoff.
 
 ## Important transition warning
 

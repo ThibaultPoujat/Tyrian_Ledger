@@ -4,12 +4,14 @@
     <Project Path="src/Gw2Tp.Application/Gw2Tp.Application.csproj" />
     <Project Path="src/Gw2Tp.Analytics/Gw2Tp.Analytics.csproj" />
     <Project Path="src/Gw2Tp.Infrastructure/Gw2Tp.Infrastructure.csproj" />
+    <Project Path="src/Gw2Tp.Web/Gw2Tp.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Gw2Tp.Domain.Tests/Gw2Tp.Domain.Tests.csproj" />
     <Project Path="tests/Gw2Tp.Application.Tests/Gw2Tp.Application.Tests.csproj" />
     <Project Path="tests/Gw2Tp.Analytics.Tests/Gw2Tp.Analytics.Tests.csproj" />
     <Project Path="tests/Gw2Tp.Infrastructure.Tests/Gw2Tp.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Gw2Tp.Web.Tests/Gw2Tp.Web.Tests.csproj" />
     <Project Path="tests/Gw2Tp.Testing/Gw2Tp.Testing.csproj" />
   </Folder>
 </Solution>

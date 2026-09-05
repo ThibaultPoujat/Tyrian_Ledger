@@ -5,7 +5,7 @@ It is built for one player who wants trustworthy accounting, market research,
 and explicit manual trading decisions without spreadsheets, cloud accounts, or
 Trading Post automation.
 
-The project is entering a deliberate product pivot beginning with **M12**. The
+The project entered a deliberate product pivot beginning with **M12**. The
 repository already contains a strong deterministic C# financial core, a typed
 Guild Wars 2 API gateway, order-book simulation, React UI work, and extensive
 tests. Those foundations are retained. The M10-M11 public static Pages product
@@ -58,6 +58,26 @@ explicit `AllowedHosts` allowlist), development CORS permits only explicitly
 configured trusted origins, and state-changing local endpoints require a
 separate cross-origin request/anti-forgery defense; CORS is not treated as CSRF
 protection.
+
+## Run the local foundation
+
+TKT-M13-01 introduces `src/Gw2Tp.Web`, the loopback ASP.NET Core host. For
+development, install frontend dependencies once and start the host and Vite in
+two terminals:
+
+```bash
+npm --prefix frontend ci
+dotnet run --project src/Gw2Tp.Web/Gw2Tp.Web.csproj
+```
+
+```bash
+npm --prefix frontend run dev
+```
+
+Open `http://localhost:5173`. The React shell calls the host's keyless
+`/api/health` endpoint through the development proxy. See
+`docs/development/local-runtime.md` for the production publish sequence and the
+binding, Host, CORS, and unsafe-request security contract.
 
 ## Financial truth
 
@@ -116,12 +136,12 @@ Use `.codex/skills/tyrian-pr-review/SKILL.md` for the standard review procedure.
 The owner merges only after acceptance criteria, tests, review findings, and
 functional behavior are satisfactory.
 
-## Current transition state
+## Current implementation state
 
-TKT-M12-02 removed the M10-M11 static Pages runtime, external scheduler,
-publishable market snapshot, and browser-side recommendation formulas. The
-remaining M10-M11 records are historical evidence only; `CURRENT.md` identifies
-the next permitted ticket.
+M12 removed the static Pages product and recorded a clean quality baseline.
+TKT-M13-01 adds the local ASP.NET Core runtime foundation without adding an
+ArenaNet key, account data, persistence, trading, or recommendation features.
+`CURRENT.md` identifies the next permitted ticket.
 
 ## Normative language
 

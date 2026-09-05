@@ -1,26 +1,30 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
-test('explains the local-first transition without contacting an API or publishing recommendations', async ({ page }) => {
-  const prohibitedRequests: string[] = [];
+test('loads the React shell and health contract from the local host without external requests', async ({ page }) => {
+  const apiRequests: string[] = [];
+  const externalRequests: string[] = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (url.pathname === '/api' || url.pathname.startsWith('/api/') || url.hostname.endsWith('guildwars2.com')) {
-      prohibitedRequests.push(request.url());
+    if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+      apiRequests.push(url.pathname);
+    }
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && url.protocol.startsWith('http')) {
+      externalRequests.push(request.url());
     }
   });
 
   await page.goto('/');
 
   await expect(page).toHaveTitle('Tyrian Ledger | Local-first personal trading assistant');
-  await expect(page.getByRole('heading', { name: 'The public trading assistant has been retired.' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'What remains' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'What comes next' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'The local application foundation is running.' })).toBeVisible();
+  await expect(page.getByRole('status')).toHaveText('Local host connected');
   await expect(page.getByRole('button')).toHaveCount(0);
-  expect(prohibitedRequests).toEqual([]);
+  expect(apiRequests).toEqual(['/api/health']);
+  expect(externalRequests).toEqual([]);
 });
 
-test('keeps the transition shell accessible', async ({ page }) => {
+test('keeps the local runtime shell accessible', async ({ page }) => {
   await page.goto('/');
 
   await expect(new AxeBuilder({ page })
@@ -28,7 +32,7 @@ test('keeps the transition shell accessible', async ({ page }) => {
     .analyze()).resolves.toMatchObject({ violations: [] });
 });
 
-test('keeps the transition shell within a narrow mobile viewport', async ({ page }) => {
+test('keeps the local runtime shell within a narrow mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 720 });
   await page.goto('/');
 

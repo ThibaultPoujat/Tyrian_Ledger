@@ -2,8 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 const isCi = /^(true|1)$/i.test(process.env.CI ?? '');
 const localHost = '127.0.0.1';
-const frontendPort = process.env.TYRIAN_LEDGER_E2E_FRONTEND_PORT ?? '5174';
-const frontendBaseUrl = `http://${localHost}:${frontendPort}`;
+const hostPort = process.env.TYRIAN_LEDGER_E2E_HOST_PORT ?? '5081';
+const hostBaseUrl = `http://${localHost}:${hostPort}`;
 
 export default defineConfig({
   testDir: './tests',
@@ -11,7 +11,7 @@ export default defineConfig({
   retries: isCi ? 2 : 0,
   reporter: 'list',
   use: {
-    baseURL: frontendBaseUrl,
+    baseURL: hostBaseUrl,
     trace: 'retain-on-failure',
   },
   projects: [
@@ -30,8 +30,12 @@ export default defineConfig({
   ],
   workers: 1,
   webServer: {
-    command: `npm --prefix ../../frontend run build && npm --prefix ../../frontend run preview -- --host ${localHost} --port ${frontendPort} --strictPort`,
-    url: frontendBaseUrl,
+    command: 'npm --prefix ../../frontend run build && dotnet run --project ../../src/Gw2Tp.Web/Gw2Tp.Web.csproj --configuration Release --no-launch-profile',
+    env: {
+      ASPNETCORE_ENVIRONMENT: 'Production',
+      TyrianLedger__Host__Port: hostPort,
+    },
+    url: `${hostBaseUrl}/api/health`,
     reuseExistingServer: !isCi,
     timeout: 120_000,
   },

@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn());
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: true,
+    json: vi.fn().mockResolvedValue({ status: 'healthy' }),
+  }));
   vi.spyOn(Storage.prototype, 'getItem');
   vi.spyOn(Storage.prototype, 'setItem');
   vi.spyOn(Storage.prototype, 'removeItem');
@@ -15,23 +18,35 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('M12 transition shell', () => {
-  it('explains that the public runtime was retired without offering recommendations', () => {
+describe('M13 local host shell', () => {
+  it('shows the local foundation without offering account or trading actions', async () => {
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: 'The public trading assistant has been retired.' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'What remains' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'What comes next' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'The local application foundation is running.' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Local by default' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'A safe starting point' })).toBeVisible();
+    expect(await screen.findByRole('status')).toHaveTextContent('Local host connected');
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.queryByText(/market snapshot/i, { selector: 'button, a' })).not.toBeInTheDocument();
   });
 
-  it('does not fetch, read, or write browser state', () => {
+  it('calls only the same-origin health contract and does not use browser storage', async () => {
     render(<App />);
 
-    expect(fetch).not.toHaveBeenCalled();
+    expect(await screen.findByText('Local host connected')).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith('/api/health', expect.objectContaining({
+      headers: { Accept: 'application/json' },
+    }));
     expect(Storage.prototype.getItem).not.toHaveBeenCalled();
     expect(Storage.prototype.setItem).not.toHaveBeenCalled();
     expect(Storage.prototype.removeItem).not.toHaveBeenCalled();
+  });
+
+  it('reports an unavailable host without exposing another feature path', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('connection failed'));
+
+    render(<App />);
+
+    expect(await screen.findByText('Local host unavailable')).toBeVisible();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });
