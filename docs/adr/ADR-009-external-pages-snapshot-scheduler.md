@@ -23,6 +23,7 @@ cancel an active capture.
 The external scheduler, GitHub Pages publication path, and their operational
 credentials are no longer part of the target runtime. TKT-M12-02 retires active
 repository support for them while preserving useful historical/security
-records. Removing or revoking externally provisioned Cloudflare/GitHub App
-resources remains an owner-controlled operational action outside normal code
-changes.
+records. Before or with a merge that removes `pages.yml`, the owner must disable
+the provisioned Cloudflare Worker and revoke its GitHub App installation/key so
+it cannot continue dispatching the retired workflow. That external cleanup is
+an owner-controlled operational action outside normal code changes.

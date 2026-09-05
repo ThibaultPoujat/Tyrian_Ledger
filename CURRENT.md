@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ## Active direction
 
@@ -21,21 +21,23 @@ new architecture to extend.
 
 **M12 - Controlled Personal-Assistant Pivot**
 
-This pivot bootstrap PR implements **TKT-M12-01** by establishing the new source
-of truth and adding the complete M12-M22 roadmap/ticket contracts.
+TKT-M12-02 has removed the active static Pages runtime on its implementation
+branch. Its pull request awaits the required fresh independent review and owner
+merge decision.
 
-After this PR is merged, the next implementation ticket is:
+After TKT-M12-02 is merged, the next implementation ticket is:
 
-**TKT-M12-02 - Retire static Pages delivery and browser-side financial duplication.**
+**TKT-M12-03 - Establish the post-pivot quality baseline.**
 
-Then complete TKT-M12-03 to establish a known-good post-pivot baseline before
-starting M13 runtime work.
+Do not begin TKT-M12-03 on this branch or before the review/merge handoff is
+complete.
 
 ## Important transition warning
 
-Until TKT-M12-02 is merged, the repository contains production code and CI for
-the old static Pages delivery. Its presence is historical/transition evidence,
-not permission to add new features to that architecture.
+The active repository shape no longer builds or deploys the old static Pages
+delivery, external scheduler, publishable market snapshot, or browser-side
+recommendation formulas. Those concepts remain only in explicitly superseded
+historical records, not as permission to restore the public runtime.
 
 Do not delete proven Domain, Analytics, typed gateway, request scheduler,
 order-book simulator, fixtures, or tests merely because they were used by the

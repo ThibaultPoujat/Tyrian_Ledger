@@ -14,9 +14,6 @@ account, character, or credential data.
 - `dashboard/<feature>.json` — deterministic local dashboard response fragments
   used to compare UI-facing scenario output; for example,
   `dashboard/opportunity-detail.json`.
-- `recommendations/<contract>.json` — shared synthetic recommendation golden
-  vectors, with JSON-safe snapshot inputs and decimal-string expected `BigInt`
-  outputs for C# and browser parity tests.
 
 ## Content rules
 

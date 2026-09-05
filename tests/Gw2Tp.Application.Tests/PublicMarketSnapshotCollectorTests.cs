@@ -37,11 +37,11 @@ public sealed class PublicMarketSnapshotCollectorTests
 
         Assert.Equal(GeneratedAt, collection.GeneratedAtUtc);
         Assert.Equal(PublicMarketSnapshotCollector.MaximumFinalistCount, collection.Candidates.Count);
-        Assert.Equal(6, collection.Candidates[0].ItemId);
-        Assert.Equal(205, collection.Candidates[^1].ItemId);
+        Assert.Equal(6, collection.Candidates[0].Item.ItemId);
+        Assert.Equal(205, collection.Candidates[^1].Item.ItemId);
         Assert.Equal([205, 204, 203], Assert.Single(client.ListingRequests).Take(3));
         Assert.Equal(Assert.Single(client.ListingRequests), Assert.Single(client.MetadataRequests));
-        Assert.Equal([5, 10], collection.Candidates[0].Buys.Select(level => level.Quantity));
+        Assert.Equal([5, 10], collection.Candidates[0].Listing.Buys.Select(level => level.Quantity));
     }
 
     [Fact]

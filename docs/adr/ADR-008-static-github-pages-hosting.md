@@ -32,6 +32,6 @@ read-only Guild Wars 2 boundary.
 
 ## Consequences for M12
 
-Pages workflows, public snapshot publication, selector machinery, and related
-static-runtime code may remain temporarily until TKT-M12-02 retires them. Their
-presence does not authorize new features on the static architecture.
+TKT-M12-02 removed the Pages workflow, public snapshot publication, selector
+machinery, and related static-runtime source. This ADR remains the historical
+record of why those controls existed; it does not authorize restoring them.

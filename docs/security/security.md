@@ -13,8 +13,8 @@ or multi-user deployment requires a separate owner-approved architecture,
 security, and data-protection review.
 
 M10-M11 public Pages/Cloudflare delivery is superseded historical architecture.
-Its code may remain only during M12 transition and must not be extended as the
-active personal runtime.
+TKT-M12-02 removed its active source and CI; historical records must not be
+extended as the active personal runtime.
 
 ## Core security requirements
 
