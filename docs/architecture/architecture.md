@@ -123,9 +123,12 @@ boundary.
 Normal startup reads `TyrianLedger:Host`, validates explicit IPv4/IPv6 loopback
 listen addresses, and configures Kestrel directly. Generic URL, HTTP/HTTPS port,
 and `Kestrel:Endpoints` overrides are rejected to prevent configuration from
-bypassing that validation. Host filtering uses the separately explicit
-`AllowedHosts` list. Production enables no CORS policy; Development permits only
-the exact `TrustedDevelopmentOrigins` entries.
+bypassing that validation. The default reloadable Kestrel endpoint loader is
+replaced with an empty, non-reloadable source so a later configuration reload
+cannot add a listener outside the validated policy. Host filtering uses the
+separately explicit `AllowedHosts` list and rejects ASP.NET Core's wildcard host
+aliases. Production enables no CORS policy; Development permits only the exact
+`TrustedDevelopmentOrigins` entries.
 
 Unsafe HTTP methods pass through origin protection before endpoint execution.
 They require an exact same-origin `Origin`, with exact configured development

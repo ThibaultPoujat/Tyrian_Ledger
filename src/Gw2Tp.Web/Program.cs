@@ -24,6 +24,10 @@ public static class Program
 
         builder.WebHost.ConfigureKestrel(serverOptions =>
         {
+            // Replace WebApplicationBuilder's reloadable Kestrel configuration loader.
+            // Listener authority belongs exclusively to the validated options below.
+            serverOptions.Configure(new ConfigurationBuilder().Build(), reloadOnChange: false);
+
             foreach (var address in hostOptions.GetListenAddresses())
             {
                 serverOptions.Listen(address, hostOptions.Port);

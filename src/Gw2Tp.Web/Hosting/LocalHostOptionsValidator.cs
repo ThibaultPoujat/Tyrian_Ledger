@@ -67,6 +67,12 @@ internal static class LocalHostOptionsValidator
 
     private static bool IsWildcardHost(string host)
     {
-        return string.IsNullOrWhiteSpace(host) || host.Contains('*', StringComparison.Ordinal);
+        if (string.IsNullOrWhiteSpace(host) || host.Contains('*', StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var normalizedHost = new HostString(host).ToUriComponent();
+        return normalizedHost is "0.0.0.0" or "[::]";
     }
 }

@@ -65,8 +65,10 @@ Environment-variable overrides use the standard double-underscore form, such
 as `TyrianLedger__Host__Port=5081`. Wildcard and non-loopback listen addresses
 are rejected at startup. Generic `ASPNETCORE_URLS`/`--urls`, HTTP/HTTPS port,
 and `Kestrel:Endpoints` overrides are rejected so they cannot bypass the
-loopback-only policy. Expanding network exposure is an owner architecture and
-security decision, not a normal configuration change.
+loopback-only policy. The host also replaces Kestrel's default reloadable
+endpoint configuration with an empty, non-reloadable source, so runtime
+configuration reloads cannot add listeners. Expanding network exposure is an
+owner architecture and security decision, not a normal configuration change.
 
 The host rejects unapproved `Host` headers. In production it does not enable
 cross-origin access. Independently of CORS, every unsafe HTTP method requires

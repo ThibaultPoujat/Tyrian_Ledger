@@ -6,9 +6,11 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Gw2Tp.Web.Tests;
@@ -100,6 +102,9 @@ public sealed class LocalHostIntegrationTests
     [InlineData("")]
     [InlineData("*")]
     [InlineData("*.example")]
+    [InlineData("0.0.0.0")]
+    [InlineData("[::]")]
+    [InlineData("::")]
     public void RejectsEmptyOrWildcardAllowedHosts(string allowedHost)
     {
         var exception = Assert.Throws<InvalidOperationException>(() => CreateApplication(
@@ -112,6 +117,39 @@ public sealed class LocalHostIntegrationTests
             }));
 
         Assert.Contains("non-wildcard allowlist", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReloadingKestrelEndpointConfigurationCannotAddAListener()
+    {
+        var port = ReserveAvailablePort();
+        var injectedPort = ReserveAvailablePort();
+        ConfigurationManager? runtimeConfiguration = null;
+        await using var app = Program.CreateApplication([], builder =>
+        {
+            builder.Environment.EnvironmentName = "Production";
+            runtimeConfiguration = builder.Configuration;
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["TyrianLedger:Host:Port"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            });
+        });
+        await app.StartAsync();
+
+        var kestrelOptions = app.Services.GetRequiredService<IOptions<KestrelServerOptions>>().Value;
+        Assert.NotNull(kestrelOptions.ConfigurationLoader);
+        Assert.Empty(kestrelOptions.ConfigurationLoader.Configuration.GetChildren());
+
+        var server = app.Services.GetRequiredService<IServer>();
+        var boundAddresses = server.Features.Get<IServerAddressesFeature>()!.Addresses;
+        var initialAddresses = boundAddresses.Order(StringComparer.Ordinal).ToArray();
+
+        runtimeConfiguration!["Kestrel:Endpoints:Injected:Url"] = $"http://0.0.0.0:{injectedPort}";
+        ((IConfigurationRoot)runtimeConfiguration).Reload();
+        await Task.Delay(TimeSpan.FromMilliseconds(250));
+
+        Assert.Equal(initialAddresses, boundAddresses.Order(StringComparer.Ordinal));
+        Assert.DoesNotContain($"http://0.0.0.0:{injectedPort}", boundAddresses);
     }
 
     [Fact]
