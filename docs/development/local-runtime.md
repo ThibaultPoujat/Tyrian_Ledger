@@ -30,7 +30,10 @@ does not receive CORS permission. The Vite target may be changed with
 `VITE_LOCAL_API_ORIGIN`, but the host origin allowlist must be changed
 separately and explicitly if direct cross-origin development calls are needed.
 
-No ArenaNet API key or database is required for this runtime foundation.
+No ArenaNet API key or database is required for this runtime foundation. When
+personal account features are introduced, configure an optional dedicated key
+through [Local ArenaNet API Key Setup](local-secrets.md); the browser never
+stores or submits it.
 
 ## Local production start
 

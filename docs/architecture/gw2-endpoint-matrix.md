@@ -98,14 +98,14 @@ Notes:
 
 | Endpoint | Method | Purpose | Required permission(s) | Batching | Freshness | Cache policy |
 |---|---|---|---|---|---|---|
-| `/v2/tokeninfo` | GET | Validate the supplied API key; report `id` (first half of key only — never the full key), `name`, `permissions[]` (schema ≥ 2019-05-22 also `type`, `expires_at`, `issued_at`, `urls`); permission gating of account features | Key itself acts as credential; wiki infobox lists scope `account`; `account` permission is mandatory for all keys (wiki: API:API key) | No | slow (changes only when the key is recreated) | Very short TTL (seconds/minutes) on validation; result drives feature availability, never cached as long-lived truth |
+| `/v2/tokeninfo` | GET | Validate the supplied API key and determine permission readiness for account features. The host uses only the known `permissions[]` values; it discards `id`, `name`, and all other token metadata before producing a browser-safe result. | Key itself acts as credential; `account` is mandatory for all keys and `tradingpost` is required for personal TP reads. | No | slow (changes only when the key is recreated) | Very short TTL (seconds/minutes) on validation; result drives feature availability, never cached as long-lived truth |
 
 Security notes (detailed in `docs/security/security.md`, ADR-006, TKT-M0-04):
 
-- `tokeninfo.name` is not escaped by the API and may contain HTML/JS; it MUST
-  be sanitized before any UI rendering.
-- The `id` field returns only the first half of the key; the application MUST
-  never log, store, or return the full key anywhere.
+- `tokeninfo.name` is not escaped by the API and may contain HTML/JS. M13-02
+  discards it rather than returning it to the UI.
+- The `id` field returns only the first half of the key. The application does
+  not log, store, or return token IDs or full keys.
 
 ## MVP required permissions (summary)
 

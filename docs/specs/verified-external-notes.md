@@ -78,3 +78,20 @@ no API response body was retained:
 M9 pins `2025-08-29T01:00:00.000Z` for public prices, listings, and items. Its
 normal stack cap of 250 is owner-selected product policy, not external API
 metadata.
+
+## M13 token-info contract review
+
+On 2026-09-05, TKT-M13-02 rechecked the public Guild Wars 2 Wiki documentation
+for `/v2/tokeninfo` and API keys without making a keyed live request. The
+endpoint is a read-only `GET` authenticated by the Authorization bearer header
+and returns a permission array; `account` is mandatory for API keys and
+`tradingpost` permits commerce transaction reads. The documented `id` is a key
+fragment and `name` is explicitly unescaped, so the local host discards both
+instead of forwarding token metadata to React. The source does not establish a
+response-level distinction among 401/403 invalid-key scenarios; VERIFY-012
+therefore remains open and the gateway does not retry either response.
+
+Sources:
+
+- https://wiki.guildwars2.com/wiki/API:2/tokeninfo
+- https://wiki.guildwars2.com/wiki/API:API_key

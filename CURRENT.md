@@ -21,18 +21,18 @@ new architecture to extend.
 
 **M13 - Local Runtime and Authenticated Gateway**
 
-TKT-M13-01 adds the concrete `Gw2Tp.Web` loopback ASP.NET Core host, keyless
-health contract, React development proxy, same-origin production asset path,
-and the initial Host/origin security boundary on its implementation branch.
-The exact local start and validation procedures are documented under
-`docs/development/`.
+TKT-M13-01 was merged in PR #102. TKT-M13-02 adds OS-backed API-key retrieval,
+typed token-info validation, and safe local account-connection status without
+allowing a secret into React, SQLite, logs, or normal application settings.
+The exact local start, secret setup, and validation procedures are documented
+under `docs/development/`.
 
-After TKT-M13-01 receives its required fresh flagship XHigh review and owner
+After TKT-M13-02 receives its required fresh flagship XHigh review and owner
 merge, the next implementation ticket is:
 
-**TKT-M13-02 - Add OS-backed API-key storage and safe key status.**
+**TKT-M13-03 - Extend the typed gateway for personal Trading Post data.**
 
-Do not begin TKT-M13-02 on this branch or before the review/merge handoff is
+Do not begin TKT-M13-03 on this branch or before the review/merge handoff is
 complete.
 
 ## Known-good baseline
@@ -47,9 +47,9 @@ Validated on 2026-09-05 from clean `develop` revision
 - CI workflow contracts: 3 tests passed, including retired-runtime absence;
 - Gitleaks: all 163 reachable commits scanned with no leaks.
 
-TKT-M12-03 was merged in PR #101. TKT-M13-01 must pass the expanded host,
-frontend, browser, CI-contract, and full-history secret checks before its
-independent review handoff.
+TKT-M12-03 was merged in PR #101 and TKT-M13-01 in PR #102. TKT-M13-02 must
+pass the expanded secret, host, frontend, browser, CI-contract, and
+full-history secret checks before its independent review handoff.
 
 ## Important transition warning
 
