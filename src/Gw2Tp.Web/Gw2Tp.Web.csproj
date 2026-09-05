@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <SpaRoot>../../frontend/</SpaRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Gw2Tp.Application/Gw2Tp.Application.csproj" />
+    <ProjectReference Include="../Gw2Tp.Infrastructure/Gw2Tp.Infrastructure.csproj" />
+  </ItemGroup>
+  <Target Name="PublishFrontend" AfterTargets="ComputeFilesToPublish">
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm ci --cache &quot;$(MSBuildProjectDirectory)/obj/npm-cache&quot;" />
+    <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build" />
+    <ItemGroup>
+      <FrontendDist Include="$(SpaRoot)dist/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(FrontendDist)" DestinationFolder="$(PublishDir)wwwroot/%(RecursiveDir)" />
+  </Target>
+</Project>
