@@ -11,6 +11,7 @@
 - `docs/architecture/data-model.md` — target durable/derived local data model.
 - `docs/milestones/INDEX.md` — M0-M11 history plus active M12-M22 roadmap.
 - `docs/verification/VERIFY-REGISTER.md` — external-contract uncertainty register.
+- `docs/development/validation.md` — exact clean-checkout build, test, retired-runtime audit, and secret-scan procedure.
 
 ## Active ADRs
 
@@ -35,6 +36,7 @@ Do not treat historical files as active architecture authority.
 
 ## Workflow and review
 
+- `docs/development/validation.md`
 - `docs/workflow/ai-development-workflow.md`
 - `docs/workflow/codex-collaboration.md`
 - `docs/workflow/model-effort-guide.md`

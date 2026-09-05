@@ -19,18 +19,36 @@ new architecture to extend.
 
 ## Active milestone
 
-**M12 - Controlled Personal-Assistant Pivot**
+**M12 - Controlled Personal-Assistant Pivot (quality checkpoint)**
 
-TKT-M12-02 has removed the active static Pages runtime on its implementation
-branch. Its pull request awaits the required fresh independent review and owner
-merge decision.
+TKT-M12-03 records the post-pivot known-good baseline on its implementation
+branch. The active .NET solution, React frontend, browser suite, CI contracts,
+and full-history secret scan pass after TKT-M12-02 retired the static Pages
+runtime. The exact clean-checkout procedure is documented in
+`docs/development/validation.md`.
 
-After TKT-M12-02 is merged, the next implementation ticket is:
+After TKT-M12-03 receives its required fresh independent review and owner merge,
+the next implementation ticket is:
 
-**TKT-M12-03 - Establish the post-pivot quality baseline.**
+**TKT-M13-01 - Add the local ASP.NET Core application host.**
 
-Do not begin TKT-M12-03 on this branch or before the review/merge handoff is
+Do not begin TKT-M13-01 on this branch or before the review/merge handoff is
 complete.
+
+## Known-good baseline
+
+Validated on 2026-09-05 from clean `develop` revision
+`c1153b7a0d72086f011355e3e830ed27cbcaef3a`:
+
+- Release solution build: zero warnings and zero errors;
+- .NET: 102 tests passed;
+- React: 2 component tests passed and the production build succeeded;
+- Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
+- CI workflow contracts: 3 tests passed, including retired-runtime absence;
+- Gitleaks: all 163 reachable commits scanned with no leaks.
+
+The TKT-M12-03 branch and pull-request CI must pass the same matrix before the
+ticket is handed to independent review.
 
 ## Important transition warning
 
