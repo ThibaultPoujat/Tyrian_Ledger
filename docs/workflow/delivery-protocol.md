@@ -1,7 +1,7 @@
 # Codex Delivery Protocol
 
-This document contains Git/GitHub delivery rules only. The ticket and
-`AGENTS.md` define execution rules.
+This document contains Git/GitHub delivery rules. The ticket and `AGENTS.md`
+define implementation scope and decision gates.
 
 ## Branch
 
@@ -9,55 +9,61 @@ Create one branch per ticket:
 
 `ticket/<TICKET_NAME>-<short-kebab-title>`
 
+A bootstrap/pivot branch explicitly authorized by the owner may use an
+equivalent descriptive name, but normal M12+ ticket work follows the ticket
+pattern.
+
 ## Commits
 
-Every commit belonging to the ticket MUST start with the exact ticket identifier:
+Every ticket commit, including commits on an authorized bootstrap/pivot branch,
+starts with the exact ticket identifier:
 
-`[TKT-Mx-yy] Short description`
+`[TKT-Mxx-yy] Short description`
 
 Keep commits logically reviewable. Do not rewrite unrelated history.
 
 ## Pull request
 
-Every completed ticket MUST produce a GitHub pull request before it can be declared
-complete.
+Every completed implementation ticket produces a PR before completion.
 
 PR title:
 
 `[TICKET_NAME] Short title`
 
-The PR body must include:
+PR body must include:
 
 - ticket and milestone;
-- exact specification/architecture/ADR/security/testing/UX references implemented or validated;
-- summary;
+- **functional summary** in plain language (2-6 sentences);
+- relevant specification/architecture/ADR references;
 - acceptance-criteria status;
-- validation commands/tests and results;
+- validation commands/checks and results;
 - decisions/ADRs, if any;
-- VERIFY items;
-- risks and limitations;
-- follow-up work.
+- VERIFY changes;
+- risks/limitations;
+- deliberately out-of-scope follow-up work.
 
-Codex MUST verify that the PR actually exists and report its URL.
+Verify the PR exists and report the real URL. Never invent a PR URL. Never merge
+the PR; the owner performs the final merge decision.
 
-Never invent a PR URL.
+## Review handoff
 
-Never merge the PR. The owner performs the final functional review and merge.
+After the PR is open, stop implementation. A fresh session reviews it using
+`.codex/skills/tyrian-pr-review/SKILL.md`.
 
-If branch push, GitHub authentication, CLI/remote access, or permissions prevent PR
-creation, stop at the delivery gate and report the exact blocker. Do not claim the
-ticket is complete.
+If the owner requests fixes, keep them on the same ticket branch and do not add
+next-ticket features. Re-run affected validation and make the review status
+clear.
 
 ## Delivery checklist
 
-Before completion:
-
 - [ ] Acceptance criteria satisfied or explicit blocker recorded.
+- [ ] Required functional summary written.
 - [ ] Relevant validation performed.
-- [ ] Diff reviewed for scope expansion and secrets.
-- [ ] All ticket commits use the ticket prefix.
+- [ ] Diff reviewed for scope expansion, secrets, data/migration risk, and stale
+      contradictory docs.
+- [ ] Every ticket commit uses the exact ticket prefix.
 - [ ] Branch pushed.
-- [ ] PR created with the required title/body.
-- [ ] PR existence verified and URL reported.
+- [ ] PR created and existence verified.
 - [ ] PR not merged.
-- [ ] VERIFY register is current.
+- [ ] VERIFY register current.
+- [ ] Fresh review is the next phase, not the next implementation ticket.

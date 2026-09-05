@@ -1,78 +1,159 @@
 # Testing Strategy
 
+## Purpose
+
+Tests protect financial truth, local private data, API boundaries, persistence,
+and the user-visible decision workflow. The M10-M11 static snapshot browser is
+historical; active M12+ tests evolve toward the loopback ASP.NET + React + SQLite
+runtime.
+
+Normal automated tests use mocks/fixtures and must not require a live ArenaNet
+key or mutate Guild Wars 2 state.
+
 ## Quality layers
 
-### Unit tests
+### Domain and analytics unit tests
 
-Required for all deterministic business logic:
+Required for deterministic business logic, including as introduced:
 
-- Money and currency conversion
-- Fee policy
-- Profit calculations
-- ROI and capital efficiency
-- Order-book depth simulation
-- Liquidity metrics
-- Freshness classification
-- M9 recommendation eligibility and ranking
-- Data validation and normalization
+- integer-copper money/overflow behavior;
+- canonical fee policy and rounding;
+- completed-sale profit/ROI/max-bid calculations;
+- order-book execution, depth, price impact and liquidity evidence;
+- FIFO lot matching/partial fills;
+- realized versus unrealized accounting;
+- historical statistics/sufficiency;
+- opportunity-score component behavior/anomaly flags;
+- bankroll/position sizing/cash reserve/concentration;
+- recommendation action-state composition;
+- personal turnover weighting;
+- owned-material/crafting economics and bounded path search.
 
-### Gateway and generator tests
+High-risk formulas need independent expected vectors/edge cases, not tests that
+merely restate the implementation expression.
 
-Use recorded fixtures or mocks for GW2 responses. Normal automated tests must not call live endpoints.
+While VERIFY-013 is open, fee tests verify the configured provisional model,
+not external GW2 rounding behavior. A test becomes evidence of implementation
+correctness only; authoritative fee status requires the external evidence and
+register update defined by TKT-M15-01.
+
+### Gateway tests
+
+Use synthetic recorded fixtures or mocked HTTP for:
+
+- public prices/listings/item metadata;
+- authenticated current/completed personal TP endpoints;
+- token/permission status;
+- later inventory/material/crafting endpoints;
+- 401/403/404/429/5xx and transport failure;
+- malformed/partial/new-field payloads;
+- cancellation/retry/backoff/batching/request-budget behavior;
+- secret non-disclosure in errors/logs/results.
+
+Live API shape checks may exist as controlled manually triggered/release-stage
+verification only and must never use committed credentials.
+
+### Persistence/migration tests
 
 Cover:
 
-- public prices, listings, and item metadata
-- 401/403/404/429/5xx
-- malformed JSON
-- missing/new fields
-- bounded snapshot collection, contract validation, and atomic generator output
+- fresh database initialization;
+- migration upgrade paths;
+- uniqueness/account scope;
+- transaction-safe writes;
+- idempotent repeated sync;
+- partial remote failure preserving last-known-good data;
+- remote history aging without local history loss;
+- FIFO rebuild determinism;
+- backup/restore/invalid-restore/clear behavior;
+- market-history retention/downsampling integrity.
 
-### Contract/smoke tests
+### Local-host integration tests
 
-A controlled, manually triggered or release-stage suite MAY call the live API to confirm endpoint shape. This is not the normal CI suite.
+Cover:
 
-### Browser tests
+- loopback default binding;
+- rejection of wildcard/non-loopback normal bindings;
+- explicit Host validation, including rejection of unapproved/spoofed Host
+  values;
+- same-origin production frontend/API behavior;
+- exact trusted-origin development CORS with untrusted origins rejected;
+- cross-origin/anti-forgery rejection for state-changing endpoints independent
+  of CORS;
+- startup without API key where supported;
+- health/status endpoint;
+- safe key-status/result payloads;
+- no secret in browser-facing responses;
+- React/local-API integration contract;
+- restart persistence and background-service cancellation.
 
-Use Playwright to test the highest-value journeys:
+### Frontend/component tests
 
-1. Recommendations and Settings are the only active destinations;
-2. static snapshot loading covers fresh, delayed, malformed, and unavailable states;
-3. browser traffic never reaches `/api` or Guild Wars 2;
-4. keyboard operation and accessibility remain covered.
+Cover accessible rendering/interactions for:
 
-## Test fixture policy
+- account/sync/error/unknown states;
+- personal dashboard/current orders;
+- scanner/filter/detail/watchlist;
+- historical coverage/confidence;
+- `What Should I Do?` actions/reasons;
+- investment/crafting/alert views as introduced.
 
-Fixtures must be:
+Frontend tests should assert that browser code consumes backend financial
+results rather than owning a competing formula.
 
-- deterministic;
-- synthetic or sanitized;
-- small enough to inspect manually;
-- versioned with the test that depends on them.
+### Browser E2E tests
+
+Playwright should focus on high-value user journeys rather than every branch:
+
+1. start/connect/status flow;
+2. sync -> dashboard/current orders;
+3. scanner -> detail/watchlist;
+4. primary recommendation/action review;
+5. restart with persisted state;
+6. backup/restore representative flow;
+7. keyboard navigation/focus/accessibility regression.
+
+The browser **is allowed and expected to call the loopback local API**. It must
+not call ArenaNet directly or receive the API key.
+
+## Fixture policy
+
+Fixtures must be deterministic, synthetic or sanitized, small enough to inspect,
+and versioned with the behavior they support. Never copy a real credential or
+raw private user payload into fixtures.
+
+Golden vectors are useful for complex financial/statistical behavior when the
+expected result was derived independently and reviewed. Avoid browser/server
+duplicate implementations merely to generate matching golden values.
 
 ## Specification-test coupling
 
-Every ticket that changes behavior must update at least one of:
+Every behavior ticket updates or validates at least one of:
 
-- acceptance tests;
 - unit tests;
-- integration fixtures/tests;
-- browser tests;
-- specification text.
+- integration tests/fixtures;
+- persistence/migration tests;
+- component/browser tests;
+- specification/VERIFY text.
 
-The PR/commit should make the change relationship obvious.
+The ticket acceptance criteria define the required minimum. Tests must cover the
+dangerous boundary around the change, not only the success path.
 
-## Financial correctness gates
+## Financial/data correctness gates
 
-The following cannot ship with failing tests:
+A PR must not merge with failing relevant tests for:
 
-- copper arithmetic;
-- fee calculation;
+- copper/fee/ROI/max-bid math;
 - order-book simulation;
-- M9 recommendation calculation and ranking.
+- FIFO/accounting;
+- migrations/sync/backup data integrity;
+- historical statistics;
+- score/risk/recommendation composition;
+- crafting economics.
 
-## LLM testing
+R3 tickets receive fresh flagship XHigh review in addition to tests.
 
-No LLM application tests exist in current scope. Development-agent behavior is evaluated operationally through ticket acceptance and repository tests.
+## No runtime LLM tests
 
-If a future LLM feature is added, deterministic invariants must still be tested outside the LLM.
+No application LLM exists in scope. Coding-agent quality is governed by ticket
+contracts, repository tests, independent PR review, and functional owner review.

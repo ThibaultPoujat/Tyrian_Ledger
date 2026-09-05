@@ -2,71 +2,77 @@
 
 ## Roles
 
-The owner supplies product intent and makes durable product decisions. Codex
-turns that intent into a small ticket, implements it, validates it, and opens a
-pull request. The owner does not need to write code, but remains the approver
-for the decision gates in `AGENTS.md` and for merging a pull request.
+The owner defines the product outcome, approves durable decisions, evaluates the
+functional result, and merges. Codex turns one accepted ticket into a reviewable
+implementation and does not merge its own PR.
 
-## Default configuration
+## Model selection
 
-Use Codex with **GPT-5.6 Terra** and **High** reasoning effort for normal
-implementation. Use **XHigh** for an independent final review of security,
-financial, architectural, or hard-debugging work. Use Medium only for small,
-mechanical documentation or repository-maintenance tasks. Do not use Max or
-Ultra by default; compare them against XHigh only when the normal process has
-failed to achieve a required quality bar.
+Choose model/effort by risk rather than milestone number. The detailed matrix is
+`docs/workflow/model-effort-guide.md`.
+
+Default references:
+
+- routine/mechanical: GPT-5.6 Terra Medium/High;
+- normal implementation: Terra High;
+- complex implementation: Terra High or GPT-5.6 Sol High;
+- financial/accounting/persistence/security/private-data/statistical/
+  recommendation/network-exposure/architecture-authority review: fresh
+  flagship XHigh, normally Sol XHigh; GPT-6 Astra may replace Sol when it is
+  available to the owner.
+
+Independent context is more important than asking the implementation session to
+self-review at higher effort.
 
 ## Ticket lifecycle
 
-1. The owner gives a functional brief using
-   `docs/workflow/functional-brief-template.md`.
-2. Codex identifies the milestone, proposes or updates one ticket, and asks
-   only for a real decision gate.
-3. An implementation task works in one worktree and creates a reviewable PR.
-4. A fresh Codex review task checks the PR against its ticket, relevant ADRs,
-   tests, security boundaries, and the diff. It may add corrective commits to
-   the same branch.
-5. CI passes. The owner reads the short functional report, verifies that the
-   outcome matches the brief, and merges the PR.
+1. The owner selects one ticket or provides a functional brief.
+2. The implementation session reads `CURRENT.md`, `AGENTS.md`, current context,
+   and that ticket.
+3. It implements only that ticket in an isolated branch/worktree, validates,
+   opens a PR, and writes a short functional summary.
+4. A **fresh** review session uses the Tyrian PR review skill to check the PR
+   against the ticket, canonical docs, relevant ADRs, tests, security/data
+   boundaries, and diff.
+5. Confirmed findings are fixed within ticket scope and revalidated.
+6. CI passes. The owner checks the functional summary/behavior and merges.
+7. `CURRENT.md` is updated when the active project state/next ticket changes.
 
-Do not ask one task to implement an entire milestone. Do not run overlapping
-implementation tasks in one worktree. Separate work is safe to parallelize
-only when it has different worktrees and no shared files or decisions.
+Do not ask one task to implement an entire milestone. Do not combine consecutive
+tickets because the model still has context budget.
 
-## How to start a Codex task
+## Starting an implementation task
 
-For an existing ticket, use a short request such as:
+For an existing ticket:
 
-> Implement `TKT-M1-02`. Read `AGENTS.md` and the ticket first. If the ticket
-> is stale, ambiguous, or requires a durable owner decision, explain that
-> before changing code; otherwise implement it, validate it, and open a PR.
+> Implement `TKT-Mxx-yy`. Read `CURRENT.md`, `AGENTS.md`, the milestone context,
+> and the ticket first. Work only on that ticket in an isolated branch/worktree.
+> Validate it, open a PR, include the required short functional summary, and
+> stop. If a real owner decision gate is required, present the decision and
+> options; otherwise proceed autonomously.
 
-There is no corresponding prompt file. The root instructions and the ticket
-are the execution contract. For new work, provide a completed functional brief
-instead; Codex will turn it into one small ticket before implementation.
+## Starting a review task
 
-Treat completed tickets as history. Treat a not-yet-started ticket as a useful
-backlog contract: refresh its external facts, dependencies, and acceptance
-criteria immediately before beginning it instead of maintaining duplicate
-prompts or preemptively rewriting every future ticket.
+Use a fresh context:
 
-## What the owner should provide
+> Review the PR for `TKT-Mxx-yy` using the `tyrian-pr-review` skill. Do not rely
+> on the implementation conversation. Check the ticket acceptance criteria,
+> canonical docs, diff, tests, financial/security/data invariants, and VERIFY
+> state. Report findings by severity with evidence, include the functional
+> summary and acceptance-criteria matrix, and do not make edits unless I ask for
+> review-and-fix.
 
-Describe what should be true for the player, not a technical solution. State
-the desired outcome, examples, priority, non-goals, and any constraint that is
-important to you. Screenshots, Guild Wars 2 examples, and a ranked list of
-trade-offs are useful when available.
+## Questions Codex should ask
 
-## Questions Codex must ask
+Proceed autonomously for implementation choices already authorized by the
+ticket. Pause only for a durable owner decision in `AGENTS.md`, contradictory
+requirements, destructive behavior outside the ticket, or a true blocker.
 
-Codex should proceed autonomously for normal ticket work. It must pause for
-the owner when the change requires one of the durable decisions listed in
-`AGENTS.md`, when requirements conflict, or when acceptance criteria cannot be
-tested safely. It should present a concise recommendation and the consequences
-of each option rather than asking broad technical questions.
+When pausing, present a recommendation plus concrete options/consequences rather
+than a broad technical question.
 
-## Current workflow cleanup
+## Historical workflow note
 
-The M0 Qwen/MTPLX records are historical evidence from the retired local-agent
-workflow. Current source Markdown, tickets, ADRs, and Git state are
-authoritative for Codex work.
+M0-M11 records explain the project's evolution. M12 is the active pivot. Old
+static Pages instructions are not authoritative merely because their source
+files/code still exist before TKT-M12-02.
