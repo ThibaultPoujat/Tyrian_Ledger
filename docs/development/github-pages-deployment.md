@@ -151,19 +151,20 @@ node .github/scripts/assemble-pages-artifact.mjs --dist frontend/dist --snapshot
 node .github/scripts/audit-pages-artifact.mjs "$pages_root/pages"
 ```
 
-Before advising the owner to make the repository or Pages public, record the
-candidate SHA, Gitleaks version, outcome, and exact command for this mandatory
-full-history audit, plus a targeted workflow and assembled-artifact review:
+For the historical M10 rollout, the evidence required before advising the owner
+to make the repository or Pages public included the candidate SHA, Gitleaks
+version, outcome, exact full-history audit command, and a targeted workflow and
+assembled-artifact review:
 
 ```sh
 gitleaks detect --source . --log-opts="--all" --redact --no-banner
 ```
 
-Do not change repository visibility or enable/configure Pages as part of this
-ticket. M10's native-schedule evidence remains recorded under VERIFY-014. M11
-must separately record two consecutive Cloudflare Cron dispatches, their
-resulting GitHub runs, source selection, capture policy, artifact audits,
-deployment URLs, and snapshot timestamps under VERIFY-015. An external
-scheduler is not verified merely because its Worker source exists.
+The M10 ticket prohibited changing repository visibility or enabling/configuring
+Pages as part of that work; its native-schedule evidence remains recorded under
+VERIFY-014. M11 planned to record two consecutive Cloudflare Cron dispatches and
+their resulting deployment evidence under VERIFY-015, but the M12 pivot
+superseded that item before completion. No active scheduler rollout or
+VERIFY-015 evidence collection remains.
 
 GitHub documents [full-SHA action pinning](https://docs.github.com/en/actions/reference/security/secure-use), the [minimum Pages deployment permissions](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages), and the fact that [scheduled runs use the default branch and can be delayed](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows).

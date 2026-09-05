@@ -121,9 +121,10 @@ Raw ROI is never sufficient by itself for a high ranking.
 
 While the local application is running, a scheduler collects timestamped public
 market observations according to an adaptive interest policy. High-interest
-items include current personal orders, held positions, and watchlist markets.
-Broad-universe sampling can be less frequent. Full order books are collected
-more selectively than best-price snapshots.
+items include current personal orders and watchlist markets. Held positions join
+that tier when TKT-M20-03 introduces position tracking and registers its source
+with the sampling policy. Broad-universe sampling can be less frequent. Full
+order books are collected more selectively than best-price snapshots.
 
 Over time, Tyrian Ledger calculates only from available observations:
 

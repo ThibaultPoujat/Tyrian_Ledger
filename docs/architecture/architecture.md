@@ -195,7 +195,8 @@ request scheduler/gateway.
 
 Sampling tiers:
 
-1. current personal orders and held positions;
+1. current personal orders, plus held positions after TKT-M20-03 introduces and
+   registers that source;
 2. watchlist/approved markets;
 3. broader tradable universe;
 4. detailed full order books only for shortlisted/high-interest items.

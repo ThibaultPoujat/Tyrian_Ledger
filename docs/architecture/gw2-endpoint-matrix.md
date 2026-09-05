@@ -33,15 +33,15 @@ being added to this table.
   until verified.
 - Paging: `page` / `page_size` (zero-indexed); response headers
   `X-Page-Size`, `X-Page-Total`, `X-Result-Count`, `X-Result-Total`.
-  **VERIFY-004** per-endpoint applicability and max page size in TKT-M13-03 or
-  TKT-M18-02, as applicable.
+  **VERIFY-004** per-endpoint applicability and max page size in TKT-M13-03,
+  TKT-M18-02, or TKT-M21-01, as applicable.
 - Schema version: production requests MUST pin a known schema version via
-  `?v=<ISO-8601>` or `X-Schema-Version` (wiki-recommended; **VERIFY** the
+  `?v=<ISO-8601>` or `X-Schema-Version` (wiki-recommended; **VERIFY-005** the
   chosen pinned versions per endpoint against `/v2.json?v=latest`). TKT-M9-02
   rechecked the public index on 2026-08-31: its newest `schema_versions` entry
   remains `2025-08-29T01:00:00.000Z`, pinned by the public prices, listings,
   and item clients. Remaining endpoint-specific verification is **VERIFY-005**
-  under TKT-M13-03/TKT-M18-02 and later TKT-M21-01 where applicable.
+  under TKT-M13-03, TKT-M18-02, or TKT-M21-01, as applicable.
   If omitted, the API returns the earliest schema.
 - Auth: `Authorization: Bearer <API key>` header (server-side; preferred) or
   `?access_token=`. This application uses the header only, from the
@@ -77,8 +77,8 @@ informed by the wiki where stated. Freshness classes:
 | `/v2/commerce/listings` (+ `/v2/commerce/listings/{id}`, `?ids=`) | GET | Full order book per finalist item (`buys`/`sells` arrays with `listings`, `unit_price`, `quantity` in copper); depth/price-impact input for M9. | None (public) | Yes, `ids`; M9 sends deterministic batches of at most 200 IDs (**VERIFY-004** exact limit/206 details) | hot | No completed-response cache; fetch only bounded finalists through the typed gateway. | No |
 | `/v2/items` (+ `/v2/items/{id}`, `?ids=`) | GET | English finalist display metadata: public item `id` and `name`. M9 supplies its normal stack cap as application policy; the response does not provide per-item `max_stack`. | None (public) | Yes, `ids`; M9 sends deterministic batches of at most 200 IDs (**VERIFY-004** exact limit/206 details) | slow | No completed-response cache; fetch only bounded finalists through the typed gateway. | No |
 | `/v2/commerce/transactions/current/buys|sells`, `/v2/commerce/transactions/history/buys|sells` (paged) | GET | Pending and 90-day fulfilled TP transactions for M13+ personal synchronization/accounting | `account` + `tradingpost` (wiki: results cached server-side ~5 min; VERIFY-008) | No (path navigation + paging only; `page`/`page_size`) | warm (server-cached ~5 min per wiki; history static, current changes with pending orders) | Per-key, per-sub-endpoint cache; history pages long TTL, `current` short TTL; paging cursors stored | Yes |
-| `/v2/recipes` (+ `/v2/recipes/{id}`, `?ids=`) | GET | Recipe definitions: type, output item, time_to_craft_ms, disciplines, min_rating, flags, ingredients (2022-03 schema with `type`/`id`/`count`); crafting graph core (M5) | None (public) | Yes, `ids` (practical limit 200 — **VERIFY** hard limit) | slow (changes only with game content; schema `2022-03-09T02:00:00.000Z` known to handle Currency ingredients) | Long TTL; pin schema `2022-03-09T02:00:00.000Z` (**VERIFY** this is the latest relevant version in M2) | No |
-| `/v2/recipes/search?input={itemId}` / `?output={itemId}` | GET | Resolve recipe IDs for a given input ingredient or output item (crafting graph search, M5) | None (public) | No (single `input` or single `output`; mutually exclusive) | slow | Long TTL, keyed by parameter | No |
+| `/v2/recipes` (+ `/v2/recipes/{id}`, `?ids=`) | GET | Recipe definitions: type, output item, time_to_craft_ms, disciplines, min_rating, flags, ingredients (2022-03 schema with `type`/`id`/`count`); crafting graph core for M21 | None (public) | Yes, `ids`; use safe batches of at most 200 until **VERIFY-004** confirms the exact recipe limit/206 behavior in TKT-M21-01 | slow (changes only with game content; schema `2022-03-09T02:00:00.000Z` was historically used to handle Currency ingredients) | Long TTL; keep the provisional `2022-03-09T02:00:00.000Z` pin until **VERIFY-005** confirms the latest relevant recipe schema in TKT-M21-01 | No |
+| `/v2/recipes/search?input={itemId}` / `?output={itemId}` | GET | Resolve recipe IDs for a given input ingredient or output item (M21 crafting graph search) | None (public) | No (single `input` or single `output`; mutually exclusive) | slow | Long TTL, keyed by parameter | No |
 | `/v2/account/bank` | GET | Vault bank slots (item, count, charges, binding, upgrades, infusions, skins, dyes, stats); M21 owned-item analysis | `account` + `inventories` | No (whole vault in one response) | warm (changes with user actions) | Short-to-medium TTL per refresh request; snapshot stored with capture time; never auto-poll frequently | Yes |
 | `/v2/account/materials` | GET | Material storage (id, category, count; every material returned even at 0); M21 owned-material opportunity cost | `account` + `inventories` | No (single response) | warm | Short-to-medium TTL; same snapshot rules as bank | Yes |
 | `/v2/account/recipes` | GET | Recipe IDs unlocked for the account (M21 recipe availability filter) | `account` + `unlocks` (wiki infobox says `account, unlocks`; **VERIFY-008** whether `characters` is also implied) | No (single response, IDs resolved via `/v2/recipes`) | slow (changes only when recipes are learned) | Medium/long TTL | Yes |
