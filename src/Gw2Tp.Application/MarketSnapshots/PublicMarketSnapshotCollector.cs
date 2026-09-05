@@ -10,7 +10,9 @@ namespace Gw2Tp.Application.MarketSnapshots;
 /// </summary>
 public sealed class PublicMarketSnapshotCollector
 {
-    public const int MaximumFinalistCount = MarketSnapshotContract.MaximumCandidateCount;
+    // Retained M9 screening bound. This limits one complete in-memory public
+    // market read; it is no longer a static-artifact contract.
+    public const int MaximumFinalistCount = 200;
 
     private readonly IGw2ApiClient marketDataClient;
     private readonly IClock clock;
@@ -58,24 +60,23 @@ public sealed class PublicMarketSnapshotCollector
         var metadataByItemId = metadata.ToDictionary(item => item.ItemId);
         var candidates = listings
             .OrderBy(listing => listing.ItemId)
-            .Select(listing => new MarketSnapshotCandidate(
-                listing.ItemId,
-                metadataByItemId[listing.ItemId].Name,
-                ToSnapshotLevels(listing.Buys),
-                ToSnapshotLevels(listing.Sells)))
+            .Select(listing => new BeginnerRecommendationCandidate(
+                metadataByItemId[listing.ItemId],
+                CanonicalizeListing(listing)))
             .ToArray();
         return new PublicMarketSnapshotCollection(clock.UtcNow.ToUniversalTime(), candidates);
     }
 
-    private static IReadOnlyList<MarketSnapshotOrderLevel> ToSnapshotLevels(
+    private static MarketListing CanonicalizeListing(MarketListing listing) => new(
+        listing.ItemId,
+        CanonicalizeLevels(listing.Buys),
+        CanonicalizeLevels(listing.Sells));
+
+    private static IReadOnlyList<MarketOrderLevel> CanonicalizeLevels(
         IReadOnlyList<MarketOrderLevel> levels) => levels
-        .Select(level => new MarketSnapshotOrderLevel(
-            level.Listings,
-            level.Quantity,
-            level.UnitPriceInCopper))
         .OrderBy(level => level.UnitPriceInCopper)
         .ThenBy(level => level.Quantity)
-        .ThenBy(level => level.ListingCount)
+        .ThenBy(level => level.Listings)
         .ToArray();
 
     private static void Report(
@@ -204,12 +205,13 @@ public sealed class PublicMarketSnapshotCollector
 }
 
 /// <summary>
-/// Complete, in-memory public data gathered for one artifact. The collection
-/// is valid only when every requested finalist has its listing and metadata.
+/// Complete, in-memory public data gathered for one recommendation calculation.
+/// The collection is valid only when every requested finalist has its listing
+/// and metadata.
 /// </summary>
 public sealed record PublicMarketSnapshotCollection(
     DateTimeOffset GeneratedAtUtc,
-    IReadOnlyList<MarketSnapshotCandidate> Candidates);
+    IReadOnlyList<BeginnerRecommendationCandidate> Candidates);
 
 /// <summary>
 /// Progress exposed to the existing player scan without coupling the collector

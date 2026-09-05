@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using Gw2Tp.Application.MarketData;
-using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,58 +13,6 @@ namespace Gw2Tp.Infrastructure.Tests;
 
 public sealed class Gw2RequestSchedulerTests
 {
-    [Fact]
-    public async Task Market_snapshot_gateway_enforces_the_dedicated_capture_policy_without_live_requests()
-    {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Gw2Api:RateLimit:BurstSize"] = "300",
-                ["Gw2Api:RateLimit:RefillTokensPerSecond"] = "5",
-                ["Gw2Api:RateLimit:MaxConcurrentRequests"] = "5",
-            })
-            .Build();
-        var services = new ServiceCollection();
-        services.AddTyrianLedgerMarketSnapshotGateway(configuration);
-        using var provider = services.BuildServiceProvider();
-        var options = provider.GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>().Value;
-
-        Assert.Equal(MarketSnapshotCapturePolicy.BurstBudget, options.RateLimit.BurstSize);
-        Assert.Equal(MarketSnapshotCapturePolicy.RequestsPerSecond, options.RateLimit.RefillTokensPerSecond);
-        Assert.Equal(MarketSnapshotCapturePolicy.MaxConcurrentRequests, options.RateLimit.MaxConcurrentRequests);
-
-        using var scheduler = CreateScheduler(options);
-        var releaseRequests = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var twoRequestsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var startedRequestCount = 0;
-
-        Task<int> ScheduleAsync(string requestKey) => scheduler.ScheduleAsync(
-            new Gw2RequestKey(requestKey),
-            async cancellationToken =>
-            {
-                if (Interlocked.Increment(ref startedRequestCount) == MarketSnapshotCapturePolicy.MaxConcurrentRequests)
-                {
-                    twoRequestsStarted.TrySetResult();
-                }
-
-                await releaseRequests.Task.WaitAsync(cancellationToken);
-                return new Gw2ScheduledResult<int>(1);
-            },
-            CancellationToken.None);
-
-        var first = ScheduleAsync("capture:1");
-        var second = ScheduleAsync("capture:2");
-        var third = ScheduleAsync("capture:3");
-        await twoRequestsStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Yield();
-
-        Assert.Equal(MarketSnapshotCapturePolicy.MaxConcurrentRequests, Volatile.Read(ref startedRequestCount));
-
-        releaseRequests.TrySetResult();
-        var results = await Task.WhenAll(first, second, third);
-        Assert.Equal([1, 1, 1], results);
-    }
-
     [Fact]
     public async Task Concurrent_identical_requests_share_one_outbound_request()
     {

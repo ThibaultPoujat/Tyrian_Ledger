@@ -27,13 +27,11 @@
 
 - `docs/adr/ADR-008-static-github-pages-hosting.md` — superseded M10 Pages runtime.
 - `docs/adr/ADR-009-external-pages-snapshot-scheduler.md` — superseded M11 scheduler.
-- `docs/specs/market-snapshot-contract.md` — historical M10-M11 static-browser artifact contract; transition material until TKT-M12-02.
-- `docs/development/static-source-release.md` — historical static-release guide; transition material until TKT-M12-02.
-- `docs/development/github-pages-deployment.md` — historical Pages deployment guide; transition material until TKT-M12-02.
 
-M0-M11 milestone/context/ticket files remain project history. M12-M22 are the
-active roadmap. Do not treat the existence of a historical file as active
-architecture authority.
+TKT-M12-02 removed the active static delivery source, publishable snapshot
+contract, and operational guides. M0-M11 milestone/context/ticket files remain
+the historical record of that retired runtime; M12-M22 are the active roadmap.
+Do not treat historical files as active architecture authority.
 
 ## Workflow and review
 

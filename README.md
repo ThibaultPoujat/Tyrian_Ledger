@@ -118,9 +118,10 @@ functional behavior are satisfactory.
 
 ## Current transition state
 
-The source tree still contains the M10-M11 static Pages runtime at the beginning
-of M12. Do not mistake presence for architectural authority. `CURRENT.md` states
-which transition ticket is active and what may safely be removed next.
+TKT-M12-02 removed the M10-M11 static Pages runtime, external scheduler,
+publishable market snapshot, and browser-side recommendation formulas. The
+remaining M10-M11 records are historical evidence only; `CURRENT.md` identifies
+the next permitted ticket.
 
 ## Normative language
 
