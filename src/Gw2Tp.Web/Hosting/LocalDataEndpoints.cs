@@ -10,6 +10,8 @@ internal static class LocalDataEndpoints
     internal const string RestoreConfirmation = "RESTORE LOCAL DATA";
     internal const string ClearConfirmation = "CLEAR PERSONAL DATA";
     internal const long MaxRestoreBackupBytes = 512L * 1024 * 1024;
+    internal const long MaxRestoreMultipartOverheadBytes = 64L * 1024;
+    internal const long MaxRestoreRequestBytes = MaxRestoreBackupBytes + MaxRestoreMultipartOverheadBytes;
 
     public static IEndpointRouteBuilder MapLocalDataEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -43,7 +45,7 @@ internal static class LocalDataEndpoints
             var requestSizeLimit = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
             if (requestSizeLimit is { IsReadOnly: false })
             {
-                requestSizeLimit.MaxRequestBodySize = MaxRestoreBackupBytes;
+                requestSizeLimit.MaxRequestBodySize = MaxRestoreRequestBytes;
             }
 
             if (!request.HasFormContentType)
@@ -59,13 +61,18 @@ internal static class LocalDataEndpoints
                 return LocalDataResponseWriter.InvalidRequest("restore_confirmation_or_file_invalid");
             }
 
+            if (backupFile.Length > MaxRestoreBackupBytes)
+            {
+                return LocalDataResponseWriter.InvalidRequest("restore_file_too_large");
+            }
+
             await using var stream = backupFile.OpenReadStream();
             var result = await recoveryService.RestoreAsync(stream, cancellationToken).ConfigureAwait(false);
             return LocalDataResponseWriter.CreateRestoreResponse(result);
         });
         restoreEndpoint.WithMetadata(
-            new RequestSizeLimitAttribute(MaxRestoreBackupBytes),
-            new RequestFormLimitsAttribute { MultipartBodyLengthLimit = MaxRestoreBackupBytes });
+            new RequestSizeLimitAttribute(MaxRestoreRequestBytes),
+            new RequestFormLimitsAttribute { MultipartBodyLengthLimit = MaxRestoreRequestBytes });
 
         endpoints.MapPost("/api/local-data/clear-personal", async (
             LocalDataConfirmationRequest confirmation,

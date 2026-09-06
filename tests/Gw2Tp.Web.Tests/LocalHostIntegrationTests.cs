@@ -9,8 +9,11 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -176,6 +179,18 @@ public sealed class LocalHostIntegrationTests
                 ["TyrianLedger:Database:Path"] = databasePath,
             });
             using var client = app.GetTestClient();
+
+            var restoreEndpoint = app.Services.GetServices<EndpointDataSource>()
+                .SelectMany(source => source.Endpoints)
+                .OfType<RouteEndpoint>()
+                .Single(endpoint => string.Equals(endpoint.RoutePattern.RawText, "/api/local-data/restore", StringComparison.Ordinal));
+            Assert.Equal(
+                LocalDataEndpoints.MaxRestoreRequestBytes,
+                restoreEndpoint.Metadata.GetMetadata<IRequestSizeLimitMetadata>()?.MaxRequestBodySize);
+            Assert.Equal(
+                LocalDataEndpoints.MaxRestoreRequestBytes,
+                restoreEndpoint.Metadata.GetMetadata<RequestFormLimitsAttribute>()?.MultipartBodyLengthLimit);
+            Assert.True(LocalDataEndpoints.MaxRestoreRequestBytes > LocalDataEndpoints.MaxRestoreBackupBytes);
 
             using var locationResponse = await client.GetAsync("/api/local-data");
             var locationBody = await locationResponse.Content.ReadAsStringAsync();

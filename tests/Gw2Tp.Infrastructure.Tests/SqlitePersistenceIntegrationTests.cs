@@ -403,6 +403,35 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Restore_rejects_extra_restrictive_indexes_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "extra-unique-index.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), incompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "CREATE UNIQUE INDEX unexpected_completed_transaction_item ON completed_tp_transactions (item_id);";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
     public async Task Failed_restore_replacement_leaves_live_data_untouched()
     {
         await using var database = await TestDatabase.CreateAsync();

@@ -340,10 +340,10 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 throw new InvalidDataException($"The SQLite database schema for '{tableName}' is incompatible with this application version.");
             }
 
-            if (RequiredSchemaFragments.TryGetValue(tableName, out var requiredFragments))
-            {
-                await ValidateTableSqlAsync(connection, tableName, requiredFragments, cancellationToken).ConfigureAwait(false);
-            }
+            var requiredFragments = RequiredSchemaFragments.TryGetValue(tableName, out var fragments)
+                ? fragments
+                : [];
+            await ValidateTableSqlAsync(connection, tableName, requiredFragments, cancellationToken).ConfigureAwait(false);
 
             var requiredIndexes = RequiredIndexes.TryGetValue(tableName, out var indexes)
                 ? indexes
@@ -378,6 +378,12 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         {
             throw new InvalidDataException($"The SQLite database schema for '{tableName}' is missing required constraints.");
         }
+
+        var requiredCheckConstraintCount = requiredFragments.Count(fragment => fragment.StartsWith("check(", StringComparison.Ordinal));
+        if (CountOccurrences(normalizedSchemaSql, "check(") != requiredCheckConstraintCount)
+        {
+            throw new InvalidDataException($"The SQLite database schema for '{tableName}' has incompatible check constraints.");
+        }
     }
 
     private static async Task ValidateIndexesAsync(
@@ -386,11 +392,6 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         IReadOnlyList<SqliteIndexDefinition> requiredIndexes,
         CancellationToken cancellationToken)
     {
-        if (requiredIndexes.Count == 0)
-        {
-            return;
-        }
-
         var actualIndexes = new List<(string Name, bool IsUnique, bool IsPartial)>();
         await using (var indexList = connection.CreateCommand())
         {
@@ -400,6 +401,11 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             {
                 actualIndexes.Add((reader.GetString(1), reader.GetInt32(2) != 0, reader.FieldCount > 4 && reader.GetInt32(4) != 0));
             }
+        }
+
+        if (actualIndexes.Count != requiredIndexes.Count)
+        {
+            throw new InvalidDataException($"The SQLite database schema for '{tableName}' has incompatible indexes.");
         }
 
         foreach (var requiredIndex in requiredIndexes)
@@ -485,6 +491,19 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         schemaSql is null
             ? string.Empty
             : new string(schemaSql.Where(character => !char.IsWhiteSpace(character)).ToArray()).ToLowerInvariant();
+
+    private static int CountOccurrences(string value, string needle)
+    {
+        var count = 0;
+        var startIndex = 0;
+        while ((startIndex = value.IndexOf(needle, startIndex, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            startIndex += needle.Length;
+        }
+
+        return count;
+    }
 
     private static string QuoteIdentifier(string identifier) => $"\"{identifier.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
 
