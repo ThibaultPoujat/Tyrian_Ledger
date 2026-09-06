@@ -133,9 +133,11 @@ aliases. Production enables no CORS policy; Development permits only the exact
 Unsafe HTTP methods pass through origin protection before endpoint execution.
 They require an exact same-origin `Origin`, with exact configured development
 origins additionally accepted only in Development, plus the explicit
-`X-Tyrian-Ledger-Request: 1` application-request header. This control is
-independent of CORS and applies before any future state-changing endpoint is
-introduced.
+`X-Tyrian-Ledger-Request: 1` application-request header. The
+credential-dependent account-connection GET requires the same header and
+rejects an untrusted supplied Origin, so a cross-origin page cannot repeatedly
+trigger vault access or authenticated validation. This control is independent
+of CORS and applies before any future state-changing endpoint is introduced.
 
 Vite proxies relative `/api` calls to the loopback host for development. A
 Release publish builds React into the host output; the production host serves

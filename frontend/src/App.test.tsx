@@ -52,7 +52,10 @@ describe('M13 local host shell', () => {
       headers: { Accept: 'application/json' },
     }));
     expect(fetch).toHaveBeenCalledWith('/api/account-connection', expect.objectContaining({
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        'X-Tyrian-Ledger-Request': '1',
+      },
     }));
     expect(Storage.prototype.getItem).not.toHaveBeenCalled();
     expect(Storage.prototype.setItem).not.toHaveBeenCalled();
@@ -66,6 +69,31 @@ describe('M13 local host shell', () => {
 
     expect(await screen.findByText('Local host unavailable')).toBeVisible();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('keeps vault setup guidance available when native-store status is unavailable', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/health') {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ status: 'healthy' }),
+        } as unknown as Response);
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          state: 'unavailable',
+          grantedPermissions: [],
+          missingRequiredPermissions: ['account', 'tradingpost'],
+        }),
+      } as unknown as Response);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('ArenaNet key status unavailable')).toBeVisible();
+    expect(screen.getByText(/store a dedicated read-only ArenaNet key/i)).toBeVisible();
   });
 
   it('explains missing permissions without treating untrusted data as markup', async () => {

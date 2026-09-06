@@ -51,7 +51,11 @@ public sealed class LocalHostIntegrationTests
             });
         using var client = app.GetTestClient();
 
-        using var response = await client.GetAsync("/api/account-connection");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/account-connection");
+        request.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var response = await client.SendAsync(request);
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -61,6 +65,30 @@ public sealed class LocalHostIntegrationTests
         Assert.DoesNotContain(syntheticKey, body, StringComparison.Ordinal);
         Assert.DoesNotContain(maliciousMetadata, body, StringComparison.Ordinal);
         Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Untrusted_origin_cannot_invoke_credential_dependent_status_service()
+    {
+        var statusService = new CountingAccountConnectionStatusService();
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IAccountConnectionStatusService>();
+                services.AddSingleton<IAccountConnectionStatusService>(statusService);
+            });
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/account-connection");
+        request.Headers.Add("Origin", "https://attacker.example");
+        request.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, statusService.CallCount);
     }
 
     [Fact]
@@ -385,5 +413,19 @@ public sealed class LocalHostIntegrationTests
 
         public Task<AccountConnectionStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(_status);
+    }
+
+    private sealed class CountingAccountConnectionStatusService : IAccountConnectionStatusService
+    {
+        public int CallCount { get; private set; }
+
+        public Task<AccountConnectionStatus> GetStatusAsync(CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(new AccountConnectionStatus(
+                AccountConnectionState.NotConfigured,
+                [],
+                AccountConnectionPermissions.Required));
+        }
     }
 }

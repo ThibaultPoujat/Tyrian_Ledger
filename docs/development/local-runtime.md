@@ -77,6 +77,10 @@ The host rejects unapproved `Host` headers. In production it does not enable
 cross-origin access. Independently of CORS, every unsafe HTTP method requires
 an exact same-origin `Origin` header, or an explicitly trusted development
 origin while running in Development, and the application-request header
-`X-Tyrian-Ledger-Request: 1`. No state-changing product endpoint exists yet,
+`X-Tyrian-Ledger-Request: 1`. The credential-dependent
+`GET /api/account-connection` also requires that header and rejects an
+untrusted supplied `Origin`; its result is cached only in host memory for 30
+seconds to bound repeated vault and upstream access, while each browser
+response remains `no-store`. No state-changing product endpoint exists yet,
 but the policy is placed before endpoint routing so future endpoints inherit
 the boundary.

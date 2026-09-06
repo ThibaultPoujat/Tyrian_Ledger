@@ -39,7 +39,9 @@ export default defineConfig({
       TyrianLedger__Host__Port: hostPort,
     },
     url: `${hostBaseUrl}/api/health`,
-    reuseExistingServer: !isCi,
+    // Reusing a locally running host could bypass this suite's Testing
+    // environment and accidentally reach a developer's credential vault.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

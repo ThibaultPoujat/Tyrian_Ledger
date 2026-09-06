@@ -87,7 +87,10 @@ export default function App() {
     async function checkAccountConnection() {
       try {
         const response = await fetch('/api/account-connection', {
-          headers: { Accept: 'application/json' },
+          headers: {
+            Accept: 'application/json',
+            'X-Tyrian-Ledger-Request': '1',
+          },
           signal: controller.signal,
         });
         const payload: unknown = await response.json();
@@ -143,7 +146,7 @@ export default function App() {
                 <span aria-hidden="true" />
                 {accountConnectionMessage(accountConnection.state, accountConnection.missingPermissions)}
               </p>
-              {accountConnection.state === 'not_configured' && (
+              {(accountConnection.state === 'not_configured' || accountConnection.state === 'unavailable') && (
                 <p>Store a dedicated read-only ArenaNet key in your operating system’s credential vault. Tyrian Ledger never asks the browser to store or send it.</p>
               )}
               {accountConnection.state === 'insufficient_permissions' && (

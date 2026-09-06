@@ -256,6 +256,21 @@ public sealed class AccountConnectionStatusServiceTests
     }
 
     [Fact]
+    public async Task Cached_status_bounds_repeated_secret_and_upstream_validation_until_the_short_ttl_expires()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.Parse("2026-09-06T00:00:00Z"));
+        var inner = new CountingAccountConnectionStatusService();
+        var service = new CachedAccountConnectionStatusService(inner, clock);
+
+        await service.GetStatusAsync();
+        await service.GetStatusAsync();
+        clock.Advance(CachedAccountConnectionStatusService.StatusCacheDuration);
+        await service.GetStatusAsync();
+
+        Assert.Equal(2, inner.CallCount);
+    }
+
+    [Fact]
     public async Task Registered_authenticated_pipeline_redacts_the_key_from_http_logs_on_a_failing_response()
     {
         const string sensitiveValue = "synthetic-sensitive-key-for-log-redaction";
@@ -445,6 +460,29 @@ public sealed class AccountConnectionStatusServiceTests
             {
             }
         }
+    }
+
+    private sealed class CountingAccountConnectionStatusService : IAccountConnectionStatusService
+    {
+        public int CallCount { get; private set; }
+
+        public Task<AccountConnectionStatus> GetStatusAsync(CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(new AccountConnectionStatus(
+                AccountConnectionState.NotConfigured,
+                [],
+                AccountConnectionPermissions.Required));
+        }
+    }
+
+    private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset _utcNow = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => _utcNow;
+
+        public void Advance(TimeSpan elapsed) => _utcNow += elapsed;
     }
 
     private sealed class TestingHostEnvironment : IHostEnvironment

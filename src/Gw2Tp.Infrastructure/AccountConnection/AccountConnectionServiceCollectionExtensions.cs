@@ -48,7 +48,7 @@ public static class AccountConnectionServiceCollectionExtensions
         });
         services.Configure<HttpClientFactoryOptions>(AccountConnectionStatusService.HttpClientName, options =>
             options.ShouldRedactHeaderValue = static _ => true);
-        services.AddSingleton<IAccountConnectionStatusService>(serviceProvider => new AccountConnectionStatusService(
+        services.AddSingleton<AccountConnectionStatusService>(serviceProvider => new AccountConnectionStatusService(
             serviceProvider.GetRequiredService<IGw2ApiKeySource>(),
             serviceProvider.GetRequiredService<IHttpClientFactory>()
                 .CreateClient(AccountConnectionStatusService.HttpClientName),
@@ -57,6 +57,9 @@ public static class AccountConnectionServiceCollectionExtensions
                 .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
                 .Value
                 .RequestTimeoutMs)));
+        services.AddSingleton<IAccountConnectionStatusService>(serviceProvider =>
+            new CachedAccountConnectionStatusService(
+                serviceProvider.GetRequiredService<AccountConnectionStatusService>()));
 
         return services;
     }
