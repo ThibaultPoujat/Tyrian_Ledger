@@ -40,4 +40,15 @@ public interface ILocalDataRecoveryService
         CancellationToken cancellationToken = default);
 
     Task ClearPersonalDataAsync(CancellationToken cancellationToken = default);
+
+    Task CleanupStaleRestoreArtifactsAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Coordinates long-running personal-data operations so recovery controls are
+/// not followed by an earlier in-flight synchronization commit.
+/// </summary>
+public interface IPersonalDataOperationGate
+{
+    ValueTask<IAsyncDisposable> AcquireAsync(CancellationToken cancellationToken = default);
 }

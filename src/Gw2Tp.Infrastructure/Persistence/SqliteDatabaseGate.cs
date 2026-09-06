@@ -1,5 +1,7 @@
 namespace Gw2Tp.Infrastructure.Persistence;
 
+using Gw2Tp.Application.LocalData;
+
 /// <summary>
 /// Serializes application-owned SQLite work while a recovery operation can
 /// replace the database file. SQLite still protects against external writers;
@@ -11,6 +13,26 @@ internal interface ISqliteDatabaseGate
 }
 
 internal sealed class SqliteDatabaseGate : ISqliteDatabaseGate
+{
+    private readonly SemaphoreSlim semaphore = new(1, 1);
+
+    public async ValueTask<IAsyncDisposable> AcquireAsync(CancellationToken cancellationToken = default)
+    {
+        await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return new Lease(semaphore);
+    }
+
+    private sealed class Lease(SemaphoreSlim semaphore) : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync()
+        {
+            semaphore.Release();
+            return ValueTask.CompletedTask;
+        }
+    }
+}
+
+internal sealed class PersonalDataOperationGate : IPersonalDataOperationGate
 {
     private readonly SemaphoreSlim semaphore = new(1, 1);
 

@@ -21,6 +21,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<SqliteConnectionFactory>(serviceProvider => (SqliteConnectionFactory)serviceProvider
             .GetRequiredService<ISqliteConnectionFactory>());
         services.AddSingleton<ISqliteDatabaseGate, SqliteDatabaseGate>();
+        services.AddSingleton<IPersonalDataOperationGate, PersonalDataOperationGate>();
         services.AddSingleton<SqliteSchemaMigrator>();
         services.AddSingleton<SqlitePersonalTradingPostRepository>();
         services.AddSingleton<IPersonalTradingPostRepository>(serviceProvider =>
@@ -37,12 +38,17 @@ public static class PersistenceServiceCollectionExtensions
 
 internal sealed class SqliteDatabaseInitializationService(
     SqliteSchemaMigrator schemaMigrator,
-    ISqliteDatabaseGate databaseGate) : IHostedService
+    ISqliteDatabaseGate databaseGate,
+    ILocalDataRecoveryService recoveryService) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
-        await schemaMigrator.MigrateAsync(cancellationToken).ConfigureAwait(false);
+        await using (var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await schemaMigrator.MigrateAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await recoveryService.CleanupStaleRestoreArtifactsAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

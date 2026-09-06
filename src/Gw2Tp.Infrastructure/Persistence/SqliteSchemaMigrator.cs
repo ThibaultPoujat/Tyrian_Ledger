@@ -67,7 +67,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<SqliteIndexDefinition>> RequiredIndexes =
         new Dictionary<string, IReadOnlyList<SqliteIndexDefinition>>(StringComparer.Ordinal)
         {
-            ["account_profiles"] = [new(null, true, ["account_scope_id"])],
+            ["account_profiles"] = [new(null, true, ["account_scope_id"], "BINARY")],
             ["completed_tp_transactions"] = [new(null, true, ["account_profile_id", "external_transaction_id"]), new("ix_completed_transactions_account_completed_at", false, ["account_profile_id", "completed_at_utc"])],
             ["current_tp_orders"] = [new(null, true, ["account_profile_id", "external_order_id"])],
             ["current_tp_order_observations"] = [new(null, true, ["sync_batch_id", "external_order_id"]), new("ix_current_order_observations_account_observed_at", false, ["account_profile_id", "observed_at_utc"])],
@@ -83,15 +83,15 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         new("current_tp_order_observations", "sync_batch_id", "current_order_sync_batches", "id"),
     ];
 
-    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> RequiredSchemaFragments =
-        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+    private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> RequiredCheckConstraints =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
         {
-            ["account_profiles"] = ["account_scope_idtextnotnullcollatebinary", "unique(account_scope_id)", "check(last_sync_outcomein(1,2))", "check(last_sync_error_categorybetween0and11)"],
-            ["completed_tp_transactions"] = ["check(sidein(1,2))", "check(item_id>0)", "check(unit_price_in_copper>=0)", "check(quantity>0)"],
-            ["current_tp_orders"] = ["check(sidein(1,2))", "check(item_id>0)", "check(unit_price_in_copper>=0)", "check(quantity>0)"],
-            ["current_tp_order_observations"] = ["check(sidein(1,2))", "check(item_id>0)", "check(unit_price_in_copper>=0)", "check(quantity>0)"],
-            ["item_metadata"] = ["check(item_id>0)", "check(length(name)>0)"],
-            ["user_settings"] = ["check(singleton_id=1)", "check(settings_version>0)", "check(minimum_profit_in_copper>=0)", "check(minimum_roi_basis_pointsbetween0and10000)", "check(cash_reserve_basis_pointsbetween0and10000)"],
+            ["account_profiles"] = Checks("last_sync_outcomein(1,2)", "last_sync_error_categorybetween0and11"),
+            ["completed_tp_transactions"] = Checks("sidein(1,2)", "item_id>0", "unit_price_in_copper>=0", "quantity>0"),
+            ["current_tp_orders"] = Checks("sidein(1,2)", "item_id>0", "unit_price_in_copper>=0", "quantity>0"),
+            ["current_tp_order_observations"] = Checks("sidein(1,2)", "item_id>0", "unit_price_in_copper>=0", "quantity>0"),
+            ["item_metadata"] = Checks("item_id>0", "length(name)>0"),
+            ["user_settings"] = Checks("singleton_id=1", "settings_version>0", "minimum_profit_in_copper>=0", "minimum_roi_basis_pointsbetween0and10000", "cash_reserve_basis_pointsbetween0and10000"),
         };
 
     private static readonly IReadOnlyList<SqliteSchemaMigration> Migrations =
@@ -317,6 +317,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
     private static async Task ValidateLatestSchemaAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
         await ValidateIntegrityAsync(connection, cancellationToken).ConfigureAwait(false);
+        await ValidateTableSetAsync(connection, cancellationToken).ConfigureAwait(false);
         foreach (var (tableName, expectedColumns) in LatestSchemaColumns)
         {
             await using var command = connection.CreateCommand();
@@ -340,10 +341,10 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 throw new InvalidDataException($"The SQLite database schema for '{tableName}' is incompatible with this application version.");
             }
 
-            var requiredFragments = RequiredSchemaFragments.TryGetValue(tableName, out var fragments)
-                ? fragments
-                : [];
-            await ValidateTableSqlAsync(connection, tableName, requiredFragments, cancellationToken).ConfigureAwait(false);
+            var requiredChecks = RequiredCheckConstraints.TryGetValue(tableName, out var checks)
+                ? checks
+                : new HashSet<string>(StringComparer.Ordinal);
+            await ValidateCheckConstraintsAsync(connection, tableName, requiredChecks, cancellationToken).ConfigureAwait(false);
 
             var requiredIndexes = RequiredIndexes.TryGetValue(tableName, out var indexes)
                 ? indexes
@@ -363,24 +364,35 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         }
     }
 
-    private static async Task ValidateTableSqlAsync(
+    private static async Task ValidateTableSetAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%';";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var actualTables = new HashSet<string>(StringComparer.Ordinal);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            actualTables.Add(reader.GetString(0));
+        }
+
+        if (!actualTables.SetEquals(LatestSchemaColumns.Keys))
+        {
+            throw new InvalidDataException("The SQLite database contains incompatible tables.");
+        }
+    }
+
+    private static async Task ValidateCheckConstraintsAsync(
         SqliteConnection connection,
         string tableName,
-        IReadOnlyList<string> requiredFragments,
+        IReadOnlySet<string> requiredChecks,
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = $tableName;";
         command.Parameters.AddWithValue("$tableName", tableName);
         var schemaSql = Convert.ToString(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture);
-        var normalizedSchemaSql = NormalizeSchemaSql(schemaSql);
-        if (string.IsNullOrEmpty(normalizedSchemaSql) || requiredFragments.Any(fragment => !normalizedSchemaSql.Contains(fragment, StringComparison.Ordinal)))
-        {
-            throw new InvalidDataException($"The SQLite database schema for '{tableName}' is missing required constraints.");
-        }
-
-        var requiredCheckConstraintCount = requiredFragments.Count(fragment => fragment.StartsWith("check(", StringComparison.Ordinal));
-        if (CountOccurrences(normalizedSchemaSql, "check(") != requiredCheckConstraintCount)
+        var actualChecks = ExtractCheckConstraints(schemaSql);
+        if (!actualChecks.SetEquals(requiredChecks))
         {
             throw new InvalidDataException($"The SQLite database schema for '{tableName}' has incompatible check constraints.");
         }
@@ -419,16 +431,20 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                     continue;
                 }
 
-                var columns = new List<string>();
+                var columns = new List<(string Name, string Collation)>();
                 await using var indexInfo = connection.CreateCommand();
-                indexInfo.CommandText = $"PRAGMA index_info({QuoteIdentifier(actualIndex.Name)});";
+                indexInfo.CommandText = $"PRAGMA index_xinfo({QuoteIdentifier(actualIndex.Name)});";
                 await using var reader = await indexInfo.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    columns.Add(reader.GetString(2));
+                    if (reader.GetInt32(5) != 0)
+                    {
+                        columns.Add((reader.GetString(2), reader.GetString(4)));
+                    }
                 }
 
-                if (columns.SequenceEqual(requiredIndex.Columns, StringComparer.Ordinal))
+                if (columns.Select(column => column.Name).SequenceEqual(requiredIndex.Columns, StringComparer.Ordinal)
+                    && (requiredIndex.Collation is null || columns.All(column => string.Equals(column.Collation, requiredIndex.Collation, StringComparison.Ordinal))))
                 {
                     hasMatch = true;
                     break;
@@ -487,23 +503,139 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         }
     }
 
-    private static string NormalizeSchemaSql(string? schemaSql) =>
-        schemaSql is null
-            ? string.Empty
-            : new string(schemaSql.Where(character => !char.IsWhiteSpace(character)).ToArray()).ToLowerInvariant();
-
-    private static int CountOccurrences(string value, string needle)
+    private static IReadOnlySet<string> ExtractCheckConstraints(string? schemaSql)
     {
-        var count = 0;
-        var startIndex = 0;
-        while ((startIndex = value.IndexOf(needle, startIndex, StringComparison.Ordinal)) >= 0)
+        if (string.IsNullOrWhiteSpace(schemaSql))
         {
-            count++;
-            startIndex += needle.Length;
+            return new HashSet<string>(StringComparer.Ordinal);
         }
 
-        return count;
+        var checks = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < schemaSql.Length; index++)
+        {
+            if (TrySkipSqlLiteralOrComment(schemaSql, ref index))
+            {
+                continue;
+            }
+
+            if (!schemaSql.AsSpan(index).StartsWith("CHECK", StringComparison.OrdinalIgnoreCase)
+                || (index > 0 && IsSqlIdentifierCharacter(schemaSql[index - 1])))
+            {
+                continue;
+            }
+
+            var expressionStart = index + "CHECK".Length;
+            while (expressionStart < schemaSql.Length && char.IsWhiteSpace(schemaSql[expressionStart]))
+            {
+                expressionStart++;
+            }
+
+            if (expressionStart >= schemaSql.Length || schemaSql[expressionStart] != '(')
+            {
+                continue;
+            }
+
+            var expressionEnd = FindMatchingParenthesis(schemaSql, expressionStart);
+            if (expressionEnd < 0)
+            {
+                throw new InvalidDataException("The SQLite database schema contains an unterminated check constraint.");
+            }
+
+            checks.Add(new string(schemaSql[(expressionStart + 1)..expressionEnd]
+                .Where(character => !char.IsWhiteSpace(character))
+                .ToArray())
+                .ToLowerInvariant());
+            index = expressionEnd;
+        }
+
+        return checks;
     }
+
+    private static int FindMatchingParenthesis(string value, int openingIndex)
+    {
+        var depth = 0;
+        for (var index = openingIndex; index < value.Length; index++)
+        {
+            if (TrySkipSqlLiteralOrComment(value, ref index))
+            {
+                continue;
+            }
+
+            if (value[index] == '(')
+            {
+                depth++;
+            }
+            else if (value[index] == ')' && --depth == 0)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static bool TrySkipSqlLiteralOrComment(string value, ref int index)
+    {
+        if (value[index] is '\'' or '\"' or '`')
+        {
+            var delimiter = value[index];
+            index++;
+            while (index < value.Length)
+            {
+                if (value[index] == delimiter)
+                {
+                    if (index + 1 < value.Length && value[index + 1] == delimiter)
+                    {
+                        index += 2;
+                        continue;
+                    }
+
+                    return true;
+                }
+
+                index++;
+            }
+
+            return true;
+        }
+
+        if (value[index] == '[')
+        {
+            while (index < value.Length && value[index] != ']')
+            {
+                index++;
+            }
+
+            return true;
+        }
+
+        if (value[index] == '-' && index + 1 < value.Length && value[index + 1] == '-')
+        {
+            while (index < value.Length && value[index] is not '\r' and not '\n')
+            {
+                index++;
+            }
+
+            return true;
+        }
+
+        if (value[index] == '/' && index + 1 < value.Length && value[index + 1] == '*')
+        {
+            index += 2;
+            while (index + 1 < value.Length && (value[index] != '*' || value[index + 1] != '/'))
+            {
+                index++;
+            }
+
+            index++;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSqlIdentifierCharacter(char character) =>
+        char.IsLetterOrDigit(character) || character == '_';
 
     private static string QuoteIdentifier(string identifier) => $"\"{identifier.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
 
@@ -551,9 +683,12 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             value => new SqliteColumnDefinition(value.Type, value.IsNotNull, value.PrimaryKeyPosition),
             StringComparer.Ordinal);
 
+    private static IReadOnlySet<string> Checks(params string[] values) =>
+        new HashSet<string>(values, StringComparer.Ordinal);
+
     private sealed record SqliteColumnDefinition(string Type, bool IsNotNull, int PrimaryKeyPosition);
 
-    private sealed record SqliteIndexDefinition(string? Name, bool IsUnique, IReadOnlyList<string> Columns);
+    private sealed record SqliteIndexDefinition(string? Name, bool IsUnique, IReadOnlyList<string> Columns, string? Collation = null);
 
     private sealed record SqliteForeignKeyDefinition(string TableName, string FromColumn, string ReferencedTable, string ReferencedColumn);
 

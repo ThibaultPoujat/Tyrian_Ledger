@@ -11,16 +11,21 @@ namespace Gw2Tp.Infrastructure.Persistence;
 internal sealed class SqliteLocalDataRecoveryService(
     SqliteConnectionFactory connectionFactory,
     ISqliteDatabaseGate databaseGate,
+    IPersonalDataOperationGate? operationGate = null,
     ILocalDataFileOperations? fileOperations = null) : ILocalDataRecoveryService
 {
     private const string BackupDirectoryName = "backups";
+    private const string RestoreArtifactPrefix = ".tyrian-ledger-restore-";
     private readonly ILocalDataFileOperations files = fileOperations ?? new LocalDataFileOperations();
+    private readonly IPersonalDataOperationGate recoveryOperationGate = operationGate ?? new PersonalDataOperationGate();
 
     public LocalDataLocation GetLocation() => new(connectionFactory.DatabasePath, GetBackupDirectoryPath());
 
     public async Task<LocalDataBackup> CreateBackupAsync(CancellationToken cancellationToken = default)
     {
+        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        CleanupStaleRestoreArtifactsCore();
         return await CreateBackupCoreAsync("backup", cancellationToken).ConfigureAwait(false);
     }
 
@@ -29,12 +34,14 @@ internal sealed class SqliteLocalDataRecoveryService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(backupContents);
+        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        CleanupStaleRestoreArtifactsCore();
 
         var stagingDirectory = Path.GetDirectoryName(connectionFactory.DatabasePath)
             ?? throw new InvalidOperationException("The local database path has no parent directory.");
-        var incomingPath = Path.Combine(stagingDirectory, $".tyrian-ledger-restore-{Guid.NewGuid():N}.incoming");
-        var stagedDatabasePath = Path.Combine(stagingDirectory, $".tyrian-ledger-restore-{Guid.NewGuid():N}.db");
+        var incomingPath = Path.Combine(stagingDirectory, $"{RestoreArtifactPrefix}{Guid.NewGuid():N}.incoming");
+        var stagedDatabasePath = Path.Combine(stagingDirectory, $"{RestoreArtifactPrefix}{Guid.NewGuid():N}.db");
 
         try
         {
@@ -114,7 +121,9 @@ internal sealed class SqliteLocalDataRecoveryService(
 
     public async Task ClearPersonalDataAsync(CancellationToken cancellationToken = default)
     {
+        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        CleanupStaleRestoreArtifactsCore();
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         foreach (var tableName in new[]
@@ -133,6 +142,13 @@ internal sealed class SqliteLocalDataRecoveryService(
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task CleanupStaleRestoreArtifactsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        CleanupStaleRestoreArtifactsCore();
     }
 
     private async Task<LocalDataBackup> CreateBackupCoreAsync(string prefix, CancellationToken cancellationToken)
@@ -173,6 +189,22 @@ internal sealed class SqliteLocalDataRecoveryService(
         var databaseDirectory = Path.GetDirectoryName(connectionFactory.DatabasePath)
             ?? throw new InvalidOperationException("The local database path has no parent directory.");
         return Path.Combine(databaseDirectory, BackupDirectoryName);
+    }
+
+    private void CleanupStaleRestoreArtifactsCore()
+    {
+        var databaseDirectory = Path.GetDirectoryName(connectionFactory.DatabasePath)
+            ?? throw new InvalidOperationException("The local database path has no parent directory.");
+        var liveDatabasePath = Path.GetFullPath(connectionFactory.DatabasePath);
+        foreach (var path in Directory.EnumerateFiles(databaseDirectory, $"{RestoreArtifactPrefix}*", SearchOption.TopDirectoryOnly))
+        {
+            var extension = Path.GetExtension(path);
+            if (extension is ".incoming" or ".db" &&
+                !string.Equals(Path.GetFullPath(path), liveDatabasePath, StringComparison.Ordinal))
+            {
+                DeleteIfPresent(path);
+            }
+        }
     }
 
     private static async Task CopyDatabaseAsync(
