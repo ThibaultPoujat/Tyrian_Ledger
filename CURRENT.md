@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 ## Active direction
 
@@ -21,18 +21,19 @@ new architecture to extend.
 
 **M13 - Local Runtime and Authenticated Gateway**
 
-TKT-M13-01 was merged in PR #102. TKT-M13-02 adds OS-backed API-key retrieval,
-typed token-info validation, and safe local account-connection status without
-allowing a secret into React, SQLite, logs, or normal application settings.
-The exact local start, secret setup, and validation procedures are documented
-under `docs/development/`.
+TKT-M13-01 was merged in PR #102 and TKT-M13-02 in PR #103. TKT-M13-03 adds
+typed authenticated reads for an opaque account scope plus current and
+completed personal Trading Post buys and sells. It keeps bearer injection and
+upstream transport within Infrastructure, returns normalized integer-copper
+records to application services, and does not expose credentials or account
+names to React, SQLite, logs, or normal application settings.
 
-After TKT-M13-02 receives its required fresh flagship XHigh review and owner
+After TKT-M13-03 receives its required fresh flagship XHigh review and owner
 merge, the next implementation ticket is:
 
-**TKT-M13-03 - Extend the typed gateway for personal Trading Post data.**
+**TKT-M14-01 - Add SQLite persistence, migrations, and repository boundaries.**
 
-Do not begin TKT-M13-03 on this branch or before the review/merge handoff is
+Do not begin TKT-M14-01 on this branch or before the review/merge handoff is
 complete.
 
 ## Known-good baseline
@@ -47,7 +48,7 @@ Validated on 2026-09-05 from clean `develop` revision
 - CI workflow contracts: 3 tests passed, including retired-runtime absence;
 - Gitleaks: all 163 reachable commits scanned with no leaks.
 
-TKT-M12-03 was merged in PR #101 and TKT-M13-01 in PR #102. TKT-M13-02 must
+TKT-M12-03 was merged in PR #101 and TKT-M13-01 in PR #102. TKT-M13-03 must
 pass the expanded secret, host, frontend, browser, CI-contract, and
 full-history secret checks before its independent review handoff.
 
