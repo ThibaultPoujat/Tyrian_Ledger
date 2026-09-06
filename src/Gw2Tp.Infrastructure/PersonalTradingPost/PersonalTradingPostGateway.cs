@@ -250,6 +250,11 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
         var pageCount = GetRequiredNonNegativeHeader(response, "X-Page-Total");
         var resultCount = GetRequiredNonNegativeHeader(response, "X-Result-Count");
         var resultTotal = GetRequiredNonNegativeHeader(response, "X-Result-Total");
+        if (pageSize <= 0)
+        {
+            throw new JsonException("The transaction response has an invalid X-Page-Size header.");
+        }
+
         var expectedPageCount = resultTotal == 0
             ? 0
             : ((resultTotal - 1) / pageSize) + 1;
@@ -258,7 +263,7 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
             : requestedPage == expectedPageCount - 1
                 ? ((resultTotal - 1) % pageSize) + 1
                 : pageSize;
-        if (pageSize <= 0 || pageCount != expectedPageCount ||
+        if (pageCount != expectedPageCount ||
             (resultTotal == 0 ? requestedPage != 0 : requestedPage >= pageCount) ||
             resultCount != expectedResultCount)
         {

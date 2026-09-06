@@ -116,9 +116,9 @@ public sealed class PersonalTradingPostGatewayTests
         using var httpClient = CreateHttpClient(handler);
         var gateway = new PersonalTradingPostGateway(new FixedKeySource(SyntheticKey), httpClient, new ImmediateRequestScheduler());
 
-        var partial = await gateway.GetCompletedBuyHistoryAsync(0);
-        var missingPurchaseTimestamp = await gateway.GetCompletedBuyHistoryAsync(0);
-        var malformed = await gateway.GetCompletedBuyHistoryAsync(0);
+        var partial = await gateway.GetCompletedBuyHistoryAsync(3);
+        var missingPurchaseTimestamp = await gateway.GetCompletedBuyHistoryAsync(3);
+        var malformed = await gateway.GetCompletedBuyHistoryAsync(3);
 
         Assert.Equal(Gw2ApiErrorCategory.IncompleteData, partial.ErrorCategory);
         Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, missingPurchaseTimestamp.ErrorCategory);
@@ -133,6 +133,7 @@ public sealed class PersonalTradingPostGatewayTests
             CreatePagedJsonResponse(HttpStatusCode.OK, "[{\"id\":1,\"item_id\":2,\"quantity\":1,\"created\":\"2026-09-06T00:00:00Z\"}]"),
             CreatePagedJsonResponse(HttpStatusCode.OK, "[{\"id\":1,\"item_id\":2,\"price\":3,\"quantity\":1,\"created\":\"2026-09-06\"}]"),
             CreatePagedJsonResponse(HttpStatusCode.OK, "[{\"id\":1,\"item_id\":2,\"price\":3,\"quantity\":1,\"created\":\"2026-09-06T00:00:00Z\"}]", resultTotal: 173),
+            CreatePagedJsonResponse(HttpStatusCode.OK, "[]", pageSize: 0),
         ]);
         var handler = new RecordingHandler(_ => responses.Dequeue());
         using var httpClient = CreateHttpClient(handler);
@@ -141,10 +142,12 @@ public sealed class PersonalTradingPostGatewayTests
         var missingPrice = await gateway.GetCurrentBuyOrdersAsync(3);
         var dateWithoutTimeZone = await gateway.GetCurrentBuyOrdersAsync(3);
         var inconsistentHeaders = await gateway.GetCurrentBuyOrdersAsync(3);
+        var zeroPageSize = await gateway.GetCurrentBuyOrdersAsync(3);
 
         Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, missingPrice.ErrorCategory);
         Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, dateWithoutTimeZone.ErrorCategory);
         Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, inconsistentHeaders.ErrorCategory);
+        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, zeroPageSize.ErrorCategory);
     }
 
     [Fact]
@@ -303,12 +306,13 @@ public sealed class PersonalTradingPostGatewayTests
     private static HttpResponseMessage CreatePagedJsonResponse(
         HttpStatusCode statusCode,
         string payload,
+        int pageSize = 50,
         int resultCount = 1,
         int resultTotal = 151,
         int pageTotal = 4)
     {
         var response = CreateJsonResponse(statusCode, payload);
-        response.Headers.Add("X-Page-Size", "50");
+        response.Headers.Add("X-Page-Size", pageSize.ToString());
         response.Headers.Add("X-Page-Total", pageTotal.ToString());
         response.Headers.Add("X-Result-Count", resultCount.ToString());
         response.Headers.Add("X-Result-Total", resultTotal.ToString());
