@@ -5,7 +5,7 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFactory)
 {
-    private const int LatestVersion = 2;
+    private const int LatestVersion = 3;
 
     private static readonly IReadOnlyList<SqliteSchemaMigration> Migrations =
     [
@@ -109,6 +109,16 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 cash_reserve_basis_points INTEGER NULL CHECK (cash_reserve_basis_points BETWEEN 0 AND 10000),
                 updated_at_utc TEXT NOT NULL
             );
+            """),
+        new(
+            3,
+            "personal_sync_state_schema",
+            """
+            ALTER TABLE account_profiles ADD COLUMN last_sync_attempted_at_utc TEXT NULL;
+            ALTER TABLE account_profiles ADD COLUMN last_sync_outcome INTEGER NULL CHECK (last_sync_outcome IN (1, 2));
+            ALTER TABLE account_profiles ADD COLUMN last_sync_error_category INTEGER NULL CHECK (last_sync_error_category BETWEEN 0 AND 11);
+            ALTER TABLE account_profiles ADD COLUMN history_coverage_start_utc TEXT NULL;
+            ALTER TABLE account_profiles ADD COLUMN history_coverage_end_utc TEXT NULL;
             """),
     ];
 

@@ -1,3 +1,5 @@
+using Gw2Tp.Application.MarketData;
+
 namespace Gw2Tp.Application.Persistence;
 
 /// <summary>
@@ -139,4 +141,34 @@ public interface IUserSettingsRepository
     Task<UserSettings?> GetAsync(CancellationToken cancellationToken = default);
 
     Task SaveAsync(UserSettings settings, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// One fully read, locally durable personal Trading Post synchronization. The
+/// persistence implementation must apply this as one transaction.
+/// </summary>
+public sealed record PersonalTradingPostSuccessfulSync(
+    string AccountScopeId,
+    IReadOnlyList<CompletedPersonalTradingPostTransaction> CompletedTransactions,
+    CurrentPersonalTradingPostOrderSnapshot CurrentOrders,
+    IReadOnlyList<StoredItemMetadata> ItemMetadata,
+    DateTimeOffset CompletedAtUtc,
+    DateTimeOffset? HistoryCoverageStartUtc,
+    DateTimeOffset? HistoryCoverageEndUtc);
+
+/// <summary>
+/// Persistence boundary for a complete personal-data sync. It intentionally
+/// accepts normalized values only, never credentials or upstream payloads.
+/// </summary>
+public interface IPersonalTradingPostSynchronizationStore
+{
+    Task CommitSuccessfulSyncAsync(
+        PersonalTradingPostSuccessfulSync sync,
+        CancellationToken cancellationToken = default);
+
+    Task RecordFailedSyncAsync(
+        string accountScopeId,
+        DateTimeOffset attemptedAtUtc,
+        Gw2ApiErrorCategory errorCategory,
+        CancellationToken cancellationToken = default);
 }

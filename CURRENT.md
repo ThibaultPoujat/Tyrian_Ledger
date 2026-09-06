@@ -21,19 +21,20 @@ new architecture to extend.
 
 **M14 - Durable Personal Data**
 
-TKT-M13-03 is merged through PR #105. TKT-M14-01 adds the SQLite persistence
-foundation: ordered transactional migrations, repository boundaries, and
-durable normalized account scopes, completed transactions, current-order
-state/observations, item metadata, typed non-secret settings, and schema
-metadata. It keeps the API key outside SQLite and does not introduce sync,
-FIFO/P&L, market-history, backup/restore, or browser endpoints.
+TKT-M13-03 is merged through PR #105 and TKT-M14-01 through PR #106.
+TKT-M14-02 adds protected, idempotent local synchronization for account-scoped
+current and completed personal Trading Post data. It fully validates remote
+pages and item metadata before one transactional SQLite commit, retains old
+completed history as the remote window advances, and keeps credentials,
+account scope, raw payloads, FIFO/P&L, and browser dashboard work out of the
+endpoint response.
 
-After TKT-M14-01 receives its required fresh flagship XHigh review and owner
+After TKT-M14-02 receives its required fresh flagship XHigh review and owner
 merge, the next implementation ticket is:
 
-**TKT-M14-02 - Implement idempotent personal Trading Post synchronization.**
+**TKT-M14-03 - Add local backup, restore, and clear-personal-data controls.**
 
-Do not begin TKT-M14-02 on this branch or before the review/merge handoff is
+Do not begin TKT-M14-03 on this branch or before the review/merge handoff is
 complete.
 
 ## Known-good baseline

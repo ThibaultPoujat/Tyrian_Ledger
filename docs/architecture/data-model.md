@@ -122,7 +122,7 @@ Versioned local policy/configuration such as:
 Item/market approved for higher-interest sampling or research. May include tags,
 notes, desired sampling tier, or strategy category.
 
-### M14-01 implemented SQLite schema
+### M14 implemented SQLite schema
 
 M14-01 introduces the first durable schema through ordered transactional
 migrations. The migrator initializes `schema_migrations` before applying
@@ -130,6 +130,8 @@ migrations. Migration 1 creates `account_profiles` and
 `completed_tp_transactions`; migration 2 adds
 `current_order_sync_batches`, `current_tp_orders`,
 `current_tp_order_observations`, `item_metadata`, and `user_settings`.
+Migration 3 adds safe sync-attempt status and observed completed-history
+coverage to `account_profiles`.
 
 - `account_profiles.account_scope_id` is the opaque account scope and is unique;
   no account name or credential is stored.
@@ -149,8 +151,13 @@ migrations. Migration 1 creates `account_profiles` and
   it is not a generic key/value or arbitrary JSON store.
 - All persisted timestamps are UTC round-trip values. Foreign keys protect
   account ownership; prices and money-like settings use integer copper.
+- A successful M14-02 sync writes completed-history upserts, current-order
+  observations/materialization, item metadata, and successful sync/coverage
+  status in one transaction. A failed remote read records only a stable error
+  category and attempt time after the opaque scope is known; it never deletes
+  completed history, current orders, metadata, or prior successful coverage.
 
-No migration in this ticket creates a credential, API-key, authorization,
+No migration in M14 creates a credential, API-key, authorization,
 token, raw-upstream-payload, accounting, market-history, position, or
 recommendation table.
 

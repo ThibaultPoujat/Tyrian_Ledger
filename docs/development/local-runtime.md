@@ -82,6 +82,21 @@ origin while running in Development, and the application-request header
 `GET /api/account-connection` also requires that header and rejects an
 untrusted supplied `Origin`; its result is cached only in host memory for 30
 seconds to bound repeated vault and upstream access, while each browser
-response remains `no-store`. No state-changing product endpoint exists yet,
-but the policy is placed before endpoint routing so future endpoints inherit
-the boundary.
+response remains `no-store`. The state-changing personal TP sync endpoint also
+inherits this origin and header protection.
+
+## Manual personal Trading Post sync
+
+After configuring a dedicated local ArenaNet key with the `account` and
+`tradingpost` permissions, run one sync through the loopback host. The request
+contains no key or account identifier; those remain within the host:
+
+```bash
+curl --request POST http://127.0.0.1:5080/api/personal-trading-post/sync \
+  --header 'Origin: http://127.0.0.1:5080' \
+  --header 'X-Tyrian-Ledger-Request: 1'
+```
+
+The JSON response is always `no-store` and contains only a safe outcome,
+attempt timestamp, successful record counts, observed completed-history
+coverage, and a stable error category when the operation cannot complete.

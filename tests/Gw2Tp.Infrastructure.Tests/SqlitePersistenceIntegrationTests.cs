@@ -20,7 +20,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Migrator.MigrateAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3], await database.GetMigrationVersionsAsync());
         Assert.Equal(
             [
                 "account_profiles",
@@ -36,20 +36,138 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
-    public async Task Version_one_database_upgrades_to_version_two_without_losing_completed_history()
+    public async Task Version_two_database_upgrades_to_version_three_without_losing_completed_history()
     {
         await using var database = await TestDatabase.CreateAsync(migrate: false);
-        await database.Migrator.MigrateToAsync(1);
+        await database.Migrator.MigrateToAsync(2);
         var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", FirstObservedAtUtc);
         var transaction = CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2);
         await database.PersonalTradingPost.UpsertCompletedTransactionsAsync(account, [transaction], FirstObservedAtUtc);
 
         await database.Migrator.MigrateAsync();
 
-        Assert.Equal([1, 2], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3], await database.GetMigrationVersionsAsync());
         var stored = Assert.Single(await database.PersonalTradingPost.GetCompletedTransactionsAsync(account));
         Assert.Equal(transaction, stored.Transaction);
-        Assert.Contains("current_tp_orders", await database.GetTableNamesAsync());
+        Assert.Contains("last_sync_outcome", await database.GetAccountProfileColumnNamesAsync());
+    }
+
+    [Fact]
+    public async Task Successful_sync_commits_history_current_orders_metadata_and_status_together()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var completed = CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2);
+        var current = CurrentOrder(2001, PersonalTradingPostSide.Sell, itemId: 84, unitPrice: 456, quantity: 3);
+
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [completed],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, [current]),
+            [new StoredItemMetadata(42, "First item", FirstObservedAtUtc), new StoredItemMetadata(84, "Second item", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([completed], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+        Assert.Equal([current], await database.PersonalTradingPost.GetCurrentOrdersAsync(account));
+        Assert.Equal("First item", (await database.ItemMetadata.GetAsync(42))?.Name);
+        Assert.Equal((FirstObservedAtUtc, 1L, null as long?, FirstObservedAtUtc, FirstObservedAtUtc), await database.GetAccountSyncStateAsync());
+    }
+
+    [Fact]
+    public async Task Failed_or_conflicting_sync_preserves_last_known_good_state()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2);
+        var originalCurrent = CurrentOrder(2001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [original],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, [originalCurrent]),
+            [new StoredItemMetadata(42, "Original", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+
+        var conflicting = original with { Quantity = 3 };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => database.SynchronizationStore.CommitSuccessfulSyncAsync(
+            new PersonalTradingPostSuccessfulSync(
+                "opaque-account-a",
+                [CompletedTransaction(1002, PersonalTradingPostSide.Sell, itemId: 84, unitPrice: 456, quantity: 1), conflicting],
+                new CurrentPersonalTradingPostOrderSnapshot(SecondObservedAtUtc, [CurrentOrder(2002, PersonalTradingPostSide.Sell, 84, 456, 1)]),
+                [new StoredItemMetadata(84, "New", SecondObservedAtUtc)],
+                SecondObservedAtUtc,
+                SecondObservedAtUtc,
+                SecondObservedAtUtc)));
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+        Assert.Equal([originalCurrent], await database.PersonalTradingPost.GetCurrentOrdersAsync(account));
+        Assert.Null(await database.ItemMetadata.GetAsync(84));
+
+        await database.SynchronizationStore.RecordFailedSyncAsync("opaque-account-a", SecondObservedAtUtc, Gw2Tp.Application.MarketData.Gw2ApiErrorCategory.IncompleteData);
+        Assert.Equal((FirstObservedAtUtc, 2L, 10L as long?, FirstObservedAtUtc, FirstObservedAtUtc), await database.GetAccountSyncStateAsync());
+    }
+
+    [Fact]
+    public async Task Repeated_sync_is_idempotent_and_remote_history_aging_never_deletes_completed_history()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var completed = CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2);
+        var current = CurrentOrder(2001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [completed],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, [current]),
+            [new StoredItemMetadata(42, "Original", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [],
+            new CurrentPersonalTradingPostOrderSnapshot(SecondObservedAtUtc, []),
+            [],
+            SecondObservedAtUtc,
+            null,
+            null));
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        var stored = Assert.Single(await database.PersonalTradingPost.GetCompletedTransactionsAsync(account));
+        Assert.Equal(completed, stored.Transaction);
+        Assert.Equal(FirstObservedAtUtc, stored.FirstImportedAtUtc);
+        Assert.Equal(FirstObservedAtUtc, stored.LastSeenAtUtc);
+        Assert.Empty(await database.PersonalTradingPost.GetCurrentOrdersAsync(account));
+        Assert.Equal(2, (await database.PersonalTradingPost.GetCurrentOrderObservationsAsync(account)).Count);
+    }
+
+    [Fact]
+    public async Task Sync_store_isolates_accounts_even_when_external_transaction_ids_match()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2)],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []),
+            [new StoredItemMetadata(42, "Shared item", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-b",
+            [CompletedTransaction(1001, PersonalTradingPostSide.Sell, itemId: 84, unitPrice: 456, quantity: 1)],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []),
+            [new StoredItemMetadata(84, "Different item", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+
+        var accountA = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        var accountB = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-b", SecondObservedAtUtc);
+        Assert.Equal(PersonalTradingPostSide.Buy, Assert.Single(await database.PersonalTradingPost.GetCompletedTransactionsAsync(accountA)).Transaction.Side);
+        Assert.Equal(PersonalTradingPostSide.Sell, Assert.Single(await database.PersonalTradingPost.GetCompletedTransactionsAsync(accountB)).Transaction.Side);
     }
 
     [Fact]
@@ -226,6 +344,7 @@ public sealed class SqlitePersistenceIntegrationTests
             Factory = factory;
             Migrator = new SqliteSchemaMigrator(factory);
             PersonalTradingPost = new SqlitePersonalTradingPostRepository(factory);
+            SynchronizationStore = new SqlitePersonalTradingPostSynchronizationStore(factory);
             ItemMetadata = new SqliteItemMetadataRepository(factory);
             UserSettings = new SqliteUserSettingsRepository(factory);
         }
@@ -235,6 +354,8 @@ public sealed class SqlitePersistenceIntegrationTests
         public SqliteSchemaMigrator Migrator { get; }
 
         public SqlitePersonalTradingPostRepository PersonalTradingPost { get; }
+
+        public SqlitePersonalTradingPostSynchronizationStore SynchronizationStore { get; }
 
         public SqliteItemMetadataRepository ItemMetadata { get; }
 
@@ -300,6 +421,40 @@ public sealed class SqlitePersistenceIntegrationTests
             }
 
             return columnNames;
+        }
+
+        public async Task<IReadOnlyList<string>> GetAccountProfileColumnNamesAsync()
+        {
+            await using var connection = await Factory.OpenConnectionAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA table_info(account_profiles);";
+            await using var reader = await command.ExecuteReaderAsync();
+            var columns = new List<string>();
+            while (await reader.ReadAsync())
+            {
+                columns.Add(reader.GetString(1));
+            }
+
+            return columns;
+        }
+
+        public async Task<(DateTimeOffset? LastSuccessfulSyncAtUtc, long? Outcome, long? ErrorCategory, DateTimeOffset? HistoryStartUtc, DateTimeOffset? HistoryEndUtc)> GetAccountSyncStateAsync()
+        {
+            await using var connection = await Factory.OpenConnectionAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT last_successful_sync_at_utc, last_sync_outcome, last_sync_error_category,
+                       history_coverage_start_utc, history_coverage_end_utc
+                FROM account_profiles WHERE account_scope_id = 'opaque-account-a';
+                """;
+            await using var reader = await command.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            return (
+                reader.IsDBNull(0) ? null : DateTimeOffset.Parse(reader.GetString(0), System.Globalization.CultureInfo.InvariantCulture),
+                reader.IsDBNull(1) ? null : reader.GetInt64(1),
+                reader.IsDBNull(2) ? null : reader.GetInt64(2),
+                reader.IsDBNull(3) ? null : DateTimeOffset.Parse(reader.GetString(3), System.Globalization.CultureInfo.InvariantCulture),
+                reader.IsDBNull(4) ? null : DateTimeOffset.Parse(reader.GetString(4), System.Globalization.CultureInfo.InvariantCulture));
         }
 
         public ValueTask DisposeAsync()

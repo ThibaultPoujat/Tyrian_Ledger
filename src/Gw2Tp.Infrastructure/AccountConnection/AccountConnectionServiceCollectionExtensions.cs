@@ -81,6 +81,7 @@ public static class AccountConnectionServiceCollectionExtensions
                 .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
                 .Value
                 .RequestTimeoutMs)));
+        services.AddSingleton<IPersonalTradingPostSynchronizationService, PersonalTradingPostSynchronizationService>();
 
         return services;
     }

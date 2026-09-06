@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Web.Hosting;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Builder;
@@ -53,7 +54,7 @@ public sealed class LocalHostIntegrationTests
                 await connection.OpenAsync();
                 await using var command = connection.CreateCommand();
                 command.CommandText = "SELECT COUNT(*) FROM schema_migrations;";
-                Assert.Equal(2L, await command.ExecuteScalarAsync());
+                Assert.Equal(3L, await command.ExecuteScalarAsync());
             }
 
         }
@@ -99,6 +100,68 @@ public sealed class LocalHostIntegrationTests
         Assert.DoesNotContain(syntheticKey, body, StringComparison.Ordinal);
         Assert.DoesNotContain(maliciousMetadata, body, StringComparison.Ordinal);
         Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Protected_personal_sync_endpoint_returns_only_safe_non_cacheable_data()
+    {
+        var synchronizationService = new FixedSynchronizationService(
+            PersonalTradingPostSynchronizationResult.Succeeded(
+                new DateTimeOffset(2026, 9, 6, 14, 0, 0, TimeSpan.Zero),
+                completedTransactionCount: 4,
+                currentOrderCount: 2,
+                new DateTimeOffset(2026, 9, 6, 12, 0, 0, TimeSpan.Zero),
+                new DateTimeOffset(2026, 9, 6, 13, 0, 0, TimeSpan.Zero)));
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IPersonalTradingPostSynchronizationService>();
+                services.AddSingleton<IPersonalTradingPostSynchronizationService>(synchronizationService);
+            });
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/personal-trading-post/sync");
+        request.Headers.Add("Origin", "http://localhost");
+        request.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Equal(1, synchronizationService.CallCount);
+        Assert.Contains("\"outcome\":\"succeeded\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"completedTransactionCount\":4", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("opaque-account", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Untrusted_origin_cannot_invoke_personal_sync_service()
+    {
+        var synchronizationService = new FixedSynchronizationService(
+            PersonalTradingPostSynchronizationResult.PersistenceFailed(DateTimeOffset.UtcNow));
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IPersonalTradingPostSynchronizationService>();
+                services.AddSingleton<IPersonalTradingPostSynchronizationService>(synchronizationService);
+            });
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/personal-trading-post/sync");
+        request.Headers.Add("Origin", "https://attacker.example");
+        request.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, synchronizationService.CallCount);
     }
 
     [Fact]
@@ -405,6 +468,18 @@ public sealed class LocalHostIntegrationTests
         var request = new HttpRequestMessage(HttpMethod.Get, "/api/health");
         request.Headers.Host = host;
         return client.SendAsync(request);
+    }
+
+    private sealed class FixedSynchronizationService(PersonalTradingPostSynchronizationResult result)
+        : IPersonalTradingPostSynchronizationService
+    {
+        public int CallCount { get; private set; }
+
+        public Task<PersonalTradingPostSynchronizationResult> SynchronizeAsync(CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(result);
+        }
     }
 
     private static Task<HttpResponseMessage> SendWithOriginAsync(
