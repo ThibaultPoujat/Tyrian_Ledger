@@ -197,11 +197,14 @@ internal sealed class SqliteLocalDataRecoveryService(
         var databaseDirectory = Path.GetDirectoryName(connectionFactory.DatabasePath)
             ?? throw new InvalidOperationException("The local database path has no parent directory.");
         var liveDatabasePath = Path.GetFullPath(connectionFactory.DatabasePath);
+        var pathComparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
         foreach (var path in Directory.EnumerateFiles(databaseDirectory, $"{RestoreArtifactPrefix}*", SearchOption.TopDirectoryOnly))
         {
             var extension = Path.GetExtension(path);
             if (extension is ".incoming" or ".db" &&
-                !string.Equals(Path.GetFullPath(path), liveDatabasePath, StringComparison.Ordinal))
+                !string.Equals(Path.GetFullPath(path), liveDatabasePath, pathComparison))
             {
                 DeleteIfPresent(path);
             }

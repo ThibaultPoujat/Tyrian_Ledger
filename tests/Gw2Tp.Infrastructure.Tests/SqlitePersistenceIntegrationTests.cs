@@ -730,6 +730,17 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.False(File.Exists(staleBackupPartialPath));
     }
 
+    [Fact]
+    public async Task Cleanup_does_not_delete_a_live_database_named_like_a_restore_artifact()
+    {
+        await using var database = await TestDatabase.CreateAsync(databaseFileName: ".tyrian-ledger-restore-live.db");
+
+        await database.Recovery.CleanupStaleRestoreArtifactsAsync();
+
+        Assert.True(File.Exists(database.Path));
+        Assert.Equal([1, 2, 3], await database.GetMigrationVersionsAsync());
+    }
+
     private static CompletedPersonalTradingPostTransaction CompletedTransaction(
         long id,
         PersonalTradingPostSide side,
@@ -860,10 +871,10 @@ public sealed class SqlitePersistenceIntegrationTests
 
         public string Path => Factory.DatabasePath;
 
-        public static async Task<TestDatabase> CreateAsync(bool migrate = true)
+        public static async Task<TestDatabase> CreateAsync(bool migrate = true, string databaseFileName = "tyrian-ledger.db")
         {
             var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "TyrianLedger.Persistence.Tests", Guid.NewGuid().ToString("N"));
-            var database = new TestDatabase(directory, new SqliteConnectionFactory(System.IO.Path.Combine(directory, "tyrian-ledger.db")));
+            var database = new TestDatabase(directory, new SqliteConnectionFactory(System.IO.Path.Combine(directory, databaseFileName)));
             if (migrate)
             {
                 await database.Migrator.MigrateAsync();
