@@ -358,6 +358,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         }
 
         await ValidateForeignKeysAsync(connection, cancellationToken).ConfigureAwait(false);
+        await ValidatePersistedValuesAsync(connection, cancellationToken).ConfigureAwait(false);
         await ValidateNoExecutableSchemaObjectsAsync(connection, cancellationToken).ConfigureAwait(false);
 
         await using var foreignKeyCheck = connection.CreateCommand();
@@ -496,6 +497,48 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                         .ThenBy(foreignKey => foreignKey.FromColumn, StringComparer.Ordinal)))
         {
             throw new InvalidDataException("The SQLite database schema has incompatible foreign-key constraints.");
+        }
+    }
+
+    private static async Task ValidatePersistedValuesAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        foreach (var (tableName, columns) in LatestColumnDefinitions)
+        {
+            var columnDefinitions = columns.ToArray();
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT {string.Join(", ", columnDefinitions.Select(column => $"typeof({QuoteIdentifier(column.Key)}), {QuoteIdentifier(column.Key)}"))} FROM {QuoteIdentifier(tableName)};";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                for (var columnIndex = 0; columnIndex < columnDefinitions.Length; columnIndex++)
+                {
+                    var (columnName, definition) = columnDefinitions[columnIndex];
+                    var storageTypeIndex = columnIndex * 2;
+                    var valueIndex = storageTypeIndex + 1;
+                    if (reader.IsDBNull(valueIndex))
+                    {
+                        if (definition.IsNotNull)
+                        {
+                            throw new InvalidDataException($"The SQLite database contains a null value for required column '{tableName}.{columnName}'.");
+                        }
+
+                        continue;
+                    }
+
+                    var expectedStorageType = string.Equals(definition.Type, "INTEGER", StringComparison.OrdinalIgnoreCase)
+                        ? "integer"
+                        : "text";
+                    if (!string.Equals(reader.GetString(storageTypeIndex), expectedStorageType, StringComparison.Ordinal))
+                    {
+                        throw new InvalidDataException($"The SQLite database contains an incompatible storage type for '{tableName}.{columnName}'.");
+                    }
+
+                    if (columnName.EndsWith("_utc", StringComparison.Ordinal))
+                    {
+                        _ = SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(valueIndex), $"{tableName}.{columnName}");
+                    }
+                }
+            }
         }
     }
 

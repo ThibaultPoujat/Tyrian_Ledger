@@ -1,5 +1,6 @@
 using Gw2Tp.Application.LocalData;
 using Microsoft.Data.Sqlite;
+using System.Globalization;
 
 namespace Gw2Tp.Infrastructure.Persistence;
 
@@ -202,8 +203,7 @@ internal sealed class SqliteLocalDataRecoveryService(
             : StringComparison.Ordinal;
         foreach (var path in Directory.EnumerateFiles(databaseDirectory, $"{RestoreArtifactPrefix}*", SearchOption.TopDirectoryOnly))
         {
-            var extension = Path.GetExtension(path);
-            if (extension is ".incoming" or ".db" &&
+            if (IsManagedRestoreArtifact(path) &&
                 !string.Equals(Path.GetFullPath(path), liveDatabasePath, pathComparison))
             {
                 DeleteIfPresent(path);
@@ -218,8 +218,66 @@ internal sealed class SqliteLocalDataRecoveryService(
 
         foreach (var path in Directory.EnumerateFiles(backupDirectory, $"{BackupArtifactPrefix}*.db.partial-*", SearchOption.TopDirectoryOnly))
         {
-            DeleteIfPresent(path);
+            if (IsManagedBackupPartial(path))
+            {
+                DeleteIfPresent(path);
+            }
         }
+    }
+
+    private static bool IsManagedRestoreArtifact(string path)
+    {
+        var extension = Path.GetExtension(path);
+        if (extension is not ".incoming" and not ".db")
+        {
+            return false;
+        }
+
+        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(path);
+        return fileNameWithoutExtension.StartsWith(RestoreArtifactPrefix, StringComparison.Ordinal)
+            && Guid.TryParseExact(fileNameWithoutExtension[RestoreArtifactPrefix.Length..], "N", out _);
+    }
+
+    private static bool IsManagedBackupPartial(string path)
+    {
+        var fileName = Path.GetFileName(path);
+        var partialMarker = ".db.partial-";
+        var markerIndex = fileName.LastIndexOf(partialMarker, StringComparison.Ordinal);
+        if (markerIndex <= BackupArtifactPrefix.Length
+            || !Guid.TryParseExact(fileName[(markerIndex + partialMarker.Length)..], "N", out _))
+        {
+            return false;
+        }
+
+        var backupStem = fileName[..markerIndex];
+        const string backupPrefix = "tyrian-ledger-backup-";
+        const string preRestorePrefix = "tyrian-ledger-pre-restore-";
+        var timestampAndCollisionSuffix = backupStem.StartsWith(backupPrefix, StringComparison.Ordinal)
+            ? backupStem[backupPrefix.Length..]
+            : backupStem.StartsWith(preRestorePrefix, StringComparison.Ordinal)
+                ? backupStem[preRestorePrefix.Length..]
+                : null;
+        return timestampAndCollisionSuffix is not null && IsManagedBackupTimestamp(timestampAndCollisionSuffix);
+    }
+
+    private static bool IsManagedBackupTimestamp(string timestampAndCollisionSuffix)
+    {
+        const int timestampLength = 19;
+        if (timestampAndCollisionSuffix.Length is not timestampLength and not 22
+            || timestampAndCollisionSuffix.Length == 22
+                && (timestampAndCollisionSuffix[timestampLength] != '-'
+                    || !char.IsAsciiDigit(timestampAndCollisionSuffix[timestampLength + 1])
+                    || !char.IsAsciiDigit(timestampAndCollisionSuffix[timestampLength + 2])))
+        {
+            return false;
+        }
+
+        return DateTime.TryParseExact(
+            timestampAndCollisionSuffix[..timestampLength],
+            "yyyyMMdd'T'HHmmssfff'Z'",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out _);
     }
 
     private static async Task CopyDatabaseAsync(

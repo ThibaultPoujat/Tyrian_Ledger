@@ -36,6 +36,8 @@ public sealed class LocalHostIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("healthy", payload?.Status);
         Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Equal("DENY", response.Headers.GetValues("X-Frame-Options").Single());
+        Assert.Equal("frame-ancestors 'none'", response.Headers.GetValues("Content-Security-Policy").Single());
     }
 
     [Fact]

@@ -609,6 +609,35 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Restore_rejects_malformed_persisted_timestamps_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "malformed-timestamp.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), incompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO item_metadata (item_id, name, observed_at_utc) VALUES (84, 'Malformed timestamp', 'not-a-timestamp');";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
     public async Task Failed_restore_replacement_leaves_live_data_untouched()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -707,12 +736,16 @@ public sealed class SqlitePersistenceIntegrationTests
         }
         await database.UserSettings.SaveAsync(new UserSettings(1, 500, null, null, FirstObservedAtUtc));
         var backup = await database.Recovery.CreateBackupAsync();
-        var staleIncomingPath = Path.Combine(Path.GetDirectoryName(database.Path)!, ".tyrian-ledger-restore-stale.incoming");
-        var staleDatabasePath = Path.Combine(Path.GetDirectoryName(database.Path)!, ".tyrian-ledger-restore-stale.db");
-        var staleBackupPartialPath = Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, "tyrian-ledger-backup-stale.db.partial-interrupted");
+        var staleIncomingPath = Path.Combine(Path.GetDirectoryName(database.Path)!, $".tyrian-ledger-restore-{Guid.NewGuid():N}.incoming");
+        var staleDatabasePath = Path.Combine(Path.GetDirectoryName(database.Path)!, $".tyrian-ledger-restore-{Guid.NewGuid():N}.db");
+        var staleBackupPartialPath = Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, $"tyrian-ledger-backup-20260906T120000000Z.db.partial-{Guid.NewGuid():N}");
+        var unrelatedRestorePath = Path.Combine(Path.GetDirectoryName(database.Path)!, ".tyrian-ledger-restore-notes.db");
+        var unrelatedBackupPartialPath = Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, $"tyrian-ledger-notes.db.partial-{Guid.NewGuid():N}");
         await File.WriteAllTextAsync(staleIncomingPath, "stale personal data");
         await File.WriteAllTextAsync(staleDatabasePath, "stale personal data");
         await File.WriteAllTextAsync(staleBackupPartialPath, "stale personal data");
+        await File.WriteAllTextAsync(unrelatedRestorePath, "user file");
+        await File.WriteAllTextAsync(unrelatedBackupPartialPath, "user file");
 
         await database.Recovery.ClearPersonalDataAsync();
 
@@ -728,6 +761,8 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.False(File.Exists(staleIncomingPath));
         Assert.False(File.Exists(staleDatabasePath));
         Assert.False(File.Exists(staleBackupPartialPath));
+        Assert.True(File.Exists(unrelatedRestorePath));
+        Assert.True(File.Exists(unrelatedBackupPartialPath));
     }
 
     [Fact]
