@@ -30,9 +30,9 @@ TKT-M14-03 / #74 adds local backup, guarded restore, and explicit
 clear-personal-data controls. The database remains local-only; API keys stay
 outside SQLite, and backups never upload automatically.
 
-The current handoff is **TKT-M14-03 / #74**. It follows the NORMAL quota-aware
-review path and must receive its independent Terra review plus green validation
-before owner merge. After that merge, the next valid implementation ticket is:
+PR #108 is open for **TKT-M14-03 / #74**. Its NORMAL quota-aware review and
+validation are complete; it is awaiting owner merge. After that merge, the next
+valid implementation ticket is:
 
 **TKT-M15-01 / #75 - Establish and Register the Canonical GW2 Trading Post Fee Policy.**
 
