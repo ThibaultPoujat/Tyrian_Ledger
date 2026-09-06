@@ -33,6 +33,9 @@ PR title:
 PR body must include:
 
 - ticket and milestone;
+- the exact GitHub issue number;
+- `Closes #<issue-number>` so GitHub closes the implementation issue when the PR
+  is merged into the default branch;
 - **functional summary** in plain language (2-6 sentences);
 - relevant specification/architecture/ADR references;
 - acceptance-criteria status;
@@ -41,6 +44,10 @@ PR body must include:
 - VERIFY changes;
 - risks/limitations;
 - deliberately out-of-scope follow-up work.
+
+Before delivery, set the pull request's actual GitHub milestone to the same
+milestone assigned to the implementation issue. The textual milestone entry in
+the PR body does not replace the GitHub milestone field.
 
 Verify the PR exists and report the real URL. Never invent a PR URL. Never merge
 the PR; the owner performs the final merge decision.
@@ -64,6 +71,8 @@ clear.
 - [ ] Every ticket commit uses the exact ticket prefix.
 - [ ] Branch pushed.
 - [ ] PR created and existence verified.
+- [ ] PR body contains `Closes #<issue-number>`.
+- [ ] PR GitHub milestone matches the implementation issue milestone.
 - [ ] PR not merged.
 - [ ] VERIFY register current.
 - [ ] Fresh review is the next phase, not the next implementation ticket.
