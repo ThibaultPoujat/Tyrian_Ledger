@@ -19,21 +19,21 @@ new architecture to extend.
 
 ## Active milestone
 
-**M13 - Local Runtime and Authenticated Gateway**
+**M14 - Durable Personal Data**
 
-TKT-M13-01 was merged in PR #102 and TKT-M13-02 in PR #103. TKT-M13-03 adds
-typed authenticated reads for an opaque account scope plus current and
-completed personal Trading Post buys and sells. It keeps bearer injection and
-upstream transport within Infrastructure, returns normalized integer-copper
-records to application services, and does not expose credentials or account
-names to React, SQLite, logs, or normal application settings.
+TKT-M13-03 is merged through PR #105. TKT-M14-01 adds the SQLite persistence
+foundation: ordered transactional migrations, repository boundaries, and
+durable normalized account scopes, completed transactions, current-order
+state/observations, item metadata, typed non-secret settings, and schema
+metadata. It keeps the API key outside SQLite and does not introduce sync,
+FIFO/P&L, market-history, backup/restore, or browser endpoints.
 
-After TKT-M13-03 receives its required fresh flagship XHigh review and owner
+After TKT-M14-01 receives its required fresh flagship XHigh review and owner
 merge, the next implementation ticket is:
 
-**TKT-M14-01 - Add SQLite persistence, migrations, and repository boundaries.**
+**TKT-M14-02 - Implement idempotent personal Trading Post synchronization.**
 
-Do not begin TKT-M14-01 on this branch or before the review/merge handoff is
+Do not begin TKT-M14-02 on this branch or before the review/merge handoff is
 complete.
 
 ## Known-good baseline

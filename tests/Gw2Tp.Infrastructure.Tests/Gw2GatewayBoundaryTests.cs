@@ -26,6 +26,35 @@ public sealed class Gw2GatewayBoundaryTests
         Assert.Empty(offendingFiles);
     }
 
+    [Fact]
+    public void Application_and_web_layers_do_not_depend_on_raw_sqlite_implementation()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var sourceRoots = new[]
+        {
+            Path.Combine(repositoryRoot, "src", "Gw2Tp.Application"),
+            Path.Combine(repositoryRoot, "src", "Gw2Tp.Analytics"),
+            Path.Combine(repositoryRoot, "src", "Gw2Tp.Domain"),
+            Path.Combine(repositoryRoot, "src", "Gw2Tp.Web"),
+        };
+
+        var offendingFiles = sourceRoots
+            .SelectMany(root => Directory
+                .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+                .Where(path => !IsBuildArtifact(path, root)))
+            .Where(path =>
+            {
+                var source = File.ReadAllText(path);
+                return source.Contains("Microsoft.Data.Sqlite", StringComparison.Ordinal) ||
+                    source.Contains("SqliteConnection", StringComparison.Ordinal) ||
+                    source.Contains("SqliteCommand", StringComparison.Ordinal);
+            })
+            .Select(path => Path.GetRelativePath(repositoryRoot, path))
+            .ToArray();
+
+        Assert.Empty(offendingFiles);
+    }
+
     private static bool IsBuildArtifact(string path, string sourceRoot) =>
         Path.GetRelativePath(sourceRoot, path)
             .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar])

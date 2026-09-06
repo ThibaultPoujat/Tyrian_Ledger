@@ -122,6 +122,38 @@ Versioned local policy/configuration such as:
 Item/market approved for higher-interest sampling or research. May include tags,
 notes, desired sampling tier, or strategy category.
 
+### M14-01 implemented SQLite schema
+
+M14-01 introduces the first durable schema through ordered transactional
+migrations. The migrator initializes `schema_migrations` before applying
+migrations. Migration 1 creates `account_profiles` and
+`completed_tp_transactions`; migration 2 adds
+`current_order_sync_batches`, `current_tp_orders`,
+`current_tp_order_observations`, `item_metadata`, and `user_settings`.
+
+- `account_profiles.account_scope_id` is the opaque account scope and is unique;
+  no account name or credential is stored.
+- `completed_tp_transactions` is unique by
+  `(account_profile_id, external_transaction_id)`. Its normalized side, item,
+  quantity, integer-copper unit price, source timestamps, and import
+  timestamps are immutable except for `last_seen_at_utc` on an identical
+  repeat import.
+- Each successful complete current-order snapshot has one
+  `current_order_sync_batches` row, immutable
+  `current_tp_order_observations`, and an atomically replaced
+  `current_tp_orders` materialization. Observation history is not a retention
+  policy and is not cleared by this ticket.
+- `item_metadata` stores only normalized item ID, display name, and observation
+  timestamp. `user_settings` is a singleton typed non-secret record containing
+  a settings version plus nullable integer-copper and basis-point policy inputs;
+  it is not a generic key/value or arbitrary JSON store.
+- All persisted timestamps are UTC round-trip values. Foreign keys protect
+  account ownership; prices and money-like settings use integer copper.
+
+No migration in this ticket creates a credential, API-key, authorization,
+token, raw-upstream-payload, accounting, market-history, position, or
+recommendation table.
+
 ## 4. Accounting entities
 
 ### InventoryLot

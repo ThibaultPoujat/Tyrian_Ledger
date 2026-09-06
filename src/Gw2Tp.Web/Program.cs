@@ -1,5 +1,6 @@
 using Gw2Tp.Application.AccountConnection;
 using Gw2Tp.Infrastructure.AccountConnection;
+using Gw2Tp.Infrastructure.Persistence;
 using Gw2Tp.Web.Hosting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.FileProviders;
@@ -39,6 +40,7 @@ public static class Program
 
         builder.Services.AddHealthChecks();
         builder.Services.AddTyrianLedgerAccountConnection(builder.Environment, builder.Configuration);
+        builder.Services.AddTyrianLedgerPersistence(builder.Configuration);
         builder.Services.AddHostFiltering(options =>
         {
             options.AllowedHosts = hostOptions.AllowedHosts;
