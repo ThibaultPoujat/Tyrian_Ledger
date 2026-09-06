@@ -45,9 +45,12 @@ PR body must include:
 - risks/limitations;
 - deliberately out-of-scope follow-up work.
 
-Before delivery, set the pull request's actual GitHub milestone to the same
-milestone assigned to the implementation issue. The textual milestone entry in
-the PR body does not replace the GitHub milestone field.
+Before delivery, the implementation agent must set the pull request's actual
+GitHub milestone to the same milestone assigned to the implementation issue when
+the available GitHub tooling permits it. The textual milestone entry in the PR
+body does not replace the GitHub milestone field. If the active tool cannot set
+the milestone, report that limitation explicitly rather than silently leaving it
+unset.
 
 Verify the PR exists and report the real URL. Never invent a PR URL. Never merge
 the PR; the owner performs the final merge decision.
@@ -72,7 +75,8 @@ clear.
 - [ ] Branch pushed.
 - [ ] PR created and existence verified.
 - [ ] PR body contains `Closes #<issue-number>`.
-- [ ] PR GitHub milestone matches the implementation issue milestone.
+- [ ] PR GitHub milestone matches the implementation issue milestone, or the
+      tooling limitation preventing assignment is reported explicitly.
 - [ ] PR not merged.
 - [ ] VERIFY register current.
 - [ ] Fresh review is the next phase, not the next implementation ticket.
