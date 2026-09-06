@@ -1,3 +1,5 @@
+using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Web.Hosting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.FileProviders;
@@ -14,7 +16,8 @@ public static class Program
 
     internal static WebApplication CreateApplication(
         string[] args,
-        Action<WebApplicationBuilder>? configureBuilder = null)
+        Action<WebApplicationBuilder>? configureBuilder = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         var builder = WebApplication.CreateBuilder(args);
         configureBuilder?.Invoke(builder);
@@ -35,6 +38,7 @@ public static class Program
         });
 
         builder.Services.AddHealthChecks();
+        builder.Services.AddTyrianLedgerAccountConnection(builder.Environment, builder.Configuration);
         builder.Services.AddHostFiltering(options =>
         {
             options.AllowedHosts = hostOptions.AllowedHosts;
@@ -56,6 +60,7 @@ public static class Program
 
         builder.Services.AddSingleton(hostOptions);
         builder.Services.AddSingleton<LocalRequestOriginValidator>();
+        configureServices?.Invoke(builder.Services);
 
         var app = builder.Build();
 
@@ -71,6 +76,18 @@ public static class Program
                 "/api/health",
                 new HealthCheckOptions { ResponseWriter = HealthResponseWriter.WriteAsync })
             .WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
+        app.MapGet(
+            "/api/account-connection",
+            async (
+                HttpContext context,
+                IAccountConnectionStatusService accountConnectionStatusService,
+                CancellationToken cancellationToken) =>
+            {
+                var status = await accountConnectionStatusService
+                    .GetStatusAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                await AccountConnectionResponseWriter.WriteAsync(context, status).ConfigureAwait(false);
+            });
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 
         MapFrontend(app, builder.Configuration);

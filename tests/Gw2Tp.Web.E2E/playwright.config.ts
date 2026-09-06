@@ -32,11 +32,16 @@ export default defineConfig({
   webServer: {
     command: 'npm --prefix ../../frontend run build && dotnet run --project ../../src/Gw2Tp.Web/Gw2Tp.Web.csproj --configuration Release --no-launch-profile',
     env: {
-      ASPNETCORE_ENVIRONMENT: 'Production',
+      // Testing selects the environment-only source, and the explicitly blank
+      // value guarantees this browser suite never reads a real OS credential.
+      ASPNETCORE_ENVIRONMENT: 'Testing',
+      TYRIAN_LEDGER_GW2_API_KEY: '',
       TyrianLedger__Host__Port: hostPort,
     },
     url: `${hostBaseUrl}/api/health`,
-    reuseExistingServer: !isCi,
+    // Reusing a locally running host could bypass this suite's Testing
+    // environment and accidentally reach a developer's credential vault.
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

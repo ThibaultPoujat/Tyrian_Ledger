@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
+using Gw2Tp.Application.AccountConnection;
 using Gw2Tp.Web.Hosting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -29,6 +31,64 @@ public sealed class LocalHostIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("healthy", payload?.Status);
         Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+    }
+
+    [Fact]
+    public async Task Account_connection_endpoint_returns_only_safe_non_cacheable_status_data()
+    {
+        const string syntheticKey = "synthetic-key-that-must-not-reach-the-browser";
+        const string maliciousMetadata = "<img src=x onerror=alert('synthetic')>";
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IAccountConnectionStatusService>();
+                services.AddSingleton<IAccountConnectionStatusService>(new FixedAccountConnectionStatusService(
+                    new AccountConnectionStatus(
+                        AccountConnectionState.Valid,
+                        ["account", "tradingpost"],
+                        [])));
+            });
+        using var client = app.GetTestClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/account-connection");
+        request.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Contains("\"state\":\"valid\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"grantedPermissions\":[\"account\",\"tradingpost\"]", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(syntheticKey, body, StringComparison.Ordinal);
+        Assert.DoesNotContain(maliciousMetadata, body, StringComparison.Ordinal);
+        Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Untrusted_origin_cannot_invoke_credential_dependent_status_service()
+    {
+        var statusService = new CountingAccountConnectionStatusService();
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IAccountConnectionStatusService>();
+                services.AddSingleton<IAccountConnectionStatusService>(statusService);
+            });
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/account-connection");
+        request.Headers.Add("Origin", "https://attacker.example");
+        request.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, statusService.CallCount);
     }
 
     [Fact]
@@ -266,35 +326,40 @@ public sealed class LocalHostIntegrationTests
 
     private static async Task<WebApplication> StartApplicationAsync(
         string environment,
-        IReadOnlyDictionary<string, string?>? settings = null)
+        IReadOnlyDictionary<string, string?>? settings = null,
+        Action<IServiceCollection>? configureServices = null)
     {
-        var app = CreateApplication(environment, settings);
+        var app = CreateApplication(environment, settings, configureServices);
         await app.StartAsync();
         return app;
     }
 
     private static WebApplication CreateApplication(
         string environment,
-        IReadOnlyDictionary<string, string?>? settings = null)
+        IReadOnlyDictionary<string, string?>? settings = null,
+        Action<IServiceCollection>? configureServices = null)
     {
-        return Program.CreateApplication([], builder =>
-        {
-            builder.Environment.EnvironmentName = environment;
-            builder.WebHost.UseTestServer();
-            if (string.Equals(environment, "Development", StringComparison.Ordinal))
+        return Program.CreateApplication(
+            [],
+            builder =>
             {
-                builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                builder.Environment.EnvironmentName = environment;
+                builder.WebHost.UseTestServer();
+                if (string.Equals(environment, "Development", StringComparison.Ordinal))
                 {
-                    ["TyrianLedger:Host:TrustedDevelopmentOrigins:0"] = "http://localhost:5173",
-                    ["TyrianLedger:Host:TrustedDevelopmentOrigins:1"] = "http://127.0.0.1:5173",
-                });
-            }
+                    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["TyrianLedger:Host:TrustedDevelopmentOrigins:0"] = "http://localhost:5173",
+                        ["TyrianLedger:Host:TrustedDevelopmentOrigins:1"] = "http://127.0.0.1:5173",
+                    });
+                }
 
-            if (settings is not null)
-            {
-                builder.Configuration.AddInMemoryCollection(settings);
-            }
-        });
+                if (settings is not null)
+                {
+                    builder.Configuration.AddInMemoryCollection(settings);
+                }
+            },
+            configureServices);
     }
 
     private static Task<HttpResponseMessage> SendWithHostAsync(HttpClient client, string host)
@@ -339,4 +404,28 @@ public sealed class LocalHostIntegrationTests
     }
 
     private sealed record HealthPayload(string Status);
+
+    private sealed class FixedAccountConnectionStatusService : IAccountConnectionStatusService
+    {
+        private readonly AccountConnectionStatus _status;
+
+        public FixedAccountConnectionStatusService(AccountConnectionStatus status) => _status = status;
+
+        public Task<AccountConnectionStatus> GetStatusAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(_status);
+    }
+
+    private sealed class CountingAccountConnectionStatusService : IAccountConnectionStatusService
+    {
+        public int CallCount { get; private set; }
+
+        public Task<AccountConnectionStatus> GetStatusAsync(CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(new AccountConnectionStatus(
+                AccountConnectionState.NotConfigured,
+                [],
+                AccountConnectionPermissions.Required));
+        }
+    }
 }

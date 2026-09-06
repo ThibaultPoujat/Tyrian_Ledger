@@ -2,9 +2,56 @@ import { useEffect, useState } from 'react';
 import './App.css';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
+type AccountConnectionState =
+  | 'checking'
+  | 'not_configured'
+  | 'valid'
+  | 'invalid'
+  | 'insufficient_permissions'
+  | 'unavailable';
+
+type AccountConnectionResponse = {
+  state: Exclude<AccountConnectionState, 'checking'>;
+  grantedPermissions: string[];
+  missingRequiredPermissions: string[];
+};
+
+function isAccountConnectionResponse(payload: unknown): payload is AccountConnectionResponse {
+  if (typeof payload !== 'object' || payload === null) {
+    return false;
+  }
+
+  const candidate = payload as Record<string, unknown>;
+  return ['not_configured', 'valid', 'invalid', 'insufficient_permissions', 'unavailable'].includes(candidate.state as string)
+    && Array.isArray(candidate.grantedPermissions)
+    && Array.isArray(candidate.missingRequiredPermissions)
+    && candidate.grantedPermissions.every((permission) => typeof permission === 'string')
+    && candidate.missingRequiredPermissions.every((permission) => typeof permission === 'string');
+}
+
+function accountConnectionMessage(state: AccountConnectionState, missingPermissions: string[]): string {
+  switch (state) {
+    case 'checking':
+      return 'Checking ArenaNet key status…';
+    case 'not_configured':
+      return 'No ArenaNet key configured';
+    case 'valid':
+      return 'Account connection ready';
+    case 'invalid':
+      return 'ArenaNet key is invalid or revoked';
+    case 'insufficient_permissions':
+      return `ArenaNet key needs permission${missingPermissions.length === 1 ? '' : 's'}: ${missingPermissions.join(', ')}`;
+    case 'unavailable':
+      return 'ArenaNet key status unavailable';
+  }
+}
 
 export default function App() {
   const [hostStatus, setHostStatus] = useState<HostStatus>('checking');
+  const [accountConnection, setAccountConnection] = useState<{
+    state: AccountConnectionState;
+    missingPermissions: string[];
+  }>({ state: 'checking', missingPermissions: [] });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -34,6 +81,39 @@ export default function App() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function checkAccountConnection() {
+      try {
+        const response = await fetch('/api/account-connection', {
+          headers: {
+            Accept: 'application/json',
+            'X-Tyrian-Ledger-Request': '1',
+          },
+          signal: controller.signal,
+        });
+        const payload: unknown = await response.json();
+        if (response.ok && isAccountConnectionResponse(payload)) {
+          setAccountConnection({
+            state: payload.state,
+            missingPermissions: payload.missingRequiredPermissions,
+          });
+          return;
+        }
+
+        setAccountConnection({ state: 'unavailable', missingPermissions: [] });
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setAccountConnection({ state: 'unavailable', missingPermissions: [] });
+        }
+      }
+    }
+
+    void checkAccountConnection();
+    return () => controller.abort();
+  }, []);
+
   return (
     <div className="app-page">
       <a className="skip-link" href="#main-content">Skip to main content</a>
@@ -59,6 +139,20 @@ export default function App() {
               {hostStatus === 'connected' && 'Local host connected'}
               {hostStatus === 'unavailable' && 'Local host unavailable'}
             </p>
+            <section aria-labelledby="account-connection-title" className="account-connection-panel">
+              <p className="eyebrow">Account connection</p>
+              <h2 id="account-connection-title">Keep your key on this computer</h2>
+              <p aria-live="polite" className={`account-connection-status account-connection-status--${accountConnection.state}`} role="status">
+                <span aria-hidden="true" />
+                {accountConnectionMessage(accountConnection.state, accountConnection.missingPermissions)}
+              </p>
+              {(accountConnection.state === 'not_configured' || accountConnection.state === 'unavailable') && (
+                <p>Store a dedicated read-only ArenaNet key in your operating system’s credential vault. Tyrian Ledger never asks the browser to store or send it.</p>
+              )}
+              {accountConnection.state === 'insufficient_permissions' && (
+                <p>Use a dedicated key with account and trading-post access for future personal Trading Post features.</p>
+              )}
+            </section>
             <div className="transition-details">
               <section aria-labelledby="runtime-title">
                 <h2 id="runtime-title">Local by default</h2>

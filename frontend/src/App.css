@@ -81,6 +81,13 @@ p { color: var(--muted); line-height: 1.58; }
 .host-status span { width: 0.65rem; height: 0.65rem; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 0.2rem rgb(244 204 120 / 14%); }
 .host-status--connected span { background: var(--accent); box-shadow: 0 0 0 0.2rem rgb(147 229 215 / 14%); }
 .host-status--unavailable span { background: #f39a8c; box-shadow: 0 0 0 0.2rem rgb(243 154 140 / 14%); }
+.account-connection-panel { margin-top: 1.5rem; padding: 1.25rem; border: 1px solid rgb(244 204 120 / 34%); border-radius: 0.75rem; background: rgb(8 21 18 / 38%); }
+.account-connection-panel h2 { margin-top: 0.35rem; }
+.account-connection-panel p:last-child { margin-bottom: 0; }
+.account-connection-status { display: inline-flex; align-items: center; gap: 0.55rem; margin: 1rem 0 0; color: var(--text); font-size: 0.92rem; font-weight: 750; }
+.account-connection-status span { width: 0.65rem; height: 0.65rem; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 0.2rem rgb(244 204 120 / 14%); }
+.account-connection-status--valid span { background: var(--accent); box-shadow: 0 0 0 0.2rem rgb(147 229 215 / 14%); }
+.account-connection-status--invalid span, .account-connection-status--unavailable span { background: #f39a8c; box-shadow: 0 0 0 0.2rem rgb(243 154 140 / 14%); }
 .transition-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 2rem; }
 .transition-details section { padding: 1.25rem; border: 1px solid rgb(147 229 215 / 30%); border-radius: 0.75rem; background: rgb(8 21 18 / 38%); }
 .transition-details p { margin-bottom: 0; }
