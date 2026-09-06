@@ -47,7 +47,7 @@ public static class AccountConnectionServiceCollectionExtensions
                 .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
                 .Value;
             httpClient.Timeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMs);
-        });
+        }).RemoveAllLoggers();
         services.Configure<HttpClientFactoryOptions>(AccountConnectionStatusService.HttpClientName, options =>
             options.ShouldRedactHeaderValue = static _ => true);
         services.AddSingleton<AccountConnectionStatusService>(serviceProvider => new AccountConnectionStatusService(
@@ -69,7 +69,7 @@ public static class AccountConnectionServiceCollectionExtensions
                 .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
                 .Value;
             httpClient.Timeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMs);
-        });
+        }).RemoveAllLoggers();
         services.Configure<HttpClientFactoryOptions>(PersonalTradingPostGateway.HttpClientName, options =>
             options.ShouldRedactHeaderValue = static _ => true);
         services.AddSingleton<IPersonalTradingPostGateway>(serviceProvider => new PersonalTradingPostGateway(
