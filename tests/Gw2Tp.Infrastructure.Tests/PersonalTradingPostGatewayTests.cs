@@ -255,10 +255,10 @@ public sealed class PersonalTradingPostGatewayTests
     }
 
     [Fact]
-    public async Task Registered_gateway_redacts_authenticated_headers_and_never_logs_the_key()
+    public async Task Registered_gateway_suppresses_default_http_logging_and_never_logs_the_key_from_a_transport_exception()
     {
         const string sensitiveValue = "synthetic-sensitive-personal-gateway-key";
-        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        var handler = new RecordingHandler(_ => throw new HttpRequestException(sensitiveValue));
         using var loggerProvider = new CapturingLoggerProvider();
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.ClearProviders().AddProvider(loggerProvider));
@@ -275,7 +275,7 @@ public sealed class PersonalTradingPostGatewayTests
         var clientOptions = provider.GetRequiredService<IOptionsMonitor<HttpClientFactoryOptions>>()
             .Get(PersonalTradingPostGateway.HttpClientName);
 
-        Assert.Equal(Gw2ApiErrorCategory.UpstreamUnavailable, result.ErrorCategory);
+        Assert.Equal(Gw2ApiErrorCategory.TransportFailure, result.ErrorCategory);
         Assert.Equal(sensitiveValue, Assert.Single(handler.Requests).AuthorizationParameter);
         Assert.True(clientOptions.ShouldRedactHeaderValue("Authorization"));
         Assert.True(clientOptions.ShouldRedactHeaderValue("X-Any-Header"));

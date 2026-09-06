@@ -271,10 +271,10 @@ public sealed class AccountConnectionStatusServiceTests
     }
 
     [Fact]
-    public async Task Registered_authenticated_pipeline_redacts_the_key_from_http_logs_on_a_failing_response()
+    public async Task Registered_authenticated_pipeline_never_logs_the_key_from_a_transport_exception()
     {
         const string sensitiveValue = "synthetic-sensitive-key-for-log-redaction";
-        var handler = new RecordingHandler(_ => CreateJsonResponse(HttpStatusCode.InternalServerError, "{}"));
+        var handler = new RecordingHandler(_ => throw new HttpRequestException(sensitiveValue));
         using var logProvider = new CapturingLoggerProvider();
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.ClearProviders().AddProvider(logProvider));
