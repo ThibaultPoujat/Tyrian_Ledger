@@ -125,7 +125,7 @@ orders, observations, and sync state, while retaining schema metadata, shared
 item metadata, and typed settings. Managed backups are deliberately retained;
 delete them separately for a complete local privacy purge. Backup, restore, and
 clear are local-only operations—there is no scheduled or cloud upload path.
-After an interrupted restore, the next host startup or recovery action removes
-only the application's recognized hidden staging artifacts. It intentionally
-does not remove managed backups, which remain the user's separate responsibility
-for a complete local privacy purge.
+After an interrupted restore or backup, the next host startup or recovery action
+removes only the application's recognized hidden staging artifacts or incomplete
+backup copy. It intentionally does not remove managed backups, which remain the
+user's separate responsibility for a complete local privacy purge.

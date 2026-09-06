@@ -321,11 +321,16 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         foreach (var (tableName, expectedColumns) in LatestSchemaColumns)
         {
             await using var command = connection.CreateCommand();
-            command.CommandText = $"PRAGMA table_info({QuoteIdentifier(tableName)});";
+            command.CommandText = $"PRAGMA table_xinfo({QuoteIdentifier(tableName)});";
             await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             var actualColumns = new Dictionary<string, SqliteColumnDefinition>(StringComparer.Ordinal);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
+                if (reader.GetInt32(6) != 0 || !reader.IsDBNull(4))
+                {
+                    throw new InvalidDataException($"The SQLite database schema for '{tableName}' contains unsupported hidden/generated columns or defaults.");
+                }
+
                 actualColumns.Add(
                     reader.GetString(1),
                     new SqliteColumnDefinition(
@@ -468,7 +473,8 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
-                if (!string.Equals(reader.GetString(6), "RESTRICT", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(reader.GetString(5), "NO ACTION", StringComparison.OrdinalIgnoreCase)
+                    || !string.Equals(reader.GetString(6), "RESTRICT", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidDataException($"The SQLite database schema for '{tableName}' has an incompatible foreign-key action.");
                 }

@@ -102,10 +102,10 @@ settings. Existing backup files are intentionally kept, so delete those files
 yourself too if you want to permanently remove every local copy. None of these
 operations uploads data or creates cloud backups.
 
-If a restore is interrupted by a crash or power loss, Tyrian Ledger removes its
-incomplete hidden staging files at the next startup or recovery operation. This
-does not delete retained managed backups; remove those separately for a complete
-local privacy purge.
+If a restore or backup is interrupted by a crash or power loss, Tyrian Ledger
+removes its incomplete hidden staging files and incomplete backup copy at the
+next startup or recovery operation. This does not delete retained managed
+backups; remove those separately for a complete local privacy purge.
 
 ## Financial truth
 

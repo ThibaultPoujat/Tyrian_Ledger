@@ -16,6 +16,7 @@ internal sealed class SqliteLocalDataRecoveryService(
 {
     private const string BackupDirectoryName = "backups";
     private const string RestoreArtifactPrefix = ".tyrian-ledger-restore-";
+    private const string BackupArtifactPrefix = "tyrian-ledger-";
     private readonly ILocalDataFileOperations files = fileOperations ?? new LocalDataFileOperations();
     private readonly IPersonalDataOperationGate recoveryOperationGate = operationGate ?? new PersonalDataOperationGate();
 
@@ -204,6 +205,17 @@ internal sealed class SqliteLocalDataRecoveryService(
             {
                 DeleteIfPresent(path);
             }
+        }
+
+        var backupDirectory = GetBackupDirectoryPath();
+        if (!Directory.Exists(backupDirectory))
+        {
+            return;
+        }
+
+        foreach (var path in Directory.EnumerateFiles(backupDirectory, $"{BackupArtifactPrefix}*.db.partial-*", SearchOption.TopDirectoryOnly))
+        {
+            DeleteIfPresent(path);
         }
     }
 
