@@ -1,9 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const isCi = /^(true|1)$/i.test(process.env.CI ?? '');
 const localHost = '127.0.0.1';
 const hostPort = process.env.TYRIAN_LEDGER_E2E_HOST_PORT ?? '5081';
 const hostBaseUrl = `http://${localHost}:${hostPort}`;
+const databasePath = join(tmpdir(), 'TyrianLedger.E2E', `${process.pid}-${Date.now()}`, 'tyrian-ledger.db');
 
 export default defineConfig({
   testDir: './tests',
@@ -37,6 +40,7 @@ export default defineConfig({
       ASPNETCORE_ENVIRONMENT: 'Testing',
       TYRIAN_LEDGER_GW2_API_KEY: '',
       TyrianLedger__Host__Port: hostPort,
+      TyrianLedger__Database__Path: databasePath,
     },
     url: `${hostBaseUrl}/api/health`,
     // Reusing a locally running host could bypass this suite's Testing

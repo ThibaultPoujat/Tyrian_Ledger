@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using Gw2Tp.Application.AccountConnection;
 using Gw2Tp.Web.Hosting;
+using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
@@ -31,6 +32,39 @@ public sealed class LocalHostIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("healthy", payload?.Status);
         Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+    }
+
+    [Fact]
+    public async Task Startup_initializes_the_configured_sqlite_schema()
+    {
+        var databaseDirectory = Path.Combine(Path.GetTempPath(), "TyrianLedger.Web.Tests", Guid.NewGuid().ToString("N"));
+        var databasePath = Path.Combine(databaseDirectory, "tyrian-ledger.db");
+        try
+        {
+            await using (var app = await StartApplicationAsync(
+                "Production",
+                new Dictionary<string, string?>
+                {
+                    ["TyrianLedger:Database:Path"] = databasePath,
+                }))
+            {
+                Assert.True(File.Exists(databasePath));
+                await using var connection = new SqliteConnection($"Data Source={databasePath};Foreign Keys=True");
+                await connection.OpenAsync();
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT COUNT(*) FROM schema_migrations;";
+                Assert.Equal(2L, await command.ExecuteScalarAsync());
+            }
+
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(databaseDirectory))
+            {
+                Directory.Delete(databaseDirectory, recursive: true);
+            }
+        }
     }
 
     [Fact]
@@ -339,6 +373,13 @@ public sealed class LocalHostIntegrationTests
         IReadOnlyDictionary<string, string?>? settings = null,
         Action<IServiceCollection>? configureServices = null)
     {
+        var effectiveSettings = settings is null
+            ? new Dictionary<string, string?>()
+            : new Dictionary<string, string?>(settings);
+        effectiveSettings.TryAdd(
+            "TyrianLedger:Database:Path",
+            Path.Combine(Path.GetTempPath(), "TyrianLedger.Web.Tests", Guid.NewGuid().ToString("N"), "tyrian-ledger.db"));
+
         return Program.CreateApplication(
             [],
             builder =>
@@ -354,10 +395,7 @@ public sealed class LocalHostIntegrationTests
                     });
                 }
 
-                if (settings is not null)
-                {
-                    builder.Configuration.AddInMemoryCollection(settings);
-                }
+                builder.Configuration.AddInMemoryCollection(effectiveSettings);
             },
             configureServices);
     }
