@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Http;
+using Microsoft.Extensions.Options;
 
 namespace Gw2Tp.Infrastructure.AccountConnection;
 
@@ -37,10 +38,13 @@ public static class AccountConnectionServiceCollectionExtensions
                 ? new DevelopmentGw2ApiKeySource(environmentSource, operatingSystemSource)
                 : operatingSystemSource;
         });
-        services.AddHttpClient(AccountConnectionStatusService.HttpClientName, httpClient =>
+        services.AddHttpClient(AccountConnectionStatusService.HttpClientName, (serviceProvider, httpClient) =>
         {
             httpClient.BaseAddress = Gw2ApiBaseAddress;
-            httpClient.Timeout = TimeSpan.FromSeconds(10);
+            var options = serviceProvider
+                .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
+                .Value;
+            httpClient.Timeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMs);
         });
         services.Configure<HttpClientFactoryOptions>(AccountConnectionStatusService.HttpClientName, options =>
             options.ShouldRedactHeaderValue = static _ => true);
@@ -48,7 +52,11 @@ public static class AccountConnectionServiceCollectionExtensions
             serviceProvider.GetRequiredService<IGw2ApiKeySource>(),
             serviceProvider.GetRequiredService<IHttpClientFactory>()
                 .CreateClient(AccountConnectionStatusService.HttpClientName),
-            serviceProvider.GetRequiredService<IGw2RequestScheduler>()));
+            serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
+            TimeSpan.FromMilliseconds(serviceProvider
+                .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
+                .Value
+                .RequestTimeoutMs)));
 
         return services;
     }

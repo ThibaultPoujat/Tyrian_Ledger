@@ -9,7 +9,40 @@ namespace Gw2Tp.Infrastructure.Secrets;
 /// </summary>
 internal interface IGw2ApiKeySource
 {
-    ValueTask<string?> ReadAsync(CancellationToken cancellationToken = default);
+    ValueTask<Gw2ApiKeyReadResult> ReadAsync(CancellationToken cancellationToken = default);
+}
+
+internal enum Gw2ApiKeyReadState
+{
+    NotConfigured,
+    Available,
+    Unavailable,
+}
+
+// This intentionally has no native diagnostic detail. It is the stable local
+// operational error named by ADR-006 and is mapped to the browser-safe
+// `unavailable` connection state by AccountConnectionStatusService.
+internal enum Gw2ApiKeyReadFailure
+{
+    LocalConfigurationError,
+}
+
+internal sealed record Gw2ApiKeyReadResult(
+    Gw2ApiKeyReadState State,
+    string? Value,
+    Gw2ApiKeyReadFailure? Failure = null)
+{
+    public static Gw2ApiKeyReadResult NotConfigured { get; } = new(Gw2ApiKeyReadState.NotConfigured, null);
+
+    public static Gw2ApiKeyReadResult Unavailable { get; } = new(
+        Gw2ApiKeyReadState.Unavailable,
+        null,
+        Gw2ApiKeyReadFailure.LocalConfigurationError);
+
+    public static Gw2ApiKeyReadResult FromValue(string? value) =>
+        EnvironmentGw2ApiKeySource.Normalize(value) is { } normalized
+            ? new(Gw2ApiKeyReadState.Available, normalized)
+            : NotConfigured;
 }
 
 internal sealed class EnvironmentGw2ApiKeySource : IGw2ApiKeySource
@@ -27,10 +60,11 @@ internal sealed class EnvironmentGw2ApiKeySource : IGw2ApiKeySource
         _readEnvironmentVariable = readEnvironmentVariable ?? throw new ArgumentNullException(nameof(readEnvironmentVariable));
     }
 
-    public ValueTask<string?> ReadAsync(CancellationToken cancellationToken = default)
+    public ValueTask<Gw2ApiKeyReadResult> ReadAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(Normalize(_readEnvironmentVariable(EnvironmentVariableName)));
+        return ValueTask.FromResult(Gw2ApiKeyReadResult.FromValue(
+            _readEnvironmentVariable(EnvironmentVariableName)));
     }
 
     internal static string? Normalize(string? value) =>
@@ -50,10 +84,12 @@ internal sealed class DevelopmentGw2ApiKeySource : IGw2ApiKeySource
         _operatingSystemSource = operatingSystemSource ?? throw new ArgumentNullException(nameof(operatingSystemSource));
     }
 
-    public async ValueTask<string?> ReadAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<Gw2ApiKeyReadResult> ReadAsync(CancellationToken cancellationToken = default)
     {
-        var environmentKey = await _environmentSource.ReadAsync(cancellationToken).ConfigureAwait(false);
-        return environmentKey ?? await _operatingSystemSource.ReadAsync(cancellationToken).ConfigureAwait(false);
+        var environmentResult = await _environmentSource.ReadAsync(cancellationToken).ConfigureAwait(false);
+        return environmentResult.State == Gw2ApiKeyReadState.Available
+            ? environmentResult
+            : await _operatingSystemSource.ReadAsync(cancellationToken).ConfigureAwait(false);
     }
 }
 
@@ -62,28 +98,40 @@ internal sealed class OperatingSystemGw2ApiKeySource : IGw2ApiKeySource
     internal const string ServiceName = "com.tyrianledger.gw2-api-key";
     internal const string WindowsTargetName = "TyrianLedger.Gw2ApiKey";
 
-    public async ValueTask<string?> ReadAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<Gw2ApiKeyReadResult> ReadAsync(CancellationToken cancellationToken = default)
     {
+        string? value;
         switch (SelectStore(
             OperatingSystem.IsMacOS(),
             OperatingSystem.IsWindows(),
             OperatingSystem.IsLinux()))
         {
             case OperatingSystemSecretStore.MacOsKeychain:
-                return await ReadCommandOutputAsync(
+                value = await ReadCommandOutputAsync(
                     "/usr/bin/security",
                     ["find-generic-password", "-s", ServiceName, "-w"],
                     cancellationToken).ConfigureAwait(false);
+                break;
             case OperatingSystemSecretStore.WindowsCredentialManager:
-                return ReadWindowsCredential();
+                value = ReadWindowsCredential();
+                break;
             case OperatingSystemSecretStore.LinuxSecretService:
-                return await ReadCommandOutputAsync(
+                value = await ReadCommandOutputAsync(
                     "secret-tool",
                     ["lookup", "service", ServiceName],
                     cancellationToken).ConfigureAwait(false);
+                break;
             default:
-                return null;
+                return Gw2ApiKeyReadResult.Unavailable;
         }
+
+        // Native stores intentionally conceal absent-item, locked-vault, and
+        // access-denied diagnostics. They must therefore never be represented
+        // as the definite "not configured" state returned by the explicit
+        // Development/Testing source.
+        return EnvironmentGw2ApiKeySource.Normalize(value) is { } normalized
+            ? new Gw2ApiKeyReadResult(Gw2ApiKeyReadState.Available, normalized)
+            : Gw2ApiKeyReadResult.Unavailable;
     }
 
     internal static OperatingSystemSecretStore SelectStore(

@@ -89,7 +89,10 @@ and returns a permission array; `account` is mandatory for API keys and
 fragment and `name` is explicitly unescaped, so the local host discards both
 instead of forwarding token metadata to React. The source does not establish a
 response-level distinction among 401/403 invalid-key scenarios; VERIFY-012
-therefore remains open and the gateway does not retry either response.
+therefore remains open and the gateway does not retry either response. M13-02
+uses only the documented core permission array and pins the known global API
+schema `2025-08-29T01:00:00.000Z` on its token-info request. Confirming the
+newest token-info-specific schema remains under VERIFY-005 for M13-03.
 
 Sources:
 

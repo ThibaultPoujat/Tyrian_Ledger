@@ -90,15 +90,15 @@ Notes:
 - **No undocumented endpoints are used.** TKT-M9-02 added the verified public
   `v2/items` dependency for finalist display metadata; its contract evidence
   is retained under VERIFY-007.
-- `/v2/tokeninfo` is the planned connection-validation endpoint. TKT-M13-02
-  owns revalidating its current contract, permissions, safe failure behavior,
-  and VERIFY-012 before it becomes an active private-data dependency.
+- `/v2/tokeninfo` is the active connection-validation endpoint. TKT-M13-02
+  revalidated its current contract, permission readiness, safe failure behavior,
+  and VERIFY-012; M13-03 owns the remaining authenticated endpoint work.
 
 ### `/v2/tokeninfo`
 
 | Endpoint | Method | Purpose | Required permission(s) | Batching | Freshness | Cache policy |
 |---|---|---|---|---|---|---|
-| `/v2/tokeninfo` | GET | Validate the supplied API key and determine permission readiness for account features. The host uses only the known `permissions[]` values; it discards `id`, `name`, and all other token metadata before producing a browser-safe result. | Key itself acts as credential; `account` is mandatory for all keys and `tradingpost` is required for personal TP reads. | No | slow (changes only when the key is recreated) | Very short TTL (seconds/minutes) on validation; result drives feature availability, never cached as long-lived truth |
+| `/v2/tokeninfo?v=2025-08-29T01:00:00.000Z` | GET | Validate the supplied API key and determine permission readiness for account features. The host uses only the known `permissions[]` values; it discards `id`, `name`, and all other token metadata before producing a browser-safe result. | Key itself acts as credential; `account` is mandatory for all keys and `tradingpost` is required for personal TP reads. | No | slow (changes only when the key is recreated) | Very short TTL (seconds/minutes) on validation; result drives feature availability, never cached as long-lived truth; M13-02 uses the verified global pin and VERIFY-005/M13-03 owns the endpoint-specific recheck. |
 
 Security notes (detailed in `docs/security/security.md`, ADR-006, TKT-M0-04):
 

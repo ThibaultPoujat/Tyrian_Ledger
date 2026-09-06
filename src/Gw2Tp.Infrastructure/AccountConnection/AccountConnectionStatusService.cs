@@ -10,28 +10,38 @@ namespace Gw2Tp.Infrastructure.AccountConnection;
 internal sealed class AccountConnectionStatusService : IAccountConnectionStatusService
 {
     internal const string HttpClientName = "TyrianLedger.AccountConnection";
+    // The currently verified global API schema. M13-03 retains ownership of
+    // endpoint-specific revalidation in VERIFY-005.
+    internal const string SchemaVersion = "2025-08-29T01:00:00.000Z";
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     private readonly IGw2ApiKeySource _apiKeySource;
     private readonly HttpClient _httpClient;
     private readonly IGw2RequestScheduler _requestScheduler;
+    private readonly TimeSpan _requestTimeout;
 
     public AccountConnectionStatusService(
         IGw2ApiKeySource apiKeySource,
         HttpClient httpClient,
-        IGw2RequestScheduler requestScheduler)
+        IGw2RequestScheduler requestScheduler,
+        TimeSpan? requestTimeout = null)
     {
         _apiKeySource = apiKeySource ?? throw new ArgumentNullException(nameof(apiKeySource));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _requestScheduler = requestScheduler ?? throw new ArgumentNullException(nameof(requestScheduler));
+        _requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(10);
+        if (_requestTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(requestTimeout));
+        }
     }
 
     public async Task<AccountConnectionStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        string? apiKey;
+        Gw2ApiKeyReadResult apiKeyResult;
         try
         {
-            apiKey = await _apiKeySource.ReadAsync(cancellationToken).ConfigureAwait(false);
+            apiKeyResult = await _apiKeySource.ReadAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -42,10 +52,17 @@ internal sealed class AccountConnectionStatusService : IAccountConnectionStatusS
             return Unavailable();
         }
 
-        if (string.IsNullOrWhiteSpace(apiKey))
+        if (apiKeyResult.State == Gw2ApiKeyReadState.NotConfigured)
         {
             return NotConfigured();
         }
+
+        if (apiKeyResult.State != Gw2ApiKeyReadState.Available || string.IsNullOrWhiteSpace(apiKeyResult.Value))
+        {
+            return Unavailable();
+        }
+
+        var apiKey = apiKeyResult.Value;
 
         try
         {
@@ -67,15 +84,16 @@ internal sealed class AccountConnectionStatusService : IAccountConnectionStatusS
         string apiKey,
         CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "tokeninfo");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-
         try
         {
+            using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            requestTimeout.CancelAfter(_requestTimeout);
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"tokeninfo?v={SchemaVersion}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             using var response = await _httpClient.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken).ConfigureAwait(false);
+                requestTimeout.Token).ConfigureAwait(false);
 
             // VERIFY-012 remains open: neither status reliably distinguishes a
             // revoked/malformed key from every other invalid-key condition. Both
@@ -85,7 +103,10 @@ internal sealed class AccountConnectionStatusService : IAccountConnectionStatusS
                 return new Gw2ScheduledResult<AccountConnectionStatus>(Invalid());
             }
 
-            if (!response.IsSuccessStatusCode)
+            // tokeninfo is a single-resource validation endpoint. Unlike the
+            // public batch endpoints, it has no supported partial-response
+            // contract, so only its documented 200 result is acceptable.
+            if (response.StatusCode != HttpStatusCode.OK)
             {
                 return new Gw2ScheduledResult<AccountConnectionStatus>(
                     Unavailable(),
@@ -94,12 +115,12 @@ internal sealed class AccountConnectionStatusService : IAccountConnectionStatusS
             }
 
             await using var responseStream = await response.Content
-                .ReadAsStreamAsync(cancellationToken)
+                .ReadAsStreamAsync(requestTimeout.Token)
                 .ConfigureAwait(false);
             var payload = await JsonSerializer.DeserializeAsync<TokenInfoDto>(
                 responseStream,
                 SerializerOptions,
-                cancellationToken).ConfigureAwait(false);
+                requestTimeout.Token).ConfigureAwait(false);
 
             if (payload?.Permissions is null)
             {
@@ -135,6 +156,10 @@ internal sealed class AccountConnectionStatusService : IAccountConnectionStatusS
             return new Gw2ScheduledResult<AccountConnectionStatus>(Unavailable());
         }
         catch (TaskCanceledException)
+        {
+            return new Gw2ScheduledResult<AccountConnectionStatus>(Unavailable());
+        }
+        catch (FormatException)
         {
             return new Gw2ScheduledResult<AccountConnectionStatus>(Unavailable());
         }
