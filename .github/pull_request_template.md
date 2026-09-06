@@ -1,8 +1,14 @@
 ## Ticket and milestone
 
 - Ticket:
+- GitHub issue:
+- Closes #<issue-number>
 - Milestone:
 - Risk class / recommended review configuration:
+
+Before delivery, set this pull request's actual GitHub milestone to the same
+milestone as the implementation ticket. Do not leave only the textual milestone
+field populated.
 
 ## Functional summary
 
