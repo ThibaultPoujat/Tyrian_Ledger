@@ -14,43 +14,43 @@ The owner has approved the product vision and the architectural direction:
 The existing C# financial/domain/API foundation and useful React/test work are
 to be preserved. Static Pages publishing, the external Pages scheduler, the
 public market-snapshot runtime, and browser-side duplicate authoritative
-recommendation calculations are transition code to retire in M12 rather than
-new architecture to extend.
+recommendation calculations are transition code retired in M12 rather than new
+architecture to extend.
 
 ## Active milestone
 
 **M14 - Durable Personal Data**
 
-TKT-M13-03 is merged through PR #105. TKT-M14-01 adds the SQLite persistence
-foundation: ordered transactional migrations, repository boundaries, and
-durable normalized account scopes, completed transactions, current-order
+M13 is complete through the local host, secure API-key validation, and typed
+personal Trading Post gateway work merged in PRs #102-#105.
+
+TKT-M14-01 is merged through PR #106. The repository now has the SQLite
+persistence foundation: ordered transactional migrations, repository boundaries,
+and durable normalized account scopes, completed transactions, current-order
 state/observations, item metadata, typed non-secret settings, and schema
-metadata. It keeps the API key outside SQLite and does not introduce sync,
-FIFO/P&L, market-history, backup/restore, or browser endpoints.
+metadata. The API key remains outside SQLite, and sync orchestration, FIFO/P&L,
+market history, and backup/restore remain separate tickets.
 
-After TKT-M14-01 receives its required fresh flagship XHigh review and owner
-merge, the next implementation ticket is:
+The next implementation ticket is:
 
-**TKT-M14-02 - Implement idempotent personal Trading Post synchronization.**
+**TKT-M14-02 / #73 - Implement idempotent personal Trading Post synchronization.**
 
-Do not begin TKT-M14-02 on this branch or before the review/merge handoff is
-complete.
+Do not begin TKT-M14-03 or later-ticket work in the TKT-M14-02 session.
 
 ## Known-good baseline
 
-Validated on 2026-09-05 from clean `develop` revision
-`c1153b7a0d72086f011355e3e830ed27cbcaef3a`:
+TKT-M14-01 validation on commit
+`119ff69820a2bf20381d543595ed40194a7ca67f` reported:
 
 - Release solution build: zero warnings and zero errors;
-- .NET: 102 tests passed;
-- React: 2 component tests passed and the production build succeeded;
+- .NET: 177 tests passed;
+- React: 5 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
-- CI workflow contracts: 3 tests passed, including retired-runtime absence;
-- Gitleaks: all 163 reachable commits scanned with no leaks.
+- CI workflow contracts: 3 tests passed;
+- Gitleaks: 174 reachable commits scanned with no leaks.
 
-TKT-M12-03 was merged in PR #101 and TKT-M13-01 in PR #102. TKT-M13-03 must
-pass the expanded secret, host, frontend, browser, CI-contract, and
-full-history secret checks before its independent review handoff.
+PR #106 is merged into `develop` as merge commit
+`e30d9b1241e3a042ebd529817661057417d1a596`.
 
 ## Important transition warning
 
@@ -76,13 +76,22 @@ static product. Reuse them in the local-first architecture where compatible.
 
 ## Review rule
 
-Every implementation PR receives a fresh independent review. Use
-`.codex/skills/tyrian-pr-review/SKILL.md`. R3 financial, security, private-data,
-network-exposure, and architecture-authority changes require a fresh
-flagship-model XHigh review.
+Every implementation PR receives an independent review according to the active
+repository workflow and ticket risk contract. Use
+`.codex/skills/tyrian-pr-review/SKILL.md` when a dedicated review session is
+required.
 
-## Owner actions outside the repository
+## State-maintenance rule
 
-GitHub Milestone objects for M12-M22 may be created manually and assigned to the
-matching issues. The Markdown milestone/ticket files and issue prefixes remain
-authoritative even if GitHub Milestone objects are absent.
+`CURRENT.md` is maintained by implementation/delivery agents as part of ticket
+handoff. The owner should not need to edit this file manually during normal
+execution. Before delivery, the agent must make the current ticket state and
+next valid ticket/handoff accurate.
+
+## GitHub delivery state
+
+GitHub Milestone objects for M12-M22 exist. Implementation issues and their PRs
+should use the matching milestone. Every implementation PR must include
+`Closes #<issue-number>` so merging to the default branch closes the ticket
+automatically. The implementation agent should set the PR milestone through the
+available GitHub tooling when possible and report explicitly if it cannot.
