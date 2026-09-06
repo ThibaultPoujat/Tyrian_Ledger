@@ -1,4 +1,5 @@
 using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Infrastructure.Persistence;
 using Gw2Tp.Web.Hosting;
@@ -89,6 +90,16 @@ public static class Program
                     .GetStatusAsync(cancellationToken)
                     .ConfigureAwait(false);
                 await AccountConnectionResponseWriter.WriteAsync(context, status).ConfigureAwait(false);
+            });
+        app.MapPost(
+            "/api/personal-trading-post/sync",
+            async (
+                HttpContext context,
+                IPersonalTradingPostSynchronizationService synchronizationService,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await synchronizationService.SynchronizeAsync(cancellationToken).ConfigureAwait(false);
+                await PersonalTradingPostSynchronizationResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
             });
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 
