@@ -1,0 +1,5 @@
+{
+  "id": "synthetic-account-guid-900001",
+  "name": "This mutable name must not cross the application boundary",
+  "access": ["GuildWars2"]
+}

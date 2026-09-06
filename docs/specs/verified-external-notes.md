@@ -33,6 +33,31 @@ The current project uses these references as the starting point for verification
 - https://wiki.guildwars2.com/wiki/API:2/commerce/listings
 - https://wiki.guildwars2.com/wiki/API:2/tokeninfo
 - https://wiki.guildwars2.com/wiki/API:API_key
+
+## M13 personal Trading Post contract review
+
+On 2026-09-06, TKT-M13-03 rechecked the public Guild Wars 2 Wiki
+documentation for `/v2/account` and `/v2/commerce/transactions` without a
+keyed live request. `/v2/account` documents a persistent `id`, which M13 uses
+only as an opaque local account scope and deliberately does not pair with the
+mutable `name` or account metadata. The four transaction paths require
+`account` and `tradingpost`, return paginated records with integer-copper
+`price`, `quantity`, and ISO-8601 `created`; `purchased` is absent for current
+orders and required for completed history.
+
+The API documentation identifies `page` as zero-based and returns page/result
+metadata headers for paged reads. It does not establish the endpoint-specific
+safe `page_size`, a current endpoint-specific schema pin, or a precise cache
+contract beyond an approximately five-minute transaction cache. TKT-M13-03
+therefore sends only a zero-based `page` with the previously verified global
+schema pin and retains VERIFY-004, VERIFY-005, and VERIFY-008 as open.
+
+Sources:
+
+- https://wiki.guildwars2.com/wiki/API:2/account
+- https://wiki.guildwars2.com/wiki/API:2/commerce/transactions
+- https://wiki.guildwars2.com/wiki/API:2
+- https://wiki.guildwars2.com/wiki/API:API_key
 - https://wiki.guildwars2.com/wiki/API:Best_practices
 - https://wiki.guildwars2.com/wiki/API:Terms_of_Use
 

@@ -1,6 +1,8 @@
 using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Secrets;
 using Gw2Tp.Infrastructure.Gw2Api;
+using Gw2Tp.Infrastructure.PersonalTradingPost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -60,6 +62,25 @@ public static class AccountConnectionServiceCollectionExtensions
         services.AddSingleton<IAccountConnectionStatusService>(serviceProvider =>
             new CachedAccountConnectionStatusService(
                 serviceProvider.GetRequiredService<AccountConnectionStatusService>()));
+        services.AddHttpClient(PersonalTradingPostGateway.HttpClientName, (serviceProvider, httpClient) =>
+        {
+            httpClient.BaseAddress = Gw2ApiBaseAddress;
+            var options = serviceProvider
+                .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
+                .Value;
+            httpClient.Timeout = TimeSpan.FromMilliseconds(options.RequestTimeoutMs);
+        });
+        services.Configure<HttpClientFactoryOptions>(PersonalTradingPostGateway.HttpClientName, options =>
+            options.ShouldRedactHeaderValue = static _ => true);
+        services.AddSingleton<IPersonalTradingPostGateway>(serviceProvider => new PersonalTradingPostGateway(
+            serviceProvider.GetRequiredService<IGw2ApiKeySource>(),
+            serviceProvider.GetRequiredService<IHttpClientFactory>()
+                .CreateClient(PersonalTradingPostGateway.HttpClientName),
+            serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
+            TimeSpan.FromMilliseconds(serviceProvider
+                .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
+                .Value
+                .RequestTimeoutMs)));
 
         return services;
     }
