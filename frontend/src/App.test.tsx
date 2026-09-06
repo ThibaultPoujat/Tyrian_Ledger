@@ -183,4 +183,66 @@ describe('M14 local data controls', () => {
 
     expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeEnabled();
   });
+
+  it('resets the restore selection after a confirmed restore', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/health') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      }
+      if (input === '/api/local-data') {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }),
+        } as unknown as Response);
+      }
+      if (input === '/api/local-data/restore') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
+      } as unknown as Response);
+    });
+    render(<App />);
+
+    const restoreFile = await screen.findByLabelText('Backup file');
+    fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
+
+    expect(await screen.findByText('Backup restored.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeDisabled();
+  });
+
+  it('reports an unknown outcome when restore or clear loses its response', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/health') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      }
+      if (input === '/api/local-data') {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }),
+        } as unknown as Response);
+      }
+      if (input === '/api/local-data/restore' || input === '/api/local-data/clear-personal') {
+        return Promise.reject(new TypeError('connection lost'));
+      }
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
+      } as unknown as Response);
+    });
+    render(<App />);
+
+    const restoreFile = await screen.findByLabelText('Backup file');
+    fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
+    expect(await screen.findByText('Restore outcome could not be confirmed. Check local data before retrying.')).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText('Type CLEAR PERSONAL DATA to continue'), { target: { value: 'CLEAR PERSONAL DATA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear personal account data' }));
+    expect(await screen.findByText('Clear outcome could not be confirmed. Check local data before retrying.')).toBeVisible();
+  });
 });

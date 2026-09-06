@@ -427,6 +427,34 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Cancellation_after_pre_restore_backup_leaves_live_data_untouched()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        var later = CompletedTransaction(1002, PersonalTradingPostSide.Sell, 84, 456, 1);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [later], new CurrentPersonalTradingPostOrderSnapshot(SecondObservedAtUtc, []), [],
+            SecondObservedAtUtc, SecondObservedAtUtc, SecondObservedAtUtc));
+        using var cancellation = new CancellationTokenSource();
+        var cancellingRecovery = new SqliteLocalDataRecoveryService(
+            database.Factory,
+            database.Gate,
+            new CancelAfterPreRestoreBackupFileOperations(cancellation));
+
+        await using (var validBackup = File.OpenRead(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)))
+        {
+            await Assert.ThrowsAsync<OperationCanceledException>(() => cancellingRecovery.RestoreAsync(validBackup, cancellation.Token));
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original, later], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
     public async Task Interrupted_restore_copy_leaves_live_data_untouched()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -556,8 +584,26 @@ public sealed class SqlitePersistenceIntegrationTests
 
     private sealed class FailingReplaceFileOperations : ILocalDataFileOperations
     {
+        public void MoveFile(string stagingPath, string backupPath) => File.Move(stagingPath, backupPath);
+
         public void ReplaceDatabase(string stagedDatabasePath, string liveDatabasePath) =>
             throw new IOException("Synthetic replacement failure.");
+    }
+
+    private sealed class CancelAfterPreRestoreBackupFileOperations(CancellationTokenSource cancellation)
+        : ILocalDataFileOperations
+    {
+        public void MoveFile(string stagingPath, string backupPath)
+        {
+            File.Move(stagingPath, backupPath);
+            if (Path.GetFileName(backupPath).Contains("pre-restore", StringComparison.Ordinal))
+            {
+                cancellation.Cancel();
+            }
+        }
+
+        public void ReplaceDatabase(string stagedDatabasePath, string liveDatabasePath) =>
+            File.Replace(stagedDatabasePath, liveDatabasePath, destinationBackupFileName: null, ignoreMetadataErrors: true);
     }
 
     private sealed class TestDatabase : IAsyncDisposable

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './App.css';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
@@ -207,6 +207,7 @@ function LocalDataPanel() {
   const [message, setMessage] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const restoreFileInput = useRef<HTMLInputElement>(null);
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
   const [clearConfirmation, setClearConfirmation] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
@@ -236,13 +237,18 @@ function LocalDataPanel() {
     setMessage(null);
     void fetch('/api/local-data/backup', { method: 'POST', headers: localRequestHeaders() })
       .then(async (response) => {
+        if (!response.ok) {
+          setMessage('Backup could not be created. Your current local data has not been changed.');
+          return;
+        }
         const payload: unknown = await response.json();
-        if (!response.ok || typeof payload !== 'object' || payload === null || typeof (payload as Record<string, unknown>).fileName !== 'string') {
-          throw new Error('backup failed');
+        if (typeof payload !== 'object' || payload === null || typeof (payload as Record<string, unknown>).fileName !== 'string') {
+          setMessage('Backup outcome could not be confirmed. Check the local backup folder before retrying.');
+          return;
         }
         setMessage(`Backup created: ${(payload as Record<string, string>).fileName}`);
       })
-      .catch(() => setMessage('Backup could not be created. Your current local data has not been changed.'))
+      .catch(() => setMessage('Backup outcome could not be confirmed. Check the local backup folder before retrying.'))
       .finally(() => setIsBackingUp(false));
   };
 
@@ -258,9 +264,14 @@ function LocalDataPanel() {
     form.append('confirmation', restoreConfirmation);
     void fetch('/api/local-data/restore', { method: 'POST', headers: localRequestHeaders(), body: form })
       .then(async (response) => {
+        if (!response.ok) {
+          setMessage('The selected backup could not be restored. Your current local data was kept.');
+          return;
+        }
         const payload: unknown = await response.json();
-        if (!response.ok || typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'restored') {
-          throw new Error('restore failed');
+        if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'restored') {
+          setMessage('Restore outcome could not be confirmed. Check local data before retrying.');
+          return;
         }
         const preRestore = (payload as Record<string, unknown>).preRestoreBackupFileName;
         setMessage(typeof preRestore === 'string'
@@ -268,8 +279,11 @@ function LocalDataPanel() {
           : 'Backup restored.');
         setRestoreFile(null);
         setRestoreConfirmation('');
+        if (restoreFileInput.current !== null) {
+          restoreFileInput.current.value = '';
+        }
       })
-      .catch(() => setMessage('The selected backup could not be restored. Your current local data was kept.'))
+      .catch(() => setMessage('Restore outcome could not be confirmed. Check local data before retrying.'))
       .finally(() => setIsRestoring(false));
   };
 
@@ -286,14 +300,19 @@ function LocalDataPanel() {
       body: JSON.stringify({ confirmation: clearConfirmation }),
     })
       .then(async (response) => {
+        if (!response.ok) {
+          setMessage('Personal data could not be cleared. Your current local data was kept.');
+          return;
+        }
         const payload: unknown = await response.json();
-        if (!response.ok || typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'personal_data_cleared') {
-          throw new Error('clear failed');
+        if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'personal_data_cleared') {
+          setMessage('Clear outcome could not be confirmed. Check local data before retrying.');
+          return;
         }
         setMessage('Personal account data cleared. Existing backup files were kept.');
         setClearConfirmation('');
       })
-      .catch(() => setMessage('Personal data could not be cleared. Your current local data was kept.'))
+      .catch(() => setMessage('Clear outcome could not be confirmed. Check local data before retrying.'))
       .finally(() => setIsClearing(false));
   };
 
@@ -321,7 +340,7 @@ function LocalDataPanel() {
         <h3>Restore a backup</h3>
         <p>Restoring replaces the active database only after the selected file is checked. A backup of the current data is created first.</p>
         <label htmlFor="restore-backup">Backup file</label>
-        <input id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
+        <input ref={restoreFileInput} id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
         <label htmlFor="restore-confirmation">Type RESTORE LOCAL DATA to continue</label>
         <input id="restore-confirmation" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} />
         <button disabled={isRestoring || restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restore} type="button">

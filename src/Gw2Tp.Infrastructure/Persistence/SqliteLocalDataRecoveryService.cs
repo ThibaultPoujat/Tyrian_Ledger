@@ -38,24 +38,15 @@ internal sealed class SqliteLocalDataRecoveryService(
 
         try
         {
+            var uploadOutcome = await CopyUploadedBackupAsync(backupContents, incomingPath, cancellationToken).ConfigureAwait(false);
+            if (uploadOutcome is not null)
+            {
+                return new LocalDataRestoreResult(uploadOutcome.Value);
+            }
+
             try
             {
-                await using (var destination = new FileStream(
-                    incomingPath,
-                    FileMode.CreateNew,
-                    FileAccess.Write,
-                    FileShare.None,
-                    bufferSize: 81920,
-                    useAsync: true))
-                {
-                    await backupContents.CopyToAsync(destination, cancellationToken).ConfigureAwait(false);
-                    await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
-                }
-
                 await SqliteSchemaMigrator.ValidateBackupCandidateAsync(incomingPath, cancellationToken).ConfigureAwait(false);
-                await CopyDatabaseAsync(incomingPath, stagedDatabasePath, cancellationToken).ConfigureAwait(false);
-                var stagedMigrator = new SqliteSchemaMigrator(new SqliteConnectionFactory(stagedDatabasePath));
-                await stagedMigrator.MigrateAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -68,7 +59,39 @@ internal sealed class SqliteLocalDataRecoveryService(
 
             try
             {
+                await CopyDatabaseAsync(incomingPath, stagedDatabasePath, cancellationToken).ConfigureAwait(false);
+                var stagedMigrator = new SqliteSchemaMigrator(new SqliteConnectionFactory(stagedDatabasePath));
+                await stagedMigrator.MigrateAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (InvalidDataException)
+            {
+                return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+            }
+            catch (InvalidOperationException)
+            {
+                return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+            }
+            catch (SqliteException exception) when (IsLocalStorageFailure(exception))
+            {
+                return new LocalDataRestoreResult(LocalDataRestoreOutcome.RestoreFailed);
+            }
+            catch (SqliteException)
+            {
+                return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+            }
+            catch
+            {
+                return new LocalDataRestoreResult(LocalDataRestoreOutcome.RestoreFailed);
+            }
+
+            try
+            {
                 var preRestoreBackup = await CreateBackupCoreAsync("pre-restore", cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
                 SqliteConnection.ClearAllPools();
                 files.ReplaceDatabase(stagedDatabasePath, connectionFactory.DatabasePath);
                 return new LocalDataRestoreResult(LocalDataRestoreOutcome.Restored, preRestoreBackup.FileName);
@@ -127,7 +150,7 @@ internal sealed class SqliteLocalDataRecoveryService(
             try
             {
                 await CopyDatabaseAsync(connectionFactory.DatabasePath, stagingPath, cancellationToken).ConfigureAwait(false);
-                File.Move(stagingPath, backupPath);
+                files.MoveFile(stagingPath, backupPath);
                 return new LocalDataBackup(fileName, createdAtUtc);
             }
             catch (IOException) when (File.Exists(backupPath))
@@ -179,6 +202,82 @@ internal sealed class SqliteLocalDataRecoveryService(
         source.BackupDatabase(destination);
     }
 
+    private static async Task<LocalDataRestoreOutcome?> CopyUploadedBackupAsync(
+        Stream source,
+        string destinationPath,
+        CancellationToken cancellationToken)
+    {
+        FileStream destination;
+        try
+        {
+            destination = new FileStream(
+                destinationPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                useAsync: true);
+        }
+        catch
+        {
+            return LocalDataRestoreOutcome.RestoreFailed;
+        }
+
+        await using (destination)
+        {
+            var buffer = new byte[81920];
+            while (true)
+            {
+                int bytesRead;
+                try
+                {
+                    bytesRead = await source.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch
+                {
+                    return LocalDataRestoreOutcome.InvalidBackup;
+                }
+
+                if (bytesRead == 0)
+                {
+                    break;
+                }
+
+                try
+                {
+                    await destination.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch
+                {
+                    return LocalDataRestoreOutcome.RestoreFailed;
+                }
+            }
+
+            try
+            {
+                await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                return LocalDataRestoreOutcome.RestoreFailed;
+            }
+        }
+
+        return null;
+    }
+
     private static void DeleteIfPresent(string path)
     {
         try
@@ -193,15 +292,22 @@ internal sealed class SqliteLocalDataRecoveryService(
             // A failed cleanup must not hide the safety outcome of a restore.
         }
     }
+
+    private static bool IsLocalStorageFailure(SqliteException exception) =>
+        exception.SqliteErrorCode is 10 or 13 or 14;
 }
 
 internal interface ILocalDataFileOperations
 {
+    void MoveFile(string stagingPath, string backupPath);
+
     void ReplaceDatabase(string stagedDatabasePath, string liveDatabasePath);
 }
 
 internal sealed class LocalDataFileOperations : ILocalDataFileOperations
 {
+    public void MoveFile(string stagingPath, string backupPath) => File.Move(stagingPath, backupPath);
+
     public void ReplaceDatabase(string stagedDatabasePath, string liveDatabasePath) =>
         File.Replace(stagedDatabasePath, liveDatabasePath, destinationBackupFileName: null, ignoreMetadataErrors: true);
 }

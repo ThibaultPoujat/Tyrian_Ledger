@@ -287,6 +287,53 @@ public sealed class LocalHostIntegrationTests
         Assert.Equal(HttpStatusCode.OK, ipv6Response.StatusCode);
     }
 
+    [Fact]
+    public async Task ActualKestrelHostAccepts_restore_uploads_above_the_default_request_limit()
+    {
+        var port = ReserveAvailablePort();
+        var databaseDirectory = Path.Combine(Path.GetTempPath(), "TyrianLedger.Web.Tests", Guid.NewGuid().ToString("N"));
+        var databasePath = Path.Combine(databaseDirectory, "tyrian-ledger.db");
+        try
+        {
+            await using var app = Program.CreateApplication([], builder =>
+            {
+                builder.Environment.EnvironmentName = "Production";
+                builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["TyrianLedger:Host:Port"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ["TyrianLedger:Database:Path"] = databasePath,
+                });
+            });
+            await app.StartAsync();
+
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(LocalDataEndpoints.RestoreConfirmation), "confirmation");
+            form.Add(
+                new ByteArrayContent(new byte[31 * 1024 * 1024]),
+                "backup",
+                "selected-backup.db");
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/api/local-data/restore")
+            {
+                Content = form,
+            };
+            request.Headers.Add("Origin", $"http://127.0.0.1:{port}");
+            request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+            using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+            using var response = await client.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(databaseDirectory))
+            {
+                Directory.Delete(databaseDirectory, recursive: true);
+            }
+        }
+    }
+
     [Theory]
     [InlineData("0.0.0.0")]
     [InlineData("::")]

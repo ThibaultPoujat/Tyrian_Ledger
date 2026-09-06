@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Gw2Tp.Application.LocalData;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Gw2Tp.Web.Hosting;
 
@@ -7,6 +9,7 @@ internal static class LocalDataEndpoints
 {
     internal const string RestoreConfirmation = "RESTORE LOCAL DATA";
     internal const string ClearConfirmation = "CLEAR PERSONAL DATA";
+    internal const long MaxRestoreBackupBytes = 512L * 1024 * 1024;
 
     public static IEndpointRouteBuilder MapLocalDataEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -32,11 +35,17 @@ internal static class LocalDataEndpoints
             }
         });
 
-        endpoints.MapPost("/api/local-data/restore", async (
+        var restoreEndpoint = endpoints.MapPost("/api/local-data/restore", async (
             HttpRequest request,
             ILocalDataRecoveryService recoveryService,
             CancellationToken cancellationToken) =>
         {
+            var requestSizeLimit = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (requestSizeLimit is { IsReadOnly: false })
+            {
+                requestSizeLimit.MaxRequestBodySize = MaxRestoreBackupBytes;
+            }
+
             if (!request.HasFormContentType)
             {
                 return LocalDataResponseWriter.InvalidRequest("restore_file_required");
@@ -54,6 +63,9 @@ internal static class LocalDataEndpoints
             var result = await recoveryService.RestoreAsync(stream, cancellationToken).ConfigureAwait(false);
             return LocalDataResponseWriter.CreateRestoreResponse(result);
         });
+        restoreEndpoint.WithMetadata(
+            new RequestSizeLimitAttribute(MaxRestoreBackupBytes),
+            new RequestFormLimitsAttribute { MultipartBodyLengthLimit = MaxRestoreBackupBytes });
 
         endpoints.MapPost("/api/local-data/clear-personal", async (
             LocalDataConfirmationRequest confirmation,

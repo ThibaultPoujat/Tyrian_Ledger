@@ -92,7 +92,9 @@ Use **Create local backup** to make a timestamped, consistent copy while the
 application is running. To restore one, select the backup file and type
 `RESTORE LOCAL DATA`. Tyrian Ledger checks the file and schema before changing
 anything, and makes a backup of the current data first. If a backup is invalid
-or incompatible, your active data is kept.
+or incompatible, your active data is kept. The local restore control supports
+backup files up to 512 MiB; keep a copy in the managed backup folder if a
+future database grows beyond that supported upload size.
 
 To remove synced account history and current-order records from the active
 database, type `CLEAR PERSONAL DATA`. This keeps shared item metadata and local
