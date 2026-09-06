@@ -4,12 +4,14 @@
 - GitHub issue:
 - Closes #<issue-number>
 - Milestone:
-- Risk class / recommended review configuration:
+- Review path: NORMAL / SOL-GATED
 
-Before delivery, set this pull request's actual GitHub milestone to the same
-milestone as the implementation ticket when the available GitHub tooling permits
-it. Do not leave only the textual milestone field populated. If the active tool
-cannot set the milestone, report that limitation explicitly.
+<!--
+Set the pull request's actual GitHub milestone to match the implementation issue.
+Review-path selection is defined by docs/workflow/model-effort-guide.md.
+Do not infer SOL-GATED from R3 alone and do not paste legacy blanket R3/XHigh wording.
+SOL-GATED PRs must be opened as Draft and remain Draft until the required separate Sol review returns APPROVE.
+-->
 
 ## Functional summary
 
@@ -40,12 +42,12 @@ work, include edge/regression evidence rather than only happy-path tests.
 - Deliberately out-of-scope follow-up work:
 - Owner decision still required (or `None`):
 
-## Independent review
+## Review result
 
-- [ ] Fresh review session used `.codex/skills/tyrian-pr-review/SKILL.md`.
-- [ ] Review findings are resolved or explicitly accepted by owner.
-- [ ] R3 financial/data/security/network-exposure/architecture-authority work
-      received fresh flagship XHigh review.
+- NORMAL: independent Terra review subagent/check completed; required tests/CI green.
+- SOL-GATED: keep this PR Draft until a fresh separate Sol XHigh review returns APPROVE; record the verdict here before marking Ready.
+
+<!-- Keep only the review-result line that applies to this PR. -->
 
 ## Owner review
 

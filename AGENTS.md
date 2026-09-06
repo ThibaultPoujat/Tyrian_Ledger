@@ -8,8 +8,7 @@ research markets, allocate capital, and decide what manual action to take next.
 The coding model is a development tool only. It is never part of runtime
 financial truth and never executes gameplay or Trading Post actions.
 
-M0-M11 are historical milestones. The active pivot starts at M12. Static Pages
-artifacts and documentation may still exist while M12 retires them; follow the
+M0-M11 are historical milestones. The active pivot starts at M12. Follow the
 active source-of-truth documents rather than inferring architecture from old
 files.
 
@@ -21,12 +20,13 @@ files.
 4. `docs/context/milestone-context-<M>.md` for the assigned milestone.
 5. The assigned ticket under `docs/milestones/<M>/tickets/`.
 6. `docs/verification/VERIFY-REGISTER.md`.
-7. Only the specialized specifications, ADRs, tests, and source files needed to
+7. `docs/workflow/model-effort-guide.md` for the active model/review gate.
+8. Only the specialized specifications, ADRs, tests, and source files needed to
    satisfy that ticket.
 
-The ticket is the implementation contract. Do not load every historical ticket
-or the entire repository documentation unless the assigned work genuinely
-requires it.
+The ticket is the implementation contract for scope/behavior. The model-effort
+guide is authoritative for **review-model selection and PR Draft blocking** when
+older ticket annotations conflict with the current quota-aware policy.
 
 ## Active product boundaries
 
@@ -101,41 +101,58 @@ A separate focused test/fix session is allowed when the implementation session
 cannot finish safely, but it must remain scoped to the same ticket and record a
 clear handoff.
 
-## Independent review
+## Review policy
 
-Every implementation PR receives a **fresh review session** that did not
-implement the change. Use `.codex/skills/tyrian-pr-review/SKILL.md` as the
-standard review playbook.
+There are two review paths. **Risk class alone does not select the model.**
 
-The default review is read-only: inspect the ticket, source of truth, diff,
-validation evidence, and relevant tests; report findings before making any
-corrective edits. If the owner explicitly requests review-and-fix, corrective
-commits may follow without expanding ticket scope.
+### NORMAL
 
-The reviewer must prioritize correctness over style and pay special attention
-to secret boundaries, integer money, fee semantics, migration/data loss,
-idempotent sync, accounting reconstruction, statistical sufficiency,
-recommendation explanations, and acceptance-criteria coverage.
+For every ticket not explicitly listed in the Sol gate in
+`docs/workflow/model-effort-guide.md`:
+
+- use Terra High for planning/implementation by default;
+- run an independent Terra review subagent/check before delivery when supported
+  by the coding environment;
+- run all ticket-required tests and CI;
+- a separate Sol session is not a merge requirement;
+- do not put obsolete blanket `R3 requires fresh flagship XHigh` wording in the
+  PR body.
+
+Escalate to Sol only if Terra reports unresolved high-consequence ambiguity, an
+important review finding remains uncertain, or the owner explicitly requests it.
+
+### SOL-GATED
+
+Only the explicit Sol-gate ticket list in `docs/workflow/model-effort-guide.md`
+requires a separate fresh Sol XHigh review.
+
+For those tickets:
+
+- implement/fix with Terra High by default;
+- create the PR as **Draft**;
+- use `.codex/skills/tyrian-pr-review/SKILL.md` in a fresh separate Sol XHigh
+  review session;
+- keep the PR Draft while findings remain;
+- after APPROVE and green validation, the reviewer/fix handoff may mark it Ready
+  for Review;
+- the owner still makes the final merge decision.
+
+The Draft state is the merge blocker so the owner does not have to remember the
+Sol-gate list manually.
 
 ## Model and reasoning guidance
 
-Model availability changes; the ticket contract is authoritative regardless of
-model name. Choose effort by risk:
+- Mechanical docs/repository maintenance: Terra Medium/High.
+- Normal and complex implementation: **Terra High by default**.
+- Normal review: independent Terra review subagent/check plus required tests/CI.
+- Separate Sol XHigh: only the explicit Sol-gate tickets or an explicit
+  escalation under the rules above.
+- Max: only for unresolved ambiguity after normal XHigh review or an explicit
+  owner request.
 
-- **Mechanical docs/repository maintenance:** GPT-5.6 Terra, Medium or High.
-- **Normal implementation:** GPT-5.6 Terra, High.
-- **Complex cross-layer implementation:** GPT-5.6 Sol, High when available; a
-  strong equivalent is acceptable.
-- **Financial, accounting, persistence migration, security, private-data,
-  statistical, recommendation, network-exposure, or architecture-authority
-  work:** classify as R3 and use a fresh flagship-model review, normally
-  GPT-5.6 Sol at XHigh. If a stronger flagship model such as GPT-6 Astra is
-  available to the owner, it MAY replace Sol for these review gates.
-- Use Max only when XHigh has produced unresolved ambiguity or the ticket is
-  unusually difficult; do not pay for Max mechanically.
-
-Never lower testing or review standards because a stronger model was selected.
-Never assume a larger model makes an independent review unnecessary.
+Never lower testing or correctness standards because the cheaper review path is
+used. The quota-aware policy changes **who reviews**, not the acceptance criteria
+or validation burden.
 
 ## Decision gates reserved for the owner
 
@@ -168,5 +185,10 @@ End with a short report containing:
 6. **Risks or limitations** — only material remaining issues.
 7. **Owner decision required** — `None` if no decision remains.
 8. **Pull request URL**.
+9. **Review path** — NORMAL or SOL-GATED.
+
+Before delivery, ensure the PR body contains `Closes #<issue-number>`, the actual
+GitHub milestone matches the issue milestone, and `CURRENT.md` reflects the
+valid handoff. SOL-GATED PRs must still be Draft at implementation handoff.
 
 Do not merge the pull request.

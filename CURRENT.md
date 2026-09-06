@@ -31,11 +31,13 @@ state/observations, item metadata, typed non-secret settings, and schema
 metadata. The API key remains outside SQLite, and sync orchestration, FIFO/P&L,
 market history, and backup/restore remain separate tickets.
 
-The next implementation ticket is:
+The active implementation ticket is:
 
 **TKT-M14-02 / #73 - Implement idempotent personal Trading Post synchronization.**
 
-Do not begin TKT-M14-03 or later-ticket work in the TKT-M14-02 session.
+PR #107 is open for this ticket. It uses the NORMAL quota-aware review path and
+is not blocked on a separate Sol review. Do not begin TKT-M14-03 or later-ticket
+work until the TKT-M14-02 handoff is complete.
 
 ## Known-good baseline
 
@@ -76,10 +78,18 @@ static product. Reuse them in the local-first architecture where compatible.
 
 ## Review rule
 
-Every implementation PR receives an independent review according to the active
-repository workflow and ticket risk contract. Use
-`.codex/skills/tyrian-pr-review/SKILL.md` when a dedicated review session is
-required.
+The active quota-aware review policy is in
+`docs/workflow/model-effort-guide.md`.
+
+- NORMAL tickets: Terra High implementation + independent Terra review
+  subagent/check + required tests/CI is sufficient by default.
+- SOL-GATED tickets: the implementation PR must remain **Draft** until a fresh
+  separate Sol XHigh review returns APPROVE and validation is green.
+- R3 risk classification alone does not create a Sol review gate.
+
+Do not rely on old ticket wording that equates every R3 ticket with mandatory
+flagship XHigh review; the central model-effort guide supersedes that review-model
+selection.
 
 ## State-maintenance rule
 
@@ -95,3 +105,6 @@ should use the matching milestone. Every implementation PR must include
 `Closes #<issue-number>` so merging to the default branch closes the ticket
 automatically. The implementation agent should set the PR milestone through the
 available GitHub tooling when possible and report explicitly if it cannot.
+
+SOL-GATED PRs use Draft state as the merge blocker. NORMAL PRs should not carry
+legacy blanket R3/XHigh blocker text.
