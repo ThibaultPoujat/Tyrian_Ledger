@@ -16,7 +16,8 @@ Each implementation session loads the minimum durable context:
 4. current milestone context;
 5. one assigned ticket;
 6. relevant `docs/verification/VERIFY-REGISTER.md` entries;
-7. specialized source/spec/ADR files only when required.
+7. `docs/workflow/model-effort-guide.md`;
+8. specialized source/spec/ADR files only when required.
 
 Do not load all historical milestones or the entire specification tree for a
 routine ticket.
@@ -25,14 +26,11 @@ routine ticket.
 
 A ticket is the unit of product work. Default rule:
 
-**one implementation ticket = one fresh implementation session.**
+**one implementation ticket = one implementation session.**
 
 A separate session may be used for focused fixes/tests if necessary, but must
-remain scoped to the same ticket. The review is always a fresh session.
-
-Do not continue directly into the next ticket merely because context remains.
-Do not run concurrent tasks that edit the same files or depend on the same
-unresolved decision. Use separate worktrees for genuinely independent work.
+remain scoped to the same ticket. Do not begin the next ticket merely because
+context remains.
 
 ## Standard implementation lifecycle
 
@@ -40,29 +38,46 @@ unresolved decision. Use separate worktrees for genuinely independent work.
 2. Inspect current Git/repository state and relevant VERIFY items.
 3. Make a plan of at most five steps.
 4. Implement only the ticket outcome.
-5. Run focused validation, then broader checks only when justified.
+5. Run focused validation, then broader checks when justified.
 6. Inspect the diff for scope expansion, secrets, data-loss risk, and stale docs.
-7. Commit/push/open the PR according to `delivery-protocol.md`.
-8. Write the required completion report including the short functional summary.
-9. Stop.
+7. Run the review path selected by `model-effort-guide.md`.
+8. Commit/push/open the PR according to `delivery-protocol.md`.
+9. Write the required completion report including the short functional summary.
+10. Stop.
 
 The next session recovers from repository state; it does not require previous
 chat history.
 
-## Fresh independent review lifecycle
+## Review paths
 
-Use `.codex/skills/tyrian-pr-review/SKILL.md`.
+Review-model selection is defined centrally in
+`docs/workflow/model-effort-guide.md`. **R3 by itself does not require Sol.**
 
-The reviewer starts from the ticket, canonical docs, Git diff, and validation
-evidence rather than the implementation explanation. Default review is
-read-only and findings-first.
+### NORMAL
 
-For R3 financial, data, security, network-exposure, or architecture-authority
-work, use a fresh flagship-model XHigh review. See
-`docs/workflow/model-effort-guide.md`.
+For tickets not listed in the explicit Sol gate:
 
-If findings require fixes, the owner may ask for a scoped review-and-fix pass on
-the same ticket branch. Do not turn review into the next feature ticket.
+- Terra High planning/implementation is the default;
+- use an independent Terra review subagent/check when supported;
+- run all ticket-required tests and CI;
+- a separate review session is optional, not a merge requirement;
+- escalate to Sol only for unresolved high-consequence ambiguity, uncertain
+  Important/Blocker findings, or explicit owner request.
+
+### SOL-GATED
+
+For the explicit Sol-gated ticket list:
+
+- implement/fix with Terra High by default;
+- open the PR as Draft;
+- use `.codex/skills/tyrian-pr-review/SKILL.md` in a fresh separate Sol XHigh
+  session;
+- keep the PR Draft while findings remain;
+- after APPROVE and green validation, mark the PR Ready for Review;
+- owner performs the final merge.
+
+Draft state is the merge blocker. Do not rely on the owner remembering the
+Sol-gate list manually.
 
 ## VERIFY and BLOCKED
 
@@ -84,17 +99,12 @@ and proceed with assumptions clearly isolated from financial truth.
 
 ## Testing policy
 
-For code tickets, test changed behavior and the dangerous boundaries around it.
-Run narrow relevant tests first. Broaden once when the integration risk justifies
-it.
+For code tickets, test changed behavior and dangerous boundaries around it. Run
+narrow relevant tests first; broaden when integration risk justifies it.
 
-R3 tickets require edge/regression cases appropriate to their authority. A
-financial formula with only happy-path tests is incomplete.
-
-For documentation tickets, validate consistency, links/read order, acceptance
-criteria, ticket structure, dependency validity/cycles, and stale contradictory
-guidance rather than inventing runtime tests. Documentation that changes an
-architecture/security authority boundary remains R3 review work.
+R3 tickets still require edge/regression cases appropriate to their authority,
+regardless of whether review path is NORMAL or SOL-GATED. The quota-aware policy
+changes reviewer/model selection, not correctness standards.
 
 Never weaken/delete a test merely to obtain green CI.
 

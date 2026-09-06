@@ -8,59 +8,61 @@ implementation and does not merge its own PR.
 
 ## Model selection
 
-Choose model/effort by risk rather than milestone number. The detailed matrix is
+The authoritative quota-aware policy is
 `docs/workflow/model-effort-guide.md`.
 
 Default references:
 
 - routine/mechanical: GPT-5.6 Terra Medium/High;
-- normal implementation: Terra High;
-- complex implementation: Terra High or GPT-5.6 Sol High;
-- financial/accounting/persistence/security/private-data/statistical/
-  recommendation/network-exposure/architecture-authority review: fresh
-  flagship XHigh, normally Sol XHigh; GPT-6 Astra may replace Sol when it is
-  available to the owner.
+- normal and complex implementation: **Terra High by default**;
+- NORMAL review: independent Terra review subagent/check plus required tests/CI;
+- SOL-GATED review: fresh separate Sol XHigh, only for the explicit ticket list
+  in the model-effort guide.
 
-Independent context is more important than asking the implementation session to
-self-review at higher effort.
+Risk class still controls test depth and reviewer focus, but **R3 does not by
+itself require Sol or a separate review session**.
 
 ## Ticket lifecycle
 
 1. The owner selects one ticket or provides a functional brief.
 2. The implementation session reads `CURRENT.md`, `AGENTS.md`, current context,
-   and that ticket.
-3. It implements only that ticket in an isolated branch/worktree, validates,
-   opens a PR, and writes a short functional summary.
-4. A **fresh** review session uses the Tyrian PR review skill to check the PR
-   against the ticket, canonical docs, relevant ADRs, tests, security/data
-   boundaries, and diff.
+   the ticket, and the model-effort guide.
+3. It implements only that ticket in an isolated branch/worktree and validates.
+4. It runs the ticket's review path:
+   - NORMAL: independent Terra review subagent/check;
+   - SOL-GATED: create/keep the PR Draft and hand off to a fresh Sol XHigh
+     review session.
 5. Confirmed findings are fixed within ticket scope and revalidated.
-6. CI passes. The owner checks the functional summary/behavior and merges.
-7. `CURRENT.md` is updated when the active project state/next ticket changes.
+6. CI passes. A SOL-GATED PR remains Draft until Sol APPROVE, then becomes Ready.
+7. The owner checks the functional summary/behavior and merges.
+8. GitHub closes the issue through `Closes #<issue-number>` and the agent-managed
+   `CURRENT.md` handoff keeps repository state current.
 
 Do not ask one task to implement an entire milestone. Do not combine consecutive
-tickets because the model still has context budget.
+tickets because context remains.
 
 ## Starting an implementation task
 
-For an existing ticket:
+For an existing ticket, a short prompt is enough:
 
-> Implement `TKT-Mxx-yy`. Read `CURRENT.md`, `AGENTS.md`, the milestone context,
-> and the ticket first. Work only on that ticket in an isolated branch/worktree.
-> Validate it, open a PR, include the required short functional summary, and
-> stop. If a real owner decision gate is required, present the decision and
-> options; otherwise proceed autonomously.
+> Implement issue #XX exactly. Follow `CURRENT.md`, `AGENTS.md`, the ticket, and
+> the repository workflow. Use Plan mode first, then build only this ticket,
+> validate it, run the required review path, open/update the PR, and stop. Do
+> not merge.
 
-## Starting a review task
+The repository, not the prompt, carries the architecture, review gate, milestone,
+closing keyword, and handoff rules.
 
-Use a fresh context:
+## Starting a separate review task
 
-> Review the PR for `TKT-Mxx-yy` using the `tyrian-pr-review` skill. Do not rely
-> on the implementation conversation. Check the ticket acceptance criteria,
-> canonical docs, diff, tests, financial/security/data invariants, and VERIFY
-> state. Report findings by severity with evidence, include the functional
-> summary and acceptance-criteria matrix, and do not make edits unless I ask for
-> review-and-fix.
+A separate review session is required only for SOL-GATED tickets or an explicit
+escalation. Use a fresh context:
+
+> Review the PR using the `tyrian-pr-review` skill. Read the repository source of
+> truth and exact ticket first. Findings first. Do not modify files or merge.
+
+For NORMAL tickets, the independent Terra review subagent/check inside the
+implementation workflow is sufficient by default.
 
 ## Questions Codex should ask
 
@@ -73,6 +75,6 @@ than a broad technical question.
 
 ## Historical workflow note
 
-M0-M11 records explain the project's evolution. M12 is the active pivot. Old
-static Pages instructions are not authoritative merely because their source
-files/code still exist before TKT-M12-02.
+M0-M11 records explain the project's evolution. M12+ is the active local-first
+roadmap. Earlier workflow statements requiring a fresh separate flagship review
+for every R3 ticket are superseded by the central quota-aware model-effort guide.

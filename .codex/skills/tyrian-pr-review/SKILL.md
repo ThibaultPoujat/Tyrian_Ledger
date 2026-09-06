@@ -1,6 +1,6 @@
 ---
 name: tyrian-pr-review
-description: Review a Tyrian Ledger pull request or ticket branch independently for correctness, acceptance-criteria coverage, financial/data/security invariants, tests, and scope. Use for every implementation PR, especially financial, persistence, statistics, recommendation, or security work.
+description: Review a Tyrian Ledger pull request or ticket branch independently for correctness, acceptance-criteria coverage, financial/data/security invariants, tests, and scope. Use as the separate review skill for SOL-GATED tickets and explicit escalations; NORMAL tickets may use the same checklist through an independent Terra review subagent/check.
 metadata:
   short-description: Independent Tyrian Ledger PR review
 ---
@@ -9,9 +9,9 @@ metadata:
 
 ## Purpose
 
-Perform a fresh-context, findings-first review of one Tyrian Ledger ticket PR.
-The review exists to catch correctness and product-boundary errors that an
-implementation session may be anchored to.
+Perform a findings-first independent review of one Tyrian Ledger ticket PR. The
+same review discipline applies whether invoked by a NORMAL independent Terra
+subagent/check or by a fresh separate SOL-GATED review session.
 
 Default behavior is **review only**. Do not silently modify the branch. If the
 owner explicitly asks for review-and-fix, report findings first, then make only
@@ -24,6 +24,7 @@ Resolve:
 - ticket ID / PR;
 - PR base and head;
 - current milestone;
+- review path from `docs/workflow/model-effort-guide.md`;
 - implementation validation evidence if present.
 
 If a PR/ticket is identifiable from context, do not ask the owner to repeat it.
@@ -35,19 +36,19 @@ If a PR/ticket is identifiable from context, do not ask the owner to repeat it.
 3. `docs/context/permanent-context.md`
 4. current milestone context
 5. assigned ticket
-6. relevant VERIFY entries
-7. relevant canonical specs/ADRs
-8. PR diff and touched source/tests
+6. `docs/workflow/model-effort-guide.md`
+7. relevant VERIFY entries
+8. relevant canonical specs/ADRs
+9. PR diff and touched source/tests
 
-Do not read implementation chat history as review evidence. Do not load unrelated
-historical tickets.
+Do not load unrelated historical tickets.
 
 ## Review procedure
 
 ### 1. Establish the contract
 
 Extract the ticket goal, acceptance criteria, non-goals, dependencies, risk
-class, required tests, owner decisions, and functional outcome.
+class, review path, required tests, owner decisions, and functional outcome.
 
 ### 2. Inspect the diff before accepting the author's explanation
 
@@ -84,7 +85,7 @@ application -> browser/logs, not only redaction helper names.
 
 Run or inspect the narrow required tests first. Broaden when integration risk
 justifies it. A test that duplicates the implementation formula without an
-independent expected vector is weak evidence for R3 financial logic.
+independent expected vector is weak evidence for high-risk financial logic.
 
 Never weaken tests to make the PR pass.
 
@@ -108,12 +109,8 @@ Report findings first, ordered:
 - **Minor** — bounded maintainability/docs/test clarity issue that does not make
   the feature wrong.
 
-Every finding includes:
-
-- path and line/range when available;
-- observed evidence;
-- impact in functional terms;
-- concise recommended correction.
+Every finding includes path/location, evidence, functional impact, and concise
+recommended correction.
 
 Then include:
 
@@ -125,16 +122,30 @@ Then include:
 5. **Residual risk**.
 6. **Verdict** — `APPROVE`, `CHANGES REQUESTED`, or `BLOCKED`.
 
-If there are no findings, say so explicitly; do not invent stylistic nits to
-make a review look useful.
+If there are no findings, say so explicitly; do not invent stylistic nits.
 
 ## Independence and model effort
 
-Use `docs/workflow/model-effort-guide.md`.
+Use `docs/workflow/model-effort-guide.md` as authority.
 
-For R3 tickets, prefer a fresh flagship-model XHigh review. A stronger model does
-not excuse missing tests or an unreviewed acceptance criterion.
+- **NORMAL:** an independent Terra review subagent/check is sufficient by default
+  together with ticket-required tests and CI. A separate session is optional.
+- **SOL-GATED:** review in a fresh separate Sol XHigh session. The PR must remain
+  Draft until this review returns APPROVE and required validation is green.
+- Risk class R3 alone does not select Sol.
+
+For a SOL-GATED re-review after fixes, focus on the prior findings and regression
+risk while still checking new changes for introduced defects.
+
+## PR state for SOL-GATED reviews
+
+If a SOL-GATED PR is not Draft when review begins, treat that as an **Important
+process finding** and convert it to Draft when the available GitHub tooling and
+review role permit. Do not mark it Ready while Blocker/Important findings remain.
+After APPROVE and green required validation, it may be marked Ready for the
+owner's final merge decision.
 
 ## Stop condition
 
-After the review report, stop. Do not start the next ticket. Do not merge.
+After the review report/state handoff, stop. Do not start the next ticket. Do not
+merge.
