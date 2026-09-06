@@ -79,6 +79,27 @@ Open `http://localhost:5173`. The React shell calls the host's keyless
 `docs/development/local-runtime.md` for the production publish sequence and the
 binding, Host, CORS, and unsafe-request security contract.
 
+## Back up, restore, or clear local data
+
+Tyrian Ledger keeps its database on this computer. The application shows the
+exact database and backup-folder locations under **Backup and recovery**. By
+default, the database is named `tyrian-ledger.db` in your operating system's
+per-user application-data folder, inside `Tyrian Ledger`; backups are in its
+`backups` subfolder. A developer can set a different absolute database location
+with `TyrianLedger__Database__Path`.
+
+Use **Create local backup** to make a timestamped, consistent copy while the
+application is running. To restore one, select the backup file and type
+`RESTORE LOCAL DATA`. Tyrian Ledger checks the file and schema before changing
+anything, and makes a backup of the current data first. If a backup is invalid
+or incompatible, your active data is kept.
+
+To remove synced account history and current-order records from the active
+database, type `CLEAR PERSONAL DATA`. This keeps shared item metadata and local
+settings. Existing backup files are intentionally kept, so delete those files
+yourself too if you want to permanently remove every local copy. None of these
+operations uploads data or creates cloud backups.
+
 ## Financial truth
 
 Authoritative financial behavior is deterministic and tested:

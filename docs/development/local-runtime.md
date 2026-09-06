@@ -100,3 +100,26 @@ curl --request POST http://127.0.0.1:5080/api/personal-trading-post/sync \
 The JSON response is always `no-store` and contains only a safe outcome,
 attempt timestamp, successful record counts, observed completed-history
 coverage, and a stable error category when the operation cannot complete.
+
+## Local data recovery
+
+The host creates the SQLite database before serving requests. Its default path
+is the operating system's per-user local application-data directory followed by
+`Tyrian Ledger/tyrian-ledger.db`; set `TyrianLedger__Database__Path` to an
+absolute path only when you deliberately need another location. The running
+application's **Backup and recovery** panel shows the exact resolved database
+path and managed backup folder, so normal users do not need SQLite knowledge.
+
+Use that panel to create timestamped local backups. Restoring a selected backup
+requires the exact `RESTORE LOCAL DATA` confirmation. The host validates its
+SQLite integrity and migration compatibility in a staging copy before it can
+replace the live database, and it creates a `pre-restore` backup of the current
+database first. A failed, cancelled, corrupt, or incompatible restore leaves
+the live database unchanged.
+
+Clearing personal account data requires the exact `CLEAR PERSONAL DATA`
+confirmation. It removes all account scopes, completed transactions, current
+orders, observations, and sync state, while retaining schema metadata, shared
+item metadata, and typed settings. Managed backups are deliberately retained;
+delete them separately for a complete local privacy purge. Backup, restore, and
+clear are local-only operations—there is no scheduled or cloud upload path.

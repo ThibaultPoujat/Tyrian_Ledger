@@ -101,6 +101,7 @@ public static class Program
                 var result = await synchronizationService.SynchronizeAsync(cancellationToken).ConfigureAwait(false);
                 await PersonalTradingPostSynchronizationResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
             });
+        app.MapLocalDataEndpoints();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 
         MapFrontend(app, builder.Configuration);

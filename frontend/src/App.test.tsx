@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
@@ -8,6 +8,16 @@ beforeEach(() => {
       return Promise.resolve({
         ok: true,
         json: vi.fn().mockResolvedValue({ status: 'healthy' }),
+      });
+    }
+
+    if (input === '/api/local-data') {
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          databasePath: '/synthetic/Tyrian Ledger/tyrian-ledger.db',
+          backupDirectoryPath: '/synthetic/Tyrian Ledger/backups',
+        }),
       });
     }
 
@@ -31,8 +41,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('M13 local host shell', () => {
-  it('shows the local foundation and safe no-key status without offering account or trading actions', async () => {
+describe('M14 local data controls', () => {
+  it('shows the local foundation, safe no-key status, and guarded recovery controls', async () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { name: 'The local application foundation is running.' })).toBeVisible();
@@ -41,7 +51,11 @@ describe('M13 local host shell', () => {
     expect(await screen.findByText('Local host connected')).toBeVisible();
     expect(await screen.findByText('No ArenaNet key configured')).toBeVisible();
     expect(screen.getByText(/never asks the browser to store or send it/i)).toBeVisible();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Backup and recovery' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Create local backup' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Clear personal account data' })).toBeDisabled();
+    expect(screen.getByText('/synthetic/Tyrian Ledger/backups')).toBeVisible();
   });
 
   it('calls only same-origin safe contracts and does not use browser storage', async () => {
@@ -57,18 +71,47 @@ describe('M13 local host shell', () => {
         'X-Tyrian-Ledger-Request': '1',
       },
     }));
+    expect(fetch).toHaveBeenCalledWith('/api/local-data', expect.objectContaining({
+      headers: {
+        Accept: 'application/json',
+        'X-Tyrian-Ledger-Request': '1',
+      },
+    }));
     expect(Storage.prototype.getItem).not.toHaveBeenCalled();
     expect(Storage.prototype.setItem).not.toHaveBeenCalled();
     expect(Storage.prototype.removeItem).not.toHaveBeenCalled();
   });
 
-  it('reports an unavailable host without exposing another feature path', async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('connection failed'));
+  it('reports an unavailable host while leaving local recovery guidance available', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/health') {
+        return Promise.reject(new TypeError('connection failed'));
+      }
+
+      if (input === '/api/local-data') {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            databasePath: '/synthetic/Tyrian Ledger/tyrian-ledger.db',
+            backupDirectoryPath: '/synthetic/Tyrian Ledger/backups',
+          }),
+        } as unknown as Response);
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          state: 'not_configured',
+          grantedPermissions: [],
+          missingRequiredPermissions: ['account', 'tradingpost'],
+        }),
+      } as unknown as Response);
+    });
 
     render(<App />);
 
     expect(await screen.findByText('Local host unavailable')).toBeVisible();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Backup and recovery' })).toBeVisible();
   });
 
   it('keeps vault setup guidance available when native-store status is unavailable', async () => {
@@ -121,5 +164,23 @@ describe('M13 local host shell', () => {
     expect(await screen.findByText('ArenaNet key needs permission: tradingpost')).toBeVisible();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain('<img src=x');
+  });
+
+  it('requires the exact clear confirmation before the browser can request deletion', async () => {
+    render(<App />);
+
+    const clearConfirmation = await screen.findByLabelText('Type CLEAR PERSONAL DATA to continue');
+    fireEvent.change(clearConfirmation, { target: { value: 'CLEAR PERSONAL DATA' } });
+    expect(screen.getByRole('button', { name: 'Clear personal account data' })).toBeEnabled();
+  });
+
+  it('requires both a selected backup and the exact restore confirmation', async () => {
+    render(<App />);
+
+    const restoreFile = await screen.findByLabelText('Backup file');
+    fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
+
+    expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeEnabled();
   });
 });

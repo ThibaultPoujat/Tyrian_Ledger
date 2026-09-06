@@ -16,6 +16,16 @@ type AccountConnectionResponse = {
   missingRequiredPermissions: string[];
 };
 
+type LocalDataLocation = {
+  databasePath: string;
+  backupDirectoryPath: string;
+};
+
+type LocalDataLocationState =
+  | { kind: 'loading' }
+  | { kind: 'unavailable' }
+  | { kind: 'ready'; location: LocalDataLocation };
+
 function isAccountConnectionResponse(payload: unknown): payload is AccountConnectionResponse {
   if (typeof payload !== 'object' || payload === null) {
     return false;
@@ -44,6 +54,22 @@ function accountConnectionMessage(state: AccountConnectionState, missingPermissi
     case 'unavailable':
       return 'ArenaNet key status unavailable';
   }
+}
+
+function isLocalDataLocation(payload: unknown): payload is LocalDataLocation {
+  if (typeof payload !== 'object' || payload === null) {
+    return false;
+  }
+
+  const candidate = payload as Record<string, unknown>;
+  return typeof candidate.databasePath === 'string' && typeof candidate.backupDirectoryPath === 'string';
+}
+
+function localRequestHeaders(): Record<string, string> {
+  return {
+    Accept: 'application/json',
+    'X-Tyrian-Ledger-Request': '1',
+  };
 }
 
 export default function App() {
@@ -153,6 +179,7 @@ export default function App() {
                 <p>Use a dedicated key with account and trading-post access for future personal Trading Post features.</p>
               )}
             </section>
+            <LocalDataPanel />
             <div className="transition-details">
               <section aria-labelledby="runtime-title">
                 <h2 id="runtime-title">Local by default</h2>
@@ -160,7 +187,7 @@ export default function App() {
               </section>
               <section aria-labelledby="boundary-title">
                 <h2 id="boundary-title">A safe starting point</h2>
-                <p>No ArenaNet key is required. No account, order, scanner, recommendation, or database feature has been added.</p>
+                <p>No ArenaNet key is required. Local backups and recovery stay on this computer; trading, scanner, and recommendation features are not automated.</p>
               </section>
             </div>
           </section>
@@ -172,5 +199,145 @@ export default function App() {
         <p>Guild Wars 2 © ArenaNet, LLC. All rights reserved. Guild Wars 2 and GW2 are trademarks or registered trademarks of NCSOFT Corporation.</p>
       </footer>
     </div>
+  );
+}
+
+function LocalDataPanel() {
+  const [location, setLocation] = useState<LocalDataLocationState>({ kind: 'loading' });
+  const [message, setMessage] = useState<string | null>(null);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreConfirmation, setRestoreConfirmation] = useState('');
+  const [clearConfirmation, setClearConfirmation] = useState('');
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch('/api/local-data', { headers: localRequestHeaders(), signal: controller.signal })
+      .then(async (response) => {
+        const payload: unknown = await response.json();
+        if (response.ok && isLocalDataLocation(payload)) {
+          setLocation({ kind: 'ready', location: payload });
+        } else {
+          setLocation({ kind: 'unavailable' });
+        }
+      })
+      .catch((error) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setLocation({ kind: 'unavailable' });
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  const createBackup = () => {
+    setIsBackingUp(true);
+    setMessage(null);
+    void fetch('/api/local-data/backup', { method: 'POST', headers: localRequestHeaders() })
+      .then(async (response) => {
+        const payload: unknown = await response.json();
+        if (!response.ok || typeof payload !== 'object' || payload === null || typeof (payload as Record<string, unknown>).fileName !== 'string') {
+          throw new Error('backup failed');
+        }
+        setMessage(`Backup created: ${(payload as Record<string, string>).fileName}`);
+      })
+      .catch(() => setMessage('Backup could not be created. Your current local data has not been changed.'))
+      .finally(() => setIsBackingUp(false));
+  };
+
+  const restore = () => {
+    if (restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA') {
+      return;
+    }
+
+    setIsRestoring(true);
+    setMessage(null);
+    const form = new FormData();
+    form.append('backup', restoreFile);
+    form.append('confirmation', restoreConfirmation);
+    void fetch('/api/local-data/restore', { method: 'POST', headers: localRequestHeaders(), body: form })
+      .then(async (response) => {
+        const payload: unknown = await response.json();
+        if (!response.ok || typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'restored') {
+          throw new Error('restore failed');
+        }
+        const preRestore = (payload as Record<string, unknown>).preRestoreBackupFileName;
+        setMessage(typeof preRestore === 'string'
+          ? `Backup restored. Your previous data was saved as ${preRestore}.`
+          : 'Backup restored.');
+        setRestoreFile(null);
+        setRestoreConfirmation('');
+      })
+      .catch(() => setMessage('The selected backup could not be restored. Your current local data was kept.'))
+      .finally(() => setIsRestoring(false));
+  };
+
+  const clearPersonalData = () => {
+    if (clearConfirmation !== 'CLEAR PERSONAL DATA') {
+      return;
+    }
+
+    setIsClearing(true);
+    setMessage(null);
+    void fetch('/api/local-data/clear-personal', {
+      method: 'POST',
+      headers: { ...localRequestHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation: clearConfirmation }),
+    })
+      .then(async (response) => {
+        const payload: unknown = await response.json();
+        if (!response.ok || typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'personal_data_cleared') {
+          throw new Error('clear failed');
+        }
+        setMessage('Personal account data cleared. Existing backup files were kept.');
+        setClearConfirmation('');
+      })
+      .catch(() => setMessage('Personal data could not be cleared. Your current local data was kept.'))
+      .finally(() => setIsClearing(false));
+  };
+
+  return (
+    <section aria-labelledby="local-data-title" className="local-data-panel">
+      <p className="eyebrow">Local data</p>
+      <h2 id="local-data-title">Backup and recovery</h2>
+      <p>Backups stay on this computer. Tyrian Ledger never uploads your database or your backup files.</p>
+      {location.kind === 'loading' && <p aria-live="polite" role="status">Finding local data locations…</p>}
+      {location.kind === 'unavailable' && <p role="alert">Local data locations are unavailable. Check that the local host is running.</p>}
+      {location.kind === 'ready' && (
+        <dl className="local-data-locations">
+          <div><dt>Database</dt><dd><code>{location.location.databasePath}</code></dd></div>
+          <div><dt>Backups</dt><dd><code>{location.location.backupDirectoryPath}</code></dd></div>
+        </dl>
+      )}
+      <div className="local-data-action">
+        <h3>Create a backup</h3>
+        <p>Create a timestamped, consistent copy before making major changes to your computer or this application.</p>
+        <button disabled={isBackingUp || location.kind !== 'ready'} onClick={createBackup} type="button">
+          {isBackingUp ? 'Creating backup…' : 'Create local backup'}
+        </button>
+      </div>
+      <div className="local-data-action">
+        <h3>Restore a backup</h3>
+        <p>Restoring replaces the active database only after the selected file is checked. A backup of the current data is created first.</p>
+        <label htmlFor="restore-backup">Backup file</label>
+        <input id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
+        <label htmlFor="restore-confirmation">Type RESTORE LOCAL DATA to continue</label>
+        <input id="restore-confirmation" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} />
+        <button disabled={isRestoring || restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restore} type="button">
+          {isRestoring ? 'Restoring backup…' : 'Restore selected backup'}
+        </button>
+      </div>
+      <div className="local-data-action local-data-action--danger">
+        <h3>Clear personal account data</h3>
+        <p>This permanently removes synced account history and current-order records from the active database. Shared item metadata and settings remain. Existing backup files are not deleted.</p>
+        <label htmlFor="clear-confirmation">Type CLEAR PERSONAL DATA to continue</label>
+        <input id="clear-confirmation" value={clearConfirmation} onChange={(event) => setClearConfirmation(event.target.value)} />
+        <button disabled={isClearing || clearConfirmation !== 'CLEAR PERSONAL DATA'} onClick={clearPersonalData} type="button">
+          {isClearing ? 'Clearing personal data…' : 'Clear personal account data'}
+        </button>
+      </div>
+      {message !== null && <p aria-live="polite" className="local-data-message" role="status">{message}</p>}
+    </section>
   );
 }

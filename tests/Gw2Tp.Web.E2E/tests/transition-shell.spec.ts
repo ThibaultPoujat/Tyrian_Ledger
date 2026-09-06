@@ -20,8 +20,9 @@ test('loads the React shell and health contract from the local host without exte
   await expect(page.getByRole('heading', { name: 'The local application foundation is running.' })).toBeVisible();
   await expect(page.getByText('Local host connected')).toBeVisible();
   await expect(page.getByText('No ArenaNet key configured')).toBeVisible();
-  await expect(page.getByRole('button')).toHaveCount(0);
-  expect(apiRequests).toEqual(expect.arrayContaining(['/api/health', '/api/account-connection']));
+  await expect(page.getByRole('heading', { name: 'Backup and recovery' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create local backup' })).toBeVisible();
+  expect(apiRequests).toEqual(expect.arrayContaining(['/api/health', '/api/account-connection', '/api/local-data']));
   expect(externalRequests).toEqual([]);
 });
 

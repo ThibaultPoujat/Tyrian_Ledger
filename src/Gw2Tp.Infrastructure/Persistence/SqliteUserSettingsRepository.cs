@@ -2,10 +2,15 @@ using Gw2Tp.Application.Persistence;
 
 namespace Gw2Tp.Infrastructure.Persistence;
 
-internal sealed class SqliteUserSettingsRepository(ISqliteConnectionFactory connectionFactory) : IUserSettingsRepository
+internal sealed class SqliteUserSettingsRepository(
+    ISqliteConnectionFactory connectionFactory,
+    ISqliteDatabaseGate? databaseGate = null) : IUserSettingsRepository
 {
+    private readonly ISqliteDatabaseGate gate = databaseGate ?? new SqliteDatabaseGate();
+
     public async Task<UserSettings?> GetAsync(CancellationToken cancellationToken = default)
     {
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -31,6 +36,7 @@ internal sealed class SqliteUserSettingsRepository(ISqliteConnectionFactory conn
     public async Task SaveAsync(UserSettings settings, CancellationToken cancellationToken = default)
     {
         ValidateSettings(settings);
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """

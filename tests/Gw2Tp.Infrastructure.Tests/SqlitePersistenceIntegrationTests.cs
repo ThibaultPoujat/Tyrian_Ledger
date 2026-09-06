@@ -1,3 +1,4 @@
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
@@ -297,6 +298,194 @@ public sealed class SqlitePersistenceIntegrationTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => database.Migrator.MigrateAsync());
     }
 
+    [Fact]
+    public async Task Populated_database_backup_restore_round_trip_is_restart_safe()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [original],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, [CurrentOrder(2001, PersonalTradingPostSide.Sell, 84, 456, 1)]),
+            [new StoredItemMetadata(42, "Original item", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+        await database.UserSettings.SaveAsync(new UserSettings(1, 500, 250, 1500, FirstObservedAtUtc));
+
+        var backup = await database.Recovery.CreateBackupAsync();
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [CompletedTransaction(1002, PersonalTradingPostSide.Sell, 84, 999, 1)],
+            new CurrentPersonalTradingPostOrderSnapshot(SecondObservedAtUtc, []),
+            [new StoredItemMetadata(84, "Later item", SecondObservedAtUtc)],
+            SecondObservedAtUtc,
+            SecondObservedAtUtc,
+            SecondObservedAtUtc));
+
+        await using var backupContents = File.OpenRead(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName));
+        var result = await database.Recovery.RestoreAsync(backupContents);
+
+        Assert.Equal(LocalDataRestoreOutcome.Restored, result.Outcome);
+        Assert.NotNull(result.PreRestoreBackupFileName);
+        Assert.True(File.Exists(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, result.PreRestoreBackupFileName!)));
+
+        var restartedGate = new SqliteDatabaseGate();
+        var restartedFactory = new SqliteConnectionFactory(database.Path);
+        var restartedMigrator = new SqliteSchemaMigrator(restartedFactory);
+        await restartedMigrator.MigrateAsync();
+        var restartedRepository = new SqlitePersonalTradingPostRepository(restartedFactory, restartedGate);
+        var restartedAccount = await restartedRepository.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await restartedRepository.GetCompletedTransactionsAsync(restartedAccount)).Select(item => item.Transaction));
+        Assert.Equal("Original item", (await new SqliteItemMetadataRepository(restartedFactory, restartedGate).GetAsync(42))?.Name);
+        Assert.Equal(500, (await new SqliteUserSettingsRepository(restartedFactory, restartedGate).GetAsync())?.MinimumProfitInCopper);
+    }
+
+    [Fact]
+    public async Task Invalid_or_incompatible_restore_never_changes_the_live_database()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+
+        await using (var invalid = new MemoryStream("not a SQLite database"u8.ToArray()))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(invalid)).Outcome);
+        }
+
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "future-schema.db");
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at_utc TEXT NOT NULL); INSERT INTO schema_migrations VALUES (99, 'future', '2026-09-06T00:00:00.0000000+00:00');";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
+    public async Task Structurally_incompatible_current_version_restore_never_changes_the_live_database()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var structurallyIncompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "missing-required-index.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), structurallyIncompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={structurallyIncompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "DROP INDEX ix_completed_transactions_account_completed_at;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(structurallyIncompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
+    public async Task Failed_restore_replacement_leaves_live_data_untouched()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        var later = CompletedTransaction(1002, PersonalTradingPostSide.Sell, 84, 456, 1);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [later], new CurrentPersonalTradingPostOrderSnapshot(SecondObservedAtUtc, []), [],
+            SecondObservedAtUtc, SecondObservedAtUtc, SecondObservedAtUtc));
+        var failingRecovery = new SqliteLocalDataRecoveryService(database.Factory, database.Gate, new FailingReplaceFileOperations());
+
+        await using (var validBackup = File.OpenRead(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.RestoreFailed, (await failingRecovery.RestoreAsync(validBackup)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original, later], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
+    public async Task Interrupted_restore_copy_leaves_live_data_untouched()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+
+        await using var interrupted = new InterruptedReadStream();
+        Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(interrupted)).Outcome);
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
+    public async Task Compatible_older_backup_is_migrated_in_staging_before_restore()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var olderBackupPath = Path.Combine(Path.GetDirectoryName(database.Path)!, "version-two-backup.db");
+        var olderFactory = new SqliteConnectionFactory(olderBackupPath);
+        await new SqliteSchemaMigrator(olderFactory).MigrateToAsync(2);
+
+        await using var backup = File.OpenRead(olderBackupPath);
+        Assert.Equal(LocalDataRestoreOutcome.Restored, (await database.Recovery.RestoreAsync(backup)).Outcome);
+        Assert.Equal([1, 2, 3], await database.GetMigrationVersionsAsync());
+    }
+
+    [Fact]
+    public async Task Clear_personal_data_removes_every_account_scope_but_keeps_shared_data_and_backups()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        foreach (var accountScope in new[] { "opaque-account-a", "opaque-account-b" })
+        {
+            await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+                accountScope,
+                [CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2)],
+                new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, [CurrentOrder(2001, PersonalTradingPostSide.Sell, 42, 456, 1)]),
+                [new StoredItemMetadata(42, "Shared item", FirstObservedAtUtc)],
+                FirstObservedAtUtc,
+                FirstObservedAtUtc,
+                FirstObservedAtUtc));
+        }
+        await database.UserSettings.SaveAsync(new UserSettings(1, 500, null, null, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+
+        await database.Recovery.ClearPersonalDataAsync();
+
+        Assert.Equal(0, await database.GetTableCountAsync("account_profiles"));
+        Assert.Equal(0, await database.GetTableCountAsync("completed_tp_transactions"));
+        Assert.Equal(0, await database.GetTableCountAsync("current_tp_orders"));
+        Assert.Equal(0, await database.GetTableCountAsync("current_tp_order_observations"));
+        Assert.Equal(0, await database.GetTableCountAsync("current_order_sync_batches"));
+        Assert.Equal(1, await database.GetTableCountAsync("item_metadata"));
+        Assert.Equal(1, await database.GetTableCountAsync("user_settings"));
+        Assert.Equal([1, 2, 3], await database.GetMigrationVersionsAsync());
+        Assert.True(File.Exists(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)));
+    }
+
     private static CompletedPersonalTradingPostTransaction CompletedTransaction(
         long id,
         PersonalTradingPostSide side,
@@ -334,6 +523,43 @@ public sealed class SqlitePersistenceIntegrationTests
         throw new DirectoryNotFoundException("Could not locate the Tyrian Ledger repository root.");
     }
 
+    private sealed class InterruptedReadStream : Stream
+    {
+        private bool hasRead;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override void Flush() => throw new NotSupportedException();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (hasRead)
+            {
+                throw new IOException("Synthetic interrupted upload.");
+            }
+
+            hasRead = true;
+            buffer.Span[0] = 0x53;
+            return ValueTask.FromResult(1);
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private sealed class FailingReplaceFileOperations : ILocalDataFileOperations
+    {
+        public void ReplaceDatabase(string stagedDatabasePath, string liveDatabasePath) =>
+            throw new IOException("Synthetic replacement failure.");
+    }
+
     private sealed class TestDatabase : IAsyncDisposable
     {
         private readonly string directory;
@@ -342,14 +568,18 @@ public sealed class SqlitePersistenceIntegrationTests
         {
             this.directory = directory;
             Factory = factory;
+            Gate = new SqliteDatabaseGate();
             Migrator = new SqliteSchemaMigrator(factory);
-            PersonalTradingPost = new SqlitePersonalTradingPostRepository(factory);
-            SynchronizationStore = new SqlitePersonalTradingPostSynchronizationStore(factory);
-            ItemMetadata = new SqliteItemMetadataRepository(factory);
-            UserSettings = new SqliteUserSettingsRepository(factory);
+            PersonalTradingPost = new SqlitePersonalTradingPostRepository(factory, Gate);
+            SynchronizationStore = new SqlitePersonalTradingPostSynchronizationStore(factory, Gate);
+            ItemMetadata = new SqliteItemMetadataRepository(factory, Gate);
+            UserSettings = new SqliteUserSettingsRepository(factory, Gate);
+            Recovery = new SqliteLocalDataRecoveryService(factory, Gate);
         }
 
         public SqliteConnectionFactory Factory { get; }
+
+        public ISqliteDatabaseGate Gate { get; }
 
         public SqliteSchemaMigrator Migrator { get; }
 
@@ -360,6 +590,8 @@ public sealed class SqlitePersistenceIntegrationTests
         public SqliteItemMetadataRepository ItemMetadata { get; }
 
         public SqliteUserSettingsRepository UserSettings { get; }
+
+        public SqliteLocalDataRecoveryService Recovery { get; }
 
         public string Path => Factory.DatabasePath;
 
@@ -403,6 +635,14 @@ public sealed class SqlitePersistenceIntegrationTests
             }
 
             return tableNames;
+        }
+
+        public async Task<int> GetTableCountAsync(string tableName)
+        {
+            await using var connection = await Factory.OpenConnectionAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT COUNT(*) FROM {tableName};";
+            return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
         }
 
         public async Task<IReadOnlyList<string>> GetAllColumnNamesAsync()

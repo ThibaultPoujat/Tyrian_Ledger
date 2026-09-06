@@ -165,6 +165,69 @@ public sealed class LocalHostIntegrationTests
     }
 
     [Fact]
+    public async Task Local_data_endpoints_are_no_store_guarded_and_return_only_safe_recovery_metadata()
+    {
+        var databaseDirectory = Path.Combine(Path.GetTempPath(), "TyrianLedger.Web.Tests", Guid.NewGuid().ToString("N"));
+        var databasePath = Path.Combine(databaseDirectory, "tyrian-ledger.db");
+        try
+        {
+            await using var app = await StartApplicationAsync("Production", new Dictionary<string, string?>
+            {
+                ["TyrianLedger:Database:Path"] = databasePath,
+            });
+            using var client = app.GetTestClient();
+
+            using var locationResponse = await client.GetAsync("/api/local-data");
+            var locationBody = await locationResponse.Content.ReadAsStringAsync();
+            Assert.Equal(HttpStatusCode.OK, locationResponse.StatusCode);
+            Assert.Equal("no-store", locationResponse.Headers.CacheControl?.ToString());
+            Assert.Contains("backupDirectoryPath", locationBody, StringComparison.Ordinal);
+            Assert.DoesNotContain("credential", locationBody, StringComparison.OrdinalIgnoreCase);
+
+            using var rejectedClear = await SendJsonAsync(client, "/api/local-data/clear-personal", new { confirmation = "clear" });
+            Assert.Equal(HttpStatusCode.BadRequest, rejectedClear.StatusCode);
+            Assert.Equal("no-store", rejectedClear.Headers.CacheControl?.ToString());
+
+            using var backup = await SendUnsafeAsync(client, HttpMethod.Post, "/api/local-data/backup");
+            var backupBody = await backup.Content.ReadAsStringAsync();
+            Assert.Equal(HttpStatusCode.Created, backup.StatusCode);
+            Assert.Equal("no-store", backup.Headers.CacheControl?.ToString());
+            Assert.Contains("fileName", backupBody, StringComparison.Ordinal);
+            Assert.DoesNotContain(databasePath, backupBody, StringComparison.Ordinal);
+
+            using var invalidRestore = await SendRestoreAsync(client, "RESTORE LOCAL DATA", "not a database");
+            Assert.Equal(HttpStatusCode.BadRequest, invalidRestore.StatusCode);
+            Assert.Equal("no-store", invalidRestore.Headers.CacheControl?.ToString());
+
+            using var clear = await SendJsonAsync(client, "/api/local-data/clear-personal", new { confirmation = "CLEAR PERSONAL DATA" });
+            Assert.Equal(HttpStatusCode.OK, clear.StatusCode);
+            Assert.Equal("no-store", clear.Headers.CacheControl?.ToString());
+
+            foreach (var request in new[]
+                     {
+                         CreateUntrustedLocalDataRequest("/api/local-data/backup"),
+                         CreateUntrustedLocalDataRequest("/api/local-data/restore", new MultipartFormDataContent()),
+                         CreateUntrustedLocalDataRequest("/api/local-data/clear-personal", JsonContent.Create(new { confirmation = "CLEAR PERSONAL DATA" })),
+                     })
+            {
+                using (request)
+                using (var untrustedResponse = await client.SendAsync(request))
+                {
+                    Assert.Equal(HttpStatusCode.Forbidden, untrustedResponse.StatusCode);
+                }
+            }
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(databaseDirectory))
+            {
+                Directory.Delete(databaseDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Untrusted_origin_cannot_invoke_credential_dependent_status_service()
     {
         var statusService = new CountingAccountConnectionStatusService();
@@ -467,6 +530,44 @@ public sealed class LocalHostIntegrationTests
     {
         var request = new HttpRequestMessage(HttpMethod.Get, "/api/health");
         request.Headers.Host = host;
+        return client.SendAsync(request);
+    }
+
+    private static Task<HttpResponseMessage> SendUnsafeAsync(HttpClient client, HttpMethod method, string path)
+    {
+        var request = new HttpRequestMessage(method, path);
+        request.Headers.Add("Origin", "http://localhost");
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        return client.SendAsync(request);
+    }
+
+    private static HttpRequestMessage CreateUntrustedLocalDataRequest(string path, HttpContent? content = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = content };
+        request.Headers.Add("Origin", "https://attacker.example");
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        return request;
+    }
+
+    private static Task<HttpResponseMessage> SendJsonAsync(HttpClient client, string path, object body)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(body),
+        };
+        request.Headers.Add("Origin", "http://localhost");
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        return client.SendAsync(request);
+    }
+
+    private static Task<HttpResponseMessage> SendRestoreAsync(HttpClient client, string confirmation, string contents)
+    {
+        var form = new MultipartFormDataContent();
+        form.Add(new StringContent(confirmation), "confirmation");
+        form.Add(new StringContent(contents), "backup", "selected-backup.db");
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/local-data/restore") { Content = form };
+        request.Headers.Add("Origin", "http://localhost");
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
         return client.SendAsync(request);
     }
 

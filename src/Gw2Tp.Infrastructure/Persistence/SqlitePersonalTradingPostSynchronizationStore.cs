@@ -10,17 +10,21 @@ namespace Gw2Tp.Infrastructure.Persistence;
 /// status are committed together so an incomplete local write cannot replace
 /// last-known-good current orders.
 /// </summary>
-internal sealed class SqlitePersonalTradingPostSynchronizationStore(ISqliteConnectionFactory connectionFactory)
+internal sealed class SqlitePersonalTradingPostSynchronizationStore(
+    ISqliteConnectionFactory connectionFactory,
+    ISqliteDatabaseGate? databaseGate = null)
     : IPersonalTradingPostSynchronizationStore
 {
     private const int SuccessfulOutcome = 1;
     private const int FailedOutcome = 2;
+    private readonly ISqliteDatabaseGate gate = databaseGate ?? new SqliteDatabaseGate();
 
     public async Task CommitSuccessfulSyncAsync(
         PersonalTradingPostSuccessfulSync sync,
         CancellationToken cancellationToken = default)
     {
         ValidateSuccessfulSync(sync);
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         var accountProfileId = await GetOrCreateAccountProfileIdAsync(
@@ -128,6 +132,7 @@ internal sealed class SqlitePersonalTradingPostSynchronizationStore(ISqliteConne
             throw new ArgumentOutOfRangeException(nameof(errorCategory));
         }
 
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         var accountProfileId = await GetOrCreateAccountProfileIdAsync(
