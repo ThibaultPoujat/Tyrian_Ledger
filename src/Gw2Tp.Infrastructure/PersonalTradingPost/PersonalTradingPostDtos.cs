@@ -11,16 +11,16 @@ internal sealed class AccountScopeDto
 internal sealed class PersonalTradingPostTransactionDto
 {
     [JsonPropertyName("id")]
-    public long Id { get; init; }
+    public long? Id { get; init; }
 
     [JsonPropertyName("item_id")]
-    public int ItemId { get; init; }
+    public int? ItemId { get; init; }
 
     [JsonPropertyName("price")]
-    public int Price { get; init; }
+    public int? Price { get; init; }
 
     [JsonPropertyName("quantity")]
-    public int Quantity { get; init; }
+    public int? Quantity { get; init; }
 
     [JsonPropertyName("created")]
     public string? Created { get; init; }

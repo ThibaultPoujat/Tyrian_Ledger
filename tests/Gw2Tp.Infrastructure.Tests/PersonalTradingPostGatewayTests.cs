@@ -22,14 +22,15 @@ public sealed class PersonalTradingPostGatewayTests
     private const string SyntheticKey = "synthetic-gw2-api-key-that-must-not-cross-the-boundary";
 
     [Theory]
-    [InlineData("current/buys", "current-buys.json", 910000001L, false)]
-    [InlineData("current/sells", "current-sells.json", 910000002L, false)]
-    [InlineData("history/buys", "history-buys.json", 910000003L, true)]
-    [InlineData("history/sells", "history-sells.json", 910000004L, true)]
+    [InlineData("current/buys", "current-buys.json", 910000001L, 850, false)]
+    [InlineData("current/sells", "current-sells.json", 910000002L, 905, false)]
+    [InlineData("history/buys", "history-buys.json", 910000003L, 1200, true)]
+    [InlineData("history/sells", "history-sells.json", 910000004L, 1500, true)]
     public async Task Personal_transaction_reads_use_typed_authenticated_paged_requests_and_map_fixtures(
         string endpoint,
         string fixtureName,
         long expectedTransactionId,
+        int expectedPriceInCopper,
         bool hasPurchasedTimestamp)
     {
         var handler = new RecordingHandler(_ => CreatePagedJsonResponse(HttpStatusCode.OK, LoadTransactionFixture(fixtureName)));
@@ -37,29 +38,30 @@ public sealed class PersonalTradingPostGatewayTests
         var scheduler = new ImmediateRequestScheduler();
         var gateway = new PersonalTradingPostGateway(new FixedKeySource(SyntheticKey), httpClient, scheduler);
 
-        var result = await GetTransactionsAsync(gateway, endpoint, page: 2);
+        var result = await GetTransactionsAsync(gateway, endpoint, page: 3);
 
         Assert.True(result.IsSuccess);
         var transactionPage = Assert.IsType<PersonalTransactionPage>(result.Value);
         var transaction = Assert.Single(transactionPage.Transactions);
         Assert.Equal(expectedTransactionId, transaction.TransactionId);
+        Assert.Equal(expectedPriceInCopper, transaction.PriceInCopper);
         Assert.Equal(TimeSpan.Zero, transaction.CreatedAtUtc.Offset);
         Assert.Equal(hasPurchasedTimestamp, transaction.PurchasedAtUtc is not null);
-        Assert.Equal(2, transactionPage.PageNumber);
+        Assert.Equal(3, transactionPage.PageNumber);
         Assert.Equal(50, transactionPage.PageSize);
         Assert.Equal(4, transactionPage.PageCount);
-        Assert.Equal(173, transactionPage.ResultTotal);
+        Assert.Equal(151, transactionPage.ResultTotal);
 
         var request = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Get, request.Method);
         Assert.Equal($"/v2/commerce/transactions/{endpoint}", request.Uri.AbsolutePath);
-        Assert.Equal("2", GetQueryParameters(request.Uri)["page"]);
+        Assert.Equal("3", GetQueryParameters(request.Uri)["page"]);
         Assert.Equal(PersonalTradingPostGateway.SchemaVersion, GetQueryParameters(request.Uri)["v"]);
         Assert.DoesNotContain("access_token", GetQueryParameters(request.Uri).Keys);
         Assert.Equal("Bearer", request.AuthorizationScheme);
         Assert.Equal(SyntheticKey, request.AuthorizationParameter);
         var requestKey = Assert.Single(scheduler.RequestKeys).Value;
-        Assert.Equal($"personal/transactions/{endpoint}/page-2", requestKey);
+        Assert.Equal($"personal/transactions/{endpoint}/page-3/credential-scope-1", requestKey);
         Assert.DoesNotContain(SyntheticKey, requestKey, StringComparison.Ordinal);
     }
 
@@ -79,7 +81,7 @@ public sealed class PersonalTradingPostGatewayTests
         var request = Assert.Single(handler.Requests);
         Assert.Equal("/v2/account", request.Uri.AbsolutePath);
         Assert.Equal(PersonalTradingPostGateway.SchemaVersion, GetQueryParameters(request.Uri)["v"]);
-        Assert.Equal("personal/account", Assert.Single(scheduler.RequestKeys).Value);
+        Assert.Equal("personal/account/credential-scope-1", Assert.Single(scheduler.RequestKeys).Value);
     }
 
     [Theory]
@@ -121,6 +123,73 @@ public sealed class PersonalTradingPostGatewayTests
         Assert.Equal(Gw2ApiErrorCategory.IncompleteData, partial.ErrorCategory);
         Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, missingPurchaseTimestamp.ErrorCategory);
         Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, malformed.ErrorCategory);
+    }
+
+    [Fact]
+    public async Task Omitted_numeric_fields_non_timestamp_dates_and_inconsistent_page_headers_are_invalid_payloads()
+    {
+        var responses = new Queue<HttpResponseMessage>(
+        [
+            CreatePagedJsonResponse(HttpStatusCode.OK, "[{\"id\":1,\"item_id\":2,\"quantity\":1,\"created\":\"2026-09-06T00:00:00Z\"}]"),
+            CreatePagedJsonResponse(HttpStatusCode.OK, "[{\"id\":1,\"item_id\":2,\"price\":3,\"quantity\":1,\"created\":\"2026-09-06\"}]"),
+            CreatePagedJsonResponse(HttpStatusCode.OK, "[{\"id\":1,\"item_id\":2,\"price\":3,\"quantity\":1,\"created\":\"2026-09-06T00:00:00Z\"}]", resultTotal: 173),
+        ]);
+        var handler = new RecordingHandler(_ => responses.Dequeue());
+        using var httpClient = CreateHttpClient(handler);
+        var gateway = new PersonalTradingPostGateway(new FixedKeySource(SyntheticKey), httpClient, new ImmediateRequestScheduler());
+
+        var missingPrice = await gateway.GetCurrentBuyOrdersAsync(3);
+        var dateWithoutTimeZone = await gateway.GetCurrentBuyOrdersAsync(3);
+        var inconsistentHeaders = await gateway.GetCurrentBuyOrdersAsync(3);
+
+        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, missingPrice.ErrorCategory);
+        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, dateWithoutTimeZone.ErrorCategory);
+        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, inconsistentHeaders.ErrorCategory);
+    }
+
+    [Fact]
+    public async Task Empty_first_page_with_zero_paging_totals_is_preserved_as_an_empty_successful_page()
+    {
+        var handler = new RecordingHandler(_ => CreatePagedJsonResponse(
+            HttpStatusCode.OK,
+            "[]",
+            resultCount: 0,
+            resultTotal: 0,
+            pageTotal: 0));
+        using var httpClient = CreateHttpClient(handler);
+        var gateway = new PersonalTradingPostGateway(new FixedKeySource(SyntheticKey), httpClient, new ImmediateRequestScheduler());
+
+        var result = await gateway.GetCurrentBuyOrdersAsync(0);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value?.Transactions ?? []);
+        Assert.Equal(0, result.Value?.PageCount);
+    }
+
+    [Fact]
+    public async Task Personal_reads_coalesce_for_one_credential_but_not_after_a_credential_change()
+    {
+        var handler = new CredentialScopedBlockingHandler();
+        using var httpClient = CreateHttpClient(handler);
+        using var scheduler = CreateScheduler();
+        var keySource = new MutableKeySource(SyntheticKey);
+        var gateway = new PersonalTradingPostGateway(keySource, httpClient, scheduler);
+
+        var firstRequest = gateway.GetCurrentBuyOrdersAsync(3);
+        await handler.WaitForFirstRequestAsync();
+        var coalescedRequest = gateway.GetCurrentBuyOrdersAsync(3);
+        await Task.Yield();
+        Assert.Equal(1, handler.RequestCount);
+
+        keySource.Set("synthetic-replacement-gw2-api-key");
+        var changedCredentialRequest = gateway.GetCurrentBuyOrdersAsync(3);
+        await handler.WaitForSecondRequestAsync();
+        Assert.Equal(2, handler.RequestCount);
+
+        handler.CompleteAll(() => CreatePagedJsonResponse(HttpStatusCode.OK, LoadTransactionFixture("current-buys.json")));
+        var results = await Task.WhenAll(firstRequest, coalescedRequest, changedCredentialRequest);
+
+        Assert.All(results, result => Assert.True(result.IsSuccess));
     }
 
     [Fact]
@@ -231,13 +300,18 @@ public sealed class PersonalTradingPostGatewayTests
     private static HttpResponseMessage CreateJsonResponse(HttpStatusCode statusCode, string payload) =>
         new(statusCode) { Content = new StringContent(payload, Encoding.UTF8, "application/json") };
 
-    private static HttpResponseMessage CreatePagedJsonResponse(HttpStatusCode statusCode, string payload)
+    private static HttpResponseMessage CreatePagedJsonResponse(
+        HttpStatusCode statusCode,
+        string payload,
+        int resultCount = 1,
+        int resultTotal = 151,
+        int pageTotal = 4)
     {
         var response = CreateJsonResponse(statusCode, payload);
         response.Headers.Add("X-Page-Size", "50");
-        response.Headers.Add("X-Page-Total", "4");
-        response.Headers.Add("X-Result-Count", "1");
-        response.Headers.Add("X-Result-Total", "173");
+        response.Headers.Add("X-Page-Total", pageTotal.ToString());
+        response.Headers.Add("X-Result-Count", resultCount.ToString());
+        response.Headers.Add("X-Result-Total", resultTotal.ToString());
         return response;
     }
 
@@ -272,6 +346,16 @@ public sealed class PersonalTradingPostGatewayTests
     {
         public ValueTask<Gw2ApiKeyReadResult> ReadAsync(CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(Gw2ApiKeyReadResult.Unavailable);
+    }
+
+    private sealed class MutableKeySource(string value) : IGw2ApiKeySource
+    {
+        private string _value = value;
+
+        public ValueTask<Gw2ApiKeyReadResult> ReadAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(Gw2ApiKeyReadResult.FromValue(Volatile.Read(ref _value)));
+
+        public void Set(string value) => Volatile.Write(ref _value, value);
     }
 
     private sealed class ThrowingKeySource : IGw2ApiKeySource
@@ -323,6 +407,71 @@ public sealed class PersonalTradingPostGatewayTests
         {
             RequestKeys.Add(requestKey);
             return (await sendAsync(cancellationToken)).Result;
+        }
+    }
+
+    private static Gw2RequestScheduler CreateScheduler() => new(
+        new Gw2ApiSchedulerOptions
+        {
+            RateLimit = new Gw2RateLimitOptions
+            {
+                BurstSize = 20,
+                RefillTokensPerSecond = 20,
+                MaxConcurrentRequests = 5,
+                MaxQueuedRequests = 20,
+            },
+            Retry = new Gw2RetryOptions
+            {
+                On429 = new Gw2BackoffOptions { InitialBackoffMs = 1, MaxBackoffMs = 1, MaxAttempts = 1 },
+                On5xx = new Gw2BackoffOptions { InitialBackoffMs = 1, MaxBackoffMs = 1, MaxAttempts = 1 },
+            },
+            RequestTimeoutMs = 10_000,
+        },
+        NoDelay.Instance);
+
+    private sealed class NoDelay : IGw2RequestDelay
+    {
+        public static NoDelay Instance { get; } = new();
+
+        public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class CredentialScopedBlockingHandler : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource _firstRequestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _secondRequestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly List<TaskCompletionSource<HttpResponseMessage>> _responses = [];
+        private int _requestCount;
+
+        public int RequestCount => Volatile.Read(ref _requestCount);
+
+        public Task WaitForFirstRequestAsync() => _firstRequestStarted.Task;
+
+        public Task WaitForSecondRequestAsync() => _secondRequestStarted.Task;
+
+        public void CompleteAll(Func<HttpResponseMessage> responseFactory)
+        {
+            foreach (var responseSource in _responses)
+            {
+                responseSource.TrySetResult(responseFactory());
+            }
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var responseSource = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _responses.Add(responseSource);
+            var requestCount = Interlocked.Increment(ref _requestCount);
+            if (requestCount == 1)
+            {
+                _firstRequestStarted.TrySetResult();
+            }
+            else if (requestCount == 2)
+            {
+                _secondRequestStarted.TrySetResult();
+            }
+
+            return responseSource.Task;
         }
     }
 

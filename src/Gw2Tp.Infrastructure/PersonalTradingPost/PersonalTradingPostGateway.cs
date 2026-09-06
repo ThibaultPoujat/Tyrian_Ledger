@@ -25,6 +25,9 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
     private readonly HttpClient _httpClient;
     private readonly IGw2RequestScheduler _requestScheduler;
     private readonly TimeSpan _requestTimeout;
+    private readonly object _credentialScopeGate = new();
+    private string? _lastCredential;
+    private long _credentialScope;
 
     public PersonalTradingPostGateway(
         IGw2ApiKeySource apiKeySource,
@@ -125,14 +128,33 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
 
         try
         {
+            var credentialScope = GetCredentialScope(keyResult.Value);
             return await _requestScheduler.ScheduleAsync(
-                new Gw2RequestKey(schedulerKey),
+                // The credential itself never crosses this class's boundary.
+                // A monotonically rotating local generation keeps identical
+                // reads coalesced for one credential while preventing a later
+                // key replacement from joining an in-flight prior-account read.
+                new Gw2RequestKey($"{schedulerKey}/credential-scope-{credentialScope.ToString(CultureInfo.InvariantCulture)}"),
                 requestCancellationToken => SendAsync(keyResult.Value, requestPath, mapAsync, requestCancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Gw2RequestSchedulerCapacityExceededException)
         {
             return Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.UpstreamUnavailable);
+        }
+    }
+
+    private long GetCredentialScope(string apiKey)
+    {
+        lock (_credentialScopeGate)
+        {
+            if (!string.Equals(_lastCredential, apiKey, StringComparison.Ordinal))
+            {
+                _lastCredential = apiKey;
+                _credentialScope++;
+            }
+
+            return _credentialScope;
         }
     }
 
@@ -228,7 +250,17 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
         var pageCount = GetRequiredNonNegativeHeader(response, "X-Page-Total");
         var resultCount = GetRequiredNonNegativeHeader(response, "X-Result-Count");
         var resultTotal = GetRequiredNonNegativeHeader(response, "X-Result-Total");
-        if (pageSize <= 0 || pageCount <= 0 || requestedPage >= pageCount || resultCount > pageSize || resultCount > resultTotal)
+        var expectedPageCount = resultTotal == 0
+            ? 0
+            : ((resultTotal - 1) / pageSize) + 1;
+        var expectedResultCount = resultTotal == 0
+            ? 0
+            : requestedPage == expectedPageCount - 1
+                ? ((resultTotal - 1) % pageSize) + 1
+                : pageSize;
+        if (pageSize <= 0 || pageCount != expectedPageCount ||
+            (resultTotal == 0 ? requestedPage != 0 : requestedPage >= pageCount) ||
+            resultCount != expectedResultCount)
         {
             throw new JsonException("The transaction page headers are inconsistent.");
         }
@@ -256,7 +288,7 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
         PersonalTradingPostTransactionDto dto,
         bool requiresPurchasedTimestamp)
     {
-        if (dto is null || dto.Id <= 0 || dto.ItemId <= 0 || dto.Price < 0 || dto.Quantity <= 0 ||
+        if (dto is null || dto.Id is not > 0 || dto.ItemId is not > 0 || dto.Price is not >= 0 || dto.Quantity is not > 0 ||
             !TryParseTimestamp(dto.Created, out var createdAtUtc) ||
             !TryParseOptionalTimestamp(dto.Purchased, out var purchasedAtUtc) ||
             (requiresPurchasedTimestamp && purchasedAtUtc is null))
@@ -265,20 +297,35 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
         }
 
         return new PersonalTradingPostTransaction(
-            dto.Id,
-            dto.ItemId,
-            dto.Price,
-            dto.Quantity,
+            dto.Id.Value,
+            dto.ItemId.Value,
+            dto.Price.Value,
+            dto.Quantity.Value,
             createdAtUtc.ToUniversalTime(),
             purchasedAtUtc?.ToUniversalTime());
     }
 
-    private static bool TryParseTimestamp(string? value, out DateTimeOffset timestamp) =>
-        DateTimeOffset.TryParse(
+    private static bool TryParseTimestamp(string? value, out DateTimeOffset timestamp)
+    {
+        timestamp = default;
+        if (string.IsNullOrWhiteSpace(value) || !value.Contains('T', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var timeSeparatorIndex = value.IndexOf('T', StringComparison.Ordinal);
+        var explicitOffsetIndex = Math.Max(value.LastIndexOf('+'), value.LastIndexOf('-'));
+        if (!value.EndsWith('Z') && explicitOffsetIndex <= timeSeparatorIndex)
+        {
+            return false;
+        }
+
+        return DateTimeOffset.TryParse(
             value,
             CultureInfo.InvariantCulture,
             DateTimeStyles.RoundtripKind,
             out timestamp);
+    }
 
     private static bool TryParseOptionalTimestamp(string? value, out DateTimeOffset? timestamp)
     {
