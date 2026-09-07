@@ -41,9 +41,11 @@ those observations as evidence with explicit sample counts and confidence.
    backup.
 3. **Deterministic financial truth.** Money uses integer copper. Fees, cost
    basis, profit, ROI, allocation, and recommendations are deterministic and
-   covered by tests. Until VERIFY-013 is resolved with sufficient external
-   evidence, GW2 fee and rounding output is explicitly modeled/provisional;
-   tests of the configured model do not make the external behavior verified.
+   covered by tests. One application policy owns the separate GW2 listing and
+   exchange fee configuration. VERIFY-013 remains open because available
+   external evidence does not define fractional-copper rounding, so fee-derived
+   output is explicitly modeled/provisional; tests of the configured model do
+   not make the external behavior verified.
 4. **Explainability before cleverness.** Every score/action exposes the evidence
    and rule components that produced it. No runtime LLM or opaque ML model owns
    financial truth.

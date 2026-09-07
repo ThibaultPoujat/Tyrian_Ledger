@@ -112,9 +112,12 @@ backups; remove those separately for a complete local privacy purge.
 Authoritative financial behavior is deterministic and tested:
 
 - money is integer copper;
-- Trading Post fees are centralized; the current GW2 rates/minimums and
-  per-fee rounding are a modeled, provisional policy while VERIFY-013 remains
-  open, not independently verified external behavior;
+- Trading Post fees use one canonical application policy with separate 5%
+  listing and 10% exchange components and a 1-copper positive-sale minimum for
+  each; its per-fee round-up behavior remains modeled/provisional while
+  VERIFY-013 is open, not independently verified external behavior;
+- the listing fee is non-refundable, so cancelling and relisting destroys the
+  fee already paid and incurs a new listing fee;
 - realized accounting uses explicit transaction history and deterministic lot
   matching;
 - unknown cost basis stays unknown rather than becoming zero;

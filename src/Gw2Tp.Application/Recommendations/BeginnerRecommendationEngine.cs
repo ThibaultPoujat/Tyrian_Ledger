@@ -1,4 +1,5 @@
 using Gw2Tp.Analytics.Finance;
+using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Domain.Finance;
 
@@ -19,7 +20,7 @@ public sealed class BeginnerRecommendationEngine
         BeginnerRecommendationAssumption.FeeRoundingPendingExternalVerification,
     ]);
 
-    private readonly FlipProfitCalculator profitCalculator = new(BeginnerRecommendationFeePolicy.Create());
+    private readonly FlipProfitCalculator profitCalculator = new(Gw2TradingPostFeePolicy.Create());
 
     /// <summary>
     /// Calculates recommendations from only the supplied current input. Invalid or unavailable

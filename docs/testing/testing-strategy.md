@@ -32,10 +32,11 @@ Required for deterministic business logic, including as introduced:
 High-risk formulas need independent expected vectors/edge cases, not tests that
 merely restate the implementation expression.
 
-While VERIFY-013 is open, fee tests verify the configured provisional model,
-not external GW2 rounding behavior. A test becomes evidence of implementation
-correctness only; authoritative fee status requires the external evidence and
-register update defined by TKT-M15-01.
+While VERIFY-013 is open, canonical fee tests verify only the configured
+provisional model. They use independently derived literal copper vectors across
+minimum, rounding, quantity, and overflow boundaries, but those passing vectors
+are implementation evidence rather than proof of external GW2 rounding
+behavior.
 
 ### Gateway tests
 

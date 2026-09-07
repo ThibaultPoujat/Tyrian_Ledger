@@ -1,12 +1,12 @@
 # Trading Rules and Recommendation Policy
 
 This document defines the behavioral rules that financially authoritative code
-must implement. VERIFY-013 is open: the current GW2 model uses separate 5%
-listing and 10% exchange fees, a 1-copper minimum for each, and owner-approved
-per-fee round-up behavior. The rates/minimums have documented wiki support, but
-fractional-copper rounding remains externally unverified. Therefore all current
-fee-derived results are **modeled/provisional**, not verified external behavior,
-until TKT-M15-01 records sufficient evidence and resolves VERIFY-013.
+must implement. VERIFY-013 remains open after TKT-M15-01: ArenaNet support
+documents the non-refundable 5% listing fee and the 10% exchange fee, and the
+linked official wiki documents a 1-copper minimum for each. Neither source
+defines fractional-copper rounding. The canonical application policy therefore
+retains the owner-approved per-fee round-up behavior as a **modeled/provisional**
+assumption rather than verified external behavior.
 
 ## 1. Money and precision
 
@@ -29,13 +29,14 @@ Listing/exchange fee rates, minimums, and whole-copper rounding come from one
 central application policy. Generic fee primitives remain reusable, but
 feature/UI code must never duplicate fee constants. Tests must distinguish
 correct implementation of the current provisional policy from external
-verification of the real GW2 rounding contract.
+verification of the real GW2 rounding contract. The canonical policy explicitly
+reports that its fractional-copper rounding is not externally verified.
 
 Listing fees matter twice to behavior:
 
 1. they reduce modeled profit;
-2. cancellation/relisting can destroy already-paid listing value and queue
-   position.
+2. the externally documented non-refundable listing fee is lost on cancellation,
+   and relisting pays a new listing fee in addition to losing queue position.
 
 A recommendation that proposes relisting must consider that incremental cost.
 
