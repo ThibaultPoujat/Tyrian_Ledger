@@ -64,7 +64,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
         await using (await operationGate.AcquireAsync(cancellationToken).ConfigureAwait(false))
         {
             var foundProfile = await repository.FindAccountProfileAsync(accountResult.Value.AccountId, cancellationToken).ConfigureAwait(false);
-            if (foundProfile is null)
+            if (foundProfile is null || foundProfile.LastSuccessfulSyncAtUtc is null)
             {
                 return PersonalDashboard.NotSynchronized();
             }
@@ -110,7 +110,8 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
                 asOfUtc,
                 new PerformanceHistoryCoverage(coverage.StartUtc.Value, coverage.EndUtc.Value),
                 performanceTransactions,
-                listings.Select(listing => new CurrentMarketLiquidationEvidence(profile.Id, listing, asOfUtc)).ToArray()));
+                listings.Select(listing => new CurrentMarketLiquidationEvidence(profile.Id, listing, asOfUtc)).ToArray(),
+                coverage.EndUtc));
         }
 
         var orders = currentOrders?.Orders ?? [];

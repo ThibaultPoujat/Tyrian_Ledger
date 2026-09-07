@@ -77,6 +77,32 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Dashboard_persistence_reads_return_a_successful_empty_order_snapshot_and_no_missing_profile()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2)],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []),
+            [new StoredItemMetadata(42, "First item", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+
+        var profile = await database.PersonalTradingPost.FindAccountProfileAsync("opaque-account-a");
+
+        Assert.NotNull(profile);
+        Assert.Equal(FirstObservedAtUtc, profile.LastSuccessfulSyncAtUtc);
+        Assert.Equal(new PersonalTradingPostHistoryCoverage(FirstObservedAtUtc, FirstObservedAtUtc),
+            await database.PersonalTradingPost.GetHistoryCoverageAsync(profile));
+        var snapshot = await database.PersonalTradingPost.GetLatestCurrentOrderSnapshotAsync(profile);
+        Assert.NotNull(snapshot);
+        Assert.Equal(FirstObservedAtUtc, snapshot.ObservedAtUtc);
+        Assert.Empty(snapshot.Orders);
+        Assert.Null(await database.PersonalTradingPost.FindAccountProfileAsync("missing-account"));
+    }
+
+    [Fact]
     public async Task Failed_or_conflicting_sync_preserves_last_known_good_state()
     {
         await using var database = await TestDatabase.CreateAsync();

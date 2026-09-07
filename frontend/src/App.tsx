@@ -105,6 +105,7 @@ export default function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dashboardStatus, setDashboardStatus] = useState<'loading' | 'error' | 'ready'>('loading');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'failed'>('idle');
+  const dashboardRequestGeneration = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -135,10 +136,15 @@ export default function App() {
   }, []);
 
   const loadDashboard = () => {
+    const generation = ++dashboardRequestGeneration.current;
     setDashboardStatus('loading');
     void fetch('/api/personal-dashboard', { headers: localRequestHeaders() })
       .then(async (response) => {
         const payload: unknown = await response.json();
+        if (generation !== dashboardRequestGeneration.current) {
+          return;
+        }
+
         if (!response.ok || !isDashboard(payload)) {
           setDashboardStatus('error');
           return;
@@ -146,10 +152,17 @@ export default function App() {
         setDashboard(payload);
         setDashboardStatus('ready');
       })
-      .catch(() => setDashboardStatus('error'));
+      .catch(() => {
+        if (generation === dashboardRequestGeneration.current) {
+          setDashboardStatus('error');
+        }
+      });
   };
 
-  useEffect(loadDashboard, []);
+  useEffect(() => {
+    loadDashboard();
+    return () => { dashboardRequestGeneration.current++; };
+  }, []);
 
   const synchronize = () => {
     setSyncStatus('syncing');
@@ -335,7 +348,7 @@ function isOpenInventory(value: unknown): boolean {
     && typeof value.itemName === 'string'
     && isNonNegativeInteger(value.quantity)
     && isMoney(value.acquisitionBasis)
-    && isOneOf(value.liquidationStatus, ['fullyValued', 'insufficientBuyDepth', 'missingMarketEvidence'])
+    && isOneOf(value.liquidationStatus, ['fullyValued', 'insufficientBuyDepth', 'evidenceMissing'])
     && isNonNegativeInteger(value.unliquidatedQuantity)
     && isNullableMoney(value.netLiquidationValue)
     && isNullableMoney(value.unrealizedProfit);

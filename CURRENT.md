@@ -66,9 +66,9 @@ After the #78 merge handoff, the next valid implementation ticket is:
 TKT-M16-01 local validation on 2026-09-07 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused dashboard query/accounting: 81 tests passed; web integration: 30 tests passed;
-- full .NET: 270 tests passed;
-- React: 14 component tests passed and the production build succeeded;
+- focused dashboard query/accounting: 83 tests passed; web integration: 30 tests passed;
+- full .NET: 273 tests passed;
+- React: 15 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime and competing-fee-formula audits: no unexpected matches;

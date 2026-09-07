@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Dashboard;
+using Gw2Tp.Application.Accounting;
 using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Persistence;
@@ -21,6 +22,19 @@ public sealed class PersonalDashboardServiceTests
         Assert.Equal(PersonalDashboardState.NotSynchronized, result.State);
         Assert.Empty(result.CurrentOrders);
         Assert.Null(result.HistoryCoverage);
+    }
+
+    [Fact]
+    public async Task Returns_not_synchronized_when_only_a_failed_sync_profile_exists()
+    {
+        var repository = new FakeRepository
+        {
+            Profile = new AccountProfile(1, "account", AsOfUtc.AddHours(-1), null),
+        };
+
+        var result = await Service(repository).GetAsync();
+
+        Assert.Equal(PersonalDashboardState.NotSynchronized, result.State);
     }
 
     [Fact]
@@ -94,6 +108,29 @@ public sealed class PersonalDashboardServiceTests
         Assert.Empty(result.RealizedWindows);
         Assert.Equal(DashboardMarketState.Unavailable, result.MarketState);
         Assert.Equal(DashboardOrderMarketComparisonStatus.Unavailable, Assert.Single(result.CurrentOrders).MarketComparisonStatus);
+    }
+
+    [Fact]
+    public async Task Bases_realized_windows_on_the_retained_coverage_end_not_the_later_market_read()
+    {
+        var coverageEndUtc = AsOfUtc.AddMinutes(-5);
+        var profile = new AccountProfile(1, "account", AsOfUtc.AddDays(-100), coverageEndUtc);
+        var repository = new FakeRepository
+        {
+            Profile = profile,
+            Coverage = new PersonalTradingPostHistoryCoverage(coverageEndUtc.AddDays(-100), coverageEndUtc),
+            Transactions =
+            [
+                Stored(Buy(101, 42, 100, 1, coverageEndUtc.AddDays(-3))),
+                Stored(Sell(102, 42, 200, 1, coverageEndUtc.AddDays(-2))),
+            ],
+        };
+
+        var result = await Service(repository, new FakeMarketClient(
+            new MarketListing(42, [new MarketOrderLevel(1, 1, 200)], []))).GetAsync();
+
+        Assert.Equal(RealizedPerformanceWindowStatus.Supported,
+            Assert.Single(result.RealizedWindows, window => window.Days == 7).Status);
     }
 
     [Fact]

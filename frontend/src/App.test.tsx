@@ -367,7 +367,10 @@ describe('M14 local data controls', () => {
     const incompleteDashboard = {
       ...notSynchronizedDashboard,
       state: 'ready', historyCoverage: { startUtc: null, endUtc: null }, isOpenInventoryFullyValued: false,
-      openInventory: [{ itemId: 42, itemName: 'Unpriced item', quantity: 2, acquisitionBasis: { copper: '100' }, liquidationStatus: 'insufficientBuyDepth', unliquidatedQuantity: 1, netLiquidationValue: null, unrealizedProfit: null }],
+      openInventory: [
+        { itemId: 42, itemName: 'Shallow item', quantity: 2, acquisitionBasis: { copper: '100' }, liquidationStatus: 'insufficientBuyDepth', unliquidatedQuantity: 1, netLiquidationValue: null, unrealizedProfit: null },
+        { itemId: 84, itemName: 'Unpriced item', quantity: 1, acquisitionBasis: { copper: '100' }, liquidationStatus: 'evidenceMissing', unliquidatedQuantity: 1, netLiquidationValue: null, unrealizedProfit: null },
+      ],
     };
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(incompleteDashboard) } as unknown as Response);
@@ -379,6 +382,28 @@ describe('M14 local data controls', () => {
     expect(await screen.findByText(/Continuous history coverage is not available/)).toBeVisible();
     expect(screen.getByText('Not fully valued')).toBeVisible();
     expect(screen.getByText('Insufficient buy depth (1 remaining)')).toBeVisible();
+    expect(screen.getByText('Market evidence missing')).toBeVisible();
+  });
+
+  it('does not let an older dashboard response replace a newer refresh', async () => {
+    const dashboardResponses: Array<(response: Response) => void> = [];
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/personal-dashboard') return new Promise((resolve) => { dashboardResponses.push(resolve); });
+      if (input === '/api/personal-trading-post/sync') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'succeeded' }) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+    render(<App />);
+    await waitFor(() => expect(dashboardResponses).toHaveLength(1));
+    fireEvent.click(await screen.findByRole('button', { name: 'Synchronize Trading Post data' }));
+    await waitFor(() => expect(dashboardResponses).toHaveLength(2));
+
+    dashboardResponses[1]({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+    expect(await screen.findByRole('heading', { name: 'No personal data yet' })).toBeVisible();
+    dashboardResponses[0]({ ok: true, json: vi.fn().mockResolvedValue({ state: 'ready' }) } as unknown as Response);
+    await Promise.resolve();
+    expect(screen.getByRole('heading', { name: 'No personal data yet' })).toBeVisible();
   });
 
   it('refreshes the dashboard after confirmed restore and clear outcomes', async () => {

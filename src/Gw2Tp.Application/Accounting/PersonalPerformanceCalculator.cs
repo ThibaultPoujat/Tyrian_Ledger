@@ -56,6 +56,13 @@ public sealed class PersonalPerformanceCalculator
             throw new ArgumentException("Coverage must be an ordered UTC interval ending no later than the as-of time.", nameof(request));
         }
 
+        if (request.RealizedAsOfUtc is { } realizedAsOfUtc &&
+            (realizedAsOfUtc.Offset != TimeSpan.Zero || realizedAsOfUtc < request.Coverage.StartUtc ||
+             realizedAsOfUtc > request.Coverage.EndUtc))
+        {
+            throw new ArgumentException("The realized as-of time must be UTC and inside the declared coverage interval.", nameof(request));
+        }
+
         if (request.CompletedTransactions.Any(scoped => scoped is null || scoped.Transaction is null ||
                                                        scoped.Transaction.CompletedAtUtc < request.Coverage.StartUtc ||
                                                        scoped.Transaction.CompletedAtUtc > request.Coverage.EndUtc))
@@ -196,6 +203,7 @@ public sealed class PersonalPerformanceCalculator
         IReadOnlyList<UnknownBasisRealizedSaleAllocation> unknownAllocations)
     {
         var windows = new List<RealizedPerformanceWindowResult>();
+        var realizedAsOfUtc = request.RealizedAsOfUtc ?? request.AsOfUtc;
         foreach (var window in new[]
                  {
                      RealizedPerformanceWindow.SevenDays,
@@ -203,16 +211,16 @@ public sealed class PersonalPerformanceCalculator
                      RealizedPerformanceWindow.NinetyDays,
                  })
         {
-            var start = request.AsOfUtc.AddDays(-(int)window);
-            var isSupported = request.Coverage.StartUtc <= start && request.Coverage.EndUtc >= request.AsOfUtc;
-            var known = knownAllocations.Where(allocation => IsWithin(allocation.Match.SellCompletedAtUtc, start, request.AsOfUtc)).ToArray();
+            var start = realizedAsOfUtc.AddDays(-(int)window);
+            var isSupported = request.Coverage.StartUtc <= start && request.Coverage.EndUtc >= realizedAsOfUtc;
+            var known = knownAllocations.Where(allocation => IsWithin(allocation.Match.SellCompletedAtUtc, start, realizedAsOfUtc)).ToArray();
             var unknownQuantity = checked((int)unknownAllocations
-                .Where(allocation => IsWithin(allocation.Sale.SellCompletedAtUtc, start, request.AsOfUtc))
+                .Where(allocation => IsWithin(allocation.Sale.SellCompletedAtUtc, start, realizedAsOfUtc))
                 .Sum(allocation => (long)allocation.Sale.UnmatchedQuantity));
             windows.Add(new RealizedPerformanceWindowResult(
                 window,
                 start,
-                request.AsOfUtc,
+                realizedAsOfUtc,
                 isSupported ? RealizedPerformanceWindowStatus.Supported : RealizedPerformanceWindowStatus.InsufficientCoverage,
                 isSupported ? Aggregate(known) : null,
                 unknownQuantity));
