@@ -30,6 +30,7 @@ public sealed class PersonalPerformanceCalculatorTests
         Assert.Equal(new Money(140), realized.NetProfit);
         Assert.Equal(new Money(140), realized.Roi!.Value.Profit);
         Assert.Equal(new Money(220), realized.Roi!.Value.TotalCost);
+        Assert.Equal(new Money(220), Assert.Single(result.KnownBasisSaleAllocations).Roi!.Value.TotalCost);
         Assert.False(result.IsFeeRoundingExternallyVerified);
         Assert.Empty(result.UnknownBasisSaleAllocations);
     }
@@ -159,6 +160,29 @@ public sealed class PersonalPerformanceCalculatorTests
         Assert.Equal(new Money(105), Window(result, RealizedPerformanceWindow.NinetyDays).KnownBasisPerformance!.NetProfit);
     }
 
+    [Theory]
+    [InlineData(7, RealizedPerformanceWindow.SevenDays)]
+    [InlineData(30, RealizedPerformanceWindow.ThirtyDays)]
+    [InlineData(90, RealizedPerformanceWindow.NinetyDays)]
+    public void Supports_each_window_when_utc_coverage_starts_exactly_at_its_boundary(
+        int days,
+        RealizedPerformanceWindow window)
+    {
+        var boundary = AsOfUtc.AddDays(-days);
+        var result = calculator.Rebuild(new PersonalPerformanceRequest(
+            AsOfUtc,
+            new PerformanceHistoryCoverage(boundary, AsOfUtc),
+            [
+                Buy(101, itemId: 42, unitPrice: 50, quantity: 1, completedAtUtc: boundary),
+                Sell(102, itemId: 42, unitPrice: 100, quantity: 1, completedAtUtc: boundary),
+            ],
+            []));
+
+        var value = Window(result, window);
+        Assert.Equal(RealizedPerformanceWindowStatus.Supported, value.Status);
+        Assert.Equal(new Money(35), value.KnownBasisPerformance!.NetProfit);
+    }
+
     [Fact]
     public void Does_not_claim_unrealized_value_without_complete_current_buy_depth()
     {
@@ -237,6 +261,8 @@ public sealed class PersonalPerformanceCalculatorTests
         Assert.Throws<ArgumentException>(() => calculator.Rebuild(Request(
             [transaction],
             new CurrentMarketLiquidationEvidence(1, new MarketListing(42, [new MarketOrderLevel(1, 1, 100)], []), AsOfUtc.AddTicks(1)))));
+        Assert.Throws<ArgumentException>(() => calculator.Rebuild(Request(
+            [Buy(101, itemId: 42, unitPrice: 100, quantity: 1, completedAtUtc: AsOfUtc.AddDays(-1).ToOffset(TimeSpan.FromHours(1)))])));
     }
 
     [Fact]

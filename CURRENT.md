@@ -65,8 +65,8 @@ Do not begin TKT-M16-01 before the #77 review/merge handoff is complete.
 TKT-M15-03 local validation on 2026-09-07 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused performance/FIFO accounting and canonical fee policy: 43 tests passed;
-- full .NET: 253 tests passed;
+- focused performance/FIFO accounting and canonical fee policy: 47 tests passed;
+- full .NET: 257 tests passed;
 - React: 10 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
