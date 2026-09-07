@@ -1,3 +1,4 @@
+using Gw2Tp.Analytics.Finance;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Domain.Finance;

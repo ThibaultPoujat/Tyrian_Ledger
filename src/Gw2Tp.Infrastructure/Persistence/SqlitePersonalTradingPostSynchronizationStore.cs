@@ -19,7 +19,7 @@ internal sealed class SqlitePersonalTradingPostSynchronizationStore(
     private const int FailedOutcome = 2;
     private readonly ISqliteDatabaseGate gate = databaseGate ?? new SqliteDatabaseGate();
 
-    public async Task CommitSuccessfulSyncAsync(
+    public async Task<PersonalTradingPostHistoryCoverage> CommitSuccessfulSyncAsync(
         PersonalTradingPostSuccessfulSync sync,
         CancellationToken cancellationToken = default)
     {
@@ -33,6 +33,12 @@ internal sealed class SqlitePersonalTradingPostSynchronizationStore(
             sync.AccountScopeId,
             sync.CompletedAtUtc,
             cancellationToken).ConfigureAwait(false);
+        var existingHistoryCoverage = await GetHistoryCoverageAsync(
+            connection,
+            transaction,
+            accountProfileId,
+            cancellationToken).ConfigureAwait(false);
+        var effectiveHistoryCoverage = MergeHistoryCoverage(existingHistoryCoverage, sync);
 
         foreach (var completedTransaction in sync.CompletedTransactions)
         {
@@ -103,8 +109,8 @@ internal sealed class SqlitePersonalTradingPostSynchronizationStore(
                 """;
             updateStatus.Parameters.AddWithValue("$completedAtUtc", ToUtc(sync.CompletedAtUtc, nameof(sync.CompletedAtUtc)));
             updateStatus.Parameters.AddWithValue("$successfulOutcome", SuccessfulOutcome);
-            updateStatus.Parameters.AddWithValue("$historyCoverageStartUtc", ToNullableUtc(sync.HistoryCoverageStartUtc, nameof(sync.HistoryCoverageStartUtc)));
-            updateStatus.Parameters.AddWithValue("$historyCoverageEndUtc", ToNullableUtc(sync.HistoryCoverageEndUtc, nameof(sync.HistoryCoverageEndUtc)));
+            updateStatus.Parameters.AddWithValue("$historyCoverageStartUtc", ToNullableUtc(effectiveHistoryCoverage.StartUtc, nameof(effectiveHistoryCoverage.StartUtc)));
+            updateStatus.Parameters.AddWithValue("$historyCoverageEndUtc", ToNullableUtc(effectiveHistoryCoverage.EndUtc, nameof(effectiveHistoryCoverage.EndUtc)));
             updateStatus.Parameters.AddWithValue("$accountProfileId", accountProfileId);
             if (await updateStatus.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
             {
@@ -113,6 +119,7 @@ internal sealed class SqlitePersonalTradingPostSynchronizationStore(
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return effectiveHistoryCoverage;
     }
 
     public async Task RecordFailedSyncAsync(
@@ -212,6 +219,72 @@ internal sealed class SqlitePersonalTradingPostSynchronizationStore(
 
             _ = ToUtc(item.ObservedAtUtc, nameof(item.ObservedAtUtc));
         }
+    }
+
+    private static async Task<PersonalTradingPostHistoryCoverage> GetHistoryCoverageAsync(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        long accountProfileId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            SELECT history_coverage_start_utc, history_coverage_end_utc
+            FROM account_profiles
+            WHERE id = $accountProfileId;
+            """;
+        command.Parameters.AddWithValue("$accountProfileId", accountProfileId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidDataException("The SQLite account profile was unavailable while reading history coverage.");
+        }
+
+        var startUtc = ReadNullableUtc(reader, 0, "history_coverage_start_utc");
+        var endUtc = ReadNullableUtc(reader, 1, "history_coverage_end_utc");
+        if ((startUtc is null) != (endUtc is null) || (startUtc is not null && startUtc > endUtc))
+        {
+            throw new InvalidDataException("The SQLite account profile contains invalid history coverage.");
+        }
+
+        return new PersonalTradingPostHistoryCoverage(startUtc, endUtc);
+    }
+
+    private static PersonalTradingPostHistoryCoverage MergeHistoryCoverage(
+        PersonalTradingPostHistoryCoverage existing,
+        PersonalTradingPostSuccessfulSync sync)
+    {
+        var incoming = new PersonalTradingPostHistoryCoverage(sync.HistoryCoverageStartUtc, sync.HistoryCoverageEndUtc);
+        if (incoming.StartUtc is null || existing.StartUtc is null)
+        {
+            return incoming;
+        }
+
+        return incoming.StartUtc <= existing.EndUtc && existing.StartUtc <= incoming.EndUtc
+            ? new PersonalTradingPostHistoryCoverage(
+                incoming.StartUtc < existing.StartUtc ? incoming.StartUtc : existing.StartUtc,
+                incoming.EndUtc > existing.EndUtc ? incoming.EndUtc : existing.EndUtc)
+            : incoming;
+    }
+
+    private static DateTimeOffset? ReadNullableUtc(SqliteDataReader reader, int ordinal, string columnName)
+    {
+        if (reader.IsDBNull(ordinal))
+        {
+            return null;
+        }
+
+        if (!DateTimeOffset.TryParse(
+                reader.GetString(ordinal),
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind,
+                out var value) || value.Offset != TimeSpan.Zero)
+        {
+            throw new InvalidDataException($"The SQLite {columnName} value is not UTC.");
+        }
+
+        return value;
     }
 
     private static async Task<long> GetOrCreateAccountProfileIdAsync(

@@ -1,4 +1,4 @@
-using System.Numerics;
+using Gw2Tp.Analytics.Finance;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Domain.Finance;
 
@@ -98,45 +98,6 @@ public sealed record BeginnerRecommendationRequest(
     BeginnerRiskProfile RiskProfile,
     DateTimeOffset ScanCompletedAtUtc,
     IReadOnlyList<BeginnerRecommendationCandidate> Candidates);
-
-/// <summary>
-/// Exact modeled ROI represented as a signed profit numerator and positive full-up-front-cost
-/// denominator. No decimal or floating-point representation is used.
-/// </summary>
-public readonly record struct ExactRoi
-{
-    public ExactRoi(Money profit, Money totalCost)
-    {
-        if (totalCost.Copper <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(totalCost), "ROI requires a positive total cost.");
-        }
-
-        Profit = profit;
-        TotalCost = totalCost;
-    }
-
-    public Money Profit { get; }
-
-    public Money TotalCost { get; }
-
-    public bool MeetsOrExceedsBasisPoints(int basisPoints)
-    {
-        if (basisPoints < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(basisPoints));
-        }
-
-        return new BigInteger(Profit.Copper) * FeeBasisPointsPerWhole >=
-            new BigInteger(TotalCost.Copper) * basisPoints;
-    }
-
-    public int CompareTo(ExactRoi other) =>
-        (new BigInteger(Profit.Copper) * other.TotalCost.Copper).CompareTo(
-            new BigInteger(other.Profit.Copper) * TotalCost.Copper);
-
-    private const int FeeBasisPointsPerWhole = 10_000;
-}
 
 /// <summary>
 /// Current order-book evidence used to explain the selected action route.

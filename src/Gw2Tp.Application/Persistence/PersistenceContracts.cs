@@ -157,12 +157,21 @@ public sealed record PersonalTradingPostSuccessfulSync(
     DateTimeOffset? HistoryCoverageEndUtc);
 
 /// <summary>
+/// The effective continuous completed-history interval after a successful sync.
+/// A null pair explicitly means that no continuous upstream coverage is
+/// claimed.
+/// </summary>
+public sealed record PersonalTradingPostHistoryCoverage(
+    DateTimeOffset? StartUtc,
+    DateTimeOffset? EndUtc);
+
+/// <summary>
 /// Persistence boundary for a complete personal-data sync. It intentionally
 /// accepts normalized values only, never credentials or upstream payloads.
 /// </summary>
 public interface IPersonalTradingPostSynchronizationStore
 {
-    Task CommitSuccessfulSyncAsync(
+    Task<PersonalTradingPostHistoryCoverage> CommitSuccessfulSyncAsync(
         PersonalTradingPostSuccessfulSync sync,
         CancellationToken cancellationToken = default);
 
