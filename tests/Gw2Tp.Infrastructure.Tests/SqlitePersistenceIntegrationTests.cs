@@ -77,6 +77,32 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Dashboard_persistence_reads_return_a_successful_empty_order_snapshot_and_no_missing_profile()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2)],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []),
+            [new StoredItemMetadata(42, "First item", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+
+        var profile = await database.PersonalTradingPost.FindAccountProfileAsync("opaque-account-a");
+
+        Assert.NotNull(profile);
+        Assert.Equal(FirstObservedAtUtc, profile.LastSuccessfulSyncAtUtc);
+        Assert.Equal(new PersonalTradingPostHistoryCoverage(FirstObservedAtUtc, FirstObservedAtUtc),
+            await database.PersonalTradingPost.GetHistoryCoverageAsync(profile));
+        var snapshot = await database.PersonalTradingPost.GetLatestCurrentOrderSnapshotAsync(profile);
+        Assert.NotNull(snapshot);
+        Assert.Equal(FirstObservedAtUtc, snapshot.ObservedAtUtc);
+        Assert.Empty(snapshot.Orders);
+        Assert.Null(await database.PersonalTradingPost.FindAccountProfileAsync("missing-account"));
+    }
+
+    [Fact]
     public async Task Failed_or_conflicting_sync_preserves_last_known_good_state()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -355,6 +381,22 @@ public sealed class SqlitePersistenceIntegrationTests
         await Assert.ThrowsAsync<ArgumentException>(() => database.ItemMetadata.UpsertAsync(
             [item with { ObservedAtUtc = item.ObservedAtUtc.ToOffset(TimeSpan.FromHours(1)) }]));
         await Assert.ThrowsAsync<ArgumentException>(() => database.UserSettings.SaveAsync(settings with { CashReserveBasisPoints = 10001 }));
+    }
+
+    [Fact]
+    public async Task Item_metadata_batch_read_returns_requested_retained_items_and_omits_missing_items()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.ItemMetadata.UpsertAsync(
+        [
+            new StoredItemMetadata(42, "First item", FirstObservedAtUtc),
+            new StoredItemMetadata(84, "Second item", FirstObservedAtUtc),
+        ]);
+
+        var items = await database.ItemMetadata.GetManyAsync([84, 42, 84, 126]);
+
+        Assert.Equal([42, 84], items.Select(item => item.ItemId).OrderBy(itemId => itemId));
+        Assert.Equal(["First item", "Second item"], items.OrderBy(item => item.ItemId).Select(item => item.Name));
     }
 
     [Fact]

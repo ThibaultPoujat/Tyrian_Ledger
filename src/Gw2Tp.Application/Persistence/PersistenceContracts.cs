@@ -87,6 +87,13 @@ public sealed record UserSettings(
 /// </summary>
 public interface IPersonalTradingPostRepository
 {
+    /// <summary>
+    /// Finds an existing local profile without creating durable state.
+    /// </summary>
+    Task<AccountProfile?> FindAccountProfileAsync(
+        string accountScopeId,
+        CancellationToken cancellationToken = default);
+
     Task<AccountProfile> GetOrCreateAccountProfileAsync(
         string accountScopeId,
         DateTimeOffset observedAtUtc,
@@ -107,12 +114,27 @@ public interface IPersonalTradingPostRepository
         AccountProfile accountProfile,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Returns the continuous retained-history interval. A null pair means no
+    /// continuous coverage claim can be made.
+    /// </summary>
+    Task<PersonalTradingPostHistoryCoverage> GetHistoryCoverageAsync(
+        AccountProfile accountProfile,
+        CancellationToken cancellationToken = default);
+
     Task ReplaceCurrentOrderSnapshotAsync(
         AccountProfile accountProfile,
         CurrentPersonalTradingPostOrderSnapshot snapshot,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<CurrentPersonalTradingPostOrder>> GetCurrentOrdersAsync(
+        AccountProfile accountProfile,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the last complete current-order snapshot, including its observation time.
+    /// </summary>
+    Task<CurrentPersonalTradingPostOrderSnapshot?> GetLatestCurrentOrderSnapshotAsync(
         AccountProfile accountProfile,
         CancellationToken cancellationToken = default);
 
@@ -131,6 +153,14 @@ public interface IItemMetadataRepository
         CancellationToken cancellationToken = default);
 
     Task<StoredItemMetadata?> GetAsync(int itemId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all retained metadata for the requested item IDs in one logical
+    /// read. Missing IDs are omitted.
+    /// </summary>
+    Task<IReadOnlyList<StoredItemMetadata>> GetManyAsync(
+        IReadOnlyCollection<int> itemIds,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

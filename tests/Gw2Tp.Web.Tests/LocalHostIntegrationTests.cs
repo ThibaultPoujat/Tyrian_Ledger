@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Application.Dashboard;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Web.Hosting;
 using Microsoft.Data.Sqlite;
@@ -142,6 +143,30 @@ public sealed class LocalHostIntegrationTests
         Assert.DoesNotContain("opaque-account", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Personal_dashboard_endpoint_returns_safe_non_cacheable_structured_results()
+    {
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IPersonalDashboardService>();
+                services.AddSingleton<IPersonalDashboardService>(new FixedDashboardService());
+            });
+        using var client = app.GetTestClient();
+
+        using var response = await client.GetAsync("/api/personal-dashboard");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Contains("\"state\":\"notSynchronized\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"currentBuyCapital\":{\"copper\":\"0\"}", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("accountScope", body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -645,6 +670,12 @@ public sealed class LocalHostIntegrationTests
             CallCount++;
             return Task.FromResult(result);
         }
+    }
+
+    private sealed class FixedDashboardService : IPersonalDashboardService
+    {
+        public Task<PersonalDashboard> GetAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(PersonalDashboard.NotSynchronized());
     }
 
     private static Task<HttpResponseMessage> SendWithOriginAsync(

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import './App.css';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
@@ -25,6 +25,30 @@ type LocalDataLocationState =
   | { kind: 'loading' }
   | { kind: 'unavailable' }
   | { kind: 'ready'; location: LocalDataLocation };
+
+type Money = { copper: string };
+type Dashboard = {
+  state: 'ready' | 'notSynchronized' | 'accountUnavailable';
+  accountError: string | null;
+  lastSuccessfulSyncAtUtc: string | null;
+  currentOrdersObservedAtUtc: string | null;
+  historyCoverage: { startUtc: string | null; endUtc: string | null } | null;
+  marketState: 'available' | 'unavailable';
+  isFeeRoundingExternallyVerified: boolean;
+  realizedWindows: Array<{ days: number; status: 'supported' | 'insufficientCoverage'; netProfit: Money | null; unknownBasisQuantity: number }>;
+  openAcquisitionBasis: Money | null;
+  netLiquidationValue: Money | null;
+  unrealizedProfit: Money | null;
+  isOpenInventoryFullyValued: boolean | null;
+  openInventory: Array<{ itemId: number; itemName: string; quantity: number; acquisitionBasis: Money; liquidationStatus: string; unliquidatedQuantity: number; netLiquidationValue: Money | null; unrealizedProfit: Money | null }>;
+  currentBuyCapital: Money;
+  currentSellGrossValue: Money;
+  currentSellNetValue: Money;
+  currentOrders: Array<{ orderId: string; side: 'buy' | 'sell'; itemId: number; itemName: string; quantity: number; unitPrice: Money; marketComparisonStatus: 'available' | 'missingSide' | 'unavailable'; currentMarketUnitPrice: Money | null }>;
+  recentTrades: Array<{ transactionId: string; side: 'buy' | 'sell'; itemName: string; quantity: number; unitPrice: Money; completedAtUtc: string }>;
+  bestRealizedItems: Array<{ itemId: number; itemName: string; quantity: number; netProfit: Money }>;
+  worstRealizedItems: Array<{ itemId: number; itemName: string; quantity: number; netProfit: Money }>;
+};
 
 function isAccountConnectionResponse(payload: unknown): payload is AccountConnectionResponse {
   if (typeof payload !== 'object' || payload === null) {
@@ -78,6 +102,10 @@ export default function App() {
     state: AccountConnectionState;
     missingPermissions: string[];
   }>({ state: 'checking', missingPermissions: [] });
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [dashboardStatus, setDashboardStatus] = useState<'loading' | 'error' | 'ready'>('loading');
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'failed'>('idle');
+  const dashboardRequestGeneration = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -106,6 +134,50 @@ export default function App() {
     void checkHost();
     return () => controller.abort();
   }, []);
+
+  const loadDashboard = () => {
+    const generation = ++dashboardRequestGeneration.current;
+    setDashboardStatus('loading');
+    void fetch('/api/personal-dashboard', { headers: localRequestHeaders() })
+      .then(async (response) => {
+        const payload: unknown = await response.json();
+        if (generation !== dashboardRequestGeneration.current) {
+          return;
+        }
+
+        if (!response.ok || !isDashboard(payload)) {
+          setDashboardStatus('error');
+          return;
+        }
+        setDashboard(payload);
+        setDashboardStatus('ready');
+      })
+      .catch(() => {
+        if (generation === dashboardRequestGeneration.current) {
+          setDashboardStatus('error');
+        }
+      });
+  };
+
+  useEffect(() => {
+    loadDashboard();
+    return () => { dashboardRequestGeneration.current++; };
+  }, []);
+
+  const synchronize = () => {
+    setSyncStatus('syncing');
+    void fetch('/api/personal-trading-post/sync', { method: 'POST', headers: localRequestHeaders() })
+      .then(async (response) => {
+        const payload: unknown = await response.json();
+        if (!response.ok || typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'succeeded') {
+          setSyncStatus('failed');
+          return;
+        }
+        setSyncStatus('idle');
+        loadDashboard();
+      })
+      .catch(() => setSyncStatus('failed'));
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -152,13 +224,10 @@ export default function App() {
         </header>
 
         <main id="main-content">
-          <section aria-labelledby="transition-title" className="transition-panel">
-            <p className="eyebrow">M13 local runtime</p>
-            <h1 id="transition-title">The local application foundation is running.</h1>
-            <p className="page-introduction">
-              Tyrian Ledger now pairs this React interface with a loopback-only local host.
-              Account data, trading features, and recommendations are not part of this foundation yet.
-            </p>
+          <section aria-labelledby="dashboard-title" className="transition-panel">
+            <p className="eyebrow">Personal dashboard</p>
+            <h1 id="dashboard-title">Understand your trading position.</h1>
+            <p className="page-introduction">Your personal data stays on this computer. Values shown here are calculated by the local host from retained Trading Post evidence.</p>
             <p aria-live="polite" className={`host-status host-status--${hostStatus}`} role="status">
               <span aria-hidden="true" />
               {hostStatus === 'checking' && 'Checking the local host…'}
@@ -178,18 +247,13 @@ export default function App() {
               {accountConnection.state === 'insufficient_permissions' && (
                 <p>Use a dedicated key with account and trading-post access for future personal Trading Post features.</p>
               )}
+              <button className="sync-button" disabled={syncStatus === 'syncing' || accountConnection.state !== 'valid'} onClick={synchronize} type="button">
+                {syncStatus === 'syncing' ? 'Synchronizing…' : 'Synchronize Trading Post data'}
+              </button>
+              {syncStatus === 'failed' && <p role="alert">Synchronization could not be confirmed. Your existing local data was kept.</p>}
             </section>
-            <LocalDataPanel />
-            <div className="transition-details">
-              <section aria-labelledby="runtime-title">
-                <h2 id="runtime-title">Local by default</h2>
-                <p>The host listens only on this computer and serves the built interface and API from the same origin for normal use.</p>
-              </section>
-              <section aria-labelledby="boundary-title">
-                <h2 id="boundary-title">A safe starting point</h2>
-                <p>No ArenaNet key is required. Local backups and recovery stay on this computer; trading, scanner, and recommendation features are not automated.</p>
-              </section>
-            </div>
+            <DashboardPanel dashboard={dashboard} status={dashboardStatus} />
+            <LocalDataPanel onPersonalDataChanged={loadDashboard} />
           </section>
         </main>
       </div>
@@ -202,7 +266,168 @@ export default function App() {
   );
 }
 
-function LocalDataPanel() {
+function isDashboard(payload: unknown): payload is Dashboard {
+  if (!isRecord(payload)) return false;
+  return isOneOf(payload.state, ['ready', 'notSynchronized', 'accountUnavailable'])
+    && isNullableString(payload.accountError)
+    && isNullableString(payload.lastSuccessfulSyncAtUtc)
+    && isNullableString(payload.currentOrdersObservedAtUtc)
+    && isNullableHistoryCoverage(payload.historyCoverage)
+    && isOneOf(payload.marketState, ['available', 'unavailable'])
+    && typeof payload.isFeeRoundingExternallyVerified === 'boolean'
+    && isArrayOf(payload.realizedWindows, isRealizedWindow)
+    && isNullableMoney(payload.openAcquisitionBasis)
+    && isNullableMoney(payload.netLiquidationValue)
+    && isNullableMoney(payload.unrealizedProfit)
+    && (typeof payload.isOpenInventoryFullyValued === 'boolean' || payload.isOpenInventoryFullyValued === null)
+    && isArrayOf(payload.openInventory, isOpenInventory)
+    && isMoney(payload.currentBuyCapital)
+    && isMoney(payload.currentSellGrossValue)
+    && isMoney(payload.currentSellNetValue)
+    && isArrayOf(payload.currentOrders, isCurrentOrder)
+    && isArrayOf(payload.recentTrades, isRecentTrade)
+    && isArrayOf(payload.bestRealizedItems, isRealizedItem)
+    && isArrayOf(payload.worstRealizedItems, isRealizedItem);
+}
+
+function copper(money: Money | null): string {
+  if (money === null) return 'Unavailable';
+  const value = BigInt(money.copper);
+  const sign = value < 0n ? '−' : '';
+  const absolute = value < 0n ? -value : value;
+  return `${sign}${absolute / 10000n}g ${(absolute % 10000n) / 100n}s ${absolute % 100n}c`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isOneOf<T extends string>(value: unknown, values: readonly T[]): value is T {
+  return typeof value === 'string' && values.includes(value as T);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isDecimalIdentifier(value: unknown): value is string {
+  return typeof value === 'string' && /^\d+$/.test(value);
+}
+
+function isMoney(value: unknown): value is Money {
+  return isRecord(value) && typeof value.copper === 'string' && /^-?\d+$/.test(value.copper);
+}
+
+function isNullableMoney(value: unknown): value is Money | null {
+  return value === null || isMoney(value);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function isArrayOf(value: unknown, item: (candidate: unknown) => boolean): value is unknown[] {
+  return Array.isArray(value) && value.every(item);
+}
+
+function isNullableHistoryCoverage(value: unknown): boolean {
+  return value === null || (isRecord(value) && isNullableString(value.startUtc) && isNullableString(value.endUtc));
+}
+
+function isRealizedWindow(value: unknown): boolean {
+  return isRecord(value)
+    && isNonNegativeInteger(value.days)
+    && isOneOf(value.status, ['supported', 'insufficientCoverage'])
+    && isNullableMoney(value.netProfit)
+    && isNonNegativeInteger(value.unknownBasisQuantity);
+}
+
+function isOpenInventory(value: unknown): boolean {
+  return isRecord(value)
+    && isNonNegativeInteger(value.itemId)
+    && typeof value.itemName === 'string'
+    && isNonNegativeInteger(value.quantity)
+    && isMoney(value.acquisitionBasis)
+    && isOneOf(value.liquidationStatus, ['fullyValued', 'insufficientBuyDepth', 'evidenceMissing'])
+    && isNonNegativeInteger(value.unliquidatedQuantity)
+    && isNullableMoney(value.netLiquidationValue)
+    && isNullableMoney(value.unrealizedProfit);
+}
+
+function isCurrentOrder(value: unknown): boolean {
+  return isRecord(value)
+    && isDecimalIdentifier(value.orderId)
+    && isOneOf(value.side, ['buy', 'sell'])
+    && isNonNegativeInteger(value.itemId)
+    && typeof value.itemName === 'string'
+    && isNonNegativeInteger(value.quantity)
+    && isMoney(value.unitPrice)
+    && isOneOf(value.marketComparisonStatus, ['available', 'missingSide', 'unavailable'])
+    && isNullableMoney(value.currentMarketUnitPrice);
+}
+
+function isRecentTrade(value: unknown): boolean {
+  return isRecord(value)
+    && isDecimalIdentifier(value.transactionId)
+    && isOneOf(value.side, ['buy', 'sell'])
+    && typeof value.itemName === 'string'
+    && isNonNegativeInteger(value.quantity)
+    && isMoney(value.unitPrice)
+    && typeof value.completedAtUtc === 'string';
+}
+
+function isRealizedItem(value: unknown): boolean {
+  return isRecord(value)
+    && isNonNegativeInteger(value.itemId)
+    && typeof value.itemName === 'string'
+    && isNonNegativeInteger(value.quantity)
+    && isMoney(value.netProfit);
+}
+
+function timestamp(value: string | null): string {
+  return value === null ? 'Not yet recorded' : new Date(value).toLocaleString();
+}
+
+function DashboardPanel({ dashboard, status }: { dashboard: Dashboard | null; status: 'loading' | 'error' | 'ready' }) {
+  if (status === 'loading') return <section className="dashboard-panel" aria-busy="true"><h2>Loading personal dashboard…</h2></section>;
+  if (status === 'error' || dashboard === null) return <section className="dashboard-panel" role="alert"><h2>Dashboard unavailable</h2><p>The local dashboard could not be read. Check the local host and try again.</p></section>;
+  if (dashboard.state === 'accountUnavailable') return <section className="dashboard-panel"><h2>Connect an account to view your dashboard</h2><p>Account access is unavailable ({dashboard.accountError ?? 'unknown error'}). Your browser never receives the key.</p></section>;
+  if (dashboard.state === 'notSynchronized') return <section className="dashboard-panel"><h2>No personal data yet</h2><p>Synchronize a valid Trading Post account to create the first local snapshot.</p></section>;
+
+  const coverage = dashboard.historyCoverage;
+  return <section className="dashboard-panel" aria-labelledby="performance-title">
+    <div className="dashboard-heading"><div><p className="eyebrow">Retained evidence</p><h2 id="performance-title">Performance and current orders</h2></div><p className="sync-time">Last sync: {timestamp(dashboard.lastSuccessfulSyncAtUtc)}</p></div>
+    {coverage === null || coverage.startUtc === null || coverage.endUtc === null ? <p className="notice">Continuous history coverage is not available. No realized performance claim is shown.</p> : <p className="notice">History coverage: {timestamp(coverage.startUtc)} to {timestamp(coverage.endUtc)}.</p>}
+    {!dashboard.isFeeRoundingExternallyVerified && <p className="notice">Fee-derived values use the current modeled rounding policy and remain provisional.</p>}
+    <div className="metric-grid">
+      {dashboard.realizedWindows.map((window) => <section key={window.days}><h3>{window.days}-day realized P&amp;L</h3><strong>{window.status === 'supported' ? copper(window.netProfit) : 'Insufficient coverage'}</strong>{window.unknownBasisQuantity > 0 && <p>{window.unknownBasisQuantity} sold without known basis, excluded.</p>}</section>)}
+      <section><h3>Open acquisition basis</h3><strong>{copper(dashboard.openAcquisitionBasis)}</strong></section>
+      <section><h3>Unrealized P&amp;L</h3><strong>{dashboard.isOpenInventoryFullyValued ? copper(dashboard.unrealizedProfit) : 'Not fully valued'}</strong></section>
+      <section><h3>Capital in buy orders</h3><strong>{copper(dashboard.currentBuyCapital)}</strong></section>
+      <section><h3>Current sell listings</h3><strong>{copper(dashboard.currentSellGrossValue)} gross</strong><p>{copper(dashboard.currentSellNetValue)} modeled net</p></section>
+    </div>
+    <DashboardTable title="Current orders" columns={['Side', 'Item', 'Quantity', 'Your price', 'Current market']}>
+      {dashboard.currentOrders.length === 0 ? <tr><td colSpan={5}>No current orders in the latest sync.</td></tr> : dashboard.currentOrders.map((order) => <tr key={order.orderId}><td>{order.side}</td><td>{order.itemName}</td><td>{order.quantity}</td><td>{copper(order.unitPrice)}</td><td>{order.marketComparisonStatus === 'available' ? copper(order.currentMarketUnitPrice) : order.marketComparisonStatus === 'missingSide' ? 'No comparable orders' : 'Market unavailable'}</td></tr>)}
+    </DashboardTable>
+    <DashboardTable title="Recent completed trades" columns={['Side', 'Item', 'Quantity', 'Price', 'Completed']}>
+      {dashboard.recentTrades.length === 0 ? <tr><td colSpan={5}>No completed trades are retained yet.</td></tr> : dashboard.recentTrades.map((trade) => <tr key={trade.transactionId}><td>{trade.side}</td><td>{trade.itemName}</td><td>{trade.quantity}</td><td>{copper(trade.unitPrice)}</td><td>{timestamp(trade.completedAtUtc)}</td></tr>)}
+    </DashboardTable>
+    <div className="dashboard-split"><DashboardItems title="Best realized items" items={dashboard.bestRealizedItems} /><DashboardItems title="Worst realized items" items={dashboard.worstRealizedItems} /></div>
+    {dashboard.openInventory.length > 0 && <DashboardTable title="Open inventory" columns={['Item', 'Quantity', 'Basis', 'Liquidation state', 'Unrealized P&L']}>
+      {dashboard.openInventory.map((item) => <tr key={item.itemId}><td>{item.itemName}</td><td>{item.quantity}</td><td>{copper(item.acquisitionBasis)}</td><td>{item.liquidationStatus === 'fullyValued' ? 'Fully valued' : item.liquidationStatus === 'insufficientBuyDepth' ? `Insufficient buy depth (${item.unliquidatedQuantity} remaining)` : 'Market evidence missing'}</td><td>{copper(item.unrealizedProfit)}</td></tr>)}
+    </DashboardTable>}
+  </section>;
+}
+
+function DashboardTable({ title, columns, children }: { title: string; columns: string[]; children: ReactNode }) {
+  return <section className="dashboard-table"><h3>{title}</h3><div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column} scope="col">{column}</th>)}</tr></thead><tbody>{children}</tbody></table></div></section>;
+}
+
+function DashboardItems({ title, items }: { title: string; items: Dashboard['bestRealizedItems'] }) {
+  return <section className="dashboard-items"><h3>{title}</h3>{items.length === 0 ? <p>No known-basis realized sales yet.</p> : <ol>{items.map((item) => <li key={item.itemId}><span>{item.itemName} ({item.quantity})</span><strong>{copper(item.netProfit)}</strong></li>)}</ol>}</section>;
+}
+
+function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () => void }) {
   const [location, setLocation] = useState<LocalDataLocationState>({ kind: 'loading' });
   const [message, setMessage] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -283,6 +508,7 @@ function LocalDataPanel() {
         if (restoreFileInput.current !== null) {
           restoreFileInput.current.value = '';
         }
+        onPersonalDataChanged();
       })
       .catch(() => setMessage('Restore outcome could not be confirmed. Check local data before retrying.'))
       .finally(() => setIsRestoring(false));
@@ -312,6 +538,7 @@ function LocalDataPanel() {
         }
         setMessage('Personal account data cleared. Existing backup files were kept.');
         setClearConfirmation('');
+        onPersonalDataChanged();
       })
       .catch(() => setMessage('Clear outcome could not be confirmed. Check local data before retrying.'))
       .finally(() => setIsClearing(false));

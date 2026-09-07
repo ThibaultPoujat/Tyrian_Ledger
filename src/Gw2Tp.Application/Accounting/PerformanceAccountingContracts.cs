@@ -27,7 +27,8 @@ public sealed record PersonalPerformanceRequest(
     DateTimeOffset AsOfUtc,
     PerformanceHistoryCoverage Coverage,
     IReadOnlyList<AccountScopedCompletedTransaction> CompletedTransactions,
-    IReadOnlyList<CurrentMarketLiquidationEvidence> CurrentMarketEvidence);
+    IReadOnlyList<CurrentMarketLiquidationEvidence> CurrentMarketEvidence,
+    DateTimeOffset? RealizedAsOfUtc = null);
 
 public enum RealizedPerformanceWindow
 {
