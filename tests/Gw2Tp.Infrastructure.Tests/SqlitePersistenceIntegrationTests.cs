@@ -211,6 +211,38 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Wholly_earlier_history_snapshot_does_not_merge_without_interval_overlap()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var laterObservedAtUtc = FirstObservedAtUtc.AddDays(91);
+        var later = CompletedTransaction(1002, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2) with
+        {
+            CreatedAtUtc = laterObservedAtUtc.AddDays(-1),
+            CompletedAtUtc = laterObservedAtUtc.AddDays(-1),
+        };
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [later],
+            new CurrentPersonalTradingPostOrderSnapshot(laterObservedAtUtc, []),
+            [new StoredItemMetadata(42, "Later", laterObservedAtUtc)],
+            laterObservedAtUtc,
+            later.CompletedAtUtc,
+            laterObservedAtUtc));
+
+        var earlier = CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2);
+        var effectiveCoverage = await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [earlier],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []),
+            [new StoredItemMetadata(42, "Earlier", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+
+        Assert.Equal(new PersonalTradingPostHistoryCoverage(FirstObservedAtUtc, FirstObservedAtUtc), effectiveCoverage);
+    }
+
+    [Fact]
     public async Task Sync_store_isolates_accounts_even_when_external_transaction_ids_match()
     {
         await using var database = await TestDatabase.CreateAsync();

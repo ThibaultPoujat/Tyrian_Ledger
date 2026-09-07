@@ -261,7 +261,7 @@ internal sealed class SqlitePersonalTradingPostSynchronizationStore(
             return incoming;
         }
 
-        return incoming.StartUtc <= existing.EndUtc
+        return incoming.StartUtc <= existing.EndUtc && existing.StartUtc <= incoming.EndUtc
             ? new PersonalTradingPostHistoryCoverage(
                 incoming.StartUtc < existing.StartUtc ? incoming.StartUtc : existing.StartUtc,
                 incoming.EndUtc > existing.EndUtc ? incoming.EndUtc : existing.EndUtc)

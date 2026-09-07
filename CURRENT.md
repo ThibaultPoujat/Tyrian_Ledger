@@ -73,9 +73,9 @@ TKT-M15-03 local validation on 2026-09-07 reported:
 
 - Release solution build: zero warnings and zero errors;
 - focused performance/FIFO accounting, canonical fee policy, and successful-sync
-  coverage: 53 tests passed; SQLite synchronization persistence: 35 tests
+  coverage: 53 tests passed; SQLite synchronization persistence: 36 tests
   passed;
-- full .NET: 261 tests passed;
+- full .NET: 262 tests passed;
 - React: 10 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
