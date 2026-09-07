@@ -33,39 +33,48 @@ round-up. ArenaNet support and the linked official wiki do not define
 fractional-copper rounding, so VERIFY-013 remains OPEN and every fee-derived
 result remains explicitly modeled/provisional.
 
-TKT-M15-02 / #76 is implemented in Draft PR #110. It reconstructs known
-acquisition inventory from completed personal Trading Post transactions,
-allocates sells to the oldest available buy lots by account and item, supports
-partial/many-to-one/one-to-many matches, and keeps missing pre-history basis as
-an explicit unknown quantity. Equal completed timestamps use ascending external
-transaction ID, and the versioned result is rebuilt in memory without derived
-SQLite state or current-order inference.
+TKT-M15-02 / #76 merged in PR #110. It reconstructs known acquisition inventory
+from completed personal Trading Post transactions, allocates sells to the oldest
+available buy lots by account and item, supports partial/many-to-one/one-to-many
+matches, and keeps missing pre-history basis as an explicit unknown quantity.
+Equal completed timestamps use ascending external transaction ID, and the
+versioned result is rebuilt in memory without derived SQLite state or
+current-order inference.
 
-TKT-M15-02 is **SOL-GATED**. A fresh separate Sol XHigh review at commit
-`bffcb16b0818b23976ad08cf922ff8c2b87f788b` returned APPROVE with no findings,
-and all required GitHub CI jobs are green. PR #110 is Ready for owner review.
-After owner merge, the next valid implementation ticket is:
+TKT-M15-03 / #77 is implemented in Draft PR #111. It deterministically rebuilds
+known-basis realized gross sales, canonical listing/exchange fees, net profit,
+and exact ROI from FIFO evidence; unknown-basis sale quantities remain separate
+and never receive a zero cost. It also calculates open FIFO basis and current
+net liquidation/unrealized P&L only from explicit complete account/item buy-book
+evidence; missing or insufficient depth is disclosed rather than estimated.
+Rolling 7/30/90-day results use UTC half-open windows and remain unsupported
+unless the declared retained-history interval fully covers the window. Fee
+allocations are proportional by quantity with deterministic FIFO-order copper
+remainders; VERIFY-013 remains OPEN, so every fee-derived value is provisional.
 
-**TKT-M15-03 / #77 - Add Realized/Unrealized P&L and 7/30/90-Day Performance.**
+TKT-M15-03 is **SOL-GATED**. PR #111 must remain Draft until a fresh separate
+Sol XHigh review returns APPROVE and required validation is green. After owner
+merge, the next valid implementation ticket is:
 
-Do not begin TKT-M15-03 before the #76 review/merge handoff is complete.
+**TKT-M16-01 / #78 - Build the Personal Dashboard and Current-Order Views.**
+
+Do not begin TKT-M16-01 before the #77 review/merge handoff is complete.
 
 ## Known-good baseline
 
-TKT-M15-02 local validation on 2026-09-07 reported:
+TKT-M15-03 local validation on 2026-09-07 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused FIFO accounting: 19 tests passed;
-- focused canonical fee policy: 13 tests passed;
-- full .NET: 242 tests passed;
+- focused performance/FIFO accounting and canonical fee policy: 43 tests passed;
+- full .NET: 253 tests passed;
 - React: 10 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime and competing-fee-formula audits: no unexpected matches;
-- Gitleaks: all 223 reachable commits scanned with no leaks.
+- Gitleaks: complete reachable history scanned with no leaks.
 
-PR #109 is merged into `develop` as merge commit
-`11d317ff7e1346ec02846fbe6cf889c37f566975`.
+PR #110 is merged into `develop` as merge commit
+`1d15a7b6b689c1f7b19911d29c20b0a32706c82a`.
 
 ## Important transition warning
 
