@@ -61,7 +61,7 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
                 .OrderBy(itemId => itemId)
                 .ToArray();
             var itemMetadata = await ReadItemMetadataAsync(itemIds, attemptedAtUtc, cancellationToken).ConfigureAwait(false);
-            var historyCoverage = GetHistoryCoverage(completedTransactions);
+            var historyCoverage = GetHistoryCoverage(completedTransactions, attemptedAtUtc);
 
             await synchronizationStore.CommitSuccessfulSyncAsync(
                 new PersonalTradingPostSuccessfulSync(
@@ -281,9 +281,10 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
     }
 
     private static (DateTimeOffset? StartUtc, DateTimeOffset? EndUtc) GetHistoryCoverage(
-        IReadOnlyList<CompletedPersonalTradingPostTransaction> transactions) => transactions.Count == 0
+        IReadOnlyList<CompletedPersonalTradingPostTransaction> transactions,
+        DateTimeOffset observedAtUtc) => transactions.Count == 0
             ? (null, null)
-            : (transactions.Min(transaction => transaction.CompletedAtUtc), transactions.Max(transaction => transaction.CompletedAtUtc));
+            : (transactions.Min(transaction => transaction.CompletedAtUtc), observedAtUtc);
 
     private static DateTimeOffset RequireUtc(DateTimeOffset value, string parameterName)
     {

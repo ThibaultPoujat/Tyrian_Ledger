@@ -12,7 +12,7 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
     private static readonly DateTimeOffset ObservedAtUtc = new(2026, 9, 6, 13, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task Complete_multi_page_sync_commits_one_normalized_snapshot_with_metadata_and_coverage()
+    public async Task Complete_multi_page_sync_records_history_coverage_through_the_successful_observation()
     {
         var gateway = new StubGateway();
         gateway.CurrentBuys[0] = SuccessPage(0, 2, 2, Transaction(1001, 11, purchasedAtUtc: null));
@@ -32,8 +32,9 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
         Assert.Equal(2, result.CompletedTransactionCount);
         Assert.Equal(2, result.CurrentOrderCount);
         Assert.Equal(ObservedAtUtc.AddHours(-2), result.HistoryCoverageStartUtc);
-        Assert.Equal(ObservedAtUtc.AddHours(-1), result.HistoryCoverageEndUtc);
+        Assert.Equal(ObservedAtUtc, result.HistoryCoverageEndUtc);
         var persisted = Assert.Single(store.SuccessfulSyncs);
+        Assert.Equal(ObservedAtUtc, persisted.HistoryCoverageEndUtc);
         Assert.Equal("opaque-account-a", persisted.AccountScopeId);
         Assert.Equal([2001L, 2002L], persisted.CompletedTransactions.Select(transaction => transaction.ExternalTransactionId));
         Assert.Equal([1001L, 1002L], persisted.CurrentOrders.Orders.Select(order => order.ExternalOrderId));

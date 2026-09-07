@@ -48,14 +48,16 @@ and never receive a zero cost. It also calculates open FIFO basis and current
 net liquidation/unrealized P&L only from explicit complete account/item buy-book
 evidence; missing or insufficient depth is disclosed rather than estimated.
 Rolling 7/30/90-day results use UTC half-open windows and remain unsupported
-unless the declared retained-history interval fully covers the window. Fee
-allocations are proportional by quantity with deterministic FIFO-order copper
-remainders; VERIFY-013 remains OPEN, so every fee-derived value is provisional.
+unless the declared retained-history interval fully covers the window. A
+successful personal sync records that retained coverage through its observation
+time, so a quiet account is not made unsupported solely by its latest completed
+transaction predating the sync. Fee allocations are proportional by quantity
+with deterministic FIFO-order copper remainders; VERIFY-013 remains OPEN, so
+every fee-derived value is provisional.
 
-TKT-M15-03 is **SOL-GATED**. A fresh separate Sol XHigh re-review at commit
-`3f8a05d` returned APPROVE with no findings, and all required GitHub CI jobs
-are green. PR #111 is Ready for owner review. After owner merge, the next valid
-implementation ticket is:
+TKT-M15-03 is **SOL-GATED**. A follow-up correction is awaiting a fresh separate
+Sol XHigh re-review and final CI before PR #111 may be marked Ready for owner
+review. After owner merge, the next valid implementation ticket is:
 
 **TKT-M16-01 / #78 - Build the Personal Dashboard and Current-Order Views.**
 
