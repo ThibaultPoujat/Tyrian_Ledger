@@ -638,6 +638,151 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Restore_rejects_domain_invalid_identifiers_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "domain-invalid-identifier.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), incompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE completed_tp_transactions SET external_transaction_id = -1;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
+    public async Task Restore_rejects_whitespace_only_account_scopes_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "whitespace-account-scope.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), incompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE account_profiles SET account_scope_id = char(9);";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
+    public async Task Restore_rejects_whitespace_only_item_names_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "whitespace-item-name.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), incompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "INSERT INTO item_metadata (item_id, name, observed_at_utc) VALUES (84, char(9), '2026-09-06T12:00:00.0000000+00:00');";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
+    public async Task Restore_rejects_inconsistent_history_coverage_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "inconsistent-history-coverage.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), incompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE account_profiles SET history_coverage_start_utc = '2026-09-06T13:00:00.0000000+00:00', history_coverage_end_utc = '2026-09-06T12:00:00.0000000+00:00';";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
+    public async Task Restore_rejects_one_sided_history_coverage_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "one-sided-history-coverage.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), incompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE account_profiles SET history_coverage_start_utc = NULL, history_coverage_end_utc = '2026-09-06T12:00:00.0000000+00:00';";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
     public async Task Failed_restore_replacement_leaves_live_data_untouched()
     {
         await using var database = await TestDatabase.CreateAsync();

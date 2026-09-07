@@ -184,6 +184,44 @@ describe('M14 local data controls', () => {
     expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeEnabled();
   });
 
+  it('makes recovery actions mutually exclusive while one is running', async () => {
+    let completeBackup: (value: Response) => void;
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/health') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      }
+      if (input === '/api/local-data') {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }),
+        } as unknown as Response);
+      }
+      if (input === '/api/local-data/backup') {
+        return new Promise((resolve) => {
+          completeBackup = resolve;
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
+      } as unknown as Response);
+    });
+    render(<App />);
+
+    const restoreFile = await screen.findByLabelText('Backup file');
+    fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
+    fireEvent.change(screen.getByLabelText('Type CLEAR PERSONAL DATA to continue'), { target: { value: 'CLEAR PERSONAL DATA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create local backup' }));
+
+    expect(await screen.findByRole('button', { name: 'Creating backup…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Clear personal account data' })).toBeDisabled();
+
+    completeBackup!({ ok: true, json: vi.fn().mockResolvedValue({ fileName: 'synthetic.db' }) } as unknown as Response);
+    expect(await screen.findByText('Backup created: synthetic.db')).toBeVisible();
+  });
+
   it('resets the restore selection after a confirmed restore', async () => {
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       if (input === '/api/health') {

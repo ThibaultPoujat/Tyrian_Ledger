@@ -359,6 +359,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
 
         await ValidateForeignKeysAsync(connection, cancellationToken).ConfigureAwait(false);
         await ValidatePersistedValuesAsync(connection, cancellationToken).ConfigureAwait(false);
+        await ValidatePersistedDomainInvariantsAsync(connection, cancellationToken).ConfigureAwait(false);
         await ValidateNoExecutableSchemaObjectsAsync(connection, cancellationToken).ConfigureAwait(false);
 
         await using var foreignKeyCheck = connection.CreateCommand();
@@ -537,7 +538,39 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                     {
                         _ = SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(valueIndex), $"{tableName}.{columnName}");
                     }
+
+                    if ((tableName, columnName) is ("account_profiles", "account_scope_id") or ("item_metadata", "name")
+                        && string.IsNullOrWhiteSpace(reader.GetString(valueIndex)))
+                    {
+                        throw new InvalidDataException($"The SQLite database contains a whitespace-only value for '{tableName}.{columnName}'.");
+                    }
                 }
+            }
+        }
+    }
+
+    private static async Task ValidatePersistedDomainInvariantsAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        const long Int32Maximum = int.MaxValue;
+        var invalidRowPredicates = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["account_profiles"] = "id <= 0 OR (history_coverage_start_utc IS NULL) <> (history_coverage_end_utc IS NULL) OR history_coverage_start_utc > history_coverage_end_utc",
+            ["completed_tp_transactions"] = $"id <= 0 OR account_profile_id <= 0 OR external_transaction_id <= 0 OR side NOT IN (1, 2) OR item_id <= 0 OR item_id > {Int32Maximum} OR unit_price_in_copper < 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum}",
+            ["current_order_sync_batches"] = "id <= 0 OR account_profile_id <= 0",
+            ["current_tp_orders"] = $"id <= 0 OR account_profile_id <= 0 OR sync_batch_id <= 0 OR external_order_id <= 0 OR side NOT IN (1, 2) OR item_id <= 0 OR item_id > {Int32Maximum} OR unit_price_in_copper < 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum}",
+            ["current_tp_order_observations"] = $"id <= 0 OR sync_batch_id <= 0 OR account_profile_id <= 0 OR external_order_id <= 0 OR side NOT IN (1, 2) OR item_id <= 0 OR item_id > {Int32Maximum} OR unit_price_in_copper < 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum}",
+            ["item_metadata"] = $"item_id <= 0 OR item_id > {Int32Maximum}",
+            ["schema_migrations"] = "version <= 0 OR trim(name) = ''",
+            ["user_settings"] = $"singleton_id <> 1 OR settings_version <= 0 OR settings_version > {Int32Maximum} OR (minimum_profit_in_copper IS NOT NULL AND (minimum_profit_in_copper < 0 OR minimum_profit_in_copper > {Int32Maximum})) OR (minimum_roi_basis_points IS NOT NULL AND (minimum_roi_basis_points < 0 OR minimum_roi_basis_points > 10000)) OR (cash_reserve_basis_points IS NOT NULL AND (cash_reserve_basis_points < 0 OR cash_reserve_basis_points > 10000))",
+        };
+
+        foreach (var (tableName, invalidRowPredicate) in invalidRowPredicates)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT 1 FROM {QuoteIdentifier(tableName)} WHERE {invalidRowPredicate} LIMIT 1;";
+            if (await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null)
+            {
+                throw new InvalidDataException($"The SQLite database contains domain-invalid values in '{tableName}'.");
             }
         }
     }

@@ -212,6 +212,7 @@ function LocalDataPanel() {
   const [clearConfirmation, setClearConfirmation] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const isRecoveryBusy = isBackingUp || isRestoring || isClearing;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -332,7 +333,7 @@ function LocalDataPanel() {
       <div className="local-data-action">
         <h3>Create a backup</h3>
         <p>Create a timestamped, consistent copy before making major changes to your computer or this application.</p>
-        <button disabled={isBackingUp || location.kind !== 'ready'} onClick={createBackup} type="button">
+        <button disabled={isRecoveryBusy || location.kind !== 'ready'} onClick={createBackup} type="button">
           {isBackingUp ? 'Creating backup…' : 'Create local backup'}
         </button>
       </div>
@@ -343,7 +344,7 @@ function LocalDataPanel() {
         <input ref={restoreFileInput} id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
         <label htmlFor="restore-confirmation">Type RESTORE LOCAL DATA to continue</label>
         <input id="restore-confirmation" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} />
-        <button disabled={isRestoring || restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restore} type="button">
+        <button disabled={isRecoveryBusy || restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restore} type="button">
           {isRestoring ? 'Restoring backup…' : 'Restore selected backup'}
         </button>
       </div>
@@ -352,7 +353,7 @@ function LocalDataPanel() {
         <p>This permanently removes synced account history and current-order records from the active database. Shared item metadata and settings remain. Existing backup files are not deleted.</p>
         <label htmlFor="clear-confirmation">Type CLEAR PERSONAL DATA to continue</label>
         <input id="clear-confirmation" value={clearConfirmation} onChange={(event) => setClearConfirmation(event.target.value)} />
-        <button disabled={isClearing || clearConfirmation !== 'CLEAR PERSONAL DATA'} onClick={clearPersonalData} type="button">
+        <button disabled={isRecoveryBusy || clearConfirmation !== 'CLEAR PERSONAL DATA'} onClick={clearPersonalData} type="button">
           {isClearing ? 'Clearing personal data…' : 'Clear personal account data'}
         </button>
       </div>
