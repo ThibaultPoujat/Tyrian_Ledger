@@ -27,22 +27,15 @@ public sealed class PublicMarketSnapshotCollector
         Action<PublicMarketSnapshotCollectionProgress>? reportProgress = null,
         CancellationToken cancellationToken = default)
     {
-        Report(reportProgress, PublicMarketSnapshotCollectionStage.DiscoveringPriceItemIds, finalistCount: null);
-        var itemIds = await GetRequiredValueAsync(
-            marketDataClient.GetPriceItemIdsAsync(cancellationToken),
-            cancellationToken).ConfigureAwait(false);
-        ValidatePriceItemIds(itemIds);
-
-        Report(reportProgress, PublicMarketSnapshotCollectionStage.DiscoveringAggregatePrices, finalistCount: null);
-        var prices = await GetRequiredValueAsync(
-            marketDataClient.GetPricesAsync(itemIds, cancellationToken),
-            cancellationToken).ConfigureAwait(false);
+        var aggregateSnapshot = await CollectAggregatePricesAsync(reportProgress, cancellationToken).ConfigureAwait(false);
+        var itemIds = aggregateSnapshot.ItemIds;
+        var prices = aggregateSnapshot.Prices;
 
         Report(reportProgress, PublicMarketSnapshotCollectionStage.ScreeningCandidates, finalistCount: null);
         var finalists = SelectFinalists(itemIds, prices);
         if (finalists.Length == 0)
         {
-            return new PublicMarketSnapshotCollection(clock.UtcNow.ToUniversalTime(), []);
+            return new PublicMarketSnapshotCollection(aggregateSnapshot.GeneratedAtUtc, []);
         }
 
         Report(reportProgress, PublicMarketSnapshotCollectionStage.ReadingFinalistListings, finalists.Length);
@@ -64,7 +57,34 @@ public sealed class PublicMarketSnapshotCollector
                 metadataByItemId[listing.ItemId],
                 CanonicalizeListing(listing)))
             .ToArray();
-        return new PublicMarketSnapshotCollection(clock.UtcNow.ToUniversalTime(), candidates);
+        return new PublicMarketSnapshotCollection(aggregateSnapshot.GeneratedAtUtc, candidates);
+    }
+
+    /// <summary>
+    /// Collects one complete aggregate-price observation without requesting detailed
+    /// order books. Live scanning uses this path before a later ticket enriches
+    /// shortlisted markets with depth evidence.
+    /// </summary>
+    public async Task<PublicMarketAggregateSnapshot> CollectAggregatePricesAsync(
+        Action<PublicMarketSnapshotCollectionProgress>? reportProgress = null,
+        CancellationToken cancellationToken = default)
+    {
+        Report(reportProgress, PublicMarketSnapshotCollectionStage.DiscoveringPriceItemIds, finalistCount: null);
+        var itemIds = await GetRequiredValueAsync(
+            marketDataClient.GetPriceItemIdsAsync(cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+        ValidatePriceItemIds(itemIds);
+
+        Report(reportProgress, PublicMarketSnapshotCollectionStage.DiscoveringAggregatePrices, finalistCount: null);
+        var prices = await GetRequiredValueAsync(
+            marketDataClient.GetPricesAsync(itemIds, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+        ValidatePrices(itemIds, prices);
+
+        return new PublicMarketAggregateSnapshot(
+            clock.UtcNow.ToUniversalTime(),
+            itemIds.OrderBy(itemId => itemId).ToArray(),
+            prices.OrderBy(price => price.ItemId).ToArray());
     }
 
     private static MarketListing CanonicalizeListing(MarketListing listing) => new(
@@ -212,6 +232,16 @@ public sealed class PublicMarketSnapshotCollector
 public sealed record PublicMarketSnapshotCollection(
     DateTimeOffset GeneratedAtUtc,
     IReadOnlyList<BeginnerRecommendationCandidate> Candidates);
+
+/// <summary>
+/// A complete aggregate-price observation. It intentionally has no detailed
+/// order-book information, which keeps broad live screening separate from
+/// liquidity analysis.
+/// </summary>
+public sealed record PublicMarketAggregateSnapshot(
+    DateTimeOffset GeneratedAtUtc,
+    IReadOnlyList<int> ItemIds,
+    IReadOnlyList<MarketPrice> Prices);
 
 /// <summary>
 /// Progress exposed to the existing player scan without coupling the collector
