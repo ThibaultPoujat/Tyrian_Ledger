@@ -142,6 +142,7 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(FirstObservedAtUtc, stored.LastSeenAtUtc);
         Assert.Empty(await database.PersonalTradingPost.GetCurrentOrdersAsync(account));
         Assert.Equal(2, (await database.PersonalTradingPost.GetCurrentOrderObservationsAsync(account)).Count);
+        Assert.Equal((SecondObservedAtUtc, 1L, null as long?, FirstObservedAtUtc, SecondObservedAtUtc), await database.GetAccountSyncStateAsync());
     }
 
     [Fact]

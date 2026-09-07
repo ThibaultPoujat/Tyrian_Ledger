@@ -43,6 +43,25 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
     }
 
     [Fact]
+    public async Task Successful_sync_coverage_end_includes_a_completion_newer_than_the_observation()
+    {
+        var gateway = new StubGateway();
+        gateway.CurrentBuys[0] = EmptyPage();
+        gateway.CurrentSells[0] = EmptyPage();
+        gateway.CompletedBuys[0] = SuccessPage(0, 1, 1, Transaction(2001, 11, ObservedAtUtc.AddMinutes(1)));
+        gateway.CompletedSells[0] = EmptyPage();
+        var store = new RecordingStore();
+        var service = CreateService(gateway, new StubMarketDataClient(
+            Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Success([new MarketItemMetadata(11, "Eleven", 250)])), store);
+
+        var result = await service.SynchronizeAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ObservedAtUtc.AddMinutes(1), result.HistoryCoverageEndUtc);
+        Assert.Equal(ObservedAtUtc.AddMinutes(1), Assert.Single(store.SuccessfulSyncs).HistoryCoverageEndUtc);
+    }
+
+    [Fact]
     public async Task Failed_or_inconsistent_remote_reads_do_not_commit_and_record_a_safe_failure_after_scope_resolution()
     {
         var gateway = new StubGateway();

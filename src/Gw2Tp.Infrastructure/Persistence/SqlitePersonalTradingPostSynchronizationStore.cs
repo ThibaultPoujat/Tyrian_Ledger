@@ -97,8 +97,19 @@ internal sealed class SqlitePersonalTradingPostSynchronizationStore(
                     last_sync_attempted_at_utc = $completedAtUtc,
                     last_sync_outcome = $successfulOutcome,
                     last_sync_error_category = NULL,
-                    history_coverage_start_utc = $historyCoverageStartUtc,
-                    history_coverage_end_utc = $historyCoverageEndUtc
+                    history_coverage_start_utc = CASE
+                        WHEN history_coverage_start_utc IS NULL THEN $historyCoverageStartUtc
+                        WHEN $historyCoverageStartUtc IS NULL THEN history_coverage_start_utc
+                        WHEN $historyCoverageStartUtc < history_coverage_start_utc THEN $historyCoverageStartUtc
+                        ELSE history_coverage_start_utc
+                    END,
+                    history_coverage_end_utc = CASE
+                        WHEN history_coverage_start_utc IS NULL AND $historyCoverageStartUtc IS NULL THEN NULL
+                        WHEN history_coverage_end_utc IS NULL THEN COALESCE($historyCoverageEndUtc, $completedAtUtc)
+                        WHEN $historyCoverageEndUtc IS NOT NULL AND $historyCoverageEndUtc > history_coverage_end_utc THEN $historyCoverageEndUtc
+                        WHEN $completedAtUtc > history_coverage_end_utc THEN $completedAtUtc
+                        ELSE history_coverage_end_utc
+                    END
                 WHERE id = $accountProfileId;
                 """;
             updateStatus.Parameters.AddWithValue("$completedAtUtc", ToUtc(sync.CompletedAtUtc, nameof(sync.CompletedAtUtc)));
