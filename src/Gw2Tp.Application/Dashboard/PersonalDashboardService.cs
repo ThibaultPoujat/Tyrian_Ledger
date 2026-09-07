@@ -4,8 +4,10 @@ using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.PersonalTradingPost;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Time;
 using Gw2Tp.Domain.Finance;
+using System.Globalization;
 
 namespace Gw2Tp.Application.Dashboard;
 
@@ -23,6 +25,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
     private readonly IItemMetadataRepository itemMetadataRepository;
     private readonly IGw2ApiClient marketDataClient;
     private readonly IClock clock;
+    private readonly IPersonalDataOperationGate operationGate;
     private readonly PersonalPerformanceCalculator performanceCalculator = new();
     private readonly FifoLotMatcher fifoLotMatcher = new();
     private readonly FlipProfitCalculator saleCalculator = new(Gw2TradingPostFeePolicy.Create());
@@ -32,13 +35,15 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
         IPersonalTradingPostRepository repository,
         IItemMetadataRepository itemMetadataRepository,
         IGw2ApiClient marketDataClient,
-        IClock clock)
+        IClock clock,
+        IPersonalDataOperationGate? operationGate = null)
     {
         this.personalGateway = personalGateway ?? throw new ArgumentNullException(nameof(personalGateway));
         this.repository = repository ?? throw new ArgumentNullException(nameof(repository));
         this.itemMetadataRepository = itemMetadataRepository ?? throw new ArgumentNullException(nameof(itemMetadataRepository));
         this.marketDataClient = marketDataClient ?? throw new ArgumentNullException(nameof(marketDataClient));
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        this.operationGate = operationGate ?? NoopPersonalDataOperationGate.Instance;
     }
 
     public async Task<PersonalDashboard> GetAsync(CancellationToken cancellationToken = default)
@@ -49,37 +54,43 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
             return PersonalDashboard.AccountUnavailable(accountResult.ErrorCategory ?? Gw2ApiErrorCategory.InvalidPayload);
         }
 
-        var profile = await repository.FindAccountProfileAsync(accountResult.Value.AccountId, cancellationToken).ConfigureAwait(false);
-        if (profile is null)
+        AccountProfile profile;
+        PersonalTradingPostHistoryCoverage coverage;
+        IReadOnlyList<StoredCompletedPersonalTradingPostTransaction> transactions;
+        CurrentPersonalTradingPostOrderSnapshot? currentOrders;
+        IReadOnlyList<AccountScopedCompletedTransaction> performanceTransactions;
+        int[] marketItemIds;
+        IReadOnlyDictionary<int, string> metadata;
+        await using (await operationGate.AcquireAsync(cancellationToken).ConfigureAwait(false))
         {
-            return PersonalDashboard.NotSynchronized();
+            var foundProfile = await repository.FindAccountProfileAsync(accountResult.Value.AccountId, cancellationToken).ConfigureAwait(false);
+            if (foundProfile is null)
+            {
+                return PersonalDashboard.NotSynchronized();
+            }
+
+            profile = foundProfile;
+            coverage = await repository.GetHistoryCoverageAsync(profile, cancellationToken).ConfigureAwait(false);
+            transactions = await repository.GetCompletedTransactionsAsync(profile, cancellationToken).ConfigureAwait(false);
+            currentOrders = await repository.GetLatestCurrentOrderSnapshotAsync(profile, cancellationToken).ConfigureAwait(false);
+            var scopedTransactions = transactions
+                .Select(transaction => new AccountScopedCompletedTransaction(profile.Id, transaction.Transaction))
+                .ToArray();
+            performanceTransactions = coverage.StartUtc is { } coverageStartUtc && coverage.EndUtc is { } coverageEndUtc
+                ? scopedTransactions.Where(transaction => transaction.Transaction.CompletedAtUtc >= coverageStartUtc &&
+                                                         transaction.Transaction.CompletedAtUtc <= coverageEndUtc).ToArray()
+                : [];
+            var openItemIds = fifoLotMatcher.Rebuild(performanceTransactions).OpenLots.Select(lot => lot.ItemId);
+            marketItemIds = openItemIds
+                .Concat(currentOrders?.Orders.Select(order => order.ItemId) ?? [])
+                .Distinct()
+                .OrderBy(itemId => itemId)
+                .ToArray();
+            metadata = await ReadMetadataAsync(marketItemIds
+                .Concat(transactions.Select(transaction => transaction.Transaction.ItemId))
+                .Distinct()
+                .ToArray(), cancellationToken).ConfigureAwait(false);
         }
-
-        var coverageTask = repository.GetHistoryCoverageAsync(profile, cancellationToken);
-        var transactionsTask = repository.GetCompletedTransactionsAsync(profile, cancellationToken);
-        var ordersTask = repository.GetLatestCurrentOrderSnapshotAsync(profile, cancellationToken);
-        await Task.WhenAll(coverageTask, transactionsTask, ordersTask).ConfigureAwait(false);
-
-        var coverage = await coverageTask.ConfigureAwait(false);
-        var transactions = await transactionsTask.ConfigureAwait(false);
-        var currentOrders = await ordersTask.ConfigureAwait(false);
-        var scopedTransactions = transactions
-            .Select(transaction => new AccountScopedCompletedTransaction(profile.Id, transaction.Transaction))
-            .ToArray();
-        var performanceTransactions = coverage.StartUtc is { } coverageStartUtc && coverage.EndUtc is { } coverageEndUtc
-            ? scopedTransactions.Where(transaction => transaction.Transaction.CompletedAtUtc >= coverageStartUtc &&
-                                                     transaction.Transaction.CompletedAtUtc <= coverageEndUtc).ToArray()
-            : [];
-        var openItemIds = fifoLotMatcher.Rebuild(performanceTransactions).OpenLots.Select(lot => lot.ItemId);
-        var marketItemIds = openItemIds
-            .Concat(currentOrders?.Orders.Select(order => order.ItemId) ?? [])
-            .Distinct()
-            .OrderBy(itemId => itemId)
-            .ToArray();
-        var metadata = await ReadMetadataAsync(marketItemIds
-            .Concat(transactions.Select(transaction => transaction.Transaction.ItemId))
-            .Distinct()
-            .ToArray(), cancellationToken).ConfigureAwait(false);
         var marketResult = marketItemIds.Length == 0
             ? Gw2ApiResult<IReadOnlyList<MarketListing>>.Success([])
             : await marketDataClient.GetListingsAsync(marketItemIds, cancellationToken).ConfigureAwait(false);
@@ -133,7 +144,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
                 .ThenByDescending(transaction => transaction.Transaction.ExternalTransactionId)
                 .Take(RecentTradeLimit)
                 .Select(transaction => new DashboardRecentTrade(
-                    transaction.Transaction.ExternalTransactionId,
+                    transaction.Transaction.ExternalTransactionId.ToString(CultureInfo.InvariantCulture),
                     transaction.Transaction.Side,
                     transaction.Transaction.ItemId,
                     NameFor(transaction.Transaction.ItemId, metadata),
@@ -149,10 +160,8 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
         CancellationToken cancellationToken)
     {
         var uniqueIds = itemIds.Where(itemId => itemId > 0).Distinct().ToArray();
-        var reads = uniqueIds.Select(async itemId => (ItemId: itemId, Value: await itemMetadataRepository.GetAsync(itemId, cancellationToken).ConfigureAwait(false)));
-        var values = await Task.WhenAll(reads).ConfigureAwait(false);
-        return values.Where(value => value.Value is not null)
-            .ToDictionary(value => value.ItemId, value => value.Value!.Name);
+        var values = await itemMetadataRepository.GetManyAsync(uniqueIds, cancellationToken).ConfigureAwait(false);
+        return values.ToDictionary(value => value.ItemId, value => value.Name);
     }
 
     private static DashboardRealizedWindow MapWindow(RealizedPerformanceWindowResult window) => new(
@@ -184,7 +193,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
     {
         if (marketState == DashboardMarketState.Unavailable)
         {
-            return new DashboardOrder(order.ExternalOrderId, order.Side, order.ItemId, NameFor(order.ItemId, metadata), order.Quantity,
+            return new DashboardOrder(order.ExternalOrderId.ToString(CultureInfo.InvariantCulture), order.Side, order.ItemId, NameFor(order.ItemId, metadata), order.Quantity,
                 ToDashboardMoney(new Money(order.UnitPriceInCopper)), DashboardOrderMarketComparisonStatus.Unavailable, null);
         }
 
@@ -193,7 +202,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
                 ? listing.Buys.Select(level => level.UnitPriceInCopper).DefaultIfEmpty().Max()
                 : listing.Sells.Select(level => level.UnitPriceInCopper).DefaultIfEmpty().Min()
             : 0;
-        return new DashboardOrder(order.ExternalOrderId, order.Side, order.ItemId, NameFor(order.ItemId, metadata), order.Quantity,
+        return new DashboardOrder(order.ExternalOrderId.ToString(CultureInfo.InvariantCulture), order.Side, order.ItemId, NameFor(order.ItemId, metadata), order.Quantity,
             ToDashboardMoney(new Money(order.UnitPriceInCopper)),
             marketPrice > 0 ? DashboardOrderMarketComparisonStatus.Available : DashboardOrderMarketComparisonStatus.MissingSide,
             marketPrice > 0 ? ToDashboardMoney(new Money(marketPrice)) : null);
@@ -206,22 +215,28 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
     {
         var items = performance.KnownBasisSaleAllocations
             .GroupBy(allocation => allocation.Match.ItemId)
-            .Select(group => new DashboardRealizedItem(
-                group.Key,
-                NameFor(group.Key, metadata),
-                checked((int)group.Sum(allocation => (long)allocation.Match.MatchedQuantity)),
-                ToDashboardMoney(Sum(group.Select(allocation => allocation.NetProfit)))));
+            .Select(group => new
+            {
+                ItemId = group.Key,
+                Quantity = checked((int)group.Sum(allocation => (long)allocation.Match.MatchedQuantity)),
+                NetProfit = Sum(group.Select(allocation => allocation.NetProfit)),
+            });
         return (descending
                 ? items.OrderByDescending(item => item.NetProfit.Copper).ThenBy(item => item.ItemId)
                 : items.OrderBy(item => item.NetProfit.Copper).ThenBy(item => item.ItemId))
             .Take(RealizedItemLimit)
+            .Select(item => new DashboardRealizedItem(
+                item.ItemId,
+                NameFor(item.ItemId, metadata),
+                item.Quantity,
+                ToDashboardMoney(item.NetProfit)))
             .ToArray();
     }
 
     private static string NameFor(int itemId, IReadOnlyDictionary<int, string> metadata) =>
         metadata.TryGetValue(itemId, out var name) ? name : $"Item #{itemId}";
 
-    private static DashboardMoney ToDashboardMoney(Money value) => new(value.Copper);
+    private static DashboardMoney ToDashboardMoney(Money value) => new(value.Copper.ToString(CultureInfo.InvariantCulture));
 
     private static DashboardMoney? ToDashboardMoney(Money? value) => value is { } amount ? ToDashboardMoney(amount) : null;
 
@@ -241,4 +256,21 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
     private static DateTimeOffset RequireUtc(DateTimeOffset value) => value.Offset == TimeSpan.Zero
         ? value
         : throw new InvalidOperationException("The dashboard clock must return UTC.");
+
+    private sealed class NoopPersonalDataOperationGate : IPersonalDataOperationGate
+    {
+        public static readonly NoopPersonalDataOperationGate Instance = new();
+
+        public ValueTask<IAsyncDisposable> AcquireAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IAsyncDisposable>(NoopLease.Instance);
+        }
+
+        private sealed class NoopLease : IAsyncDisposable
+        {
+            public static readonly NoopLease Instance = new();
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
 }

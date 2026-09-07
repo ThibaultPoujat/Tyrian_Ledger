@@ -358,6 +358,22 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Item_metadata_batch_read_returns_requested_retained_items_and_omits_missing_items()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.ItemMetadata.UpsertAsync(
+        [
+            new StoredItemMetadata(42, "First item", FirstObservedAtUtc),
+            new StoredItemMetadata(84, "Second item", FirstObservedAtUtc),
+        ]);
+
+        var items = await database.ItemMetadata.GetManyAsync([84, 42, 84, 126]);
+
+        Assert.Equal([42, 84], items.Select(item => item.ItemId).OrderBy(itemId => itemId));
+        Assert.Equal(["First item", "Second item"], items.OrderBy(item => item.ItemId).Select(item => item.Name));
+    }
+
+    [Fact]
     public async Task Schema_has_no_credential_storage_path_and_documents_the_migrated_tables()
     {
         await using var database = await TestDatabase.CreateAsync();

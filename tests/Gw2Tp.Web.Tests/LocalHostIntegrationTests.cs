@@ -163,7 +163,7 @@ public sealed class LocalHostIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
         Assert.Contains("\"state\":\"notSynchronized\"", body, StringComparison.Ordinal);
-        Assert.Contains("\"currentBuyCapital\":{\"copper\":0}", body, StringComparison.Ordinal);
+        Assert.Contains("\"currentBuyCapital\":{\"copper\":\"0\"}", body, StringComparison.Ordinal);
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("accountScope", body, StringComparison.OrdinalIgnoreCase);

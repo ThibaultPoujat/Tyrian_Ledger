@@ -24,7 +24,11 @@ public enum DashboardOrderMarketComparisonStatus
     Unavailable,
 }
 
-public sealed record DashboardMoney(long Copper);
+/// <summary>
+/// A decimal integer copper amount encoded as text so the browser never has to
+/// coerce a 64-bit server value through a lossy JavaScript number.
+/// </summary>
+public sealed record DashboardMoney(string Copper);
 
 public sealed record DashboardHistoryCoverage(DateTimeOffset? StartUtc, DateTimeOffset? EndUtc);
 
@@ -48,7 +52,7 @@ public sealed record DashboardOpenInventory(
     DashboardMoney? UnrealizedProfit);
 
 public sealed record DashboardOrder(
-    long OrderId,
+    string OrderId,
     PersonalTradingPostSide Side,
     int ItemId,
     string ItemName,
@@ -58,7 +62,7 @@ public sealed record DashboardOrder(
     DashboardMoney? CurrentMarketUnitPrice);
 
 public sealed record DashboardRecentTrade(
-    long TransactionId,
+    string TransactionId,
     PersonalTradingPostSide Side,
     int ItemId,
     string ItemName,
@@ -101,7 +105,7 @@ public sealed record PersonalDashboard(
         DashboardMarketState.Unavailable,
         false,
         [], null, null, null, null, [],
-        new DashboardMoney(0), new DashboardMoney(0), new DashboardMoney(0),
+        new DashboardMoney("0"), new DashboardMoney("0"), new DashboardMoney("0"),
         [], [], [], []);
 
     public static PersonalDashboard NotSynchronized() => new(
@@ -111,7 +115,7 @@ public sealed record PersonalDashboard(
         DashboardMarketState.Unavailable,
         false,
         [], null, null, null, null, [],
-        new DashboardMoney(0), new DashboardMoney(0), new DashboardMoney(0),
+        new DashboardMoney("0"), new DashboardMoney("0"), new DashboardMoney("0"),
         [], [], [], []);
 }
 

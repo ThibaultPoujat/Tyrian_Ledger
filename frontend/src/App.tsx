@@ -26,7 +26,7 @@ type LocalDataLocationState =
   | { kind: 'unavailable' }
   | { kind: 'ready'; location: LocalDataLocation };
 
-type Money = { copper: number };
+type Money = { copper: string };
 type Dashboard = {
   state: 'ready' | 'notSynchronized' | 'accountUnavailable';
   accountError: string | null;
@@ -44,8 +44,8 @@ type Dashboard = {
   currentBuyCapital: Money;
   currentSellGrossValue: Money;
   currentSellNetValue: Money;
-  currentOrders: Array<{ orderId: number; side: 'buy' | 'sell'; itemId: number; itemName: string; quantity: number; unitPrice: Money; marketComparisonStatus: 'available' | 'missingSide' | 'unavailable'; currentMarketUnitPrice: Money | null }>;
-  recentTrades: Array<{ transactionId: number; side: 'buy' | 'sell'; itemName: string; quantity: number; unitPrice: Money; completedAtUtc: string }>;
+  currentOrders: Array<{ orderId: string; side: 'buy' | 'sell'; itemId: number; itemName: string; quantity: number; unitPrice: Money; marketComparisonStatus: 'available' | 'missingSide' | 'unavailable'; currentMarketUnitPrice: Money | null }>;
+  recentTrades: Array<{ transactionId: string; side: 'buy' | 'sell'; itemName: string; quantity: number; unitPrice: Money; completedAtUtc: string }>;
   bestRealizedItems: Array<{ itemId: number; itemName: string; quantity: number; netProfit: Money }>;
   worstRealizedItems: Array<{ itemId: number; itemName: string; quantity: number; netProfit: Money }>;
 };
@@ -240,7 +240,7 @@ export default function App() {
               {syncStatus === 'failed' && <p role="alert">Synchronization could not be confirmed. Your existing local data was kept.</p>}
             </section>
             <DashboardPanel dashboard={dashboard} status={dashboardStatus} />
-            <LocalDataPanel />
+            <LocalDataPanel onPersonalDataChanged={loadDashboard} />
           </section>
         </main>
       </div>
@@ -254,19 +254,121 @@ export default function App() {
 }
 
 function isDashboard(payload: unknown): payload is Dashboard {
-  if (typeof payload !== 'object' || payload === null) return false;
-  const candidate = payload as Record<string, unknown>;
-  return ['ready', 'notSynchronized', 'accountUnavailable'].includes(candidate.state as string)
-    && Array.isArray(candidate.realizedWindows)
-    && Array.isArray(candidate.currentOrders)
-    && Array.isArray(candidate.recentTrades);
+  if (!isRecord(payload)) return false;
+  return isOneOf(payload.state, ['ready', 'notSynchronized', 'accountUnavailable'])
+    && isNullableString(payload.accountError)
+    && isNullableString(payload.lastSuccessfulSyncAtUtc)
+    && isNullableString(payload.currentOrdersObservedAtUtc)
+    && isNullableHistoryCoverage(payload.historyCoverage)
+    && isOneOf(payload.marketState, ['available', 'unavailable'])
+    && typeof payload.isFeeRoundingExternallyVerified === 'boolean'
+    && isArrayOf(payload.realizedWindows, isRealizedWindow)
+    && isNullableMoney(payload.openAcquisitionBasis)
+    && isNullableMoney(payload.netLiquidationValue)
+    && isNullableMoney(payload.unrealizedProfit)
+    && (typeof payload.isOpenInventoryFullyValued === 'boolean' || payload.isOpenInventoryFullyValued === null)
+    && isArrayOf(payload.openInventory, isOpenInventory)
+    && isMoney(payload.currentBuyCapital)
+    && isMoney(payload.currentSellGrossValue)
+    && isMoney(payload.currentSellNetValue)
+    && isArrayOf(payload.currentOrders, isCurrentOrder)
+    && isArrayOf(payload.recentTrades, isRecentTrade)
+    && isArrayOf(payload.bestRealizedItems, isRealizedItem)
+    && isArrayOf(payload.worstRealizedItems, isRealizedItem);
 }
 
 function copper(money: Money | null): string {
   if (money === null) return 'Unavailable';
-  const sign = money.copper < 0 ? '−' : '';
-  const absolute = Math.abs(money.copper);
-  return `${sign}${Math.floor(absolute / 10000)}g ${Math.floor((absolute % 10000) / 100)}s ${absolute % 100}c`;
+  const value = BigInt(money.copper);
+  const sign = value < 0n ? '−' : '';
+  const absolute = value < 0n ? -value : value;
+  return `${sign}${absolute / 10000n}g ${(absolute % 10000n) / 100n}s ${absolute % 100n}c`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isOneOf<T extends string>(value: unknown, values: readonly T[]): value is T {
+  return typeof value === 'string' && values.includes(value as T);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isDecimalIdentifier(value: unknown): value is string {
+  return typeof value === 'string' && /^\d+$/.test(value);
+}
+
+function isMoney(value: unknown): value is Money {
+  return isRecord(value) && typeof value.copper === 'string' && /^-?\d+$/.test(value.copper);
+}
+
+function isNullableMoney(value: unknown): value is Money | null {
+  return value === null || isMoney(value);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function isArrayOf(value: unknown, item: (candidate: unknown) => boolean): value is unknown[] {
+  return Array.isArray(value) && value.every(item);
+}
+
+function isNullableHistoryCoverage(value: unknown): boolean {
+  return value === null || (isRecord(value) && isNullableString(value.startUtc) && isNullableString(value.endUtc));
+}
+
+function isRealizedWindow(value: unknown): boolean {
+  return isRecord(value)
+    && isNonNegativeInteger(value.days)
+    && isOneOf(value.status, ['supported', 'insufficientCoverage'])
+    && isNullableMoney(value.netProfit)
+    && isNonNegativeInteger(value.unknownBasisQuantity);
+}
+
+function isOpenInventory(value: unknown): boolean {
+  return isRecord(value)
+    && isNonNegativeInteger(value.itemId)
+    && typeof value.itemName === 'string'
+    && isNonNegativeInteger(value.quantity)
+    && isMoney(value.acquisitionBasis)
+    && isOneOf(value.liquidationStatus, ['fullyValued', 'insufficientBuyDepth', 'missingMarketEvidence'])
+    && isNonNegativeInteger(value.unliquidatedQuantity)
+    && isNullableMoney(value.netLiquidationValue)
+    && isNullableMoney(value.unrealizedProfit);
+}
+
+function isCurrentOrder(value: unknown): boolean {
+  return isRecord(value)
+    && isDecimalIdentifier(value.orderId)
+    && isOneOf(value.side, ['buy', 'sell'])
+    && isNonNegativeInteger(value.itemId)
+    && typeof value.itemName === 'string'
+    && isNonNegativeInteger(value.quantity)
+    && isMoney(value.unitPrice)
+    && isOneOf(value.marketComparisonStatus, ['available', 'missingSide', 'unavailable'])
+    && isNullableMoney(value.currentMarketUnitPrice);
+}
+
+function isRecentTrade(value: unknown): boolean {
+  return isRecord(value)
+    && isDecimalIdentifier(value.transactionId)
+    && isOneOf(value.side, ['buy', 'sell'])
+    && typeof value.itemName === 'string'
+    && isNonNegativeInteger(value.quantity)
+    && isMoney(value.unitPrice)
+    && typeof value.completedAtUtc === 'string';
+}
+
+function isRealizedItem(value: unknown): boolean {
+  return isRecord(value)
+    && isNonNegativeInteger(value.itemId)
+    && typeof value.itemName === 'string'
+    && isNonNegativeInteger(value.quantity)
+    && isMoney(value.netProfit);
 }
 
 function timestamp(value: string | null): string {
@@ -312,7 +414,7 @@ function DashboardItems({ title, items }: { title: string; items: Dashboard['bes
   return <section className="dashboard-items"><h3>{title}</h3>{items.length === 0 ? <p>No known-basis realized sales yet.</p> : <ol>{items.map((item) => <li key={item.itemId}><span>{item.itemName} ({item.quantity})</span><strong>{copper(item.netProfit)}</strong></li>)}</ol>}</section>;
 }
 
-function LocalDataPanel() {
+function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () => void }) {
   const [location, setLocation] = useState<LocalDataLocationState>({ kind: 'loading' });
   const [message, setMessage] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -393,6 +495,7 @@ function LocalDataPanel() {
         if (restoreFileInput.current !== null) {
           restoreFileInput.current.value = '';
         }
+        onPersonalDataChanged();
       })
       .catch(() => setMessage('Restore outcome could not be confirmed. Check local data before retrying.'))
       .finally(() => setIsRestoring(false));
@@ -422,6 +525,7 @@ function LocalDataPanel() {
         }
         setMessage('Personal account data cleared. Existing backup files were kept.');
         setClearConfirmation('');
+        onPersonalDataChanged();
       })
       .catch(() => setMessage('Clear outcome could not be confirmed. Check local data before retrying.'))
       .finally(() => setIsClearing(false));

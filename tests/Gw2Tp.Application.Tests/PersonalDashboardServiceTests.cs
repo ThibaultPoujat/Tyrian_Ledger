@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Dashboard;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.PersonalTradingPost;
@@ -63,17 +64,17 @@ public sealed class PersonalDashboardServiceTests
         var result = await service.GetAsync();
 
         Assert.Equal(PersonalDashboardState.Ready, result.State);
-        Assert.Equal(70, Assert.Single(result.RealizedWindows, window => window.Days == 7).NetProfit!.Copper);
-        Assert.Equal(100, result.OpenAcquisitionBasis!.Copper);
-        Assert.Equal(70, result.UnrealizedProfit!.Copper);
-        Assert.Equal(100, result.CurrentBuyCapital.Copper);
-        Assert.Equal(600, result.CurrentSellGrossValue.Copper);
-        Assert.Equal(510, result.CurrentSellNetValue.Copper);
+        Assert.Equal("70", Assert.Single(result.RealizedWindows, window => window.Days == 7).NetProfit!.Copper);
+        Assert.Equal("100", result.OpenAcquisitionBasis!.Copper);
+        Assert.Equal("70", result.UnrealizedProfit!.Copper);
+        Assert.Equal("100", result.CurrentBuyCapital.Copper);
+        Assert.Equal("600", result.CurrentSellGrossValue.Copper);
+        Assert.Equal("510", result.CurrentSellNetValue.Copper);
         Assert.All(result.CurrentOrders, order => Assert.Equal(DashboardOrderMarketComparisonStatus.Available, order.MarketComparisonStatus));
-        Assert.Equal(200, result.CurrentOrders.Single(order => order.Side == PersonalTradingPostSide.Buy).CurrentMarketUnitPrice!.Copper);
-        Assert.Equal(250, result.CurrentOrders.Single(order => order.Side == PersonalTradingPostSide.Sell).CurrentMarketUnitPrice!.Copper);
+        Assert.Equal("200", result.CurrentOrders.Single(order => order.Side == PersonalTradingPostSide.Buy).CurrentMarketUnitPrice!.Copper);
+        Assert.Equal("250", result.CurrentOrders.Single(order => order.Side == PersonalTradingPostSide.Sell).CurrentMarketUnitPrice!.Copper);
         Assert.All(result.RecentTrades, trade => Assert.Equal("Test item", trade.ItemName));
-        Assert.Equal(70, Assert.Single(result.BestRealizedItems).NetProfit.Copper);
+        Assert.Equal("70", Assert.Single(result.BestRealizedItems).NetProfit.Copper);
     }
 
     [Fact]
@@ -113,9 +114,33 @@ public sealed class PersonalDashboardServiceTests
         var result = await Service(repository).GetAsync();
 
         var sevenDays = Assert.Single(result.RealizedWindows, window => window.Days == 7);
-        Assert.Equal(0, sevenDays.NetProfit!.Copper);
+        Assert.Equal("0", sevenDays.NetProfit!.Copper);
         Assert.Equal(1, sevenDays.UnknownBasisQuantity);
         Assert.Empty(result.OpenInventory);
+    }
+
+    [Fact]
+    public async Task Encodes_large_copper_values_losslessly_and_coordinates_the_local_read()
+    {
+        var repository = new FakeRepository
+        {
+            Snapshot = new CurrentPersonalTradingPostOrderSnapshot(AsOfUtc,
+                [new CurrentPersonalTradingPostOrder(201, PersonalTradingPostSide.Buy, 42, int.MaxValue, int.MaxValue, AsOfUtc)]),
+        };
+        var gate = new RecordingOperationGate();
+        var service = new PersonalDashboardService(
+            new FakeGateway(Gw2ApiResult<AccountScope>.Success(new AccountScope("account"))),
+            repository,
+            new FakeMetadataRepository(),
+            new FakeMarketClient(),
+            new FrozenClock(AsOfUtc),
+            gate);
+
+        var result = await service.GetAsync();
+
+        Assert.Equal("4611686014132420609", result.CurrentBuyCapital.Copper);
+        Assert.Equal("201", Assert.Single(result.CurrentOrders).OrderId);
+        Assert.Equal(1, gate.Acquisitions);
     }
 
     private static PersonalDashboardService Service(FakeRepository repository, FakeMarketClient? market = null) => new(
@@ -165,6 +190,25 @@ public sealed class PersonalDashboardServiceTests
     {
         public Task UpsertAsync(IReadOnlyCollection<StoredItemMetadata> items, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<StoredItemMetadata?> GetAsync(int itemId, CancellationToken cancellationToken = default) => Task.FromResult<StoredItemMetadata?>(new(itemId, "Test item", AsOfUtc));
+        public Task<IReadOnlyList<StoredItemMetadata>> GetManyAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<StoredItemMetadata>>(itemIds.Select(itemId => new StoredItemMetadata(itemId, "Test item", AsOfUtc)).ToArray());
+    }
+
+    private sealed class RecordingOperationGate : IPersonalDataOperationGate
+    {
+        public int Acquisitions { get; private set; }
+
+        public ValueTask<IAsyncDisposable> AcquireAsync(CancellationToken cancellationToken = default)
+        {
+            Acquisitions++;
+            return ValueTask.FromResult<IAsyncDisposable>(Lease.Instance);
+        }
+
+        private sealed class Lease : IAsyncDisposable
+        {
+            public static readonly Lease Instance = new();
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 
     private sealed class FakeMarketClient : IGw2ApiClient

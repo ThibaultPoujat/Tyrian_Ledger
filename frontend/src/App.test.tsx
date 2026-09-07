@@ -1,6 +1,15 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+
+const notSynchronizedDashboard = {
+  state: 'notSynchronized', accountError: null, lastSuccessfulSyncAtUtc: null, currentOrdersObservedAtUtc: null,
+  historyCoverage: null, marketState: 'unavailable', isFeeRoundingExternallyVerified: false,
+  realizedWindows: [], openAcquisitionBasis: null, netLiquidationValue: null, unrealizedProfit: null,
+  isOpenInventoryFullyValued: null, openInventory: [], currentBuyCapital: { copper: '0' },
+  currentSellGrossValue: { copper: '0' }, currentSellNetValue: { copper: '0' }, currentOrders: [],
+  recentTrades: [], bestRealizedItems: [], worstRealizedItems: [],
+};
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
@@ -24,13 +33,7 @@ beforeEach(() => {
     if (input === '/api/personal-dashboard') {
       return Promise.resolve({
         ok: true,
-        json: vi.fn().mockResolvedValue({
-          state: 'notSynchronized',
-          accountError: null,
-          realizedWindows: [],
-          currentOrders: [],
-          recentTrades: [],
-        }),
+        json: vi.fn().mockResolvedValue(notSynchronizedDashboard),
       });
     }
 
@@ -306,13 +309,13 @@ describe('M14 local data controls', () => {
     const dashboard = {
       state: 'ready', accountError: null, lastSuccessfulSyncAtUtc: '2026-09-08T12:00:00Z', currentOrdersObservedAtUtc: '2026-09-08T12:00:00Z',
       historyCoverage: { startUtc: '2026-06-10T12:00:00Z', endUtc: '2026-09-08T12:00:00Z' }, marketState: 'available', isFeeRoundingExternallyVerified: false,
-      realizedWindows: [{ days: 7, status: 'supported', netProfit: { copper: 70 }, unknownBasisQuantity: 2 }, { days: 30, status: 'insufficientCoverage', netProfit: null, unknownBasisQuantity: 0 }],
-      openAcquisitionBasis: { copper: 100 }, netLiquidationValue: { copper: 170 }, unrealizedProfit: { copper: 70 }, isOpenInventoryFullyValued: true,
-      openInventory: [{ itemId: 42, itemName: 'Test item', quantity: 1, acquisitionBasis: { copper: 100 }, liquidationStatus: 'fullyValued', unliquidatedQuantity: 0, netLiquidationValue: { copper: 170 }, unrealizedProfit: { copper: 70 } }],
-      currentBuyCapital: { copper: 100 }, currentSellGrossValue: { copper: 600 }, currentSellNetValue: { copper: 510 },
-      currentOrders: [{ orderId: 1, side: 'buy', itemId: 42, itemName: 'Test item', quantity: 2, unitPrice: { copper: 50 }, marketComparisonStatus: 'available', currentMarketUnitPrice: { copper: 60 } }],
-      recentTrades: [{ transactionId: 2, side: 'sell', itemName: 'Test item', quantity: 1, unitPrice: { copper: 200 }, completedAtUtc: '2026-09-08T12:00:00Z' }],
-      bestRealizedItems: [{ itemId: 42, itemName: 'Test item', quantity: 1, netProfit: { copper: 70 } }], worstRealizedItems: [],
+      realizedWindows: [{ days: 7, status: 'supported', netProfit: { copper: '70' }, unknownBasisQuantity: 2 }, { days: 30, status: 'insufficientCoverage', netProfit: null, unknownBasisQuantity: 0 }],
+      openAcquisitionBasis: { copper: '100' }, netLiquidationValue: { copper: '170' }, unrealizedProfit: { copper: '70' }, isOpenInventoryFullyValued: true,
+      openInventory: [{ itemId: 42, itemName: 'Test item', quantity: 1, acquisitionBasis: { copper: '100' }, liquidationStatus: 'fullyValued', unliquidatedQuantity: 0, netLiquidationValue: { copper: '170' }, unrealizedProfit: { copper: '70' } }],
+      currentBuyCapital: { copper: '9007199254740993' }, currentSellGrossValue: { copper: '600' }, currentSellNetValue: { copper: '510' },
+      currentOrders: [{ orderId: '1', side: 'buy', itemId: 42, itemName: 'Test item', quantity: 2, unitPrice: { copper: '50' }, marketComparisonStatus: 'available', currentMarketUnitPrice: { copper: '60' } }],
+      recentTrades: [{ transactionId: '2', side: 'sell', itemName: 'Test item', quantity: 1, unitPrice: { copper: '200' }, completedAtUtc: '2026-09-08T12:00:00Z' }],
+      bestRealizedItems: [{ itemId: 42, itemName: 'Test item', quantity: 1, netProfit: { copper: '70' } }], worstRealizedItems: [],
     };
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
@@ -326,6 +329,7 @@ describe('M14 local data controls', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'Performance and current orders' })).toBeVisible();
+    expect(screen.getByText('900719925474g 9s 93c')).toBeVisible();
     expect(screen.getAllByText('70c', { exact: false })).not.toHaveLength(0);
     expect(screen.getByText('2 sold without known basis, excluded.')).toBeVisible();
     expect(screen.getByText('Insufficient coverage')).toBeVisible();
@@ -333,5 +337,67 @@ describe('M14 local data controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Synchronize Trading Post data' }));
     expect(await screen.findByRole('heading', { name: 'Performance and current orders' })).toBeVisible();
     expect(fetch).toHaveBeenCalledWith('/api/personal-trading-post/sync', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('shows loading, malformed data, and account-unavailable dashboard states safely', async () => {
+    let resolveDashboard: (response: Response) => void;
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/personal-dashboard') return new Promise((resolve) => { resolveDashboard = resolve; });
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+    render(<App />);
+    expect(screen.getByRole('heading', { name: 'Loading personal dashboard…' })).toBeVisible();
+    resolveDashboard!({ ok: true, json: vi.fn().mockResolvedValue({ state: 'ready' }) } as unknown as Response);
+    expect(await screen.findByRole('heading', { name: 'Dashboard unavailable' })).toBeVisible();
+
+    cleanup();
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ ...notSynchronizedDashboard, state: 'accountUnavailable', accountError: 'upstreamUnavailable' }) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Connect an account to view your dashboard' })).toBeVisible();
+  });
+
+  it('renders incomplete coverage and unavailable liquidation evidence explicitly', async () => {
+    const incompleteDashboard = {
+      ...notSynchronizedDashboard,
+      state: 'ready', historyCoverage: { startUtc: null, endUtc: null }, isOpenInventoryFullyValued: false,
+      openInventory: [{ itemId: 42, itemName: 'Unpriced item', quantity: 2, acquisitionBasis: { copper: '100' }, liquidationStatus: 'insufficientBuyDepth', unliquidatedQuantity: 1, netLiquidationValue: null, unrealizedProfit: null }],
+    };
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(incompleteDashboard) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+    render(<App />);
+    expect(await screen.findByText(/Continuous history coverage is not available/)).toBeVisible();
+    expect(screen.getByText('Not fully valued')).toBeVisible();
+    expect(screen.getByText('Insufficient buy depth (1 remaining)')).toBeVisible();
+  });
+
+  it('refreshes the dashboard after confirmed restore and clear outcomes', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/local-data/restore') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response);
+      if (input === '/api/local-data/clear-personal') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'personal_data_cleared' }) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+    render(<App />);
+    await screen.findByRole('heading', { name: 'No personal data yet' });
+    fireEvent.change(screen.getByLabelText('Backup file'), { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/personal-dashboard')).toHaveLength(2));
+    fireEvent.change(screen.getByLabelText('Type CLEAR PERSONAL DATA to continue'), { target: { value: 'CLEAR PERSONAL DATA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Clear personal account data' }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/personal-dashboard')).toHaveLength(3));
   });
 });

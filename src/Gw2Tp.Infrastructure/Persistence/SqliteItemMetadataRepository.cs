@@ -70,6 +70,54 @@ internal sealed class SqliteItemMetadataRepository(
             SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(2), "item_metadata.observed_at_utc"));
     }
 
+    public async Task<IReadOnlyList<StoredItemMetadata>> GetManyAsync(
+        IReadOnlyCollection<int> itemIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(itemIds);
+        var uniqueIds = itemIds.Distinct().OrderBy(itemId => itemId).ToArray();
+        if (uniqueIds.Any(itemId => itemId <= 0))
+        {
+            throw new ArgumentOutOfRangeException(nameof(itemIds));
+        }
+
+        if (uniqueIds.Length == 0)
+        {
+            return [];
+        }
+
+        var items = new List<StoredItemMetadata>();
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var itemIdBatch in uniqueIds.Chunk(900))
+        {
+            await using var command = connection.CreateCommand();
+            var parameterNames = new List<string>(itemIdBatch.Length);
+            for (var index = 0; index < itemIdBatch.Length; index++)
+            {
+                var parameterName = $"$itemId{index}";
+                parameterNames.Add(parameterName);
+                command.Parameters.AddWithValue(parameterName, itemIdBatch[index]);
+            }
+
+            command.CommandText = $"""
+                SELECT item_id, name, observed_at_utc
+                FROM item_metadata
+                WHERE item_id IN ({string.Join(", ", parameterNames)});
+                """;
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                items.Add(new StoredItemMetadata(
+                    reader.GetInt32(0),
+                    reader.GetString(1),
+                    SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(2), "item_metadata.observed_at_utc")));
+            }
+        }
+
+        return items;
+    }
+
     private static void ValidateItem(StoredItemMetadata item)
     {
         ArgumentNullException.ThrowIfNull(item);

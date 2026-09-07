@@ -153,6 +153,14 @@ public interface IItemMetadataRepository
         CancellationToken cancellationToken = default);
 
     Task<StoredItemMetadata?> GetAsync(int itemId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all retained metadata for the requested item IDs in one logical
+    /// read. Missing IDs are omitted.
+    /// </summary>
+    Task<IReadOnlyList<StoredItemMetadata>> GetManyAsync(
+        IReadOnlyCollection<int> itemIds,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
