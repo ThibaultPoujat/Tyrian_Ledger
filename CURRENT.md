@@ -41,9 +41,10 @@ an explicit unknown quantity. Equal completed timestamps use ascending external
 transaction ID, and the versioned result is rebuilt in memory without derived
 SQLite state or current-order inference.
 
-TKT-M15-02 is **SOL-GATED**. PR #110 must remain Draft until a fresh separate Sol
-XHigh review returns APPROVE and all required GitHub CI jobs are green. After
-owner merge, the next valid implementation ticket is:
+TKT-M15-02 is **SOL-GATED**. A fresh separate Sol XHigh review at commit
+`bffcb16b0818b23976ad08cf922ff8c2b87f788b` returned APPROVE with no findings,
+and all required GitHub CI jobs are green. PR #110 is Ready for owner review.
+After owner merge, the next valid implementation ticket is:
 
 **TKT-M15-03 / #77 - Add Realized/Unrealized P&L and 7/30/90-Day Performance.**
 
@@ -61,7 +62,7 @@ TKT-M15-02 local validation on 2026-09-07 reported:
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime and competing-fee-formula audits: no unexpected matches;
-- Gitleaks: all 222 reachable commits scanned with no leaks.
+- Gitleaks: all 223 reachable commits scanned with no leaks.
 
 PR #109 is merged into `develop` as merge commit
 `11d317ff7e1346ec02846fbe6cf889c37f566975`.
