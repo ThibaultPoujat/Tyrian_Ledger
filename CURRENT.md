@@ -52,9 +52,10 @@ unless the declared retained-history interval fully covers the window. Fee
 allocations are proportional by quantity with deterministic FIFO-order copper
 remainders; VERIFY-013 remains OPEN, so every fee-derived value is provisional.
 
-TKT-M15-03 is **SOL-GATED**. PR #111 must remain Draft until a fresh separate
-Sol XHigh review returns APPROVE and required validation is green. After owner
-merge, the next valid implementation ticket is:
+TKT-M15-03 is **SOL-GATED**. A fresh separate Sol XHigh re-review at commit
+`3f8a05d` returned APPROVE with no findings, and all required GitHub CI jobs
+are green. PR #111 is Ready for owner review. After owner merge, the next valid
+implementation ticket is:
 
 **TKT-M16-01 / #78 - Build the Personal Dashboard and Current-Order Views.**
 
