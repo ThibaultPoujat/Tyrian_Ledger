@@ -19,7 +19,7 @@ architecture to extend.
 
 ## Active milestone
 
-**M15 - Trustworthy Accounting**
+**M16 - Personal Dashboard and Current Orders**
 
 M13 is complete through the local host, secure API-key validation, and typed
 personal Trading Post gateway work merged in PRs #102-#105. M14 is complete
@@ -41,50 +41,41 @@ Equal completed timestamps use ascending external transaction ID, and the
 versioned result is rebuilt in memory without derived SQLite state or
 current-order inference.
 
-TKT-M15-03 / #77 is implemented in Draft PR #111. It deterministically rebuilds
-known-basis realized gross sales, canonical listing/exchange fees, net profit,
-and exact ROI from FIFO evidence; unknown-basis sale quantities remain separate
-and never receive a zero cost. It also calculates open FIFO basis and current
-net liquidation/unrealized P&L only from explicit complete account/item buy-book
-evidence; missing or insufficient depth is disclosed rather than estimated.
-Rolling 7/30/90-day results use UTC half-open windows and remain unsupported
-unless the declared retained-history interval fully covers the window. A
-successful personal sync records that retained coverage through its observation
-time (or the newest included completion, if later). SQLite merges intervals only
-when consecutive complete history snapshots overlap; a gap or empty response
-resets the coverage claim without deleting retained rows, so old basis is never
-presented as continuously known through an unobserved gap. A quiet account is
-not made unsupported solely by its latest completed transaction predating the
-sync. Fee allocations are proportional by quantity with deterministic FIFO-order
-copper remainders; VERIFY-013 remains OPEN, so every fee-derived value is
-provisional.
+TKT-M15-03 / #77 merged in PR #111. It provides deterministic known-basis
+realized P&L, explicit unknown-basis exclusion, open FIFO basis, and current
+liquidation/unrealized results only where complete market evidence exists.
+VERIFY-013 remains OPEN, so every fee-derived value is provisional.
 
-TKT-M15-03 is **SOL-GATED**. A fresh separate Sol XHigh re-review at commit
-`8debdf7` returned APPROVE with no findings, and all required GitHub CI jobs
-are green. PR #111 is Ready for owner review. After owner merge, the next valid
-implementation ticket is:
+TKT-M16-01 / #78 is implemented on `codex/TKT-M16-01-dashboard`. It adds a
+backend-authoritative local dashboard and current-order view: manual sync,
+connection and retained-coverage status, 7/30/90 realized results, separately
+labeled open/unrealized exposure, current buy/sell capital, recent trades,
+known-basis best/worst items, and top-of-book comparisons. The browser receives
+only safe structured result data; fee, P&L, liquidation, and market comparison
+logic stay in the application/backend layers. Missing coverage, unknown basis,
+partial liquidation depth, and unavailable market evidence remain explicit.
 
-**TKT-M16-01 / #78 - Build the Personal Dashboard and Current-Order Views.**
+TKT-M16-01 is **NORMAL**. Required local validation is green; independent
+review remains for the owner to trigger. After the #78 PR handoff, the next
+valid implementation ticket is:
 
-Do not begin TKT-M16-01 before the #77 review/merge handoff is complete.
+**TKT-M17-01 / #79 - Build the Live Fee-Aware Market Scanner.**
 
 ## Known-good baseline
 
-TKT-M15-03 local validation on 2026-09-07 reported:
+TKT-M16-01 local validation on 2026-09-07 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused performance/FIFO accounting, canonical fee policy, and successful-sync
-  coverage: 53 tests passed; SQLite synchronization persistence: 36 tests
-  passed;
-- full .NET: 262 tests passed;
-- React: 10 component tests passed and the production build succeeded;
+- focused dashboard query/accounting: 80 tests passed; web integration: 30 tests passed;
+- full .NET: 268 tests passed;
+- React: 11 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime and competing-fee-formula audits: no unexpected matches;
 - Gitleaks: complete reachable history scanned with no leaks.
 
-PR #110 is merged into `develop` as merge commit
-`1d15a7b6b689c1f7b19911d29c20b0a32706c82a`.
+PR #111 is merged into `develop` as merge commit
+`c925d37ac201b55022b8b729d4c0d5e70c2902d5`.
 
 ## Important transition warning
 

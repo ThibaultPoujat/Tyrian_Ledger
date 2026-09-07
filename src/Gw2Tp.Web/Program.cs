@@ -1,4 +1,5 @@
 using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Application.Dashboard;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Infrastructure.Persistence;
@@ -42,6 +43,7 @@ public static class Program
         builder.Services.AddHealthChecks();
         builder.Services.AddTyrianLedgerAccountConnection(builder.Environment, builder.Configuration);
         builder.Services.AddTyrianLedgerPersistence(builder.Configuration);
+        builder.Services.AddSingleton<IPersonalDashboardService, PersonalDashboardService>();
         builder.Services.AddHostFiltering(options =>
         {
             options.AllowedHosts = hostOptions.AllowedHosts;
@@ -106,6 +108,16 @@ public static class Program
             {
                 var result = await synchronizationService.SynchronizeAsync(cancellationToken).ConfigureAwait(false);
                 await PersonalTradingPostSynchronizationResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
+            });
+        app.MapGet(
+            "/api/personal-dashboard",
+            async (
+                HttpContext context,
+                IPersonalDashboardService dashboardService,
+                CancellationToken cancellationToken) =>
+            {
+                var dashboard = await dashboardService.GetAsync(cancellationToken).ConfigureAwait(false);
+                await PersonalDashboardResponseWriter.WriteAsync(context, dashboard).ConfigureAwait(false);
             });
         app.MapLocalDataEndpoints();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));

@@ -21,6 +21,19 @@ beforeEach(() => {
       });
     }
 
+    if (input === '/api/personal-dashboard') {
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          state: 'notSynchronized',
+          accountError: null,
+          realizedWindows: [],
+          currentOrders: [],
+          recentTrades: [],
+        }),
+      });
+    }
+
     return Promise.resolve({
       ok: true,
       json: vi.fn().mockResolvedValue({
@@ -45,11 +58,10 @@ describe('M14 local data controls', () => {
   it('shows the local foundation, safe no-key status, and guarded recovery controls', async () => {
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: 'The local application foundation is running.' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Local by default' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'A safe starting point' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Understand your trading position.' })).toBeVisible();
     expect(await screen.findByText('Local host connected')).toBeVisible();
     expect(await screen.findByText('No ArenaNet key configured')).toBeVisible();
+    expect(await screen.findByRole('heading', { name: 'No personal data yet' })).toBeVisible();
     expect(screen.getByText(/never asks the browser to store or send it/i)).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Backup and recovery' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Create local backup' })).toBeEnabled();
@@ -72,6 +84,12 @@ describe('M14 local data controls', () => {
       },
     }));
     expect(fetch).toHaveBeenCalledWith('/api/local-data', expect.objectContaining({
+      headers: {
+        Accept: 'application/json',
+        'X-Tyrian-Ledger-Request': '1',
+      },
+    }));
+    expect(fetch).toHaveBeenCalledWith('/api/personal-dashboard', expect.objectContaining({
       headers: {
         Accept: 'application/json',
         'X-Tyrian-Ledger-Request': '1',
@@ -282,5 +300,38 @@ describe('M14 local data controls', () => {
     fireEvent.change(screen.getByLabelText('Type CLEAR PERSONAL DATA to continue'), { target: { value: 'CLEAR PERSONAL DATA' } });
     fireEvent.click(screen.getByRole('button', { name: 'Clear personal account data' }));
     expect(await screen.findByText('Clear outcome could not be confirmed. Check local data before retrying.')).toBeVisible();
+  });
+
+  it('renders backend-authoritative performance, unknown basis, and current-order states', async () => {
+    const dashboard = {
+      state: 'ready', accountError: null, lastSuccessfulSyncAtUtc: '2026-09-08T12:00:00Z', currentOrdersObservedAtUtc: '2026-09-08T12:00:00Z',
+      historyCoverage: { startUtc: '2026-06-10T12:00:00Z', endUtc: '2026-09-08T12:00:00Z' }, marketState: 'available', isFeeRoundingExternallyVerified: false,
+      realizedWindows: [{ days: 7, status: 'supported', netProfit: { copper: 70 }, unknownBasisQuantity: 2 }, { days: 30, status: 'insufficientCoverage', netProfit: null, unknownBasisQuantity: 0 }],
+      openAcquisitionBasis: { copper: 100 }, netLiquidationValue: { copper: 170 }, unrealizedProfit: { copper: 70 }, isOpenInventoryFullyValued: true,
+      openInventory: [{ itemId: 42, itemName: 'Test item', quantity: 1, acquisitionBasis: { copper: 100 }, liquidationStatus: 'fullyValued', unliquidatedQuantity: 0, netLiquidationValue: { copper: 170 }, unrealizedProfit: { copper: 70 } }],
+      currentBuyCapital: { copper: 100 }, currentSellGrossValue: { copper: 600 }, currentSellNetValue: { copper: 510 },
+      currentOrders: [{ orderId: 1, side: 'buy', itemId: 42, itemName: 'Test item', quantity: 2, unitPrice: { copper: 50 }, marketComparisonStatus: 'available', currentMarketUnitPrice: { copper: 60 } }],
+      recentTrades: [{ transactionId: 2, side: 'sell', itemName: 'Test item', quantity: 1, unitPrice: { copper: 200 }, completedAtUtc: '2026-09-08T12:00:00Z' }],
+      bestRealizedItems: [{ itemId: 42, itemName: 'Test item', quantity: 1, netProfit: { copper: 70 } }], worstRealizedItems: [],
+    };
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/account-connection') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: ['account', 'tradingpost'], missingRequiredPermissions: [] }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(dashboard) } as unknown as Response);
+      if (input === '/api/personal-trading-post/sync') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'succeeded' }) } as unknown as Response);
+      return Promise.reject(new TypeError('unexpected request'));
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Performance and current orders' })).toBeVisible();
+    expect(screen.getAllByText('70c', { exact: false })).not.toHaveLength(0);
+    expect(screen.getByText('2 sold without known basis, excluded.')).toBeVisible();
+    expect(screen.getByText('Insufficient coverage')).toBeVisible();
+    expect(screen.getByRole('columnheader', { name: 'Current market' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Synchronize Trading Post data' }));
+    expect(await screen.findByRole('heading', { name: 'Performance and current orders' })).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith('/api/personal-trading-post/sync', expect.objectContaining({ method: 'POST' }));
   });
 });

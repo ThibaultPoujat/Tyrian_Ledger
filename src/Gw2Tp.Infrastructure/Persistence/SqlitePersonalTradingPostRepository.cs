@@ -9,6 +9,30 @@ internal sealed class SqlitePersonalTradingPostRepository(
 {
     private readonly ISqliteDatabaseGate gate = databaseGate ?? new SqliteDatabaseGate();
 
+    public async Task<AccountProfile?> FindAccountProfileAsync(
+        string accountScopeId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(accountScopeId))
+        {
+            throw new ArgumentException("An opaque account scope is required.", nameof(accountScopeId));
+        }
+
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT id, account_scope_id, created_at_utc, last_successful_sync_at_utc
+            FROM account_profiles
+            WHERE account_scope_id = $accountScopeId;
+            """;
+        command.Parameters.AddWithValue("$accountScopeId", accountScopeId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? ReadAccountProfile(reader)
+            : null;
+    }
+
     public async Task<AccountProfile> GetOrCreateAccountProfileAsync(
         string accountScopeId,
         DateTimeOffset observedAtUtc,
@@ -180,6 +204,37 @@ internal sealed class SqlitePersonalTradingPostRepository(
         return transactions;
     }
 
+    public async Task<PersonalTradingPostHistoryCoverage> GetHistoryCoverageAsync(
+        AccountProfile accountProfile,
+        CancellationToken cancellationToken = default)
+    {
+        SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT history_coverage_start_utc, history_coverage_end_utc
+            FROM account_profiles
+            WHERE id = $accountProfileId AND account_scope_id = $accountScopeId;
+            """;
+        command.Parameters.AddWithValue("$accountProfileId", accountProfile.Id);
+        command.Parameters.AddWithValue("$accountScopeId", accountProfile.AccountScopeId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("The account profile does not belong to this SQLite database.");
+        }
+
+        var startUtc = ReadNullableUtc(reader, 0, "account_profiles.history_coverage_start_utc");
+        var endUtc = ReadNullableUtc(reader, 1, "account_profiles.history_coverage_end_utc");
+        if ((startUtc is null) != (endUtc is null) || (startUtc is not null && startUtc > endUtc))
+        {
+            throw new InvalidDataException("The SQLite account history coverage is invalid.");
+        }
+
+        return new PersonalTradingPostHistoryCoverage(startUtc, endUtc);
+    }
+
     public async Task ReplaceCurrentOrderSnapshotAsync(
         AccountProfile accountProfile,
         CurrentPersonalTradingPostOrderSnapshot snapshot,
@@ -268,6 +323,49 @@ internal sealed class SqlitePersonalTradingPostRepository(
         }
 
         return orders;
+    }
+
+    public async Task<CurrentPersonalTradingPostOrderSnapshot?> GetLatestCurrentOrderSnapshotAsync(
+        AccountProfile accountProfile,
+        CancellationToken cancellationToken = default)
+    {
+        SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT observed_at_utc
+            FROM current_order_sync_batches
+            WHERE account_profile_id = $accountProfileId
+            ORDER BY id DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$accountProfileId", accountProfile.Id);
+        var observedAtValue = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (observedAtValue is not string observedAtText)
+        {
+            return null;
+        }
+
+        var observedAtUtc = SqlitePersistenceValues.FromUtcTimestamp(
+            observedAtText,
+            "current_order_sync_batches.observed_at_utc");
+        command.Parameters.Clear();
+        command.CommandText = """
+            SELECT external_order_id, side, item_id, unit_price_in_copper, quantity, created_at_utc
+            FROM current_tp_orders
+            WHERE account_profile_id = $accountProfileId
+            ORDER BY external_order_id;
+            """;
+        command.Parameters.AddWithValue("$accountProfileId", accountProfile.Id);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var orders = new List<CurrentPersonalTradingPostOrder>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            orders.Add(ReadCurrentOrder(reader));
+        }
+
+        return new CurrentPersonalTradingPostOrderSnapshot(observedAtUtc, orders);
     }
 
     public async Task<IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot>> GetCurrentOrderObservationsAsync(
@@ -533,6 +631,16 @@ internal sealed class SqlitePersonalTradingPostRepository(
         reader.IsDBNull(3)
             ? null
             : SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(3), "account_profiles.last_successful_sync_at_utc"));
+
+    private static DateTimeOffset? ReadNullableUtc(SqliteDataReader reader, int ordinal, string columnName)
+    {
+        if (reader.IsDBNull(ordinal))
+        {
+            return null;
+        }
+
+        return SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(ordinal), columnName);
+    }
 
     private static CurrentPersonalTradingPostOrder ReadCurrentOrder(SqliteDataReader reader) => new(
         reader.GetInt64(0),
