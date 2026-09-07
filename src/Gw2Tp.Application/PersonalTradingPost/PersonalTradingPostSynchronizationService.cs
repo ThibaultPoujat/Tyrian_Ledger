@@ -64,7 +64,7 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
             var itemMetadata = await ReadItemMetadataAsync(itemIds, observedAtUtc, cancellationToken).ConfigureAwait(false);
             var historyCoverage = GetHistoryCoverage(completedTransactions, observedAtUtc);
 
-            await synchronizationStore.CommitSuccessfulSyncAsync(
+            var effectiveHistoryCoverage = await synchronizationStore.CommitSuccessfulSyncAsync(
                 new PersonalTradingPostSuccessfulSync(
                     accountScopeId,
                     completedTransactions,
@@ -79,8 +79,8 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
                 attemptedAtUtc,
                 completedTransactions.Count,
                 currentOrders.Count,
-                historyCoverage.StartUtc,
-                historyCoverage.EndUtc);
+                effectiveHistoryCoverage.StartUtc,
+                effectiveHistoryCoverage.EndUtc);
         }
         catch (PersonalTradingPostSynchronizationException exception)
         {

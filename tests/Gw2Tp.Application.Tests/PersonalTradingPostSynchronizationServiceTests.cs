@@ -62,6 +62,27 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
     }
 
     [Fact]
+    public async Task Successful_sync_returns_effective_coverage_committed_by_the_store()
+    {
+        var gateway = new StubGateway();
+        gateway.CurrentBuys[0] = EmptyPage();
+        gateway.CurrentSells[0] = EmptyPage();
+        gateway.CompletedBuys[0] = EmptyPage();
+        gateway.CompletedSells[0] = EmptyPage();
+        var store = new RecordingStore
+        {
+            EffectiveHistoryCoverage = new PersonalTradingPostHistoryCoverage(ObservedAtUtc.AddDays(-7), ObservedAtUtc),
+        };
+        var service = CreateService(gateway, new StubMarketDataClient(), store);
+
+        var result = await service.SynchronizeAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ObservedAtUtc.AddDays(-7), result.HistoryCoverageStartUtc);
+        Assert.Equal(ObservedAtUtc, result.HistoryCoverageEndUtc);
+    }
+
+    [Fact]
     public async Task Failed_or_inconsistent_remote_reads_do_not_commit_and_record_a_safe_failure_after_scope_resolution()
     {
         var gateway = new StubGateway();
@@ -203,11 +224,14 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
     {
         public List<PersonalTradingPostSuccessfulSync> SuccessfulSyncs { get; } = [];
         public List<(string AccountScopeId, DateTimeOffset AttemptedAtUtc, Gw2ApiErrorCategory ErrorCategory)> Failures { get; } = [];
+        public PersonalTradingPostHistoryCoverage? EffectiveHistoryCoverage { get; init; }
 
-        public Task CommitSuccessfulSyncAsync(PersonalTradingPostSuccessfulSync sync, CancellationToken cancellationToken = default)
+        public Task<PersonalTradingPostHistoryCoverage> CommitSuccessfulSyncAsync(PersonalTradingPostSuccessfulSync sync, CancellationToken cancellationToken = default)
         {
             SuccessfulSyncs.Add(sync);
-            return Task.CompletedTask;
+            return Task.FromResult(EffectiveHistoryCoverage ?? new PersonalTradingPostHistoryCoverage(
+                sync.HistoryCoverageStartUtc,
+                sync.HistoryCoverageEndUtc));
         }
 
         public Task RecordFailedSyncAsync(string accountScopeId, DateTimeOffset attemptedAtUtc, Gw2ApiErrorCategory errorCategory, CancellationToken cancellationToken = default)

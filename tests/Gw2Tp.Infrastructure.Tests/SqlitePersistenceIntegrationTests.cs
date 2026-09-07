@@ -112,7 +112,7 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
-    public async Task Repeated_sync_is_idempotent_and_remote_history_aging_never_deletes_completed_history()
+    public async Task Remote_history_aging_never_deletes_completed_history_or_claims_continuous_coverage()
     {
         await using var database = await TestDatabase.CreateAsync();
         var completed = CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2);
@@ -126,7 +126,7 @@ public sealed class SqlitePersistenceIntegrationTests
             FirstObservedAtUtc,
             FirstObservedAtUtc));
 
-        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+        var effectiveCoverage = await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
             "opaque-account-a",
             [],
             new CurrentPersonalTradingPostOrderSnapshot(SecondObservedAtUtc, []),
@@ -142,6 +142,71 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(FirstObservedAtUtc, stored.LastSeenAtUtc);
         Assert.Empty(await database.PersonalTradingPost.GetCurrentOrdersAsync(account));
         Assert.Equal(2, (await database.PersonalTradingPost.GetCurrentOrderObservationsAsync(account)).Count);
+        Assert.Equal(new PersonalTradingPostHistoryCoverage(null, null), effectiveCoverage);
+        Assert.Equal((SecondObservedAtUtc, 1L, null as long?, null as DateTimeOffset?, null as DateTimeOffset?), await database.GetAccountSyncStateAsync());
+    }
+
+    [Fact]
+    public async Task Non_overlapping_history_snapshot_resets_coverage_without_deleting_prior_transactions()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var initial = CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [initial],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []),
+            [new StoredItemMetadata(42, "Initial", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+
+        var laterObservedAtUtc = FirstObservedAtUtc.AddDays(91);
+        var later = initial with
+        {
+            ExternalTransactionId = 1002,
+            CompletedAtUtc = laterObservedAtUtc.AddDays(-1),
+            CreatedAtUtc = laterObservedAtUtc.AddDays(-1),
+        };
+        var effectiveCoverage = await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [later],
+            new CurrentPersonalTradingPostOrderSnapshot(laterObservedAtUtc, []),
+            [new StoredItemMetadata(42, "Later", laterObservedAtUtc)],
+            laterObservedAtUtc,
+            later.CompletedAtUtc,
+            laterObservedAtUtc));
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", laterObservedAtUtc);
+        Assert.Equal([initial, later], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+        Assert.Equal(new PersonalTradingPostHistoryCoverage(later.CompletedAtUtc, laterObservedAtUtc), effectiveCoverage);
+        Assert.Equal((laterObservedAtUtc, 1L, null as long?, later.CompletedAtUtc, laterObservedAtUtc), await database.GetAccountSyncStateAsync());
+    }
+
+    [Fact]
+    public async Task Overlapping_history_snapshots_merge_into_one_continuous_coverage_interval()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var initial = CompletedTransaction(1001, PersonalTradingPostSide.Buy, itemId: 42, unitPrice: 123, quantity: 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [initial],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []),
+            [new StoredItemMetadata(42, "Initial", FirstObservedAtUtc)],
+            FirstObservedAtUtc,
+            FirstObservedAtUtc,
+            FirstObservedAtUtc));
+
+        var later = initial with { ExternalTransactionId = 1002 };
+        var effectiveCoverage = await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a",
+            [initial, later],
+            new CurrentPersonalTradingPostOrderSnapshot(SecondObservedAtUtc, []),
+            [new StoredItemMetadata(42, "Repeated", SecondObservedAtUtc)],
+            SecondObservedAtUtc,
+            FirstObservedAtUtc,
+            SecondObservedAtUtc));
+
+        Assert.Equal(new PersonalTradingPostHistoryCoverage(FirstObservedAtUtc, SecondObservedAtUtc), effectiveCoverage);
         Assert.Equal((SecondObservedAtUtc, 1L, null as long?, FirstObservedAtUtc, SecondObservedAtUtc), await database.GetAccountSyncStateAsync());
     }
 
