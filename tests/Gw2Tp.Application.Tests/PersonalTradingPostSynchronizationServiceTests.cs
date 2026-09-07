@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Testing;
@@ -80,14 +81,34 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
         Assert.Single(store.Failures);
     }
 
+    [Fact]
+    public async Task Synchronization_holds_the_personal_data_operation_gate_for_the_entire_operation()
+    {
+        var gateway = new StubGateway();
+        gateway.CurrentBuys[0] = EmptyPage();
+        gateway.CurrentSells[0] = EmptyPage();
+        gateway.CompletedBuys[0] = EmptyPage();
+        gateway.CompletedSells[0] = EmptyPage();
+        var gate = new RecordingOperationGate();
+        var service = CreateService(gateway, new StubMarketDataClient(), new RecordingStore(), gate);
+
+        var result = await service.SynchronizeAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, gate.AcquireCount);
+        Assert.Equal(1, gate.DisposeCount);
+    }
+
     private static PersonalTradingPostSynchronizationService CreateService(
         IPersonalTradingPostGateway gateway,
         IGw2ApiClient marketDataClient,
-        IPersonalTradingPostSynchronizationStore store) => new(
+        IPersonalTradingPostSynchronizationStore store,
+        IPersonalDataOperationGate? operationGate = null) => new(
         gateway,
         marketDataClient,
         store,
-        new FrozenClock(ObservedAtUtc));
+        new FrozenClock(ObservedAtUtc),
+        operationGate);
 
     private static Gw2ApiResult<PersonalTransactionPage> EmptyPage() =>
         SuccessPage(0, 0, 0);
@@ -173,6 +194,29 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
         {
             Failures.Add((accountScopeId, attemptedAtUtc, errorCategory));
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingOperationGate : IPersonalDataOperationGate
+    {
+        public int AcquireCount { get; private set; }
+
+        public int DisposeCount { get; private set; }
+
+        public ValueTask<IAsyncDisposable> AcquireAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            AcquireCount++;
+            return ValueTask.FromResult<IAsyncDisposable>(new Lease(this));
+        }
+
+        private sealed class Lease(RecordingOperationGate owner) : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync()
+            {
+                owner.DisposeCount++;
+                return ValueTask.CompletedTask;
+            }
         }
     }
 }

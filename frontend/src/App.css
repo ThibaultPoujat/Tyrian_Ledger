@@ -84,6 +84,24 @@ p { color: var(--muted); line-height: 1.58; }
 .account-connection-panel { margin-top: 1.5rem; padding: 1.25rem; border: 1px solid rgb(244 204 120 / 34%); border-radius: 0.75rem; background: rgb(8 21 18 / 38%); }
 .account-connection-panel h2 { margin-top: 0.35rem; }
 .account-connection-panel p:last-child { margin-bottom: 0; }
+.local-data-panel { margin-top: 1.5rem; padding: 1.25rem; border: 1px solid rgb(147 229 215 / 30%); border-radius: 0.75rem; background: rgb(8 21 18 / 38%); }
+.local-data-panel h2 { margin-top: 0.35rem; }
+.local-data-panel h3 { margin: 0; color: #fffdf6; font-size: 1rem; }
+.local-data-locations { display: grid; gap: 0.6rem; margin: 1rem 0; }
+.local-data-locations div { display: grid; gap: 0.2rem; }
+.local-data-locations dt { color: var(--accent); font-size: 0.76rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
+.local-data-locations dd { margin: 0; overflow-wrap: anywhere; }
+.local-data-locations code { color: var(--gold-soft); font-size: 0.82rem; }
+.local-data-action { display: grid; gap: 0.65rem; margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid rgb(152 199 187 / 23%); }
+.local-data-action p { margin: 0; }
+.local-data-action label { color: var(--text); font-size: 0.86rem; font-weight: 700; }
+.local-data-action input { width: min(34rem, 100%); min-height: 2.5rem; padding: 0.45rem 0.6rem; color: var(--text); border: 1px solid var(--line); border-radius: 0.35rem; background: var(--ink); }
+.local-data-action input[type="file"] { padding: 0.35rem; }
+.local-data-action button { justify-self: start; min-height: 2.5rem; padding: 0.55rem 0.8rem; color: var(--ink); border: 1px solid var(--gold-soft); border-radius: 0.35rem; background: var(--gold-soft); font: inherit; font-weight: 800; cursor: pointer; }
+.local-data-action button:disabled { cursor: not-allowed; opacity: 0.55; }
+.local-data-action--danger { border-color: rgb(243 154 140 / 45%); }
+.local-data-action--danger button { color: #fff7f3; border-color: #f39a8c; background: #9e463c; }
+.local-data-message { margin-bottom: 0; color: var(--accent); font-weight: 700; }
 .account-connection-status { display: inline-flex; align-items: center; gap: 0.55rem; margin: 1rem 0 0; color: var(--text); font-size: 0.92rem; font-weight: 750; }
 .account-connection-status span { width: 0.65rem; height: 0.65rem; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 0.2rem rgb(244 204 120 / 14%); }
 .account-connection-status--valid span { background: var(--accent); box-shadow: 0 0 0 0.2rem rgb(147 229 215 / 14%); }

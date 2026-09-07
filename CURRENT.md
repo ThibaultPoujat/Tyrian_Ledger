@@ -24,20 +24,17 @@ architecture to extend.
 M13 is complete through the local host, secure API-key validation, and typed
 personal Trading Post gateway work merged in PRs #102-#105.
 
-TKT-M14-01 is merged through PR #106. The repository now has the SQLite
-persistence foundation: ordered transactional migrations, repository boundaries,
-and durable normalized account scopes, completed transactions, current-order
-state/observations, item metadata, typed non-secret settings, and schema
-metadata. The API key remains outside SQLite, and sync orchestration, FIFO/P&L,
-market history, and backup/restore remain separate tickets.
+M14 is complete in implementation branches: PR #106 established versioned
+SQLite persistence, PR #107 added idempotent personal TP synchronization, and
+TKT-M14-03 / #74 adds local backup, guarded restore, and explicit
+clear-personal-data controls. The database remains local-only; API keys stay
+outside SQLite, and backups never upload automatically.
 
-The active implementation ticket is:
+PR #108 is open for **TKT-M14-03 / #74**. Its NORMAL quota-aware review and
+validation are complete; it is awaiting owner merge. After that merge, the next
+valid implementation ticket is:
 
-**TKT-M14-02 / #73 - Implement idempotent personal Trading Post synchronization.**
-
-PR #107 is open for this ticket. It uses the NORMAL quota-aware review path and
-is not blocked on a separate Sol review. Do not begin TKT-M14-03 or later-ticket
-work until the TKT-M14-02 handoff is complete.
+**TKT-M15-01 / #75 - Establish and Register the Canonical GW2 Trading Post Fee Policy.**
 
 ## Known-good baseline
 

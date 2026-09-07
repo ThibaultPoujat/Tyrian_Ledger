@@ -3,8 +3,12 @@ using Microsoft.Data.Sqlite;
 
 namespace Gw2Tp.Infrastructure.Persistence;
 
-internal sealed class SqliteItemMetadataRepository(ISqliteConnectionFactory connectionFactory) : IItemMetadataRepository
+internal sealed class SqliteItemMetadataRepository(
+    ISqliteConnectionFactory connectionFactory,
+    ISqliteDatabaseGate? databaseGate = null) : IItemMetadataRepository
 {
+    private readonly ISqliteDatabaseGate gate = databaseGate ?? new SqliteDatabaseGate();
+
     public async Task UpsertAsync(
         IReadOnlyCollection<StoredItemMetadata> items,
         CancellationToken cancellationToken = default)
@@ -15,6 +19,7 @@ internal sealed class SqliteItemMetadataRepository(ISqliteConnectionFactory conn
             ValidateItem(item);
         }
 
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         foreach (var item in items)
@@ -44,6 +49,7 @@ internal sealed class SqliteItemMetadataRepository(ISqliteConnectionFactory conn
             throw new ArgumentOutOfRangeException(nameof(itemId));
         }
 
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """

@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.Time;
 
@@ -15,22 +16,26 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
     private readonly IGw2ApiClient marketDataClient;
     private readonly IPersonalTradingPostSynchronizationStore synchronizationStore;
     private readonly IClock clock;
+    private readonly IPersonalDataOperationGate operationGate;
 
     public PersonalTradingPostSynchronizationService(
         IPersonalTradingPostGateway personalTradingPostGateway,
         IGw2ApiClient marketDataClient,
         IPersonalTradingPostSynchronizationStore synchronizationStore,
-        IClock clock)
+        IClock clock,
+        IPersonalDataOperationGate? operationGate = null)
     {
         this.personalTradingPostGateway = personalTradingPostGateway ?? throw new ArgumentNullException(nameof(personalTradingPostGateway));
         this.marketDataClient = marketDataClient ?? throw new ArgumentNullException(nameof(marketDataClient));
         this.synchronizationStore = synchronizationStore ?? throw new ArgumentNullException(nameof(synchronizationStore));
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        this.operationGate = operationGate ?? NoopPersonalDataOperationGate.Instance;
     }
 
     public async Task<PersonalTradingPostSynchronizationResult> SynchronizeAsync(
         CancellationToken cancellationToken = default)
     {
+        await using var operationLease = await operationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         var attemptedAtUtc = RequireUtc(clock.UtcNow, "clock.UtcNow");
         var accountResult = await personalTradingPostGateway.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
         if (!accountResult.IsSuccess || accountResult.Value is null || string.IsNullOrWhiteSpace(accountResult.Value.AccountId))
@@ -104,6 +109,24 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
         catch
         {
             return PersonalTradingPostSynchronizationResult.PersistenceFailed(attemptedAtUtc);
+        }
+    }
+
+    private sealed class NoopPersonalDataOperationGate : IPersonalDataOperationGate
+    {
+        public static readonly NoopPersonalDataOperationGate Instance = new();
+
+        public ValueTask<IAsyncDisposable> AcquireAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IAsyncDisposable>(NoopLease.Instance);
+        }
+
+        private sealed class NoopLease : IAsyncDisposable
+        {
+            public static readonly NoopLease Instance = new();
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         }
     }
 

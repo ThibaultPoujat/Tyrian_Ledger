@@ -68,6 +68,12 @@ public static class Program
         var app = builder.Build();
 
         app.UseHostFiltering();
+        app.Use(async (context, next) =>
+        {
+            context.Response.Headers["X-Frame-Options"] = "DENY";
+            context.Response.Headers["Content-Security-Policy"] = "frame-ancestors 'none'";
+            await next(context).ConfigureAwait(false);
+        });
         if (app.Environment.IsDevelopment())
         {
             app.UseCors(LocalHostOptions.DevelopmentCorsPolicy);
@@ -101,6 +107,7 @@ public static class Program
                 var result = await synchronizationService.SynchronizeAsync(cancellationToken).ConfigureAwait(false);
                 await PersonalTradingPostSynchronizationResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
             });
+        app.MapLocalDataEndpoints();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 
         MapFrontend(app, builder.Configuration);
