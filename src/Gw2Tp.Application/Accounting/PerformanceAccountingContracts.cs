@@ -105,6 +105,7 @@ public sealed record OpenInventoryLiquidation(
     int OpenQuantity,
     Money OpenAcquisitionBasis,
     CurrentLiquidationStatus Status,
+    DateTimeOffset? MarketObservedAtUtc,
     int UnliquidatedQuantity,
     Money? GrossSaleValue,
     Money? ListingFee,

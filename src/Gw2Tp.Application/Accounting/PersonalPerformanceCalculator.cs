@@ -68,11 +68,12 @@ public sealed class PersonalPerformanceCalculator
         {
             if (evidence is null || evidence.AccountProfileId <= 0 || evidence.Listing is null ||
                 evidence.Listing.ItemId <= 0 || evidence.ObservedAtUtc.Offset != TimeSpan.Zero ||
+                evidence.ObservedAtUtc > request.AsOfUtc ||
                 evidence.Listing.Buys is null || evidence.Listing.Sells is null ||
                 !evidenceKeys.Add(new AccountItemKey(evidence.AccountProfileId, evidence.Listing.ItemId)) ||
                 evidence.Listing.Buys.Any(level => level is null || level.Listings <= 0 || level.Quantity <= 0 || level.UnitPriceInCopper <= 0))
             {
-                throw new ArgumentException("Current market evidence must contain one valid UTC buy book per account/item.", nameof(request));
+                throw new ArgumentException("Current market evidence must contain one valid non-future UTC buy book per account/item.", nameof(request));
             }
         }
     }
@@ -136,7 +137,7 @@ public sealed class PersonalPerformanceCalculator
                         exchangeFees[index],
                         netSale,
                         profit,
-                        CreateRoi(profit, fragment.Match.AllocatedAcquisitionBasis)));
+                        CreateRoi(profit, fragment.Match.AllocatedAcquisitionBasis + listingFees[index])));
                     continue;
                 }
 
@@ -236,7 +237,7 @@ public sealed class PersonalPerformanceCalculator
             {
                 items.Add(new OpenInventoryLiquidation(
                     group.Key.AccountProfileId, group.Key.ItemId, quantity, basis,
-                    CurrentLiquidationStatus.EvidenceMissing, quantity,
+                    CurrentLiquidationStatus.EvidenceMissing, null, quantity,
                     null, null, null, null, null, null));
                 continue;
             }
@@ -248,7 +249,7 @@ public sealed class PersonalPerformanceCalculator
             {
                 items.Add(new OpenInventoryLiquidation(
                     group.Key.AccountProfileId, group.Key.ItemId, quantity, basis,
-                    CurrentLiquidationStatus.InsufficientBuyDepth, scenario.RemainingQuantity,
+                    CurrentLiquidationStatus.InsufficientBuyDepth, evidence.ObservedAtUtc, scenario.RemainingQuantity,
                     null, null, null, null, null, null));
                 continue;
             }
@@ -256,10 +257,10 @@ public sealed class PersonalPerformanceCalculator
             var liquidation = saleCalculator.Calculate(basis, scenario.TotalValue);
             items.Add(new OpenInventoryLiquidation(
                 group.Key.AccountProfileId, group.Key.ItemId, quantity, basis,
-                CurrentLiquidationStatus.FullyValued, 0,
+                CurrentLiquidationStatus.FullyValued, evidence.ObservedAtUtc, 0,
                 liquidation.GrossSaleValue, liquidation.ListingFee, liquidation.ExchangeFee,
                 liquidation.NetSaleProceeds, liquidation.NetProfit,
-                CreateRoi(liquidation.NetProfit, basis)));
+                CreateRoi(liquidation.NetProfit, basis + liquidation.ListingFee)));
         }
 
         var openQuantity = checked((int)openLots.Sum(lot => (long)lot.RemainingQuantity));
@@ -267,13 +268,14 @@ public sealed class PersonalPerformanceCalculator
         var isFullyValued = items.All(item => item.Status == CurrentLiquidationStatus.FullyValued);
         Money? liquidationValue = isFullyValued ? Sum(items.Select(item => item.NetLiquidationValue!.Value)) : null;
         Money? unrealizedProfit = liquidationValue is { } netValue ? netValue - openBasis : null;
+        Money? listingFees = isFullyValued ? Sum(items.Select(item => item.ListingFee!.Value)) : null;
         return new OpenPerformance(
             openQuantity,
             openBasis,
             isFullyValued,
             liquidationValue,
             unrealizedProfit,
-            unrealizedProfit is { } profit ? CreateRoi(profit, openBasis) : null,
+            unrealizedProfit is { } profit ? CreateRoi(profit, openBasis + listingFees!.Value) : null,
             items.AsReadOnly());
     }
 
@@ -290,7 +292,7 @@ public sealed class PersonalPerformanceCalculator
             Sum(values.Select(allocation => allocation.NetSaleProceeds)),
             acquisitionBasis,
             netProfit,
-            CreateRoi(netProfit, acquisitionBasis));
+            CreateRoi(netProfit, acquisitionBasis + Sum(values.Select(allocation => allocation.ListingFee))));
     }
 
     private static bool IsWithin(DateTimeOffset timestamp, DateTimeOffset start, DateTimeOffset end) =>

@@ -29,7 +29,7 @@ public sealed class PersonalPerformanceCalculatorTests
         Assert.Equal(new Money(200), realized.AcquisitionBasis);
         Assert.Equal(new Money(140), realized.NetProfit);
         Assert.Equal(new Money(140), realized.Roi!.Value.Profit);
-        Assert.Equal(new Money(200), realized.Roi!.Value.TotalCost);
+        Assert.Equal(new Money(220), realized.Roi!.Value.TotalCost);
         Assert.False(result.IsFeeRoundingExternallyVerified);
         Assert.Empty(result.UnknownBasisSaleAllocations);
     }
@@ -48,6 +48,7 @@ public sealed class PersonalPerformanceCalculatorTests
         Assert.True(result.OpenPerformance.IsFullyValued);
         Assert.Equal(new Money(637), result.OpenPerformance.NetLiquidationValue);
         Assert.Equal(new Money(37), result.OpenPerformance.UnrealizedProfit);
+        Assert.Equal(new Money(638), result.OpenPerformance.UnrealizedRoi!.Value.TotalCost);
         Assert.Equal(new Money(750), Assert.Single(result.OpenPerformance.Items).GrossSaleValue);
         Assert.Equal(new Money(38), Assert.Single(result.OpenPerformance.Items).ListingFee);
         Assert.Equal(new Money(75), Assert.Single(result.OpenPerformance.Items).ExchangeFee);
@@ -139,6 +140,26 @@ public sealed class PersonalPerformanceCalculatorTests
     }
 
     [Fact]
+    public void Includes_each_supported_utc_window_start_and_excludes_the_as_of_instant()
+    {
+        var result = calculator.Rebuild(Request(
+        [
+            Buy(101, itemId: 42, unitPrice: 50, quantity: 1, completedAtUtc: AsOfUtc.AddDays(-95)),
+            Sell(102, itemId: 42, unitPrice: 100, quantity: 1, completedAtUtc: AsOfUtc.AddDays(-90)),
+            Buy(103, itemId: 43, unitPrice: 50, quantity: 1, completedAtUtc: AsOfUtc.AddDays(-40)),
+            Sell(104, itemId: 43, unitPrice: 100, quantity: 1, completedAtUtc: AsOfUtc.AddDays(-30)),
+            Buy(105, itemId: 44, unitPrice: 50, quantity: 1, completedAtUtc: AsOfUtc.AddDays(-10)),
+            Sell(106, itemId: 44, unitPrice: 100, quantity: 1, completedAtUtc: AsOfUtc.AddDays(-7)),
+            Buy(107, itemId: 45, unitPrice: 50, quantity: 1, completedAtUtc: AsOfUtc.AddDays(-2)),
+            Sell(108, itemId: 45, unitPrice: 100, quantity: 1, completedAtUtc: AsOfUtc),
+        ]));
+
+        Assert.Equal(new Money(35), Window(result, RealizedPerformanceWindow.SevenDays).KnownBasisPerformance!.NetProfit);
+        Assert.Equal(new Money(70), Window(result, RealizedPerformanceWindow.ThirtyDays).KnownBasisPerformance!.NetProfit);
+        Assert.Equal(new Money(105), Window(result, RealizedPerformanceWindow.NinetyDays).KnownBasisPerformance!.NetProfit);
+    }
+
+    [Fact]
     public void Does_not_claim_unrealized_value_without_complete_current_buy_depth()
     {
         var result = calculator.Rebuild(Request(
@@ -147,6 +168,7 @@ public sealed class PersonalPerformanceCalculatorTests
 
         var item = Assert.Single(result.OpenPerformance.Items);
         Assert.Equal(CurrentLiquidationStatus.InsufficientBuyDepth, item.Status);
+        Assert.Equal(AsOfUtc, item.MarketObservedAtUtc);
         Assert.Equal(1, item.UnliquidatedQuantity);
         Assert.Null(item.NetLiquidationValue);
         Assert.False(result.OpenPerformance.IsFullyValued);
@@ -162,6 +184,7 @@ public sealed class PersonalPerformanceCalculatorTests
 
         var item = Assert.Single(result.OpenPerformance.Items);
         Assert.Equal(CurrentLiquidationStatus.EvidenceMissing, item.Status);
+        Assert.Null(item.MarketObservedAtUtc);
         Assert.Equal(3, item.UnliquidatedQuantity);
         Assert.Equal(new Money(300), result.OpenPerformance.OpenAcquisitionBasis);
         Assert.Null(result.OpenPerformance.NetLiquidationValue);
@@ -211,6 +234,9 @@ public sealed class PersonalPerformanceCalculatorTests
         Assert.Throws<ArgumentException>(() => calculator.Rebuild(Request(
             [transaction],
             new CurrentMarketLiquidationEvidence(1, new MarketListing(42, [new MarketOrderLevel(1, 1, 0)], []), AsOfUtc))));
+        Assert.Throws<ArgumentException>(() => calculator.Rebuild(Request(
+            [transaction],
+            new CurrentMarketLiquidationEvidence(1, new MarketListing(42, [new MarketOrderLevel(1, 1, 100)], []), AsOfUtc.AddTicks(1)))));
     }
 
     [Fact]
@@ -252,6 +278,10 @@ public sealed class PersonalPerformanceCalculatorTests
             buys.Select(buy => new MarketOrderLevel(1, buy.Quantity, buy.UnitPrice)).ToArray(),
             []),
         AsOfUtc);
+
+    private static RealizedPerformanceWindowResult Window(
+        PersonalPerformanceRebuild result,
+        RealizedPerformanceWindow window) => result.Windows.Single(candidate => candidate.Window == window);
 
     private static AccountScopedCompletedTransaction Buy(
         long transactionId,
