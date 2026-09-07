@@ -56,8 +56,8 @@ logic stay in the application/backend layers. Missing coverage, unknown basis,
 partial liquidation depth, and unavailable market evidence remain explicit.
 
 TKT-M16-01 is **NORMAL**. Required local validation is green; independent
-review remains for the owner to trigger. After the #78 PR handoff, the next
-valid implementation ticket is:
+review remains for the owner to trigger. PR #112 is open for the owner review.
+After the #78 merge handoff, the next valid implementation ticket is:
 
 **TKT-M17-01 / #79 - Build the Live Fee-Aware Market Scanner.**
 
