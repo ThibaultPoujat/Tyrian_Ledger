@@ -26,40 +26,45 @@ personal Trading Post gateway work merged in PRs #102-#105. M14 is complete
 through versioned SQLite persistence, idempotent personal TP synchronization,
 and local backup/restore/clear controls merged in PRs #106-#108.
 
-TKT-M15-01 / #75 is implemented in Draft PR #109. It establishes one canonical
+TKT-M15-01 / #75 is merged in PR #109. It establishes one canonical
 application-layer GW2 fee policy with separate 5% listing and 10% exchange fees,
 a 1-copper positive-sale minimum for each, and owner-approved independent
 round-up. ArenaNet support and the linked official wiki do not define
 fractional-copper rounding, so VERIFY-013 remains OPEN and every fee-derived
 result remains explicitly modeled/provisional.
 
-TKT-M15-01 is **SOL-GATED**. A fresh separate Sol XHigh review at commit
-`ff3fc40b6461abd84955f5b7f90719af3ec9d267` returned APPROVE with no findings,
-all required GitHub CI jobs are green, and PR #109 is Ready for owner review.
-After owner merge, the next valid implementation ticket is:
+TKT-M15-02 / #76 is implemented in Draft PR #110. It reconstructs known
+acquisition inventory from completed personal Trading Post transactions,
+allocates sells to the oldest available buy lots by account and item, supports
+partial/many-to-one/one-to-many matches, and keeps missing pre-history basis as
+an explicit unknown quantity. Equal completed timestamps use ascending external
+transaction ID, and the versioned result is rebuilt in memory without derived
+SQLite state or current-order inference.
 
-**TKT-M15-02 / #76 - Implement Deterministic FIFO Lot Matching and Unknown-Basis States.**
+TKT-M15-02 is **SOL-GATED**. PR #110 must remain Draft until a fresh separate Sol
+XHigh review returns APPROVE and all required GitHub CI jobs are green. After
+owner merge, the next valid implementation ticket is:
 
-Do not begin TKT-M15-02 before the #75 review/merge handoff is complete.
+**TKT-M15-03 / #77 - Add Realized/Unrealized P&L and 7/30/90-Day Performance.**
+
+Do not begin TKT-M15-03 before the #76 review/merge handoff is complete.
 
 ## Known-good baseline
 
-TKT-M15-01 local validation on 2026-09-07 reported:
+TKT-M15-02 local validation on 2026-09-07 reported:
 
 - Release solution build: zero warnings and zero errors;
+- focused FIFO accounting: 19 tests passed;
 - focused canonical fee policy: 13 tests passed;
-- generic fee policy: 8 tests passed;
-- recommendation regression: 18 tests passed;
-- full .NET: 223 tests passed;
+- full .NET: 242 tests passed;
 - React: 10 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
-- targeted fee-constant/evidence-language audit: no competing browser or
-  feature formula and no unsupported verified fee claim;
-- Gitleaks: all 218 reachable commits scanned with no leaks.
+- retired-runtime and competing-fee-formula audits: no unexpected matches;
+- Gitleaks: all 222 reachable commits scanned with no leaks.
 
-PR #108 is merged into `develop` as merge commit
-`778cb329f952c22b0bc9fd765a200a51dd597d83`.
+PR #109 is merged into `develop` as merge commit
+`11d317ff7e1346ec02846fbe6cf889c37f566975`.
 
 ## Important transition warning
 
