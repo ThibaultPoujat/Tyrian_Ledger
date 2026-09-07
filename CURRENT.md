@@ -33,9 +33,10 @@ round-up. ArenaNet support and the linked official wiki do not define
 fractional-copper rounding, so VERIFY-013 remains OPEN and every fee-derived
 result remains explicitly modeled/provisional.
 
-TKT-M15-01 is **SOL-GATED**. PR #109 was opened Draft and may move to Ready only
-after a fresh separate Sol XHigh review returns APPROVE and required validation
-is green. After owner merge, the next valid implementation ticket is:
+TKT-M15-01 is **SOL-GATED**. A fresh separate Sol XHigh review at commit
+`ff3fc40b6461abd84955f5b7f90719af3ec9d267` returned APPROVE with no findings,
+all required GitHub CI jobs are green, and PR #109 is Ready for owner review.
+After owner merge, the next valid implementation ticket is:
 
 **TKT-M15-02 / #76 - Implement Deterministic FIFO Lot Matching and Unknown-Basis States.**
 
