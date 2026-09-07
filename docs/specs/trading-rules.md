@@ -192,6 +192,11 @@ Completed buys create cost-basis inventory lots. Completed sells consume lots
 using the accepted accounting policy (initially FIFO). Partial fills and one-to-
 many/many-to-one matches must be supported.
 
+FIFO rebuilds use completed transactions only and isolate inventory by local
+account profile and item. Transactions are ordered by completed UTC timestamp,
+then by ascending external transaction ID when timestamps are equal. A sale is
+never retroactively matched to a buy that sorts after it.
+
 Unknown acquisitions must not silently receive zero basis. Realized and
 unrealized P&L are separate concepts and screens.
 
