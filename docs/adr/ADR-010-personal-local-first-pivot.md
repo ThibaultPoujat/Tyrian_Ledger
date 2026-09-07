@@ -4,6 +4,8 @@
 
 Accepted by the owner on 2026-09-04 for the M12 pivot.
 
+> **Process-policy amendment (2026-09-07):** The review-model requirement recorded in this ADR reflects the workflow policy in force when ADR-010 was accepted. Current model/review selection, Sol gating, and PR blocking are governed by `docs/workflow/model-effort-guide.md`. The historical wording below is retained as decision-history evidence and must not override the current workflow policy.
+
 ## Context
 
 M10-M11 transformed Tyrian Ledger into a public static beginner fast-flip site
