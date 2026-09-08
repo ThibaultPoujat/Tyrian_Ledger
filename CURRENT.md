@@ -99,7 +99,7 @@ version 1 independently preserves all raw aggregate and detailed-book evidence:
 it performs no deletion, rewriting, or downsampling without a future
 owner-approved migration. Populated backup/restore and clear-personal-data tests
 prove market history remains recoverable and separate from account-scoped
-clearing. Draft PR #120 follows up the #118 NORMAL review with a managed-backup
+clearing. PR #120 follows up the #118 NORMAL review with a managed-backup
 restore path so retained history is not bounded by the 512 MiB imported-file
 upload cap, and maps out-of-range SQLite migration IDs to failed integrity
 rather than a server error. No VERIFY entries changed.
