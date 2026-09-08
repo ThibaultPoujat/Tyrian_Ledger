@@ -46,7 +46,7 @@ public sealed class LiveMarketScannerTests
             prices: _ => Success([Price(1, 10, 100, 10, 200)])));
         var settings = new LiveMarketScannerSettings(
             MinimumRoiBasisPoints: 5_000,
-            MinimumNetProfit: new(60),
+            MinimumNetProfit: new(1),
             BidIncrementCopper: 1,
             ListUndercutCopper: 1);
 

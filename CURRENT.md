@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: 2026-09-07
+Last updated: 2026-09-08
 
 ## Active direction
 
@@ -63,8 +63,8 @@ local no-store API encodes copper as strings and reports the fee-rounding model
 as provisional while VERIFY-013 remains OPEN. It deliberately does not read
 detailed order books, size positions, persist history, or add scanner UI.
 
-TKT-M17-01 is **NORMAL**. Required local validation is green; independent
-review remains for the owner to trigger. After the #79 review/merge handoff,
+TKT-M17-01 is **NORMAL**. Required local validation and refreshed CI are green;
+independent review remains for the owner to trigger. After the #79 review/merge handoff,
 the next valid implementation ticket is:
 
 **TKT-M17-02 / #80 - Add Order-Book Depth, Liquidity Quality, and Liquidity-Aware Sizing Evidence.**
