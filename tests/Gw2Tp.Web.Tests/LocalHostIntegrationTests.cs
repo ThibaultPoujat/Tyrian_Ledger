@@ -371,6 +371,9 @@ public sealed class LocalHostIntegrationTests
         using var missingHeader = await client.GetAsync("/api/market-history/42/analytics");
         Assert.Equal(HttpStatusCode.Forbidden, missingHeader.StatusCode);
 
+        using var missingHeaderWithTrailingSlash = await client.GetAsync("/api/market-history/42/analytics/");
+        Assert.Equal(HttpStatusCode.Forbidden, missingHeaderWithTrailingSlash.StatusCode);
+
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/market-history/42/analytics");
         request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
         using var response = await client.SendAsync(request);
@@ -387,6 +390,12 @@ public sealed class LocalHostIntegrationTests
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
 
+        using var trailingSlashRequest = new HttpRequestMessage(HttpMethod.Get, "/api/market-history/42/analytics/");
+        trailingSlashRequest.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var trailingSlashResponse = await client.SendAsync(trailingSlashRequest);
+        Assert.Equal(HttpStatusCode.OK, trailingSlashResponse.StatusCode);
+        Assert.Equal("no-store", trailingSlashResponse.Headers.CacheControl?.ToString());
+
         using var invalid = new HttpRequestMessage(HttpMethod.Get, "/api/market-history/0/analytics");
         invalid.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
         using var invalidResponse = await client.SendAsync(invalid);
@@ -398,6 +407,74 @@ public sealed class LocalHostIntegrationTests
         attacker.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
         using var attackerResponse = await client.SendAsync(attacker);
         Assert.Equal(HttpStatusCode.Forbidden, attackerResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Historical_market_analytics_endpoint_serializes_the_full_available_metrics_contract_from_retained_observations()
+    {
+        var databaseDirectory = Path.Combine(Path.GetTempPath(), "TyrianLedger.Web.Tests", Guid.NewGuid().ToString("N"));
+        var databasePath = Path.Combine(databaseDirectory, "tyrian-ledger.db");
+        var asOfUtc = new DateTimeOffset(2026, 9, 8, 12, 0, 0, TimeSpan.Zero);
+        try
+        {
+            await using var app = await StartApplicationAsync(
+                "Production",
+                new Dictionary<string, string?> { ["TyrianLedger:Database:Path"] = databasePath },
+                services =>
+                {
+                    services.RemoveAll<IClock>();
+                    services.AddSingleton<IClock>(new FixedClock(asOfUtc));
+                });
+            var repository = app.Services.GetRequiredService<IMarketHistoryRepository>();
+            await repository.AppendPriceObservationsAsync(
+                Enumerable.Range(0, 91).Select(index => new MarketPriceObservation(
+                    asOfUtc.AddHours(-8 * (90 - index)),
+                    42,
+                    100,
+                    150,
+                    10,
+                    20,
+                    MarketObservationSourceStatus.Complete,
+                    MarketSamplingTier.Watchlist,
+                    1)).ToArray());
+            using var client = app.GetTestClient();
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/api/market-history/42/analytics");
+            request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+            using var response = await client.SendAsync(request);
+            var body = await response.Content.ReadAsStringAsync();
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+            Assert.Contains("\"latestObservedNetRoi\":{", body, StringComparison.Ordinal);
+            Assert.Contains("\"netProfit\":{\"copper\":\"25\"}", body, StringComparison.Ordinal);
+            Assert.Contains("\"totalCost\":{\"copper\":\"109\"}", body, StringComparison.Ordinal);
+            Assert.Contains("\"state\":\"available\"", body, StringComparison.Ordinal);
+            Assert.Contains("\"rawObservationCount\":91", body, StringComparison.Ordinal);
+            Assert.Contains("\"eligibleObservationCount\":91", body, StringComparison.Ordinal);
+            Assert.Contains("\"excludedObservationCount\":0", body, StringComparison.Ordinal);
+            Assert.Contains("\"observedSpanPercent\":100", body, StringComparison.Ordinal);
+            Assert.Contains("\"largestEligibleObservationGapSeconds\":28800", body, StringComparison.Ordinal);
+            Assert.Contains("\"medianNetRoiBasisPoints\":", body, StringComparison.Ordinal);
+            Assert.Contains("\"roiThresholdRates\":[{\"thresholdBasisPoints\":1500,\"percent\":100}", body, StringComparison.Ordinal);
+            Assert.Contains("\"positiveNetRoiPercent\":100", body, StringComparison.Ordinal);
+            Assert.Contains("\"buyPricePopulationCoefficientOfVariation\":0", body, StringComparison.Ordinal);
+            Assert.Contains("\"sellPricePopulationCoefficientOfVariation\":0", body, StringComparison.Ordinal);
+            Assert.Contains("\"spreadRatioPopulationCoefficientOfVariation\":0", body, StringComparison.Ordinal);
+            Assert.Contains("\"medianAggregateBuyQuantity\":10", body, StringComparison.Ordinal);
+            Assert.Contains("\"medianAggregateSellQuantity\":20", body, StringComparison.Ordinal);
+            Assert.Contains("\"minimumSideDepthPopulationCoefficientOfVariation\":0", body, StringComparison.Ordinal);
+            Assert.Contains("\"buyPriceRange\":{\"minimumCopper\":100,\"maximumCopper\":100}", body, StringComparison.Ordinal);
+            Assert.Contains("\"sellPriceRange\":{\"minimumCopper\":150,\"maximumCopper\":150}", body, StringComparison.Ordinal);
+            Assert.Contains("\"maximumSellPriceDrawdownPercent\":0", body, StringComparison.Ordinal);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(databaseDirectory))
+            {
+                Directory.Delete(databaseDirectory, recursive: true);
+            }
+        }
     }
 
     [Fact]

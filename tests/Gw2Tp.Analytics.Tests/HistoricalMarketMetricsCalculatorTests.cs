@@ -64,24 +64,26 @@ public sealed class HistoricalMarketMetricsCalculatorTests
     }
 
     [Fact]
-    public void Exact_threshold_and_invalid_legacy_rows_are_handled_without_fabricating_a_sample()
+    public void Exact_threshold_and_invalid_or_zero_depth_rows_are_handled_without_fabricating_a_sample()
     {
         var calculator = CreateCalculator();
         var result = calculator.Calculate(
         [
-            Observation(Start, 17, 27, 0, 10),
+            Observation(Start, 17, 27, 10, 10),
             Observation(Start.AddHours(1), 0, 27, 10, 10),
+            Observation(Start.AddHours(2), 17, 27, 0, 10),
+            Observation(Start.AddHours(3), 17, 27, 10, 0),
         ], HistoricalMarketMetricsSettings.Default);
 
-        Assert.Equal(2, result.RawObservationCount);
+        Assert.Equal(4, result.RawObservationCount);
         Assert.Equal(1, result.EligibleObservationCount);
-        Assert.Equal(1, result.ExcludedObservationCount);
+        Assert.Equal(3, result.ExcludedObservationCount);
         Assert.Null(result.LargestEligibleObservationGap);
         Assert.Equal(1_500m, result.LatestEligibleNetRoi?.BasisPoints);
         var summary = Assert.IsType<HistoricalMarketMetricSummary>(result.Summary);
         Assert.Equal(100m, Assert.Single(summary.RoiThresholdRates, rate => rate.ThresholdBasisPoints == 1_500).Percent);
         Assert.Equal(0m, Assert.Single(summary.RoiThresholdRates, rate => rate.ThresholdBasisPoints == 2_000).Percent);
-        Assert.Null(summary.MinimumSideDepthPopulationCoefficientOfVariation);
+        Assert.Equal(0d, summary.MinimumSideDepthPopulationCoefficientOfVariation);
     }
 
     [Fact]

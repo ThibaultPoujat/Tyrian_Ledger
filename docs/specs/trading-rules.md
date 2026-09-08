@@ -112,9 +112,11 @@ The fixed 7-day and 30-day UTC windows are inclusive. They are available only
 when they contain at least 20 and 60 eligible observations respectively and
 the first-to-last eligible observation spans at least 80% of the requested
 duration. Every result reports its exact bounds, raw/eligible/excluded sample
-counts, observed-span percentage, and largest eligible gap. Missing or legacy
-invalid observations are excluded from metrics and remain visible in coverage;
-the application never fills, interpolates, or creates missing observations.
+counts, observed-span percentage, and largest eligible gap. Tradable ROI and
+depth metrics require strictly positive aggregate buy and sell quantities;
+zero-side, missing, or legacy-invalid observations are excluded from metrics
+and remain visible in coverage. The application never fills, interpolates, or
+creates missing observations.
 
 The initial disclosed ROI thresholds are 15% and 20% (1,500 and 2,000 basis
 points), compared exactly against integer-copper ROI numerators and

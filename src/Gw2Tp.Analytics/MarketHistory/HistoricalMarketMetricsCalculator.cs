@@ -161,7 +161,7 @@ public sealed class HistoricalMarketMetricsCalculator
     {
         calculated = default!;
         if (observation.HighestBuyPriceInCopper <= 0 || observation.LowestSellPriceInCopper <= 0 ||
-            observation.AggregateBuyQuantity < 0 || observation.AggregateSellQuantity < 0)
+            observation.AggregateBuyQuantity <= 0 || observation.AggregateSellQuantity <= 0)
         {
             return false;
         }

@@ -56,6 +56,6 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
 
     private static bool IsHistoricalMarketAnalyticsPath(PathString requestPath) =>
         requestPath.Value is { } path &&
-        path.StartsWith("/api/market-history/", StringComparison.OrdinalIgnoreCase) &&
-        path.EndsWith("/analytics", StringComparison.OrdinalIgnoreCase);
+        path.TrimEnd('/').StartsWith("/api/market-history/", StringComparison.OrdinalIgnoreCase) &&
+        path.TrimEnd('/').EndsWith("/analytics", StringComparison.OrdinalIgnoreCase);
 }

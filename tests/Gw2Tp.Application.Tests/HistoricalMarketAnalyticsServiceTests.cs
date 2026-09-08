@@ -58,6 +58,60 @@ public sealed class HistoricalMarketAnalyticsServiceTests
     }
 
     [Fact]
+    public async Task Seven_day_window_includes_both_UTC_bounds_and_enforces_the_exact_twenty_sample_cutoff()
+    {
+        var sufficient = new InMemoryHistoryRepository();
+        AddEvenlySpacedObservations(sufficient, 20, TimeSpan.FromDays(7));
+
+        var available = await new HistoricalMarketAnalyticsService(sufficient, new FixedClock(AsOfUtc)).GetAsync(42);
+        var sevenDayAvailable = Assert.Single(available.Windows, window => window.Coverage.ToInclusiveUtc - window.Coverage.FromInclusiveUtc == TimeSpan.FromDays(7));
+
+        Assert.Equal(HistoricalMarketWindowState.Available, sevenDayAvailable.State);
+        Assert.Equal(20, sevenDayAvailable.Coverage.RawObservationCount);
+        Assert.Equal(20, sevenDayAvailable.Coverage.EligibleObservationCount);
+        Assert.Equal(AsOfUtc.AddDays(-7), sevenDayAvailable.Coverage.FirstEligibleObservedAtUtc);
+        Assert.Equal(AsOfUtc, sevenDayAvailable.Coverage.LastEligibleObservedAtUtc);
+        Assert.Equal(100m, sevenDayAvailable.Coverage.ObservedSpanPercent);
+
+        var oneShort = new InMemoryHistoryRepository();
+        AddEvenlySpacedObservations(oneShort, 19, TimeSpan.FromDays(7));
+        var insufficient = await new HistoricalMarketAnalyticsService(oneShort, new FixedClock(AsOfUtc)).GetAsync(42);
+        var sevenDayInsufficient = Assert.Single(insufficient.Windows, window => window.Coverage.ToInclusiveUtc - window.Coverage.FromInclusiveUtc == TimeSpan.FromDays(7));
+
+        Assert.Equal(HistoricalMarketWindowState.InsufficientData, sevenDayInsufficient.State);
+        Assert.Equal(19, sevenDayInsufficient.Coverage.EligibleObservationCount);
+        Assert.Equal(100m, sevenDayInsufficient.Coverage.ObservedSpanPercent);
+        Assert.Null(sevenDayInsufficient.Metrics);
+    }
+
+    [Fact]
+    public async Task Thirty_day_window_includes_both_UTC_bounds_and_enforces_the_exact_sixty_sample_cutoff()
+    {
+        var sufficient = new InMemoryHistoryRepository();
+        AddEvenlySpacedObservations(sufficient, 60, TimeSpan.FromDays(30));
+
+        var available = await new HistoricalMarketAnalyticsService(sufficient, new FixedClock(AsOfUtc)).GetAsync(42);
+        var thirtyDayAvailable = Assert.Single(available.Windows, window => window.Coverage.ToInclusiveUtc - window.Coverage.FromInclusiveUtc == TimeSpan.FromDays(30));
+
+        Assert.Equal(HistoricalMarketWindowState.Available, thirtyDayAvailable.State);
+        Assert.Equal(60, thirtyDayAvailable.Coverage.RawObservationCount);
+        Assert.Equal(60, thirtyDayAvailable.Coverage.EligibleObservationCount);
+        Assert.Equal(AsOfUtc.AddDays(-30), thirtyDayAvailable.Coverage.FirstEligibleObservedAtUtc);
+        Assert.Equal(AsOfUtc, thirtyDayAvailable.Coverage.LastEligibleObservedAtUtc);
+        Assert.Equal(100m, thirtyDayAvailable.Coverage.ObservedSpanPercent);
+
+        var oneShort = new InMemoryHistoryRepository();
+        AddEvenlySpacedObservations(oneShort, 59, TimeSpan.FromDays(30));
+        var insufficient = await new HistoricalMarketAnalyticsService(oneShort, new FixedClock(AsOfUtc)).GetAsync(42);
+        var thirtyDayInsufficient = Assert.Single(insufficient.Windows, window => window.Coverage.ToInclusiveUtc - window.Coverage.FromInclusiveUtc == TimeSpan.FromDays(30));
+
+        Assert.Equal(HistoricalMarketWindowState.InsufficientData, thirtyDayInsufficient.State);
+        Assert.Equal(59, thirtyDayInsufficient.Coverage.EligibleObservationCount);
+        Assert.Equal(100m, thirtyDayInsufficient.Coverage.ObservedSpanPercent);
+        Assert.Null(thirtyDayInsufficient.Metrics);
+    }
+
+    [Fact]
     public async Task No_retained_observations_and_invalid_item_are_explicit()
     {
         var service = new HistoricalMarketAnalyticsService(new InMemoryHistoryRepository(), new FixedClock(AsOfUtc));
@@ -84,6 +138,16 @@ public sealed class HistoricalMarketAnalyticsServiceTests
         MarketObservationSourceStatus.Complete,
         MarketSamplingTier.Watchlist,
         1);
+
+    private static void AddEvenlySpacedObservations(InMemoryHistoryRepository repository, int count, TimeSpan duration)
+    {
+        for (var index = 0; index < count; index++)
+        {
+            repository.Prices.Add(Observation(
+                42,
+                AsOfUtc - duration + TimeSpan.FromTicks(duration.Ticks * index / (count - 1))));
+        }
+    }
 
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock
     {
