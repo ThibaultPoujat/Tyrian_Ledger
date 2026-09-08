@@ -4,7 +4,10 @@ namespace Gw2Tp.Application.LocalData;
 /// The local paths that hold Tyrian Ledger's durable database and its managed
 /// backup copies. These paths are local-only and never contain credentials.
 /// </summary>
-public sealed record LocalDataLocation(string DatabasePath, string BackupDirectoryPath);
+public sealed record LocalDataLocation(
+    string DatabasePath,
+    string BackupDirectoryPath,
+    IReadOnlyList<LocalDataBackup> ManagedBackups);
 
 /// <summary>
 /// A local SQLite backup created by the application.
@@ -37,6 +40,15 @@ public interface ILocalDataRecoveryService
 
     Task<LocalDataRestoreResult> RestoreAsync(
         Stream backupContents,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Restores an application-created backup already held in the managed
+    /// local backup directory. The implementation must not accept paths or
+    /// arbitrary files through this operation.
+    /// </summary>
+    Task<LocalDataRestoreResult> RestoreManagedBackupAsync(
+        string backupFileName,
         CancellationToken cancellationToken = default);
 
     Task ClearPersonalDataAsync(CancellationToken cancellationToken = default);

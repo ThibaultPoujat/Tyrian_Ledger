@@ -357,6 +357,106 @@ describe('M14 local data controls', () => {
 
     expect(await screen.findByText('Backup restored.')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeDisabled();
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/local-data')).toHaveLength(2));
+  });
+
+  it('restores an explicitly selected managed backup through the local managed-backup route', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/health') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      }
+      if (input === '/api/local-data') {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            databasePath: '/synthetic/tyrian-ledger.db',
+            backupDirectoryPath: '/synthetic/backups',
+            managedBackupUploadLimitBytes: 512 * 1024 * 1024,
+            managedBackups: [{ fileName: 'tyrian-ledger-backup-20260908T120000000Z.db', createdAtUtc: '2026-09-08T12:00:00Z' }],
+          }),
+        } as unknown as Response);
+      }
+      if (input === '/api/local-data/restore-managed') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
+      } as unknown as Response);
+    });
+    render(<App />);
+
+    fireEvent.change(await screen.findByLabelText('Managed backup'), { target: { value: 'tyrian-ledger-backup-20260908T120000000Z.db' } });
+    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore managed backup' }));
+
+    expect(await screen.findByText('Backup restored.')).toBeVisible();
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/local-data/restore-managed', expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ confirmation: 'RESTORE LOCAL DATA', backupFileName: 'tyrian-ledger-backup-20260908T120000000Z.db' }),
+    }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/local-data')).toHaveLength(2));
+  });
+
+  it('refreshes the managed backup inventory on demand', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/health') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      }
+      if (input === '/api/local-data') {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            databasePath: '/synthetic/tyrian-ledger.db',
+            backupDirectoryPath: '/synthetic/backups',
+            managedBackups: [],
+          }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
+      } as unknown as Response);
+    });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh managed backups' }));
+
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/local-data')).toHaveLength(2));
+  });
+
+  it('does not infer a managed backup from an oversized imported file name', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/health') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      }
+      if (input === '/api/local-data') {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            databasePath: '/synthetic/tyrian-ledger.db',
+            backupDirectoryPath: '/synthetic/backups',
+            managedBackupUploadLimitBytes: 512 * 1024 * 1024,
+            managedBackups: [{ fileName: 'tyrian-ledger-backup-20260908T120000000Z.db', createdAtUtc: '2026-09-08T12:00:00Z' }],
+          }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
+      } as unknown as Response);
+    });
+    render(<App />);
+
+    const importedBackup = new File(['synthetic'], 'tyrian-ledger-backup-20260908T120000000Z.db', { type: 'application/x-sqlite3' });
+    Object.defineProperty(importedBackup, 'size', { value: 512 * 1024 * 1024 + 1 });
+    fireEvent.change(await screen.findByLabelText('Backup file'), { target: { files: [importedBackup] } });
+    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
+
+    expect(await screen.findByText('This imported backup exceeds the local upload limit. Only application-created Tyrian Ledger backups already moved into the managed Backups folder can be selected for local managed restore. Refresh the managed backup list after moving one.')).toBeVisible();
+    expect(vi.mocked(fetch).mock.calls.some(([path]) => path === '/api/local-data/restore-managed')).toBe(false);
   });
 
   it('reports an unknown outcome when restore or clear loses its response', async () => {

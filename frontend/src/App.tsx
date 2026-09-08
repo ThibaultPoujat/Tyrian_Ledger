@@ -20,6 +20,8 @@ type AccountConnectionResponse = {
 type LocalDataLocation = {
   databasePath: string;
   backupDirectoryPath: string;
+  managedBackupUploadLimitBytes?: number;
+  managedBackups?: Array<{ fileName: string; createdAtUtc: string }>;
 };
 
 type LocalDataLocationState =
@@ -87,7 +89,18 @@ function isLocalDataLocation(payload: unknown): payload is LocalDataLocation {
   }
 
   const candidate = payload as Record<string, unknown>;
-  return typeof candidate.databasePath === 'string' && typeof candidate.backupDirectoryPath === 'string';
+  return typeof candidate.databasePath === 'string'
+    && typeof candidate.backupDirectoryPath === 'string'
+    && (candidate.managedBackupUploadLimitBytes === undefined
+      || (typeof candidate.managedBackupUploadLimitBytes === 'number'
+        && Number.isSafeInteger(candidate.managedBackupUploadLimitBytes)
+        && candidate.managedBackupUploadLimitBytes > 0))
+    && (candidate.managedBackups === undefined
+      || (Array.isArray(candidate.managedBackups)
+        && candidate.managedBackups.every((backup) => typeof backup === 'object'
+          && backup !== null
+          && typeof (backup as Record<string, unknown>).fileName === 'string'
+          && typeof (backup as Record<string, unknown>).createdAtUtc === 'string')));
 }
 
 function localRequestHeaders(): Record<string, string> {
@@ -437,10 +450,12 @@ function DashboardItems({ title, items }: { title: string; items: Dashboard['bes
 
 function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () => void }) {
   const [location, setLocation] = useState<LocalDataLocationState>({ kind: 'loading' });
+  const [locationRefreshGeneration, setLocationRefreshGeneration] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const restoreFileInput = useRef<HTMLInputElement>(null);
+  const [managedBackupFileName, setManagedBackupFileName] = useState('');
   const [restoreConfirmation, setRestoreConfirmation] = useState('');
   const [clearConfirmation, setClearConfirmation] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
@@ -464,7 +479,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
         }
       });
     return () => controller.abort();
-  }, []);
+  }, [locationRefreshGeneration]);
 
   const createBackup = () => {
     setIsBackingUp(true);
@@ -481,9 +496,15 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
           return;
         }
         setMessage(`Backup created: ${(payload as Record<string, string>).fileName}`);
+        setLocationRefreshGeneration((generation) => generation + 1);
       })
       .catch(() => setMessage('Backup outcome could not be confirmed. Check the local backup folder before retrying.'))
       .finally(() => setIsBackingUp(false));
+  };
+
+  const refreshManagedBackups = () => {
+    setManagedBackupFileName('');
+    setLocationRefreshGeneration((generation) => generation + 1);
   };
 
   const restore = () => {
@@ -493,6 +514,15 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
 
     setIsRestoring(true);
     setMessage(null);
+    const importedBackupUploadLimit = location.kind === 'ready'
+      ? location.location.managedBackupUploadLimitBytes
+      : undefined;
+    if (importedBackupUploadLimit !== undefined && restoreFile.size > importedBackupUploadLimit) {
+      setMessage('This imported backup exceeds the local upload limit. Only application-created Tyrian Ledger backups already moved into the managed Backups folder can be selected for local managed restore. Refresh the managed backup list after moving one.');
+      setIsRestoring(false);
+      return;
+    }
+
     const form = new FormData();
     form.append('backup', restoreFile);
     form.append('confirmation', restoreConfirmation);
@@ -517,6 +547,42 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
           restoreFileInput.current.value = '';
         }
         onPersonalDataChanged();
+        setLocationRefreshGeneration((generation) => generation + 1);
+      })
+      .catch(() => setMessage('Restore outcome could not be confirmed. Check local data before retrying.'))
+      .finally(() => setIsRestoring(false));
+  };
+
+  const restoreManagedBackup = () => {
+    if (managedBackupFileName === '' || restoreConfirmation !== 'RESTORE LOCAL DATA') {
+      return;
+    }
+
+    setIsRestoring(true);
+    setMessage(null);
+    void fetch('/api/local-data/restore-managed', {
+      method: 'POST',
+      headers: { ...localRequestHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmation: restoreConfirmation, backupFileName: managedBackupFileName }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          setMessage('The selected managed backup could not be restored. Your current local data was kept.');
+          return;
+        }
+        const payload: unknown = await response.json();
+        if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'restored') {
+          setMessage('Restore outcome could not be confirmed. Check local data before retrying.');
+          return;
+        }
+        const preRestore = (payload as Record<string, unknown>).preRestoreBackupFileName;
+        setMessage(typeof preRestore === 'string'
+          ? `Backup restored. Your previous data was saved as ${preRestore}.`
+          : 'Backup restored.');
+        setManagedBackupFileName('');
+        setRestoreConfirmation('');
+        onPersonalDataChanged();
+        setLocationRefreshGeneration((generation) => generation + 1);
       })
       .catch(() => setMessage('Restore outcome could not be confirmed. Check local data before retrying.'))
       .finally(() => setIsRestoring(false));
@@ -556,7 +622,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     <section aria-labelledby="local-data-title" className="local-data-panel">
       <p className="eyebrow">Local data</p>
       <h2 id="local-data-title">Backup and recovery</h2>
-      <p>Backups stay on this computer. Tyrian Ledger never uploads your database or your backup files.</p>
+      <p>Backups stay on this computer. Tyrian Ledger handles restore files only through its local loopback host and never sends them to a cloud service.</p>
       {location.kind === 'loading' && <p aria-live="polite" role="status">Finding local data locations…</p>}
       {location.kind === 'unavailable' && <p role="alert">Local data locations are unavailable. Check that the local host is running.</p>}
       {location.kind === 'ready' && (
@@ -575,6 +641,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
       <div className="local-data-action">
         <h3>Restore a backup</h3>
         <p>Restoring replaces the active database only after the selected file is checked. A backup of the current data is created first.</p>
+        {location.kind === 'ready' && location.location.managedBackupUploadLimitBytes !== undefined && <p>Imported selected backup files are limited to {Math.floor(location.location.managedBackupUploadLimitBytes / (1024 * 1024))} MiB.</p>}
         <label htmlFor="restore-backup">Backup file</label>
         <input ref={restoreFileInput} id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
         <label htmlFor="restore-confirmation">Type RESTORE LOCAL DATA to continue</label>
@@ -582,6 +649,18 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
         <button disabled={isRecoveryBusy || restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restore} type="button">
           {isRestoring ? 'Restoring backup…' : 'Restore selected backup'}
         </button>
+        {location.kind === 'ready' && location.location.managedBackups !== undefined && <>
+          <p>Managed restore is only for application-created Tyrian Ledger backups listed in this application’s Backups folder. After moving one there, refresh this list before selecting it.</p>
+          <button disabled={isRecoveryBusy} onClick={refreshManagedBackups} type="button">Refresh managed backups</button>
+          <label htmlFor="managed-restore-backup">Managed backup</label>
+          <select id="managed-restore-backup" value={managedBackupFileName} onChange={(event) => setManagedBackupFileName(event.target.value)}>
+            <option value="">Select a managed backup</option>
+            {location.location.managedBackups.map((backup) => <option key={backup.fileName} value={backup.fileName}>{backup.fileName}</option>)}
+          </select>
+          <button disabled={isRecoveryBusy || managedBackupFileName === '' || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restoreManagedBackup} type="button">
+            {isRestoring ? 'Restoring backup…' : 'Restore managed backup'}
+          </button>
+        </>}
       </div>
       <div className="local-data-action local-data-action--danger">
         <h3>Clear personal account data</h3>

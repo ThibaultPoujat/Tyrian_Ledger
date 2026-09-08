@@ -475,6 +475,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.UserSettings.SaveAsync(new UserSettings(1, 500, 250, 1500, FirstObservedAtUtc));
 
         var backup = await database.Recovery.CreateBackupAsync();
+        Assert.Contains(database.Recovery.GetLocation().ManagedBackups, candidate => candidate.FileName == backup.FileName);
         await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
             "opaque-account-a",
             [CompletedTransaction(1002, PersonalTradingPostSide.Sell, 84, 999, 1)],
@@ -500,6 +501,29 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal([original], (await restartedRepository.GetCompletedTransactionsAsync(restartedAccount)).Select(item => item.Transaction));
         Assert.Equal("Original item", (await new SqliteItemMetadataRepository(restartedFactory, restartedGate).GetAsync(42))?.Name);
         Assert.Equal(500, (await new SqliteUserSettingsRepository(restartedFactory, restartedGate).GetAsync())?.MinimumProfitInCopper);
+    }
+
+    [Fact]
+    public async Task Managed_backup_restore_accepts_only_application_created_backup_filenames()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [CompletedTransaction(1002, PersonalTradingPostSide.Sell, 42, 456, 1)], new CurrentPersonalTradingPostOrderSnapshot(SecondObservedAtUtc, []), [],
+            SecondObservedAtUtc, SecondObservedAtUtc, SecondObservedAtUtc));
+
+        Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreManagedBackupAsync("../" + backup.FileName)).Outcome);
+        Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreManagedBackupAsync("not-managed.db")).Outcome);
+
+        var restored = await database.Recovery.RestoreManagedBackupAsync(backup.FileName);
+
+        Assert.Equal(LocalDataRestoreOutcome.Restored, restored.Outcome);
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
     }
 
     [Fact]

@@ -435,7 +435,13 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         var migrations = new Dictionary<int, string>();
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            migrations.Add(reader.GetInt32(0), reader.GetString(1));
+            var version = reader.GetInt64(0);
+            if (version is < int.MinValue or > int.MaxValue)
+            {
+                throw new InvalidDataException("The SQLite database has a migration version outside the supported integer range.");
+            }
+
+            migrations.Add((int)version, reader.GetString(1));
         }
 
         return migrations;

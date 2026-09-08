@@ -45,3 +45,21 @@ test('keeps the local runtime shell within a narrow mobile viewport', async ({ p
     return bounds.left >= 0 && bounds.right <= window.innerWidth;
   })).toBe(true);
 });
+
+test('keeps a populated managed-backup inventory within a narrow mobile viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 720 });
+  await page.goto('/');
+
+  const createBackup = page.getByRole('button', { name: 'Create local backup' });
+  await expect(createBackup).toBeEnabled();
+  await createBackup.click();
+  await expect(page.getByText(/^Backup created:/)).toBeVisible();
+
+  const managedBackup = page.getByLabel('Managed backup');
+  await expect.poll(async () => (await managedBackup.locator('option').count()) > 1).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(await managedBackup.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return bounds.left >= 0 && bounds.right <= window.innerWidth;
+  })).toBe(true);
+});

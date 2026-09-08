@@ -92,24 +92,23 @@ books remain an explicit policy opt-in. VERIFY-004, VERIFY-005, VERIFY-006,
 VERIFY-010, and VERIFY-011 remain OPEN with conservative configurable limits;
 no live keyed probe was performed.
 
-TKT-M18-03 / #84 is implemented in the pending owner-triggered NORMAL review
-handoff. It adds a read-only local history-status API with measured database
-size, per-item/time-window aggregate and detailed-book coverage, and on-demand
-integrity results. Retention policy version 1 independently preserves all raw
-aggregate and detailed-book evidence: it performs no deletion, rewriting, or
-downsampling without a future owner-approved migration. Populated backup/restore
-and clear-personal-data tests prove market history remains recoverable and
-separate from account-scoped clearing. Follow-up fixes also require exact
-current migration history, report SQLite corruption as failed integrity, and
-accept browser-standard UTC timestamp precision. A subsequent security follow-up
-protects the expensive integrity read from cross-origin use, validates schema
-shape before migration history, and rejects zone-less timestamps; no VERIFY
-entries changed.
+TKT-M18-03 / #84 merged in PR #118. It adds a read-only local history-status
+API with measured database size, per-item/time-window aggregate and
+detailed-book coverage, and on-demand integrity results. Retention policy
+version 1 independently preserves all raw aggregate and detailed-book evidence:
+it performs no deletion, rewriting, or downsampling without a future
+owner-approved migration. Populated backup/restore and clear-personal-data tests
+prove market history remains recoverable and separate from account-scoped
+clearing. PR #120 follows up the #118 NORMAL review with a managed-backup
+restore path so retained history is not bounded by the 512 MiB imported-file
+upload cap, and maps out-of-range SQLite migration IDs to failed integrity
+rather than a server error. No VERIFY entries changed.
 
-After the #84 NORMAL review/merge handoff, the next valid implementation ticket
-is:
+TKT-M19-01 / #85 is implemented in Draft PR #119. It remains SOL-GATED pending
+the owner-triggered fresh Sol XHigh review. After that PR merges, the next valid
+implementation ticket is:
 
-**TKT-M19-01 / #85 - Add Historical Market Metrics and Coverage-Aware Baselines.**
+**TKT-M19-02 / #86 - Add Deterministic Opportunity Score and Anomaly Logic.**
 
 ## Known-good baseline
 

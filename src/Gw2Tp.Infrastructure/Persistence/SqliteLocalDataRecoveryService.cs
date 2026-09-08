@@ -21,7 +21,10 @@ internal sealed class SqliteLocalDataRecoveryService(
     private readonly ILocalDataFileOperations files = fileOperations ?? new LocalDataFileOperations();
     private readonly IPersonalDataOperationGate recoveryOperationGate = operationGate ?? new PersonalDataOperationGate();
 
-    public LocalDataLocation GetLocation() => new(connectionFactory.DatabasePath, GetBackupDirectoryPath());
+    public LocalDataLocation GetLocation() => new(
+        connectionFactory.DatabasePath,
+        GetBackupDirectoryPath(),
+        GetManagedBackups());
 
     public async Task<LocalDataBackup> CreateBackupAsync(CancellationToken cancellationToken = default)
     {
@@ -40,6 +43,56 @@ internal sealed class SqliteLocalDataRecoveryService(
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         CleanupStaleRestoreArtifactsCore();
 
+        return await RestoreCoreAsync(backupContents, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<LocalDataRestoreResult> RestoreManagedBackupAsync(
+        string backupFileName,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetManagedBackupPath(backupFileName, out var backupPath))
+        {
+            return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+        }
+
+        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        CleanupStaleRestoreArtifactsCore();
+
+        if (!IsRegularManagedBackupFile(backupPath))
+        {
+            return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+        }
+
+        try
+        {
+            await using var backupContents = new FileStream(
+                backupPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 81920,
+                useAsync: true);
+            return await RestoreCoreAsync(backupContents, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (IOException)
+        {
+            return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+        }
+    }
+
+    private async Task<LocalDataRestoreResult> RestoreCoreAsync(
+        Stream backupContents,
+        CancellationToken cancellationToken)
+    {
         var stagingDirectory = Path.GetDirectoryName(connectionFactory.DatabasePath)
             ?? throw new InvalidOperationException("The local database path has no parent directory.");
         var incomingPath = Path.Combine(stagingDirectory, $"{RestoreArtifactPrefix}{Guid.NewGuid():N}.incoming");
@@ -193,6 +246,34 @@ internal sealed class SqliteLocalDataRecoveryService(
         return Path.Combine(databaseDirectory, BackupDirectoryName);
     }
 
+    private IReadOnlyList<LocalDataBackup> GetManagedBackups()
+    {
+        try
+        {
+            var backupDirectory = GetBackupDirectoryPath();
+            if (!Directory.Exists(backupDirectory))
+            {
+                return [];
+            }
+
+            return Directory.EnumerateFiles(backupDirectory, "*.db", SearchOption.TopDirectoryOnly)
+                .Select(path => TryReadManagedBackup(path, out var backup) ? backup : null)
+                .Where(backup => backup is not null)
+                .Select(backup => backup!)
+                .OrderByDescending(backup => backup.CreatedAtUtc)
+                .ThenBy(backup => backup.FileName, StringComparer.Ordinal)
+                .ToArray();
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
     private void CleanupStaleRestoreArtifactsCore()
     {
         var databaseDirectory = Path.GetDirectoryName(connectionFactory.DatabasePath)
@@ -249,7 +330,37 @@ internal sealed class SqliteLocalDataRecoveryService(
             return false;
         }
 
-        var backupStem = fileName[..markerIndex];
+        return IsManagedBackupFileName($"{fileName[..markerIndex]}.db");
+    }
+
+    private static bool IsManagedBackupFileName(string fileName)
+    {
+        return TryParseManagedBackupFileName(fileName, out _);
+    }
+
+    private static bool TryReadManagedBackup(string backupPath, out LocalDataBackup? backup)
+    {
+        backup = null;
+        var fileName = Path.GetFileName(backupPath);
+        if (!IsRegularManagedBackupFile(backupPath) ||
+            !TryParseManagedBackupFileName(fileName, out var createdAtUtc))
+        {
+            return false;
+        }
+
+        backup = new LocalDataBackup(fileName, createdAtUtc);
+        return true;
+    }
+
+    private static bool TryParseManagedBackupFileName(string fileName, out DateTimeOffset createdAtUtc)
+    {
+        createdAtUtc = default;
+        if (!fileName.EndsWith(".db", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var backupStem = fileName[..^3];
         const string backupPrefix = "tyrian-ledger-backup-";
         const string preRestorePrefix = "tyrian-ledger-pre-restore-";
         var timestampAndCollisionSuffix = backupStem.StartsWith(backupPrefix, StringComparison.Ordinal)
@@ -257,11 +368,65 @@ internal sealed class SqliteLocalDataRecoveryService(
             : backupStem.StartsWith(preRestorePrefix, StringComparison.Ordinal)
                 ? backupStem[preRestorePrefix.Length..]
                 : null;
-        return timestampAndCollisionSuffix is not null && IsManagedBackupTimestamp(timestampAndCollisionSuffix);
+        return timestampAndCollisionSuffix is not null &&
+            TryParseManagedBackupTimestamp(timestampAndCollisionSuffix, out createdAtUtc);
     }
 
-    private static bool IsManagedBackupTimestamp(string timestampAndCollisionSuffix)
+    private bool TryGetManagedBackupPath(string backupFileName, out string backupPath)
     {
+        backupPath = string.Empty;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(backupFileName) ||
+                !string.Equals(backupFileName, Path.GetFileName(backupFileName), StringComparison.Ordinal) ||
+                !IsManagedBackupFileName(backupFileName))
+            {
+                return false;
+            }
+
+            var backupDirectory = Path.GetFullPath(GetBackupDirectoryPath());
+            var candidatePath = Path.GetFullPath(Path.Combine(backupDirectory, backupFileName));
+            var relativePath = Path.GetRelativePath(backupDirectory, candidatePath);
+            if (Path.IsPathRooted(relativePath) ||
+                relativePath.Equals("..", StringComparison.Ordinal) ||
+                relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            backupPath = candidatePath;
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsRegularManagedBackupFile(string backupPath)
+    {
+        try
+        {
+            var file = new FileInfo(backupPath);
+            return file.Exists && file.LinkTarget is null && (file.Attributes & FileAttributes.ReparsePoint) == 0;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryParseManagedBackupTimestamp(string timestampAndCollisionSuffix, out DateTimeOffset createdAtUtc)
+    {
+        createdAtUtc = default;
         const int timestampLength = 19;
         if (timestampAndCollisionSuffix.Length is not timestampLength and not 22
             || timestampAndCollisionSuffix.Length == 22
@@ -272,12 +437,18 @@ internal sealed class SqliteLocalDataRecoveryService(
             return false;
         }
 
-        return DateTime.TryParseExact(
+        if (!DateTime.TryParseExact(
             timestampAndCollisionSuffix[..timestampLength],
             "yyyyMMdd'T'HHmmssfff'Z'",
             CultureInfo.InvariantCulture,
             DateTimeStyles.None,
-            out _);
+            out var createdAt))
+        {
+            return false;
+        }
+
+        createdAtUtc = new DateTimeOffset(DateTime.SpecifyKind(createdAt, DateTimeKind.Utc));
+        return true;
     }
 
     private static async Task CopyDatabaseAsync(

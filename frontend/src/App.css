@@ -95,7 +95,7 @@ p { color: var(--muted); line-height: 1.58; }
 .local-data-action { display: grid; gap: 0.65rem; margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid rgb(152 199 187 / 23%); }
 .local-data-action p { margin: 0; }
 .local-data-action label { color: var(--text); font-size: 0.86rem; font-weight: 700; }
-.local-data-action input { width: min(34rem, 100%); min-height: 2.5rem; padding: 0.45rem 0.6rem; color: var(--text); border: 1px solid var(--line); border-radius: 0.35rem; background: var(--ink); }
+.local-data-action input, .local-data-action select { width: min(34rem, 100%); min-width: 0; min-height: 2.5rem; padding: 0.45rem 0.6rem; color: var(--text); border: 1px solid var(--line); border-radius: 0.35rem; background: var(--ink); font: inherit; }
 .local-data-action input[type="file"] { padding: 0.35rem; }
 .local-data-action button { justify-self: start; min-height: 2.5rem; padding: 0.55rem 0.8rem; color: var(--ink); border: 1px solid var(--gold-soft); border-radius: 0.35rem; background: var(--gold-soft); font: inherit; font-weight: 800; cursor: pointer; }
 .local-data-action button:disabled { cursor: not-allowed; opacity: 0.55; }

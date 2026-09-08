@@ -74,6 +74,21 @@ internal static class LocalDataEndpoints
             new RequestSizeLimitAttribute(MaxRestoreRequestBytes),
             new RequestFormLimitsAttribute { MultipartBodyLengthLimit = MaxRestoreRequestBytes });
 
+        endpoints.MapPost("/api/local-data/restore-managed", async (
+            LocalDataManagedRestoreRequest request,
+            ILocalDataRecoveryService recoveryService,
+            CancellationToken cancellationToken) =>
+        {
+            if (!string.Equals(request.Confirmation, RestoreConfirmation, StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(request.BackupFileName))
+            {
+                return LocalDataResponseWriter.InvalidRequest("restore_confirmation_or_managed_backup_invalid");
+            }
+
+            var result = await recoveryService.RestoreManagedBackupAsync(request.BackupFileName, cancellationToken).ConfigureAwait(false);
+            return LocalDataResponseWriter.CreateRestoreResponse(result);
+        });
+
         endpoints.MapPost("/api/local-data/clear-personal", async (
             LocalDataConfirmationRequest confirmation,
             ILocalDataRecoveryService recoveryService,
@@ -105,6 +120,8 @@ internal static class LocalDataEndpoints
 
 internal sealed record LocalDataConfirmationRequest(string? Confirmation);
 
+internal sealed record LocalDataManagedRestoreRequest(string? Confirmation, string? BackupFileName);
+
 internal static class LocalDataResponseWriter
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
@@ -114,6 +131,12 @@ internal static class LocalDataResponseWriter
         {
             databasePath = location.DatabasePath,
             backupDirectoryPath = location.BackupDirectoryPath,
+            managedBackupUploadLimitBytes = LocalDataEndpoints.MaxRestoreBackupBytes,
+            managedBackups = location.ManagedBackups.Select(backup => new
+            {
+                fileName = backup.FileName,
+                createdAtUtc = backup.CreatedAtUtc,
+            }),
         });
 
     internal static IResult CreateBackupResponse(LocalDataBackup backup) =>
