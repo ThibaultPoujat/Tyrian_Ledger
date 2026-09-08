@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
 using Gw2Tp.Analytics.Finance;
+using Gw2Tp.Analytics.OrderBooks;
 using Gw2Tp.Application.AccountConnection;
 using Gw2Tp.Application.Dashboard;
 using Gw2Tp.Application.MarketData;
@@ -188,7 +189,7 @@ public sealed class LocalHostIntegrationTests
 
         using var scannerRequest = new HttpRequestMessage(
             HttpMethod.Get,
-            "/api/live-market-scanner?minimumRoiBasisPoints=5000&minimumNetProfitCopper=60&bidIncrementCopper=1&listUndercutCopper=1");
+            "/api/live-market-scanner?minimumRoiBasisPoints=5000&minimumNetProfitCopper=60&bidIncrementCopper=1&listUndercutCopper=1&intendedQuantity=7");
         scannerRequest.Headers.Add(
             LocalRequestOriginProtectionMiddleware.RequestHeader,
             LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
@@ -201,6 +202,17 @@ public sealed class LocalHostIntegrationTests
         Assert.Contains("\"state\":\"ready\"", body, StringComparison.Ordinal);
         Assert.Contains("\"netProfit\":{\"copper\":\"9007199254740993\"}", body, StringComparison.Ordinal);
         Assert.Contains("\"minimumRoiBasisPoints\":5000", body, StringComparison.Ordinal);
+        Assert.Contains("\"intendedQuantity\":7", body, StringComparison.Ordinal);
+        Assert.Contains("\"participationCapQuantity\":1", body, StringComparison.Ordinal);
+        Assert.Contains("\"totalBuyQuantity\":{\"value\":\"10\"}", body, StringComparison.Ordinal);
+        Assert.Contains("\"buyNextLevelGap\":{\"copper\":\"5\"}", body, StringComparison.Ordinal);
+        Assert.Contains("\"sellNextLevelGap\":{\"copper\":\"10\"}", body, StringComparison.Ordinal);
+        Assert.Contains("\"hasBuyPriceCliff\":true", body, StringComparison.Ordinal);
+        Assert.Contains("\"requestedQuantity\":7", body, StringComparison.Ordinal);
+        Assert.Contains("\"filledQuantity\":7", body, StringComparison.Ordinal);
+        Assert.Contains("\"totalValue\":{\"copper\":\"740\"}", body, StringComparison.Ordinal);
+        Assert.Contains("\"priceImpact\":{\"copper\":\"40\"}", body, StringComparison.Ordinal);
+        Assert.Contains("\"reasons\":[\"buyPriceCliff\",\"participationCapBelowIntendedQuantity\"]", body, StringComparison.Ordinal);
         Assert.Contains("\"qualifyingCandidateCount\":1", body, StringComparison.Ordinal);
         Assert.Contains("\"isTruncated\":false", body, StringComparison.Ordinal);
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
@@ -789,8 +801,51 @@ public sealed class LocalHostIntegrationTests
                 totalCost,
                 new ExactRoi(profit, totalCost),
                 new Money(168),
-                [LiveMarketScannerInclusionReason.MeetsMinimumRoi])],
+                [LiveMarketScannerInclusionReason.MeetsMinimumRoi],
+                LiquidityEvidence())],
             []);
+    }
+
+    private static LiveMarketScannerLiquidityEvidence LiquidityEvidence()
+    {
+        var acquisition = new OrderBookExecutionScenario(
+            OrderBookExecutionKind.Acquisition,
+            RequestedQuantity: 7,
+            FilledQuantity: 7,
+            RemainingQuantity: 0,
+            IsFullyFilled: true,
+            [new OrderBookExecutionFill(3, new Money(100), new Money(300)), new OrderBookExecutionFill(4, new Money(110), new Money(440))],
+            new Money(740),
+            new WeightedAverageExecutionPrice(new Money(740), 7),
+            new Money(40));
+        var liquidation = new OrderBookExecutionScenario(
+            OrderBookExecutionKind.Liquidation,
+            RequestedQuantity: 7,
+            FilledQuantity: 7,
+            RemainingQuantity: 0,
+            IsFullyFilled: true,
+            [new OrderBookExecutionFill(3, new Money(200), new Money(600)), new OrderBookExecutionFill(4, new Money(180), new Money(720))],
+            new Money(1_320),
+            new WeightedAverageExecutionPrice(new Money(1_320), 7),
+            new Money(80));
+        return new LiveMarketScannerLiquidityEvidence(
+            TotalBuyQuantity: 10,
+            TotalSellQuantity: 20,
+            NearBestBuyQuantity: 5,
+            NearBestSellQuantity: 8,
+            NearBestBuyListings: 3,
+            NearBestSellListings: 4,
+            BuyNextLevelGap: new Money(5),
+            SellNextLevelGap: new Money(10),
+            HasBuyPriceCliff: true,
+            HasSellPriceCliff: true,
+            Acquisition: acquisition,
+            Liquidation: liquidation,
+            ParticipationCapQuantity: 1,
+            Reasons: [
+                LiveMarketScannerLiquidityReason.BuyPriceCliff,
+                LiveMarketScannerLiquidityReason.ParticipationCapBelowIntendedQuantity,
+            ]);
     }
 
     private sealed class FixedLiveMarketScanner(LiveMarketScannerResult result) : ILiveMarketScanner

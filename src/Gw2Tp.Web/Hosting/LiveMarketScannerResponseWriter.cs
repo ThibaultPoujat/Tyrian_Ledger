@@ -24,7 +24,8 @@ internal static class LiveMarketScannerResponseWriter
         if (!TryReadInt(query, "minimumRoiBasisPoints", defaults.MinimumRoiBasisPoints, out var minimumRoiBasisPoints) ||
             !TryReadLong(query, "minimumNetProfitCopper", defaults.MinimumNetProfit.Copper, out var minimumNetProfitCopper) ||
             !TryReadInt(query, "bidIncrementCopper", defaults.BidIncrementCopper, out var bidIncrementCopper) ||
-            !TryReadInt(query, "listUndercutCopper", defaults.ListUndercutCopper, out var listUndercutCopper))
+            !TryReadInt(query, "listUndercutCopper", defaults.ListUndercutCopper, out var listUndercutCopper) ||
+            !TryReadInt(query, "intendedQuantity", defaults.IntendedQuantity, out var intendedQuantity))
         {
             settings = defaults;
             return false;
@@ -34,7 +35,8 @@ internal static class LiveMarketScannerResponseWriter
             minimumRoiBasisPoints,
             new Money(minimumNetProfitCopper),
             bidIncrementCopper,
-            listUndercutCopper);
+            listUndercutCopper,
+            intendedQuantity);
         try
         {
             settings.Validate();
@@ -69,7 +71,8 @@ internal static class LiveMarketScannerResponseWriter
             result.Settings.MinimumRoiBasisPoints,
             MoneyResponse.From(result.Settings.MinimumNetProfit),
             result.Settings.BidIncrementCopper,
-            result.Settings.ListUndercutCopper),
+            result.Settings.ListUndercutCopper,
+            result.Settings.IntendedQuantity),
         result.IsFeeRoundingExternallyVerified,
         result.QualifyingCandidateCount,
         result.IsTruncated,
@@ -89,8 +92,33 @@ internal static class LiveMarketScannerResponseWriter
                 MoneyResponse.From(candidate.ModeledRoi.Profit),
                 MoneyResponse.From(candidate.ModeledRoi.TotalCost)),
             MoneyResponse.From(candidate.MaximumBid),
-            candidate.InclusionReasons.ToArray())).ToArray(),
+            candidate.InclusionReasons.ToArray(),
+            ToLiquidityResponse(candidate.Liquidity))).ToArray(),
         result.Exclusions.Select(exclusion => new ScannerExclusionResponse(exclusion.Reason, exclusion.Count)).ToArray());
+
+    private static ScannerLiquidityResponse ToLiquidityResponse(LiveMarketScannerLiquidityEvidence liquidity) => new(
+        QuantityResponse.From(liquidity.TotalBuyQuantity),
+        QuantityResponse.From(liquidity.TotalSellQuantity),
+        QuantityResponse.From(liquidity.NearBestBuyQuantity),
+        QuantityResponse.From(liquidity.NearBestSellQuantity),
+        QuantityResponse.From(liquidity.NearBestBuyListings),
+        QuantityResponse.From(liquidity.NearBestSellListings),
+        liquidity.BuyNextLevelGap is { } buyGap ? MoneyResponse.From(buyGap) : null,
+        liquidity.SellNextLevelGap is { } sellGap ? MoneyResponse.From(sellGap) : null,
+        liquidity.HasBuyPriceCliff,
+        liquidity.HasSellPriceCliff,
+        ToExecutionResponse(liquidity.Acquisition),
+        ToExecutionResponse(liquidity.Liquidation),
+        liquidity.ParticipationCapQuantity,
+        liquidity.Reasons.ToArray());
+
+    private static ScannerExecutionResponse ToExecutionResponse(Gw2Tp.Analytics.OrderBooks.OrderBookExecutionScenario scenario) => new(
+        scenario.RequestedQuantity,
+        scenario.FilledQuantity,
+        scenario.RemainingQuantity,
+        scenario.IsFullyFilled,
+        MoneyResponse.From(scenario.TotalValue),
+        MoneyResponse.From(scenario.PriceImpact));
 
     private static bool TryReadInt(IQueryCollection query, string key, int fallback, out int value)
     {
@@ -131,11 +159,17 @@ internal static class LiveMarketScannerResponseWriter
         public static MoneyResponse From(Money money) => new(money.Copper.ToString(CultureInfo.InvariantCulture));
     }
 
+    private sealed record QuantityResponse(string Value)
+    {
+        public static QuantityResponse From(long value) => new(value.ToString(CultureInfo.InvariantCulture));
+    }
+
     private sealed record ScannerSettingsResponse(
         int MinimumRoiBasisPoints,
         MoneyResponse MinimumNetProfit,
         int BidIncrementCopper,
-        int ListUndercutCopper);
+        int ListUndercutCopper,
+        int IntendedQuantity);
 
     private sealed record ScannerOrderSummaryResponse(int Quantity, MoneyResponse UnitPrice);
 
@@ -155,7 +189,32 @@ internal static class LiveMarketScannerResponseWriter
         MoneyResponse TotalCost,
         ScannerExactRoiResponse ModeledRoi,
         MoneyResponse MaximumBid,
-        IReadOnlyList<LiveMarketScannerInclusionReason> InclusionReasons);
+        IReadOnlyList<LiveMarketScannerInclusionReason> InclusionReasons,
+        ScannerLiquidityResponse Liquidity);
+
+    private sealed record ScannerExecutionResponse(
+        int RequestedQuantity,
+        int FilledQuantity,
+        int RemainingQuantity,
+        bool IsFullyFilled,
+        MoneyResponse TotalValue,
+        MoneyResponse PriceImpact);
+
+    private sealed record ScannerLiquidityResponse(
+        QuantityResponse TotalBuyQuantity,
+        QuantityResponse TotalSellQuantity,
+        QuantityResponse NearBestBuyQuantity,
+        QuantityResponse NearBestSellQuantity,
+        QuantityResponse NearBestBuyListings,
+        QuantityResponse NearBestSellListings,
+        MoneyResponse? BuyNextLevelGap,
+        MoneyResponse? SellNextLevelGap,
+        bool HasBuyPriceCliff,
+        bool HasSellPriceCliff,
+        ScannerExecutionResponse Acquisition,
+        ScannerExecutionResponse Liquidation,
+        int ParticipationCapQuantity,
+        IReadOnlyList<LiveMarketScannerLiquidityReason> Reasons);
 
     private sealed record ScannerExclusionResponse(LiveMarketScannerExclusionReason Reason, int Count);
 

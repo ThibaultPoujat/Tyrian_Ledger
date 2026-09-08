@@ -55,7 +55,7 @@ only safe structured result data; fee, P&L, liquidation, and market comparison
 logic stay in the application/backend layers. Missing coverage, unknown basis,
 partial liquidation depth, and unavailable market evidence remain explicit.
 
-TKT-M17-01 / #79 is implemented in PR #113. It adds a backend-authoritative
+TKT-M17-01 / #79 merged in PR #113. It adds a backend-authoritative
 current aggregate-market scanner with configurable ROI/profit and bid/list
 policy, exact canonical fee economics, maximum integer bid, aggregate side
 quantity, observation time, and structured inclusion/exclusion evidence. The
@@ -63,27 +63,33 @@ local no-store API encodes copper as strings and reports the fee-rounding model
 as provisional while VERIFY-013 remains OPEN. It deliberately does not read
 detailed order books, size positions, persist history, or add scanner UI.
 
-TKT-M17-01 is **NORMAL**. Required local validation and refreshed CI are green;
-independent review remains for the owner to trigger. After the #79 review/merge handoff,
-the next valid implementation ticket is:
+TKT-M17-02 / #80 is implemented in PR #114 and ready for its NORMAL
+owner-triggered independent review. It enriches every scanner shortlist candidate with complete
+visible order-book depth, near-best quantity/listing evidence, exact simulator
+acquisition/liquidation outcomes for a requested quantity, next-level price
+gaps/cliffs, shallow-book reasons, and a conservative visible-depth participation
+cap. The evidence remains current-book-only and does not become historical
+volume, a fill guarantee, or final portfolio sizing.
 
-**TKT-M17-02 / #80 - Add Order-Book Depth, Liquidity Quality, and Liquidity-Aware Sizing Evidence.**
+After the #80 review/merge handoff, the next valid implementation ticket is:
+
+**TKT-M17-03 / #81 - Build the Live Scanner UI and Watchlist Workflow.**
 
 ## Known-good baseline
 
-TKT-M17-01 local validation on 2026-09-07 reported:
+TKT-M17-02 local validation on 2026-09-08 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused live scanner/collector: 15 tests passed; web integration: 32 tests passed;
-- full .NET: 288 tests passed;
+- focused live scanner/depth: 15 tests passed; focused web integration: 1 test passed;
+- full .NET regression suite passed;
 - React: 15 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime and competing-fee-formula audits: no unexpected matches;
-- Gitleaks: all 241 reachable commits scanned with no leaks.
+- Gitleaks: all 248 reachable commits scanned with no leaks.
 
-PR #112 is merged into `develop` as merge commit
-`df6c87989aded3c3977f7a7c193ec7110d136389`.
+PR #113 is merged into `develop` as merge commit
+`52b887219fd9f2f0921a5c41edbac1f0a268b6ec`.
 
 ## Important transition warning
 
