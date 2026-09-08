@@ -74,8 +74,8 @@ the next valid implementation ticket is:
 TKT-M17-01 local validation on 2026-09-07 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused live scanner/collector: 13 tests passed; web integration: 32 tests passed;
-- full .NET: 286 tests passed;
+- focused live scanner/collector: 15 tests passed; web integration: 32 tests passed;
+- full .NET: 288 tests passed;
 - React: 15 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
