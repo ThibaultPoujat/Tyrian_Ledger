@@ -102,7 +102,7 @@ TKT-M18-01 local validation on 2026-09-08 reported:
 - retired-runtime and competing-fee-formula audits: no unexpected matches;
 - Gitleaks: all 258 reachable commits scanned with no leaks.
 
-PR URL: pending creation.
+PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/116
 
 ## Important transition warning
 
