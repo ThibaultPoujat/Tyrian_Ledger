@@ -33,8 +33,11 @@ public sealed class MarketHistoryCollectorTests
         Assert.Equal(MarketHistoryCollectionOutcome.Succeeded, first.Outcome);
         Assert.Equal(2, first.AppendedPriceObservationCount);
         Assert.Equal(1, first.AppendedOrderBookSnapshotCount);
+        Assert.Equal(FirstObservedAtUtc.AddMinutes(15), first.NextDueAtUtc);
         Assert.Equal(0, notDue.DueItemCount);
+        Assert.Equal(FirstObservedAtUtc.AddMinutes(15), notDue.NextDueAtUtc);
         Assert.Equal(1, later.DueItemCount);
+        Assert.Equal(FirstObservedAtUtc.AddMinutes(30), later.NextDueAtUtc);
         Assert.Equal([42, 84, 42], repository.Prices.Select(observation => observation.ItemId));
         var book = repository.Books[0];
         Assert.Equal(2, repository.Books.Count);

@@ -134,6 +134,11 @@ public sealed class MarketHistoryCollector(
             }).ToArray();
             await marketHistoryRepository.AppendPriceObservationsAsync(priceObservations, cancellationToken).ConfigureAwait(false);
             var priceCount = priceObservations.Length;
+            var nextDueAfterPriceCaptureAtUtc = GetNextDueAtUtc(
+                plan.Targets,
+                latestObservations,
+                observedAtUtc,
+                dueTargets.Select(target => target.ItemId).ToHashSet());
 
             var orderBookCount = 0;
             if (listings.ErrorCategory is null)
@@ -162,7 +167,7 @@ public sealed class MarketHistoryCollector(
                     priceCount,
                     orderBookCount,
                     null,
-                    nextDueAtUtc);
+                    nextDueAfterPriceCaptureAtUtc);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -197,13 +202,16 @@ public sealed class MarketHistoryCollector(
     private static DateTimeOffset? GetNextDueAtUtc(
         IReadOnlyList<MarketSamplingTarget> targets,
         IReadOnlyDictionary<int, MarketPriceObservation> latestObservations,
-        DateTimeOffset observedAtUtc)
+        DateTimeOffset observedAtUtc,
+        IReadOnlySet<int>? capturedTargetItemIds = null)
     {
         DateTimeOffset? nextDueAtUtc = null;
         foreach (var target in targets)
         {
             latestObservations.TryGetValue(target.ItemId, out var latest);
-            var candidate = latest is null ? observedAtUtc : latest.ObservedAtUtc + target.Interval;
+            var candidate = capturedTargetItemIds?.Contains(target.ItemId) is true
+                ? observedAtUtc + target.Interval
+                : latest is null ? observedAtUtc : latest.ObservedAtUtc + target.Interval;
             if (nextDueAtUtc is null || candidate < nextDueAtUtc)
             {
                 nextDueAtUtc = candidate;
