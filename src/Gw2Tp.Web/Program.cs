@@ -53,6 +53,10 @@ public static class Program
         builder.Services.AddSingleton<IMarketSamplingSource, CurrentPersonalOrderMarketSamplingSource>();
         builder.Services.AddSingleton<IMarketSamplingSource, WatchlistMarketSamplingSource>();
         builder.Services.AddSingleton<IAdaptiveMarketSamplingPolicy, AdaptiveMarketSamplingPolicy>();
+        builder.Services.AddSingleton(CreateMarketHistoryCollectionSchedulerSettings(builder.Configuration));
+        builder.Services.AddSingleton<IMarketHistoryCollector, MarketHistoryCollector>();
+        builder.Services.AddSingleton<IMarketHistoryCollectionDelay>(SystemMarketHistoryCollectionDelay.Instance);
+        builder.Services.AddHostedService<MarketHistoryCollectorHostedService>();
         builder.Services.AddHostFiltering(options =>
         {
             options.AllowedHosts = hostOptions.AllowedHosts;
@@ -152,6 +156,7 @@ public static class Program
             });
         app.MapLocalDataEndpoints();
         app.MapWatchlistEndpoints();
+        app.MapMarketHistoryCollectorEndpoints();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 
         MapFrontend(app, builder.Configuration);
@@ -186,6 +191,15 @@ public static class Program
             TimeSpan.FromMinutes(configuration.GetValue<double?>("TyrianLedger:MarketSampling:CurrentPersonalOrderIntervalMinutes") ?? defaults.CurrentPersonalOrderInterval.TotalMinutes),
             TimeSpan.FromMinutes(configuration.GetValue<double?>("TyrianLedger:MarketSampling:WatchlistIntervalMinutes") ?? defaults.WatchlistInterval.TotalMinutes),
             TimeSpan.FromMinutes(configuration.GetValue<double?>("TyrianLedger:MarketSampling:BroadMarketIntervalMinutes") ?? defaults.BroadMarketInterval.TotalMinutes));
+        settings.Validate();
+        return settings;
+    }
+
+    private static MarketHistoryCollectionSchedulerSettings CreateMarketHistoryCollectionSchedulerSettings(IConfiguration configuration)
+    {
+        var defaults = MarketHistoryCollectionSchedulerSettings.Default;
+        var settings = new MarketHistoryCollectionSchedulerSettings(
+            TimeSpan.FromSeconds(configuration.GetValue<double?>("TyrianLedger:MarketCollection:SourceRefreshIntervalSeconds") ?? defaults.SourceRefreshInterval.TotalSeconds));
         settings.Validate();
         return settings;
     }

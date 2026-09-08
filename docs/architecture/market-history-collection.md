@@ -37,6 +37,33 @@ item, the highest-priority tier wins; a detailed book needs an explicit opt-in
 from a source at that winning high-interest tier. Held positions are not a
 source in M18; TKT-M20-03 owns their registration and removal.
 
+## Local collection operation
+
+The local host starts one collector worker after local SQLite initialization.
+It immediately evaluates registered sources, then re-evaluates local source
+membership every configurable minute by default. The worker only sends gateway
+requests for targets whose latest retained aggregate observation is due at the
+winning tier's interval. This lets a restart resume the existing cadence and
+lets future registered broad-market sources participate without a scheduler
+change.
+
+The collector uses only `IGw2ApiClient`, so its requests retain the typed
+gateway's 200-ID batching, shared request budget, cancellation, deduplication,
+and bounded 429/temporary-failure behavior. A complete aggregate response is
+append-only evidence; all aggregate observations accepted in one collection run
+are persisted as one transaction, so a duplicate or write failure leaves that
+run without a partial aggregate capture. A failed, partial, malformed, or
+cancelled aggregate response appends nothing. When a separately requested full-book response
+fails, its valid aggregate observation may still be retained, but no book row
+or levels are written.
+
+`GET /api/market-history/collector` exposes no-store, browser-safe operational
+health (last successful capture, stable failure category/count, tracked count,
+and next run). `POST /api/market-history/collector/run` performs one serialized
+manual run and is subject to the same local origin protection as every other
+state-changing endpoint. Neither endpoint exposes credentials, request headers,
+or raw upstream payloads.
+
 ## Representative storage estimate
 
 This is a planning estimate, not a SQLite file-size guarantee. It assumes 20

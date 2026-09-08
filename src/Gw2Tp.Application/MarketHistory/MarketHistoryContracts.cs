@@ -72,6 +72,15 @@ public interface IMarketHistoryRepository
         MarketPriceObservation observation,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Appends a validated collection of immutable aggregate observations in a
+    /// single durable operation. A duplicate never authorizes an overwrite or
+    /// a partial batch commit.
+    /// </summary>
+    Task AppendPriceObservationsAsync(
+        IReadOnlyCollection<MarketPriceObservation> observations,
+        CancellationToken cancellationToken = default);
+
     Task AppendOrderBookSnapshotAsync(
         MarketOrderBookSnapshot snapshot,
         CancellationToken cancellationToken = default);
@@ -80,5 +89,15 @@ public interface IMarketHistoryRepository
         int itemId,
         DateTimeOffset fromInclusiveUtc,
         DateTimeOffset toInclusiveUtc,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the newest raw aggregate observation for each requested item.
+    /// Collection uses this one batched lookup to resume the configured
+    /// sampling cadence after a restart; it never changes or interprets the
+    /// retained raw evidence.
+    /// </summary>
+    Task<IReadOnlyDictionary<int, MarketPriceObservation>> GetLatestPriceObservationsAsync(
+        IReadOnlyCollection<int> itemIds,
         CancellationToken cancellationToken = default);
 }

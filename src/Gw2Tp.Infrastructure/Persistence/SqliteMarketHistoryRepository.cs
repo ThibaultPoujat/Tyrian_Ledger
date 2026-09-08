@@ -13,10 +13,35 @@ internal sealed class SqliteMarketHistoryRepository(
         MarketPriceObservation observation,
         CancellationToken cancellationToken = default)
     {
-        Validate(observation);
+        ArgumentNullException.ThrowIfNull(observation);
+        await AppendPriceObservationsAsync([observation], cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task AppendPriceObservationsAsync(
+        IReadOnlyCollection<MarketPriceObservation> observations,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(observations);
+        if (observations.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var observation in observations)
+        {
+            Validate(observation);
+        }
+
+        if (observations.Select(observation => (observation.ItemId, observation.ObservedAtUtc)).Distinct().Count() != observations.Count)
+        {
+            throw new ArgumentException("A market price observation batch cannot contain duplicate item and timestamp keys.", nameof(observations));
+        }
+
         await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = """
             INSERT INTO market_price_observations (
                 observed_at_utc, item_id, highest_buy_price_in_copper, lowest_sell_price_in_copper,
@@ -25,8 +50,30 @@ internal sealed class SqliteMarketHistoryRepository(
                 $observedAtUtc, $itemId, $highestBuyPriceInCopper, $lowestSellPriceInCopper,
                 $aggregateBuyQuantity, $aggregateSellQuantity, $sourceStatus, $samplingTier, $samplingPolicyVersion);
             """;
-        Bind(command, observation);
-        await ExecuteAppendAsync(command, "market price observation", cancellationToken).ConfigureAwait(false);
+        command.Parameters.AddWithValue("$observedAtUtc", string.Empty);
+        command.Parameters.AddWithValue("$itemId", 0);
+        command.Parameters.AddWithValue("$highestBuyPriceInCopper", 0);
+        command.Parameters.AddWithValue("$lowestSellPriceInCopper", 0);
+        command.Parameters.AddWithValue("$aggregateBuyQuantity", 0);
+        command.Parameters.AddWithValue("$aggregateSellQuantity", 0);
+        command.Parameters.AddWithValue("$sourceStatus", 0);
+        command.Parameters.AddWithValue("$samplingTier", 0);
+        command.Parameters.AddWithValue("$samplingPolicyVersion", 0);
+
+        try
+        {
+            foreach (var observation in observations)
+            {
+                Bind(command, observation);
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (SqliteException exception) when (exception.SqliteErrorCode == 19)
+        {
+            throw new InvalidOperationException("A market price observation already exists for this item and observation time.", exception);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task AppendOrderBookSnapshotAsync(
@@ -110,39 +157,76 @@ internal sealed class SqliteMarketHistoryRepository(
         var observations = new List<MarketPriceObservation>();
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            observations.Add(new MarketPriceObservation(
-                SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(0), "market_price_observations.observed_at_utc"),
-                reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.GetInt32(5),
-                (MarketObservationSourceStatus)reader.GetInt32(6), (MarketSamplingTier)reader.GetInt32(7), reader.GetInt32(8)));
+            observations.Add(ReadPriceObservation(reader));
         }
 
         return observations;
     }
 
-    private static void Bind(SqliteCommand command, MarketPriceObservation observation)
+    public async Task<IReadOnlyDictionary<int, MarketPriceObservation>> GetLatestPriceObservationsAsync(
+        IReadOnlyCollection<int> itemIds,
+        CancellationToken cancellationToken = default)
     {
-        command.Parameters.AddWithValue("$observedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(observation.ObservedAtUtc, nameof(observation.ObservedAtUtc)));
-        command.Parameters.AddWithValue("$itemId", observation.ItemId);
-        command.Parameters.AddWithValue("$highestBuyPriceInCopper", observation.HighestBuyPriceInCopper);
-        command.Parameters.AddWithValue("$lowestSellPriceInCopper", observation.LowestSellPriceInCopper);
-        command.Parameters.AddWithValue("$aggregateBuyQuantity", observation.AggregateBuyQuantity);
-        command.Parameters.AddWithValue("$aggregateSellQuantity", observation.AggregateSellQuantity);
-        command.Parameters.AddWithValue("$sourceStatus", (int)observation.SourceStatus);
-        command.Parameters.AddWithValue("$samplingTier", (int)observation.SamplingTier);
-        command.Parameters.AddWithValue("$samplingPolicyVersion", observation.SamplingPolicyVersion);
+        ArgumentNullException.ThrowIfNull(itemIds);
+        var orderedItemIds = itemIds.Distinct().OrderBy(itemId => itemId).ToArray();
+        if (orderedItemIds.Any(itemId => itemId <= 0)) throw new ArgumentOutOfRangeException(nameof(itemIds));
+        if (orderedItemIds.Length == 0) return new Dictionary<int, MarketPriceObservation>();
+
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        var latest = new Dictionary<int, MarketPriceObservation>();
+        foreach (var itemIdBatch in orderedItemIds.Chunk(200))
+        {
+            await using var command = connection.CreateCommand();
+            var parameterNames = itemIdBatch.Select((_, index) => $"$itemId{index}").ToArray();
+            command.CommandText = $"""
+                SELECT observation.observed_at_utc, observation.item_id, observation.highest_buy_price_in_copper,
+                       observation.lowest_sell_price_in_copper, observation.aggregate_buy_quantity,
+                       observation.aggregate_sell_quantity, observation.source_status, observation.sampling_tier,
+                       observation.sampling_policy_version
+                FROM market_price_observations AS observation
+                INNER JOIN (
+                    SELECT item_id, MAX(observed_at_utc) AS observed_at_utc
+                    FROM market_price_observations
+                    WHERE item_id IN ({string.Join(", ", parameterNames)})
+                    GROUP BY item_id
+                ) AS newest ON newest.item_id = observation.item_id
+                    AND newest.observed_at_utc = observation.observed_at_utc
+                ORDER BY observation.item_id;
+                """;
+            foreach (var (itemId, index) in itemIdBatch.Select((itemId, index) => (itemId, index)))
+            {
+                command.Parameters.AddWithValue(parameterNames[index], itemId);
+            }
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var observation = ReadPriceObservation(reader);
+                latest.Add(observation.ItemId, observation);
+            }
+        }
+
+        return latest;
     }
 
-    private static async Task ExecuteAppendAsync(SqliteCommand command, string entityName, CancellationToken cancellationToken)
+    private static void Bind(SqliteCommand command, MarketPriceObservation observation)
     {
-        try
-        {
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (SqliteException exception) when (exception.SqliteErrorCode == 19)
-        {
-            throw new InvalidOperationException($"A {entityName} already exists for this item and observation time.", exception);
-        }
+        command.Parameters["$observedAtUtc"].Value = SqlitePersistenceValues.ToUtcTimestamp(observation.ObservedAtUtc, nameof(observation.ObservedAtUtc));
+        command.Parameters["$itemId"].Value = observation.ItemId;
+        command.Parameters["$highestBuyPriceInCopper"].Value = observation.HighestBuyPriceInCopper;
+        command.Parameters["$lowestSellPriceInCopper"].Value = observation.LowestSellPriceInCopper;
+        command.Parameters["$aggregateBuyQuantity"].Value = observation.AggregateBuyQuantity;
+        command.Parameters["$aggregateSellQuantity"].Value = observation.AggregateSellQuantity;
+        command.Parameters["$sourceStatus"].Value = (int)observation.SourceStatus;
+        command.Parameters["$samplingTier"].Value = (int)observation.SamplingTier;
+        command.Parameters["$samplingPolicyVersion"].Value = observation.SamplingPolicyVersion;
     }
+
+    private static MarketPriceObservation ReadPriceObservation(SqliteDataReader reader) => new(
+        SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(0), "market_price_observations.observed_at_utc"),
+        reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.GetInt32(5),
+        (MarketObservationSourceStatus)reader.GetInt32(6), (MarketSamplingTier)reader.GetInt32(7), reader.GetInt32(8));
 
     private static void Validate(MarketPriceObservation observation)
     {
