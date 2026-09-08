@@ -20,6 +20,7 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
             && (IsProtectedPath(context.Request.Path, AccountConnectionPath) ||
                 IsProtectedPath(context.Request.Path, LiveMarketScannerPath) ||
                 IsProtectedPath(context.Request.Path, MarketHistoryPath) ||
+                IsHistoricalMarketAnalyticsPath(context.Request.Path) ||
                 IsProtectedPath(context.Request.Path, WatchlistPath));
         var hasOrigin = context.Request.Headers.Origin.Count > 0;
         var unsafeRequestDenied = isUnsafeRequest
@@ -52,4 +53,9 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
             requestPath.Value?.TrimEnd('/'),
             protectedPath.Value,
             StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsHistoricalMarketAnalyticsPath(PathString requestPath) =>
+        requestPath.Value is { } path &&
+        path.StartsWith("/api/market-history/", StringComparison.OrdinalIgnoreCase) &&
+        path.EndsWith("/analytics", StringComparison.OrdinalIgnoreCase);
 }

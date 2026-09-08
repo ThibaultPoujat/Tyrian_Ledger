@@ -55,6 +55,7 @@ public static class Program
         builder.Services.AddSingleton<IAdaptiveMarketSamplingPolicy, AdaptiveMarketSamplingPolicy>();
         builder.Services.AddSingleton(CreateMarketHistoryCollectionSchedulerSettings(builder.Configuration));
         builder.Services.AddSingleton<IMarketHistoryCollector, MarketHistoryCollector>();
+        builder.Services.AddSingleton<IHistoricalMarketAnalyticsService, HistoricalMarketAnalyticsService>();
         builder.Services.AddSingleton<IMarketHistoryCollectionDelay>(SystemMarketHistoryCollectionDelay.Instance);
         builder.Services.AddHostedService<MarketHistoryCollectorHostedService>();
         builder.Services.AddHostFiltering(options =>
@@ -157,6 +158,7 @@ public static class Program
         app.MapLocalDataEndpoints();
         app.MapWatchlistEndpoints();
         app.MapMarketHistoryCollectorEndpoints();
+        app.MapHistoricalMarketAnalyticsEndpoint();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 
         MapFrontend(app, builder.Configuration);

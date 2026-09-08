@@ -363,6 +363,44 @@ public sealed class LocalHostIntegrationTests
     }
 
     [Fact]
+    public async Task Historical_market_analytics_endpoint_is_protected_non_cacheable_and_observation_only()
+    {
+        await using var app = await StartApplicationAsync("Production");
+        using var client = app.GetTestClient();
+
+        using var missingHeader = await client.GetAsync("/api/market-history/42/analytics");
+        Assert.Equal(HttpStatusCode.Forbidden, missingHeader.StatusCode);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/market-history/42/analytics");
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Contains("\"itemId\":42", body, StringComparison.Ordinal);
+        Assert.Contains("\"state\":\"insufficientData\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"roiThresholdBasisPoints\":[1500,2000]", body, StringComparison.Ordinal);
+        Assert.Contains("\"durationDays\":7", body, StringComparison.Ordinal);
+        Assert.Contains("\"minimumEligibleObservationCount\":20", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("prediction", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
+
+        using var invalid = new HttpRequestMessage(HttpMethod.Get, "/api/market-history/0/analytics");
+        invalid.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var invalidResponse = await client.SendAsync(invalid);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidResponse.StatusCode);
+        Assert.Equal("no-store", invalidResponse.Headers.CacheControl?.ToString());
+
+        using var attacker = new HttpRequestMessage(HttpMethod.Get, "/api/market-history/42/analytics");
+        attacker.Headers.Add("Origin", "https://attacker.example");
+        attacker.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var attackerResponse = await client.SendAsync(attacker);
+        Assert.Equal(HttpStatusCode.Forbidden, attackerResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task Market_history_collector_hosted_service_runs_and_stops_without_turning_shutdown_into_a_failure()
     {
         var collector = new FixedMarketHistoryCollector();
