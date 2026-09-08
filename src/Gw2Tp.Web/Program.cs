@@ -146,6 +146,7 @@ public static class Program
                 await LiveMarketScannerResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
             });
         app.MapLocalDataEndpoints();
+        app.MapWatchlistEndpoints();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 
         MapFrontend(app, builder.Configuration);

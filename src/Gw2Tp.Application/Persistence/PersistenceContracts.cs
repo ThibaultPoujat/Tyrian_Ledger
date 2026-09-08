@@ -174,6 +174,21 @@ public interface IUserSettingsRepository
 }
 
 /// <summary>
+/// A locally approved public market. Watchlist entries are local-user settings:
+/// they do not require an authenticated account and never contain credentials.
+/// </summary>
+public sealed record WatchlistEntry(int ItemId, DateTimeOffset AddedAtUtc);
+
+public interface IWatchlistRepository
+{
+    Task<IReadOnlyList<WatchlistEntry>> GetAllAsync(CancellationToken cancellationToken = default);
+
+    Task AddAsync(WatchlistEntry entry, CancellationToken cancellationToken = default);
+
+    Task RemoveAsync(int itemId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// One fully read, locally durable personal Trading Post synchronization. The
 /// persistence implementation must apply this as one transaction.
 /// </summary>

@@ -65,7 +65,7 @@ public sealed class LocalHostIntegrationTests
                 await connection.OpenAsync();
                 await using var command = connection.CreateCommand();
                 command.CommandText = "SELECT COUNT(*) FROM schema_migrations;";
-                Assert.Equal(3L, await command.ExecuteScalarAsync());
+                Assert.Equal(4L, await command.ExecuteScalarAsync());
             }
 
         }
@@ -213,6 +213,8 @@ public sealed class LocalHostIntegrationTests
         Assert.Contains("\"totalValue\":{\"copper\":\"740\"}", body, StringComparison.Ordinal);
         Assert.Contains("\"priceImpact\":{\"copper\":\"40\"}", body, StringComparison.Ordinal);
         Assert.Contains("\"reasons\":[\"buyPriceCliff\",\"participationCapBelowIntendedQuantity\"]", body, StringComparison.Ordinal);
+        Assert.Contains("\"topBuyLevels\":[{\"listings\":2,\"quantity\":5,\"unitPrice\":{\"copper\":\"200\"}}]", body, StringComparison.Ordinal);
+        Assert.Contains("\"displayPercent\":\"100.00%\"", body, StringComparison.Ordinal);
         Assert.Contains("\"qualifyingCandidateCount\":1", body, StringComparison.Ordinal);
         Assert.Contains("\"isTruncated\":false", body, StringComparison.Ordinal);
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
@@ -227,6 +229,39 @@ public sealed class LocalHostIntegrationTests
         Assert.Equal("no-store", invalid.Headers.CacheControl?.ToString());
         Assert.Equal(1, scanner.CallCount);
         Assert.Contains("invalid_scanner_settings", await invalid.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Watchlist_endpoints_are_durable_no_store_and_origin_protected()
+    {
+        await using var app = await StartApplicationAsync("Production");
+        using var client = app.GetTestClient();
+
+        using var add = new HttpRequestMessage(HttpMethod.Put, "/api/watchlist/42");
+        add.Headers.Add("Origin", "http://localhost");
+        add.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var addResponse = await client.SendAsync(add);
+        Assert.Equal(HttpStatusCode.OK, addResponse.StatusCode);
+        Assert.Equal("no-store", addResponse.Headers.CacheControl?.ToString());
+
+        using var list = new HttpRequestMessage(HttpMethod.Get, "/api/watchlist");
+        list.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var listResponse = await client.SendAsync(list);
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        Assert.Equal("no-store", listResponse.Headers.CacheControl?.ToString());
+        Assert.Contains("42", await listResponse.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        using var attacker = new HttpRequestMessage(HttpMethod.Delete, "/api/watchlist/42");
+        attacker.Headers.Add("Origin", "https://attacker.example");
+        attacker.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var attackerResponse = await client.SendAsync(attacker);
+        Assert.Equal(HttpStatusCode.Forbidden, attackerResponse.StatusCode);
+
+        using var attackerRead = new HttpRequestMessage(HttpMethod.Get, "/api/watchlist");
+        attackerRead.Headers.Add("Origin", "https://attacker.example");
+        attackerRead.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var attackerReadResponse = await client.SendAsync(attackerRead);
+        Assert.Equal(HttpStatusCode.Forbidden, attackerReadResponse.StatusCode);
     }
 
     [Fact]
@@ -845,7 +880,9 @@ public sealed class LocalHostIntegrationTests
             Reasons: [
                 LiveMarketScannerLiquidityReason.BuyPriceCliff,
                 LiveMarketScannerLiquidityReason.ParticipationCapBelowIntendedQuantity,
-            ]);
+            ],
+            TopBuyLevels: [new MarketOrderLevel(2, 5, 200)],
+            TopSellLevels: [new MarketOrderLevel(3, 8, 100)]);
     }
 
     private sealed class FixedLiveMarketScanner(LiveMarketScannerResult result) : ILiveMarketScanner

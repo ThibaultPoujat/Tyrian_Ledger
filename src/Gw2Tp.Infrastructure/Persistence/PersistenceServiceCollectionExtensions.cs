@@ -29,6 +29,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<IPersonalTradingPostSynchronizationStore, SqlitePersonalTradingPostSynchronizationStore>();
         services.AddSingleton<IItemMetadataRepository, SqliteItemMetadataRepository>();
         services.AddSingleton<IUserSettingsRepository, SqliteUserSettingsRepository>();
+        services.AddSingleton<IWatchlistRepository, SqliteWatchlistRepository>();
         services.AddSingleton<ILocalDataRecoveryService, SqliteLocalDataRecoveryService>();
         services.AddHostedService<SqliteDatabaseInitializationService>();
 

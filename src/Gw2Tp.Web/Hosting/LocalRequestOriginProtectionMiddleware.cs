@@ -10,13 +10,15 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
 
     private static readonly PathString AccountConnectionPath = "/api/account-connection";
     private static readonly PathString LiveMarketScannerPath = "/api/live-market-scanner";
+    private static readonly PathString WatchlistPath = "/api/watchlist";
 
     public async Task InvokeAsync(HttpContext context, LocalRequestOriginValidator originValidator)
     {
         var isUnsafeRequest = !SafeMethods.Contains(context.Request.Method);
         var isProtectedRead = (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
             && (IsProtectedPath(context.Request.Path, AccountConnectionPath) ||
-                IsProtectedPath(context.Request.Path, LiveMarketScannerPath));
+                IsProtectedPath(context.Request.Path, LiveMarketScannerPath) ||
+                IsProtectedPath(context.Request.Path, WatchlistPath));
         var hasOrigin = context.Request.Headers.Origin.Count > 0;
         var unsafeRequestDenied = isUnsafeRequest
             && (!originValidator.IsAllowed(context.Request) || !HasRequestHeader(context.Request));

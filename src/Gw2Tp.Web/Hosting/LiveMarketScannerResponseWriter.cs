@@ -1,6 +1,8 @@
 using System.Globalization;
+using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketScanning;
 using Gw2Tp.Domain.Finance;
 using Microsoft.AspNetCore.Http;
@@ -90,7 +92,8 @@ internal static class LiveMarketScannerResponseWriter
             MoneyResponse.From(candidate.TotalCost),
             new ScannerExactRoiResponse(
                 MoneyResponse.From(candidate.ModeledRoi.Profit),
-                MoneyResponse.From(candidate.ModeledRoi.TotalCost)),
+                MoneyResponse.From(candidate.ModeledRoi.TotalCost),
+                FormatRoiPercent(candidate.ModeledRoi.Profit.Copper, candidate.ModeledRoi.TotalCost.Copper)),
             MoneyResponse.From(candidate.MaximumBid),
             candidate.InclusionReasons.ToArray(),
             ToLiquidityResponse(candidate.Liquidity))).ToArray(),
@@ -110,7 +113,14 @@ internal static class LiveMarketScannerResponseWriter
         ToExecutionResponse(liquidity.Acquisition),
         ToExecutionResponse(liquidity.Liquidation),
         liquidity.ParticipationCapQuantity,
-        liquidity.Reasons.ToArray());
+        liquidity.Reasons.ToArray(),
+        liquidity.TopBuyLevels.Select(ToOrderBookLevelResponse).ToArray(),
+        liquidity.TopSellLevels.Select(ToOrderBookLevelResponse).ToArray());
+
+    private static ScannerOrderBookLevelResponse ToOrderBookLevelResponse(MarketOrderLevel level) => new(
+        level.Listings,
+        level.Quantity,
+        MoneyResponse.From(new Money(level.UnitPriceInCopper)));
 
     private static ScannerExecutionResponse ToExecutionResponse(Gw2Tp.Analytics.OrderBooks.OrderBookExecutionScenario scenario) => new(
         scenario.RequestedQuantity,
@@ -173,7 +183,17 @@ internal static class LiveMarketScannerResponseWriter
 
     private sealed record ScannerOrderSummaryResponse(int Quantity, MoneyResponse UnitPrice);
 
-    private sealed record ScannerExactRoiResponse(MoneyResponse Profit, MoneyResponse TotalCost);
+    private static string FormatRoiPercent(long profit, long totalCost)
+    {
+        var scaled = new BigInteger(profit) * 10_000;
+        var denominator = new BigInteger(totalCost);
+        var absoluteQuotient = BigInteger.DivRem(BigInteger.Abs(scaled), denominator, out var remainder);
+        if (remainder * 2 >= denominator) absoluteQuotient++;
+        var sign = scaled.Sign < 0 ? "-" : string.Empty;
+        return string.Create(CultureInfo.InvariantCulture, $"{sign}{absoluteQuotient / 100}.{absoluteQuotient % 100:D2}%");
+    }
+
+    private sealed record ScannerExactRoiResponse(MoneyResponse Profit, MoneyResponse TotalCost, string DisplayPercent);
 
     private sealed record ScannerCandidateResponse(
         int ItemId,
@@ -214,7 +234,11 @@ internal static class LiveMarketScannerResponseWriter
         ScannerExecutionResponse Acquisition,
         ScannerExecutionResponse Liquidation,
         int ParticipationCapQuantity,
-        IReadOnlyList<LiveMarketScannerLiquidityReason> Reasons);
+        IReadOnlyList<LiveMarketScannerLiquidityReason> Reasons,
+        IReadOnlyList<ScannerOrderBookLevelResponse> TopBuyLevels,
+        IReadOnlyList<ScannerOrderBookLevelResponse> TopSellLevels);
+
+    private sealed record ScannerOrderBookLevelResponse(int Listings, int Quantity, MoneyResponse UnitPrice);
 
     private sealed record ScannerExclusionResponse(LiveMarketScannerExclusionReason Reason, int Count);
 

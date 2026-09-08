@@ -58,6 +58,92 @@ afterEach(() => {
 });
 
 describe('M14 local data controls', () => {
+  it('renders backend-authoritative scanner evidence and toggles a durable watchlist entry', async () => {
+    let watched = false;
+    const scanner = {
+      state: 'ready', error: null, observedAtUtc: '2026-09-08T12:00:00Z', isFeeRoundingExternallyVerified: false, isTruncated: false,
+      exclusions: [{ reason: 'feeLosing', count: 2 }],
+      candidates: [{ itemId: 42, itemName: 'Scanner item', bestBuy: { quantity: 5, unitPrice: { copper: '100' } }, lowestSell: { quantity: 8, unitPrice: { copper: '200' } }, plannedBid: { copper: '100' }, plannedListPrice: { copper: '200' }, netProfit: { copper: '70' }, totalCost: { copper: '105' }, maximumBid: { copper: '120' }, modeledRoi: { profit: { copper: '70' }, totalCost: { copper: '105' }, displayPercent: '66.67%' }, liquidity: { participationCapQuantity: 3, reasons: ['buyPriceCliff'], acquisition: { requestedQuantity: 1, filledQuantity: 1, isFullyFilled: true, totalValue: { copper: '110' } }, liquidation: { requestedQuantity: 1, filledQuantity: 1, isFullyFilled: true, totalValue: { copper: '200' } }, topBuyLevels: [{ listings: 2, quantity: 5, unitPrice: { copper: '100' } }], topSellLevels: [{ listings: 3, quantity: 8, unitPrice: { copper: '200' } }] } }],
+    };
+    scanner.candidates.push({ ...scanner.candidates[0], itemId: 43, itemName: 'Higher maximum bid', netProfit: { copper: '60' }, maximumBid: { copper: '130' } });
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (typeof input === 'string' && input.startsWith('/api/live-market-scanner')) return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(scanner) } as unknown as Response);
+      if (input === '/api/watchlist') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ itemIds: watched ? [42] : [] }) } as unknown as Response);
+      if (input === '/api/watchlist/42' && init?.method === 'PUT') { watched = true; return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'watching' }) } as unknown as Response); }
+      if (input === '/api/watchlist/42' && init?.method === 'DELETE') { watched = false; return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'removed' }) } as unknown as Response); }
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Current scanner and watchlist' })).toBeVisible();
+    expect(await screen.findByText('Scanner item')).toBeVisible();
+    expect(screen.getAllByText('66.67%')).toHaveLength(2);
+    expect(screen.getAllByText(/Risk: Buy Price Cliff/)).toHaveLength(2);
+    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'maxBid' } });
+    expect(document.querySelector('.scanner-candidate h3')?.textContent).toBe('Higher maximum bid');
+    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'profit' } });
+    fireEvent.click(screen.getAllByText('Order-book detail')[0]);
+    expect(screen.getAllByRole('heading', { name: 'Buy orders' })).toHaveLength(2);
+    fireEvent.change(screen.getByLabelText('Max planned bid (copper)'), { target: { value: '99' } });
+    expect(screen.getByText('No current candidates match these presentation filters.')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Max planned bid (copper)'), { target: { value: '100' } });
+    expect(screen.getByText('Scanner item')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Max per-unit capital (copper)'), { target: { value: '104' } });
+    expect(screen.getByText('No current candidates match these presentation filters.')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Max per-unit capital (copper)'), { target: { value: '105' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'No liquidity flags only' }));
+    expect(screen.getByText('No current candidates match these presentation filters.')).toBeVisible();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'No liquidity flags only' }));
+    fireEvent.change(screen.getByLabelText('Minimum ROI (basis points)'), { target: { value: '250' } });
+    fireEvent.change(screen.getByLabelText('Minimum modeled profit (copper)'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('Intended quantity'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh scanner' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/live-market-scanner?minimumRoiBasisPoints=250&minimumNetProfitCopper=50&intendedQuantity=2', expect.anything()));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add to watchlist' })[0]);
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/watchlist/42', expect.objectContaining({ method: 'PUT' })));
+    expect(await screen.findByRole('button', { name: 'Remove from watchlist' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from watchlist' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/watchlist/42', expect.objectContaining({ method: 'DELETE' })));
+    expect(Storage.prototype.setItem).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes an empty scanner from an unavailable durable watchlist', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (typeof input === 'string' && input.startsWith('/api/live-market-scanner')) return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'ready', error: null, observedAtUtc: null, isFeeRoundingExternallyVerified: true, isTruncated: false, candidates: [], exclusions: [] }) } as unknown as Response);
+      if (input === '/api/watchlist') return Promise.reject(new TypeError('unavailable'));
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('No current candidates match these presentation filters.')).toBeVisible();
+    expect(await screen.findByText('Watchlist unavailable.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible();
+  });
+
+  it('keeps the local watchlist available when current market collection is unavailable', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (typeof input === 'string' && input.startsWith('/api/live-market-scanner')) return Promise.resolve({ ok: false, json: vi.fn().mockResolvedValue({ state: 'unavailable', error: 'upstreamUnavailable', observedAtUtc: null, isFeeRoundingExternallyVerified: false, isTruncated: false, candidates: [], exclusions: [] }) } as unknown as Response);
+      if (input === '/api/watchlist') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ itemIds: [42] }) } as unknown as Response);
+      if (input === '/api/watchlist/42') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({}) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('Current scanner evidence is unavailable. Try again shortly.')).toBeVisible();
+    expect(await screen.findByRole('button', { name: 'Remove' })).toBeVisible();
+  });
+
   it('shows the local foundation, safe no-key status, and guarded recovery controls', async () => {
     render(<App />);
 
@@ -407,20 +493,24 @@ describe('M14 local data controls', () => {
   });
 
   it('refreshes the dashboard after confirmed restore and clear outcomes', async () => {
+    let restored = false;
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      if (input === '/api/watchlist') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ itemIds: restored ? [84] : [42] }) } as unknown as Response);
       if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
       if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/local-data/restore') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response);
+      if (input === '/api/local-data/restore') { restored = true; return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response); }
       if (input === '/api/local-data/clear-personal') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'personal_data_cleared' }) } as unknown as Response);
       return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
     });
     render(<App />);
     await screen.findByRole('heading', { name: 'No personal data yet' });
+    expect(await screen.findByText('Item #42')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Backup file'), { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
     fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
     fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/personal-dashboard')).toHaveLength(2));
+    expect(await screen.findByText('Item #84')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Type CLEAR PERSONAL DATA to continue'), { target: { value: 'CLEAR PERSONAL DATA' } });
     fireEvent.click(screen.getByRole('button', { name: 'Clear personal account data' }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/personal-dashboard')).toHaveLength(3));
