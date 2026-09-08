@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Persistence;
+using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.LocalData;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,6 +31,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<IItemMetadataRepository, SqliteItemMetadataRepository>();
         services.AddSingleton<IUserSettingsRepository, SqliteUserSettingsRepository>();
         services.AddSingleton<IWatchlistRepository, SqliteWatchlistRepository>();
+        services.AddSingleton<IMarketHistoryRepository, SqliteMarketHistoryRepository>();
         services.AddSingleton<ILocalDataRecoveryService, SqliteLocalDataRecoveryService>();
         services.AddHostedService<SqliteDatabaseInitializationService>();
 

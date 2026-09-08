@@ -19,7 +19,7 @@ architecture to extend.
 
 ## Active milestone
 
-**M17 - Live Market Intelligence**
+**M18 - Owned Historical Market Dataset**
 
 M13 is complete through the local host, secure API-key validation, and typed
 personal Trading Post gateway work merged in PRs #102-#105. M14 is complete
@@ -70,33 +70,39 @@ quantity, next-level price gaps/cliffs, shallow-book reasons, and a conservative
 visible-depth participation cap. The evidence remains current-book-only and
 does not become historical volume, a fill guarantee, or final portfolio sizing.
 
-TKT-M17-03 / #81 is implemented for NORMAL owner-triggered independent review.
-It adds an accessible local scanner screen with backend-returned current
-economics, filters/sorts, freshness and risk/rejection visibility, and bounded
-same-scan order-book detail. Its local-user watchlist is durable in SQLite,
-works without account connection, uses protected no-store loopback routes, and
-is retained with local settings through personal-account clearing and local
-backup/restore. React only displays backend financial and liquidity evidence.
+TKT-M17-03 / #81 merged in PR #115. It adds an accessible local scanner screen
+with backend-returned current economics, filters/sorts, freshness and
+risk/rejection visibility, bounded same-scan order-book detail, and a durable
+local SQLite watchlist that works without account connection. React only
+displays backend financial and liquidity evidence.
 
-After the #81 review/merge handoff, the next valid implementation ticket is:
+TKT-M18-01 / #82 is implemented in the pending NORMAL review PR. It adds
+versioned SQLite storage for immutable best-price observations and deliberate
+optional full-book captures, with UTC/integer-copper invariants, strict backup
+validation, item/time indexes, and an append-only repository boundary. Its
+typed adaptive policy composes current personal orders, watchlist entries, and
+future registered sources; full books require explicit high-interest opt-in.
 
-**TKT-M18-01 / #82 - Define and Implement Owned Market-Observation Storage.**
+After the #82 NORMAL review/merge handoff, the next valid implementation ticket
+is:
+
+**TKT-M18-02 / #83 - Implement the Local Market Snapshot Collector Scheduler.**
 
 ## Known-good baseline
 
-TKT-M17-03 local validation on 2026-09-08 reported:
+TKT-M18-01 local validation on 2026-09-08 reported:
 
 - Release solution build: zero warnings and zero errors;
-- persistence/watchlist: 141 tests passed; web integration: 33 tests passed;
-- full .NET regression suite passed;
-- React: 16 component tests passed and the production build succeeded;
+- focused adaptive sampling policy: 106 tests passed;
+- focused SQLite persistence: 146 tests passed;
+- full .NET regression suite: 305 tests passed;
+- React: 18 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime and competing-fee-formula audits: no unexpected matches;
-- Gitleaks: all 248 reachable commits scanned with no leaks.
+- Gitleaks: all 258 reachable commits scanned with no leaks.
 
-PR #113 is merged into `develop` as merge commit
-`52b887219fd9f2f0921a5c41edbac1f0a268b6ec`.
+PR URL: pending creation.
 
 ## Important transition warning
 

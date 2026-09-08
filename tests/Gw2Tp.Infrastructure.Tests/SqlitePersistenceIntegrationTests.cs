@@ -21,7 +21,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Migrator.MigrateAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5], await database.GetMigrationVersionsAsync());
         Assert.Equal(
             [
                 "account_profiles",
@@ -30,6 +30,9 @@ public sealed class SqlitePersistenceIntegrationTests
                 "current_tp_order_observations",
                 "current_tp_orders",
                 "item_metadata",
+                "market_order_book_levels",
+                "market_order_book_snapshots",
+                "market_price_observations",
                 "schema_migrations",
                 "user_settings",
                 "watchlist_entries",
@@ -48,7 +51,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await database.Migrator.MigrateAsync();
 
-        Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5], await database.GetMigrationVersionsAsync());
         var stored = Assert.Single(await database.PersonalTradingPost.GetCompletedTransactionsAsync(account));
         Assert.Equal(transaction, stored.Transaction);
         Assert.Contains("last_sync_outcome", await database.GetAccountProfileColumnNamesAsync());
@@ -1043,7 +1046,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await using var backup = File.OpenRead(olderBackupPath);
         Assert.Equal(LocalDataRestoreOutcome.Restored, (await database.Recovery.RestoreAsync(backup)).Outcome);
-        Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5], await database.GetMigrationVersionsAsync());
     }
 
     [Fact]
@@ -1085,7 +1088,7 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(1, await database.GetTableCountAsync("item_metadata"));
         Assert.Equal(1, await database.GetTableCountAsync("user_settings"));
         Assert.Equal([84], (await database.Watchlist.GetAllAsync()).Select(entry => entry.ItemId));
-        Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5], await database.GetMigrationVersionsAsync());
         Assert.True(File.Exists(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)));
         Assert.False(File.Exists(staleIncomingPath));
         Assert.False(File.Exists(staleDatabasePath));
@@ -1102,7 +1105,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Recovery.CleanupStaleRestoreArtifactsAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5], await database.GetMigrationVersionsAsync());
     }
 
     private static CompletedPersonalTradingPostTransaction CompletedTransaction(

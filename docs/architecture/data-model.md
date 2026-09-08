@@ -169,6 +169,18 @@ key and `added_at_utc` records when the market was approved. It is retained by
 clear-personal-account-data alongside local settings, and participates in the
 existing local backup/restore workflow.
 
+### M18 market-history schema
+
+TKT-M18-01 adds migration 5. `market_price_observations` is immutable
+aggregate top-of-book evidence keyed uniquely by item and UTC observation time;
+it retains integer-copper prices, aggregate quantities, complete-source status,
+sampling tier, and policy version. Its item/time index supports historical
+window reads. Optional `market_order_book_snapshots` and immutable ordered
+`market_order_book_levels` are separate tables with their own item/time and
+snapshot indexes, so detailed depth is stored only after explicit policy opt-in.
+The full collection policy and representative storage-growth estimate are in
+`docs/architecture/market-history-collection.md`.
+
 ## 4. Accounting entities
 
 ### InventoryLot
