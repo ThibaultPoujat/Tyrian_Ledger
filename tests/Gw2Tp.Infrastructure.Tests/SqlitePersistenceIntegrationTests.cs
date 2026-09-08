@@ -824,6 +824,31 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Restore_rejects_watchlist_item_ids_outside_the_application_domain_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.Watchlist.AddAsync(new WatchlistEntry(42, FirstObservedAtUtc));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "domain-invalid-watchlist.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), incompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"UPDATE watchlist_entries SET item_id = {int.MaxValue + 1L};";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        Assert.Equal([42], (await database.Watchlist.GetAllAsync()).Select(entry => entry.ItemId));
+    }
+
+    [Fact]
     public async Task Restore_rejects_whitespace_only_account_scopes_without_changing_live_data()
     {
         await using var database = await TestDatabase.CreateAsync();

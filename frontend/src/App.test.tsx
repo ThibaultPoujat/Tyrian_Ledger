@@ -127,6 +127,23 @@ describe('M14 local data controls', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible();
   });
 
+  it('keeps the local watchlist available when current market collection is unavailable', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (typeof input === 'string' && input.startsWith('/api/live-market-scanner')) return Promise.resolve({ ok: false, json: vi.fn().mockResolvedValue({ state: 'unavailable', error: 'upstreamUnavailable', observedAtUtc: null, isFeeRoundingExternallyVerified: false, isTruncated: false, candidates: [], exclusions: [] }) } as unknown as Response);
+      if (input === '/api/watchlist') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ itemIds: [42] }) } as unknown as Response);
+      if (input === '/api/watchlist/42') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({}) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('Current scanner evidence is unavailable. Try again shortly.')).toBeVisible();
+    expect(await screen.findByRole('button', { name: 'Remove' })).toBeVisible();
+  });
+
   it('shows the local foundation, safe no-key status, and guarded recovery controls', async () => {
     render(<App />);
 

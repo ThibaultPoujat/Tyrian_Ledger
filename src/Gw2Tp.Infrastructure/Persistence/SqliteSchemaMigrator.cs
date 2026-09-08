@@ -575,6 +575,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["current_tp_orders"] = $"id <= 0 OR account_profile_id <= 0 OR sync_batch_id <= 0 OR external_order_id <= 0 OR side NOT IN (1, 2) OR item_id <= 0 OR item_id > {Int32Maximum} OR unit_price_in_copper < 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum}",
             ["current_tp_order_observations"] = $"id <= 0 OR sync_batch_id <= 0 OR account_profile_id <= 0 OR external_order_id <= 0 OR side NOT IN (1, 2) OR item_id <= 0 OR item_id > {Int32Maximum} OR unit_price_in_copper < 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum}",
             ["item_metadata"] = $"item_id <= 0 OR item_id > {Int32Maximum}",
+            ["watchlist_entries"] = $"item_id <= 0 OR item_id > {Int32Maximum}",
             ["schema_migrations"] = "version <= 0 OR trim(name) = ''",
             ["user_settings"] = $"singleton_id <> 1 OR settings_version <= 0 OR settings_version > {Int32Maximum} OR (minimum_profit_in_copper IS NOT NULL AND (minimum_profit_in_copper < 0 OR minimum_profit_in_copper > {Int32Maximum})) OR (minimum_roi_basis_points IS NOT NULL AND (minimum_roi_basis_points < 0 OR minimum_roi_basis_points > 10000)) OR (cash_reserve_basis_points IS NOT NULL AND (cash_reserve_basis_points < 0 OR cash_reserve_basis_points > 10000))",
         };
