@@ -186,8 +186,13 @@ public sealed class LocalHostIntegrationTests
             });
         using var client = app.GetTestClient();
 
-        using var response = await client.GetAsync(
+        using var scannerRequest = new HttpRequestMessage(
+            HttpMethod.Get,
             "/api/live-market-scanner?minimumRoiBasisPoints=5000&minimumNetProfitCopper=60&bidIncrementCopper=1&listUndercutCopper=1");
+        scannerRequest.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var response = await client.SendAsync(scannerRequest);
         var body = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -196,14 +201,44 @@ public sealed class LocalHostIntegrationTests
         Assert.Contains("\"state\":\"ready\"", body, StringComparison.Ordinal);
         Assert.Contains("\"netProfit\":{\"copper\":\"9007199254740993\"}", body, StringComparison.Ordinal);
         Assert.Contains("\"minimumRoiBasisPoints\":5000", body, StringComparison.Ordinal);
+        Assert.Contains("\"qualifyingCandidateCount\":1", body, StringComparison.Ordinal);
+        Assert.Contains("\"isTruncated\":false", body, StringComparison.Ordinal);
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
 
-        using var invalid = await client.GetAsync("/api/live-market-scanner?minimumRoiBasisPoints=not-a-number");
+        using var invalidRequest = new HttpRequestMessage(HttpMethod.Get, "/api/live-market-scanner?minimumRoiBasisPoints=not-a-number");
+        invalidRequest.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var invalid = await client.SendAsync(invalidRequest);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         Assert.Equal("no-store", invalid.Headers.CacheControl?.ToString());
         Assert.Equal(1, scanner.CallCount);
         Assert.Contains("invalid_scanner_settings", await invalid.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Untrusted_origin_cannot_trigger_live_market_scan()
+    {
+        var scanner = new FixedLiveMarketScanner(ReadyScannerResult());
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<ILiveMarketScanner>();
+                services.AddSingleton<ILiveMarketScanner>(scanner);
+            });
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/live-market-scanner");
+        request.Headers.Add("Origin", "https://attacker.example");
+        request.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, scanner.CallCount);
     }
 
     [Fact]
@@ -725,6 +760,8 @@ public sealed class LocalHostIntegrationTests
             new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero),
             LiveMarketScannerSettings.Default,
             IsFeeRoundingExternallyVerified: false,
+            QualifyingCandidateCount: 1,
+            IsTruncated: false,
             [new LiveMarketScannerCandidate(
                 new MarketItemMetadata(42, "Synthetic item", MarketItemStackPolicy.NormalStackLimit),
                 new MarketOrderSummary(10, 100),

@@ -94,6 +94,8 @@ public sealed record LiveMarketScannerResult(
     DateTimeOffset? ObservedAtUtc,
     LiveMarketScannerSettings Settings,
     bool IsFeeRoundingExternallyVerified,
+    int QualifyingCandidateCount,
+    bool IsTruncated,
     IReadOnlyList<LiveMarketScannerCandidate> Candidates,
     IReadOnlyList<LiveMarketScannerExclusionCount> Exclusions)
 {
@@ -105,6 +107,8 @@ public sealed record LiveMarketScannerResult(
             null,
             settings,
             IsFeeRoundingExternallyVerified: false,
+            QualifyingCandidateCount: 0,
+            IsTruncated: false,
             [],
             []);
 }

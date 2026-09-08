@@ -71,6 +71,8 @@ internal static class LiveMarketScannerResponseWriter
             result.Settings.BidIncrementCopper,
             result.Settings.ListUndercutCopper),
         result.IsFeeRoundingExternallyVerified,
+        result.QualifyingCandidateCount,
+        result.IsTruncated,
         result.Candidates.Select(candidate => new ScannerCandidateResponse(
             candidate.Item.ItemId,
             candidate.Item.Name,
@@ -163,6 +165,8 @@ internal static class LiveMarketScannerResponseWriter
         DateTimeOffset? ObservedAtUtc,
         ScannerSettingsResponse Settings,
         bool IsFeeRoundingExternallyVerified,
+        int QualifyingCandidateCount,
+        bool IsTruncated,
         IReadOnlyList<ScannerCandidateResponse> Candidates,
         IReadOnlyList<ScannerExclusionResponse> Exclusions);
 }

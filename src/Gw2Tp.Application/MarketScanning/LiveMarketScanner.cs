@@ -67,9 +67,10 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
 
         candidates.Sort(CalculatedCandidateComparer.Instance);
         var selected = candidates.Take(MaximumCandidateCount).ToArray();
+        var qualifyingCandidateCount = candidates.Count;
         if (selected.Length == 0)
         {
-            return Ready(snapshot, settings, [], exclusions);
+            return Ready(snapshot, settings, qualifyingCandidateCount, [], exclusions);
         }
 
         var metadataResult = await marketDataClient.GetItemMetadataAsync(
@@ -98,6 +99,7 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
         return Ready(
             snapshot,
             settings,
+            qualifyingCandidateCount,
             selected.Select(candidate => candidate.ToContract(metadataByItemId[candidate.ItemId])).ToArray(),
             exclusions);
     }
@@ -105,6 +107,7 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
     private static LiveMarketScannerResult Ready(
         PublicMarketAggregateSnapshot snapshot,
         LiveMarketScannerSettings settings,
+        int qualifyingCandidateCount,
         IReadOnlyList<LiveMarketScannerCandidate> candidates,
         IReadOnlyDictionary<LiveMarketScannerExclusionReason, int> exclusions) => new(
             LiveMarketScannerState.Ready,
@@ -112,6 +115,8 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
             snapshot.GeneratedAtUtc,
             settings,
             Gw2TradingPostFeePolicy.IsFractionalCopperRoundingExternallyVerified,
+            qualifyingCandidateCount,
+            qualifyingCandidateCount > candidates.Count,
             candidates,
             exclusions
                 .OrderBy(pair => pair.Key)
@@ -203,8 +208,11 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
     private CandidateMetrics CalculateMetrics(Money bid, Money plannedListPrice)
     {
         var scenario = profitCalculator.Calculate(bid, plannedListPrice);
-        var totalCost = bid + scenario.ListingFee;
-        return new CandidateMetrics(scenario, totalCost, new ExactRoi(scenario.NetProfit, totalCost));
+        var totalCost = Gw2TradingPostFeePolicy.CalculateFullUpFrontCost(bid, scenario.ListingFee);
+        return new CandidateMetrics(
+            scenario,
+            totalCost,
+            Gw2TradingPostFeePolicy.CalculateExactRoi(scenario.NetProfit, bid, scenario.ListingFee));
     }
 
     private sealed record CandidateMetrics(FlipProfitScenario ProfitScenario, Money TotalCost, ExactRoi ModeledRoi);

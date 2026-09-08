@@ -34,6 +34,8 @@ public sealed class LiveMarketScannerTests
         Assert.Equal(68, candidate.ProfitScenario.NetProfit.Copper);
         Assert.Equal(111, candidate.TotalCost.Copper);
         Assert.Equal(168, candidate.MaximumBid.Copper);
+        Assert.Equal(1, result.QualifyingCandidateCount);
+        Assert.False(result.IsTruncated);
         Assert.Contains(LiveMarketScannerInclusionReason.MeetsMinimumRoi, candidate.InclusionReasons);
     }
 
@@ -116,6 +118,21 @@ public sealed class LiveMarketScannerTests
         var result = await scanner.ScanAsync(LiveMarketScannerSettings.Default);
 
         Assert.Equal([2, 1], result.Candidates.Select(candidate => candidate.Item.ItemId));
+    }
+
+    [Fact]
+    public async Task Scan_discloses_when_the_bounded_result_set_is_truncated()
+    {
+        var itemIds = Enumerable.Range(1, LiveMarketScanner.MaximumCandidateCount + 1).ToArray();
+        var scanner = CreateScanner(new StubMarketDataClient(
+            itemIds: itemIds,
+            prices: _ => Success(itemIds.Select(itemId => Price(itemId, 10, 100, 10, 200)))));
+
+        var result = await scanner.ScanAsync(LiveMarketScannerSettings.Default);
+
+        Assert.Equal(LiveMarketScanner.MaximumCandidateCount, result.Candidates.Count);
+        Assert.Equal(LiveMarketScanner.MaximumCandidateCount + 1, result.QualifyingCandidateCount);
+        Assert.True(result.IsTruncated);
     }
 
     [Fact]

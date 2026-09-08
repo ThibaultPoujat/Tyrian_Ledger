@@ -59,6 +59,18 @@ public sealed class Gw2TradingPostFeePolicyTests
     }
 
     [Fact]
+    public void Centralizes_full_up_front_cost_and_exact_roi()
+    {
+        var totalCost = Gw2TradingPostFeePolicy.CalculateFullUpFrontCost(new Money(101), new Money(10));
+        var roi = Gw2TradingPostFeePolicy.CalculateExactRoi(new Money(68), new Money(101), new Money(10));
+
+        Assert.Equal(new Money(111), totalCost);
+        Assert.Equal(totalCost, roi.TotalCost);
+        Assert.True(roi.MeetsOrExceedsBasisPoints(6_000));
+        Assert.False(roi.MeetsOrExceedsBasisPoints(6_127));
+    }
+
+    [Fact]
     public void Calculates_the_largest_supported_sale_without_overflow()
     {
         var calculator = new FlipProfitCalculator(Gw2TradingPostFeePolicy.Create());

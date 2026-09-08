@@ -18,6 +18,22 @@ public static class Gw2TradingPostFeePolicy
     public const bool IsFractionalCopperRoundingExternallyVerified = false;
 
     /// <summary>
+    /// Returns the capital economically committed to a completed-sale scenario:
+    /// acquisition basis plus the non-refundable listing fee. This is the one
+    /// ROI denominator policy shared by scanner, accounting, and recommendations.
+    /// </summary>
+    public static Money CalculateFullUpFrontCost(Money acquisitionCost, Money listingFee) => acquisitionCost + listingFee;
+
+    public static ExactRoi CalculateExactRoi(Money profit, Money acquisitionCost, Money listingFee) =>
+        new(profit, CalculateFullUpFrontCost(acquisitionCost, listingFee));
+
+    public static ExactRoi? TryCalculateExactRoi(Money profit, Money acquisitionCost, Money listingFee)
+    {
+        var totalCost = CalculateFullUpFrontCost(acquisitionCost, listingFee);
+        return totalCost.Copper > 0 ? new ExactRoi(profit, totalCost) : null;
+    }
+
+    /// <summary>
     /// Creates the canonical modeled policy. Listing and exchange fees are calculated
     /// independently against the total gross sale value and each fractional fee is rounded up.
     /// </summary>

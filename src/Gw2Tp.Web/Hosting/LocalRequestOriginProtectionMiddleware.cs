@@ -9,19 +9,20 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
         new(StringComparer.OrdinalIgnoreCase) { "GET", "HEAD", "OPTIONS", "TRACE" };
 
     private static readonly PathString AccountConnectionPath = "/api/account-connection";
+    private static readonly PathString LiveMarketScannerPath = "/api/live-market-scanner";
 
     public async Task InvokeAsync(HttpContext context, LocalRequestOriginValidator originValidator)
     {
         var isUnsafeRequest = !SafeMethods.Contains(context.Request.Method);
-        var isCredentialDependentGet = HttpMethods.IsGet(context.Request.Method)
-            && context.Request.Path == AccountConnectionPath;
+        var isProtectedGet = HttpMethods.IsGet(context.Request.Method)
+            && (context.Request.Path == AccountConnectionPath || context.Request.Path == LiveMarketScannerPath);
         var hasOrigin = context.Request.Headers.Origin.Count > 0;
         var unsafeRequestDenied = isUnsafeRequest
             && (!originValidator.IsAllowed(context.Request) || !HasRequestHeader(context.Request));
-        var credentialRequestDenied = isCredentialDependentGet
+        var protectedGetDenied = isProtectedGet
             && (!HasRequestHeader(context.Request)
                 || (hasOrigin && !originValidator.IsAllowed(context.Request)));
-        if (unsafeRequestDenied || credentialRequestDenied)
+        if (unsafeRequestDenied || protectedGetDenied)
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new { error = "trusted_origin_required" });
