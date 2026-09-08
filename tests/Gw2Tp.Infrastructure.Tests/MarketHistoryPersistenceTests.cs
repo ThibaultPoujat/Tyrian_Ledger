@@ -77,6 +77,23 @@ public sealed class MarketHistoryPersistenceTests
     }
 
     [Fact]
+    public async Task Price_observation_batch_is_atomic_and_never_partially_commits_a_duplicate()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var existing = Price(42, FirstObservedAtUtc);
+        await database.History.AppendPriceObservationAsync(existing);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => database.History.AppendPriceObservationsAsync(
+        [
+            Price(84, FirstObservedAtUtc),
+            existing,
+        ]));
+
+        Assert.Equal([existing], await database.History.GetPriceObservationsAsync(42, FirstObservedAtUtc, FirstObservedAtUtc));
+        Assert.Empty(await database.History.GetPriceObservationsAsync(84, FirstObservedAtUtc, FirstObservedAtUtc));
+    }
+
+    [Fact]
     public async Task Schema_validation_accepts_the_briefly_published_strict_version_six_order_book_shape()
     {
         await using var database = await TestDatabase.CreateAsync();

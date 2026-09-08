@@ -72,6 +72,15 @@ public interface IMarketHistoryRepository
         MarketPriceObservation observation,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Appends a validated collection of immutable aggregate observations in a
+    /// single durable operation. A duplicate never authorizes an overwrite or
+    /// a partial batch commit.
+    /// </summary>
+    Task AppendPriceObservationsAsync(
+        IReadOnlyCollection<MarketPriceObservation> observations,
+        CancellationToken cancellationToken = default);
+
     Task AppendOrderBookSnapshotAsync(
         MarketOrderBookSnapshot snapshot,
         CancellationToken cancellationToken = default);

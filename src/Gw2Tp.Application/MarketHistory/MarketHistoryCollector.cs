@@ -118,11 +118,10 @@ public sealed class MarketHistoryCollector(
             }
 
             var listings = await GetCompleteListingsAsync(dueTargets.Where(target => target.IncludeOrderBook).ToArray(), cancellationToken).ConfigureAwait(false);
-            var priceCount = 0;
-            foreach (var target in dueTargets)
+            var priceObservations = dueTargets.Select(target =>
             {
                 var price = prices.Value![target.ItemId];
-                await marketHistoryRepository.AppendPriceObservationAsync(new MarketPriceObservation(
+                return new MarketPriceObservation(
                     observedAtUtc,
                     target.ItemId,
                     price.Buys.UnitPriceInCopper,
@@ -131,9 +130,10 @@ public sealed class MarketHistoryCollector(
                     price.Sells.Quantity,
                     MarketObservationSourceStatus.Complete,
                     target.Tier,
-                    plan.PolicyVersion), cancellationToken).ConfigureAwait(false);
-                priceCount++;
-            }
+                    plan.PolicyVersion);
+            }).ToArray();
+            await marketHistoryRepository.AppendPriceObservationsAsync(priceObservations, cancellationToken).ConfigureAwait(false);
+            var priceCount = priceObservations.Length;
 
             var orderBookCount = 0;
             if (listings.ErrorCategory is null)

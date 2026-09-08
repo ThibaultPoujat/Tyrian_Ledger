@@ -50,8 +50,10 @@ change.
 The collector uses only `IGw2ApiClient`, so its requests retain the typed
 gateway's 200-ID batching, shared request budget, cancellation, deduplication,
 and bounded 429/temporary-failure behavior. A complete aggregate response is
-append-only evidence. A failed, partial, malformed, or cancelled aggregate
-response appends nothing. When a separately requested full-book response
+append-only evidence; all aggregate observations accepted in one collection run
+are persisted as one transaction, so a duplicate or write failure leaves that
+run without a partial aggregate capture. A failed, partial, malformed, or
+cancelled aggregate response appends nothing. When a separately requested full-book response
 fails, its valid aggregate observation may still be retained, but no book row
 or levels are written.
 

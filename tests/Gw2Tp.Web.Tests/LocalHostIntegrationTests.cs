@@ -310,7 +310,7 @@ public sealed class LocalHostIntegrationTests
             delay);
 
         await service.StartAsync(CancellationToken.None);
-        await collector.SecondRunStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await delay.SecondDelayRecorded.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Equal([TimeSpan.FromSeconds(20), TimeSpan.FromMinutes(1)], delay.Delays);
         await service.StopAsync(CancellationToken.None);
@@ -942,10 +942,16 @@ public sealed class LocalHostIntegrationTests
     private sealed class RecordingCollectionDelay : IMarketHistoryCollectionDelay
     {
         public List<TimeSpan> Delays { get; } = [];
+        public TaskCompletionSource SecondDelayRecorded { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
         {
             Delays.Add(delay);
+            if (Delays.Count == 2)
+            {
+                SecondDelayRecorded.TrySetResult();
+            }
+
             return Delays.Count == 1
                 ? Task.CompletedTask
                 : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);

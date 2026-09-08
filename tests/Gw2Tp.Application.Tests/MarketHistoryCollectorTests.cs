@@ -155,6 +155,7 @@ public sealed class MarketHistoryCollectorTests
         Assert.Single(repository.LatestObservationQueries);
         Assert.Equal(Enumerable.Range(1, 500), repository.LatestObservationQueries[0]);
         Assert.Equal(500, repository.Prices.Count);
+        Assert.Equal(1, repository.PriceObservationBatchAppendCount);
     }
 
     [Fact]
@@ -226,6 +227,7 @@ public sealed class MarketHistoryCollectorTests
         public List<MarketOrderBookSnapshot> Books { get; } = [];
         public List<int[]> LatestObservationQueries { get; } = [];
         public Exception? AppendPriceException { get; init; }
+        public int PriceObservationBatchAppendCount { get; private set; }
 
         public Task AppendPriceObservationAsync(MarketPriceObservation observation, CancellationToken cancellationToken = default)
         {
@@ -236,6 +238,15 @@ public sealed class MarketHistoryCollectorTests
 
             Prices.Add(observation);
             return Task.CompletedTask;
+        }
+
+        public async Task AppendPriceObservationsAsync(IReadOnlyCollection<MarketPriceObservation> observations, CancellationToken cancellationToken = default)
+        {
+            PriceObservationBatchAppendCount++;
+            foreach (var observation in observations)
+            {
+                await AppendPriceObservationAsync(observation, cancellationToken);
+            }
         }
 
         public Task AppendOrderBookSnapshotAsync(MarketOrderBookSnapshot snapshot, CancellationToken cancellationToken = default)
