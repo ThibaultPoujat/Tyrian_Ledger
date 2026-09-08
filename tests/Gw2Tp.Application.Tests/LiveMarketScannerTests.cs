@@ -267,6 +267,45 @@ public sealed class LiveMarketScannerTests
     }
 
     [Fact]
+    public async Task Scan_reports_invalid_payload_for_malformed_detailed_listing()
+    {
+        var scanner = CreateScanner(new StubMarketDataClient(
+            listings: _ => Success([new MarketListing(
+                1,
+                [new MarketOrderLevel(0, 10, 100)],
+                [new MarketOrderLevel(3, 10, 200)])])));
+
+        var result = await scanner.ScanAsync(LiveMarketScannerSettings.Default);
+
+        Assert.Equal(LiveMarketScannerState.Unavailable, result.State);
+        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, result.ErrorCategory);
+        Assert.Empty(result.Candidates);
+    }
+
+    [Fact]
+    public async Task Scan_exposes_an_empty_book_side_as_insufficient_liquidity_evidence()
+    {
+        var scanner = CreateScanner(new StubMarketDataClient(
+            listings: _ => Success([new MarketListing(
+                1,
+                [],
+                [new MarketOrderLevel(3, 10, 200)])])));
+
+        var result = await scanner.ScanAsync(new LiveMarketScannerSettings(0, new(1), 1, 1, IntendedQuantity: 5));
+
+        Assert.Equal(LiveMarketScannerState.Ready, result.State);
+        var liquidity = Assert.Single(result.Candidates).Liquidity;
+        Assert.Equal(0, liquidity.TotalBuyQuantity);
+        Assert.Equal(0, liquidity.NearBestBuyQuantity);
+        Assert.Null(liquidity.BuyNextLevelGap);
+        Assert.False(liquidity.Liquidation.IsFullyFilled);
+        Assert.Equal(5, liquidity.Liquidation.RemainingQuantity);
+        Assert.Contains(LiveMarketScannerLiquidityReason.InsufficientBuyListingDepth, liquidity.Reasons);
+        Assert.Contains(LiveMarketScannerLiquidityReason.InsufficientBuyQuantityDepth, liquidity.Reasons);
+        Assert.Contains(LiveMarketScannerLiquidityReason.IntendedQuantityCannotFullyLiquidate, liquidity.Reasons);
+    }
+
+    [Fact]
     public async Task Aggregate_collection_reads_only_complete_price_data()
     {
         var client = new StubMarketDataClient();

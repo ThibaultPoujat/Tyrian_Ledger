@@ -97,11 +97,15 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
         var metadata = metadataResult.Value;
         var listings = listingsResult.Value;
         if (!HasExactItemSet(selectedItemIds, metadata, item => item.ItemId) ||
-            metadata.Any(item => item is null || item.ItemId <= 0 || string.IsNullOrWhiteSpace(item.Name)) ||
-            !HasExactItemSet(selectedItemIds, listings, listing => listing.ItemId) ||
-            listings.Any(listing => !IsValidListing(listing)))
+            !HasExactItemSet(selectedItemIds, listings, listing => listing.ItemId))
         {
             return LiveMarketScannerResult.Unavailable(settings, Gw2ApiErrorCategory.IncompleteData);
+        }
+
+        if (metadata.Any(item => item is null || item.ItemId <= 0 || string.IsNullOrWhiteSpace(item.Name)) ||
+            listings.Any(listing => !IsValidListing(listing)))
+        {
+            return LiveMarketScannerResult.Unavailable(settings, Gw2ApiErrorCategory.InvalidPayload);
         }
 
         var metadataByItemId = metadata.ToDictionary(item => item.ItemId);
@@ -238,12 +242,14 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
         var sells = listing.Sells.OrderBy(level => level.UnitPriceInCopper).ToArray();
         var buyTotalQuantity = SumQuantities(buys);
         var sellTotalQuantity = SumQuantities(sells);
-        var nearBestBuys = SamePriceLevels(buys, buys[0].UnitPriceInCopper);
-        var nearBestSells = SamePriceLevels(sells, sells[0].UnitPriceInCopper);
-        var buyNextLevelGap = FindNextLevelGap(buys, buys[0].UnitPriceInCopper, isBuy: true);
-        var sellNextLevelGap = FindNextLevelGap(sells, sells[0].UnitPriceInCopper, isBuy: false);
-        var hasBuyPriceCliff = IsPriceCliff(buyNextLevelGap, buys[0].UnitPriceInCopper);
-        var hasSellPriceCliff = IsPriceCliff(sellNextLevelGap, sells[0].UnitPriceInCopper);
+        var bestBuyPrice = buys.FirstOrDefault()?.UnitPriceInCopper;
+        var bestSellPrice = sells.FirstOrDefault()?.UnitPriceInCopper;
+        var nearBestBuys = bestBuyPrice is { } buyPrice ? SamePriceLevels(buys, buyPrice) : [];
+        var nearBestSells = bestSellPrice is { } sellPrice ? SamePriceLevels(sells, sellPrice) : [];
+        var buyNextLevelGap = FindNextLevelGap(buys, bestBuyPrice, isBuy: true);
+        var sellNextLevelGap = FindNextLevelGap(sells, bestSellPrice, isBuy: false);
+        var hasBuyPriceCliff = IsPriceCliff(buyNextLevelGap, bestBuyPrice);
+        var hasSellPriceCliff = IsPriceCliff(sellNextLevelGap, bestSellPrice);
         var acquisition = orderBookExecutionSimulator.SimulateAcquisition(ToExecutionLevels(sells), intendedQuantity);
         var liquidation = orderBookExecutionSimulator.SimulateLiquidation(ToExecutionLevels(buys), intendedQuantity);
         var participationCap = CalculateParticipationCap(Math.Min(buyTotalQuantity, sellTotalQuantity));
@@ -282,7 +288,7 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
         values.Select(itemId).Distinct().Count() == expectedItemIds.Count;
 
     private static bool IsValidListing(MarketListing? listing) => listing is not null && listing.ItemId > 0 &&
-        listing.Buys is { Count: > 0 } && listing.Sells is { Count: > 0 } &&
+        listing.Buys is not null && listing.Sells is not null &&
         listing.Buys.All(IsValidLevel) && listing.Sells.All(IsValidLevel);
 
     private static bool IsValidLevel(MarketOrderLevel? level) => level is not null && level.Listings > 0 &&
@@ -291,14 +297,19 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
     private static MarketOrderLevel[] SamePriceLevels(IReadOnlyList<MarketOrderLevel> levels, int price) =>
         levels.Where(level => level.UnitPriceInCopper == price).ToArray();
 
-    private static Money? FindNextLevelGap(IReadOnlyList<MarketOrderLevel> levels, int bestPrice, bool isBuy)
+    private static Money? FindNextLevelGap(IReadOnlyList<MarketOrderLevel> levels, int? bestPrice, bool isBuy)
     {
-        var next = levels.FirstOrDefault(level => level.UnitPriceInCopper != bestPrice);
-        return next is null ? null : new Money(isBuy ? bestPrice - next.UnitPriceInCopper : next.UnitPriceInCopper - bestPrice);
+        if (bestPrice is null)
+        {
+            return null;
+        }
+
+        var next = levels.FirstOrDefault(level => level.UnitPriceInCopper != bestPrice.Value);
+        return next is null ? null : new Money(isBuy ? bestPrice.Value - next.UnitPriceInCopper : next.UnitPriceInCopper - bestPrice.Value);
     }
 
-    private static bool IsPriceCliff(Money? gap, int bestPrice) => gap is not null &&
-        checked(gap.Value.Copper * 10_000) >= checked((long)bestPrice * PriceCliffBasisPoints);
+    private static bool IsPriceCliff(Money? gap, int? bestPrice) => gap is not null && bestPrice is not null &&
+        checked(gap.Value.Copper * 10_000) >= checked((long)bestPrice.Value * PriceCliffBasisPoints);
 
     private static long SumQuantities(IEnumerable<MarketOrderLevel> levels) => levels.Sum(level => (long)level.Quantity);
 
