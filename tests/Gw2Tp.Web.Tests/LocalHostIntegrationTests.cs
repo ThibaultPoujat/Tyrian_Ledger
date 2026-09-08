@@ -256,6 +256,12 @@ public sealed class LocalHostIntegrationTests
         attacker.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
         using var attackerResponse = await client.SendAsync(attacker);
         Assert.Equal(HttpStatusCode.Forbidden, attackerResponse.StatusCode);
+
+        using var attackerRead = new HttpRequestMessage(HttpMethod.Get, "/api/watchlist");
+        attackerRead.Headers.Add("Origin", "https://attacker.example");
+        attackerRead.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var attackerReadResponse = await client.SendAsync(attackerRead);
+        Assert.Equal(HttpStatusCode.Forbidden, attackerReadResponse.StatusCode);
     }
 
     [Fact]

@@ -44,7 +44,7 @@ function copper(value: Money): string {
 }
 function reason(value: string): string { return value.replace(/([A-Z])/g, ' $1').replace(/^./, letter => letter.toUpperCase()); }
 
-export default function ScannerPanel() {
+export default function ScannerPanel({ watchlistRefreshGeneration = 0 }: { watchlistRefreshGeneration?: number }) {
   const [status, setStatus] = useState<Status>('loading');
   const [result, setResult] = useState<Scanner | null>(null);
   const [watching, setWatching] = useState<number[]>([]);
@@ -83,9 +83,13 @@ export default function ScannerPanel() {
   };
   useEffect(() => {
     load();
-    void loadWatchlist().catch(() => undefined);
-    return () => { scannerRequest.current++; watchlistRequest.current++; };
+    return () => { scannerRequest.current++; };
   }, []);
+
+  useEffect(() => {
+    void loadWatchlist().catch(() => undefined);
+    return () => { watchlistRequest.current++; };
+  }, [watchlistRefreshGeneration]);
 
   const presentationFiltersValid = [minPrice, maxPrice, maxCapital].every(value => value === '' || /^\d+$/.test(value));
   const visible = useMemo(() => {

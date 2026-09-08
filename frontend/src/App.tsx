@@ -106,6 +106,7 @@ export default function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dashboardStatus, setDashboardStatus] = useState<'loading' | 'error' | 'ready'>('loading');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'failed'>('idle');
+  const [localDataRefreshGeneration, setLocalDataRefreshGeneration] = useState(0);
   const dashboardRequestGeneration = useRef(0);
 
   useEffect(() => {
@@ -158,6 +159,11 @@ export default function App() {
           setDashboardStatus('error');
         }
       });
+  };
+
+  const refreshLocalDataViews = () => {
+    loadDashboard();
+    setLocalDataRefreshGeneration(generation => generation + 1);
   };
 
   useEffect(() => {
@@ -254,8 +260,8 @@ export default function App() {
               {syncStatus === 'failed' && <p role="alert">Synchronization could not be confirmed. Your existing local data was kept.</p>}
             </section>
             <DashboardPanel dashboard={dashboard} status={dashboardStatus} />
-            <ScannerPanel />
-            <LocalDataPanel onPersonalDataChanged={loadDashboard} />
+            <ScannerPanel watchlistRefreshGeneration={localDataRefreshGeneration} />
+            <LocalDataPanel onPersonalDataChanged={refreshLocalDataViews} />
           </section>
         </main>
       </div>

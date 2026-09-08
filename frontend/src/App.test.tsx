@@ -493,20 +493,24 @@ describe('M14 local data controls', () => {
   });
 
   it('refreshes the dashboard after confirmed restore and clear outcomes', async () => {
+    let restored = false;
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      if (input === '/api/watchlist') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ itemIds: restored ? [84] : [42] }) } as unknown as Response);
       if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
       if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/local-data/restore') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response);
+      if (input === '/api/local-data/restore') { restored = true; return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response); }
       if (input === '/api/local-data/clear-personal') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'personal_data_cleared' }) } as unknown as Response);
       return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
     });
     render(<App />);
     await screen.findByRole('heading', { name: 'No personal data yet' });
+    expect(await screen.findByText('Item #42')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Backup file'), { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
     fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
     fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/personal-dashboard')).toHaveLength(2));
+    expect(await screen.findByText('Item #84')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Type CLEAR PERSONAL DATA to continue'), { target: { value: 'CLEAR PERSONAL DATA' } });
     fireEvent.click(screen.getByRole('button', { name: 'Clear personal account data' }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/personal-dashboard')).toHaveLength(3));
