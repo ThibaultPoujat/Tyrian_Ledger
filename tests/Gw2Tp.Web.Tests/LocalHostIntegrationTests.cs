@@ -214,6 +214,7 @@ public sealed class LocalHostIntegrationTests
         Assert.Contains("\"priceImpact\":{\"copper\":\"40\"}", body, StringComparison.Ordinal);
         Assert.Contains("\"reasons\":[\"buyPriceCliff\",\"participationCapBelowIntendedQuantity\"]", body, StringComparison.Ordinal);
         Assert.Contains("\"topBuyLevels\":[{\"listings\":2,\"quantity\":5,\"unitPrice\":{\"copper\":\"200\"}}]", body, StringComparison.Ordinal);
+        Assert.Contains("\"displayPercent\":", body, StringComparison.Ordinal);
         Assert.Contains("\"qualifyingCandidateCount\":1", body, StringComparison.Ordinal);
         Assert.Contains("\"isTruncated\":false", body, StringComparison.Ordinal);
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);

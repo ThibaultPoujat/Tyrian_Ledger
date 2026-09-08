@@ -79,6 +79,7 @@ describe('M14 local data controls', () => {
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Current scanner and watchlist' })).toBeVisible();
     expect(await screen.findByText('Scanner item')).toBeVisible();
+    expect(screen.getByText('66.67%')).toBeVisible();
     expect(screen.getByText(/Risk: Buy Price Cliff/)).toBeVisible();
     fireEvent.click(screen.getByText('Order-book detail'));
     expect(screen.getByRole('heading', { name: 'Buy orders' })).toBeVisible();
@@ -86,12 +87,40 @@ describe('M14 local data controls', () => {
     expect(screen.getByText('No current candidates match these presentation filters.')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Max planned bid (copper)'), { target: { value: '100' } });
     expect(screen.getByText('Scanner item')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Max per-unit capital (copper)'), { target: { value: '104' } });
+    expect(screen.getByText('No current candidates match these presentation filters.')).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Max per-unit capital (copper)'), { target: { value: '105' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'No liquidity flags only' }));
+    expect(screen.getByText('No current candidates match these presentation filters.')).toBeVisible();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'No liquidity flags only' }));
+    fireEvent.change(screen.getByLabelText('Minimum ROI (basis points)'), { target: { value: '250' } });
+    fireEvent.change(screen.getByLabelText('Minimum modeled profit (copper)'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('Intended quantity'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh scanner' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/live-market-scanner?minimumRoiBasisPoints=250&minimumNetProfitCopper=50&intendedQuantity=2', expect.anything()));
     fireEvent.click(screen.getByRole('button', { name: 'Add to watchlist' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/watchlist/42', expect.objectContaining({ method: 'PUT' })));
     expect(await screen.findByRole('button', { name: 'Remove from watchlist' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Remove from watchlist' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/watchlist/42', expect.objectContaining({ method: 'DELETE' })));
     expect(Storage.prototype.setItem).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes an empty scanner from an unavailable durable watchlist', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (typeof input === 'string' && input.startsWith('/api/live-market-scanner')) return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'ready', error: null, observedAtUtc: null, isFeeRoundingExternallyVerified: true, isTruncated: false, candidates: [], exclusions: [] }) } as unknown as Response);
+      if (input === '/api/watchlist') return Promise.reject(new TypeError('unavailable'));
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('No current candidates match these presentation filters.')).toBeVisible();
+    expect(await screen.findByText('Watchlist unavailable.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible();
   });
 
   it('shows the local foundation, safe no-key status, and guarded recovery controls', async () => {
