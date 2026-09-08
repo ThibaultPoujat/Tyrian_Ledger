@@ -119,6 +119,36 @@ internal sealed class SqliteMarketHistoryRepository(
         return observations;
     }
 
+    public async Task<MarketPriceObservation?> GetLatestPriceObservationAsync(
+        int itemId,
+        CancellationToken cancellationToken = default)
+    {
+        if (itemId <= 0) throw new ArgumentOutOfRangeException(nameof(itemId));
+
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT observed_at_utc, item_id, highest_buy_price_in_copper, lowest_sell_price_in_copper,
+                   aggregate_buy_quantity, aggregate_sell_quantity, source_status, sampling_tier, sampling_policy_version
+            FROM market_price_observations
+            WHERE item_id = $itemId
+            ORDER BY observed_at_utc DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$itemId", itemId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        return new MarketPriceObservation(
+            SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(0), "market_price_observations.observed_at_utc"),
+            reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.GetInt32(5),
+            (MarketObservationSourceStatus)reader.GetInt32(6), (MarketSamplingTier)reader.GetInt32(7), reader.GetInt32(8));
+    }
+
     private static void Bind(SqliteCommand command, MarketPriceObservation observation)
     {
         command.Parameters.AddWithValue("$observedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(observation.ObservedAtUtc, nameof(observation.ObservedAtUtc)));

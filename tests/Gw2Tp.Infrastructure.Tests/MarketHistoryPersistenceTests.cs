@@ -54,6 +54,8 @@ public sealed class MarketHistoryPersistenceTests
 
         Assert.Equal([first, second], await database.History.GetPriceObservationsAsync(42, FirstObservedAtUtc, SecondObservedAtUtc));
         Assert.Empty(await database.History.GetPriceObservationsAsync(84, FirstObservedAtUtc, SecondObservedAtUtc));
+        Assert.Equal(second, await database.History.GetLatestPriceObservationAsync(42));
+        Assert.Null(await database.History.GetLatestPriceObservationAsync(84));
         await Assert.ThrowsAsync<InvalidOperationException>(() => database.History.AppendPriceObservationAsync(first));
     }
 

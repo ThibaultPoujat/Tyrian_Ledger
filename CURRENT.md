@@ -76,33 +76,43 @@ risk/rejection visibility, bounded same-scan order-book detail, and a durable
 local SQLite watchlist that works without account connection. React only
 displays backend financial and liquidity evidence.
 
-TKT-M18-01 / #82 is implemented in the pending NORMAL review PR. It adds
+TKT-M18-01 / #82 merged in PR #116. It adds
 versioned SQLite storage for immutable best-price observations and deliberate
 optional full-book captures, with UTC/integer-copper invariants, strict backup
 validation, item/time indexes, and an append-only repository boundary. Its
 typed adaptive policy composes current personal orders, watchlist entries, and
 future registered sources; full books require explicit high-interest opt-in.
 
-After the #82 NORMAL review/merge handoff, the next valid implementation ticket
+TKT-M18-02 / #83 is implemented in the pending owner-triggered NORMAL review
+handoff. It starts a loopback hosted collector that resumes per-item cadence
+from retained aggregate observations, uses the typed gateway's existing request
+budget/batching/retry behavior, appends only valid complete evidence, exposes
+safe no-store health, and accepts a protected manual one-shot run. The worker
+rechecks typed source membership every configurable minute by default; detailed
+books remain an explicit policy opt-in. VERIFY-004, VERIFY-005, VERIFY-006,
+VERIFY-010, and VERIFY-011 remain OPEN with conservative configurable limits;
+no live keyed probe was performed.
+
+After the #83 NORMAL review/merge handoff, the next valid implementation ticket
 is:
 
-**TKT-M18-02 / #83 - Implement the Local Market Snapshot Collector Scheduler.**
+**TKT-M18-03 / #84 - Add Market-History Retention, Integrity, Storage Statistics, and Backup Coverage.**
 
 ## Known-good baseline
 
-TKT-M18-01 local validation on 2026-09-08 reported:
+TKT-M18-02 local validation on 2026-09-08 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused adaptive sampling policy: 107 tests passed;
-- focused SQLite persistence: 149 tests passed;
-- full .NET regression suite: 309 tests passed;
+- focused collector: 7 tests passed; focused local-host collector endpoints and shutdown: 2 tests passed;
+- focused SQLite persistence: 6 tests passed;
+- full .NET regression suite: 318 tests passed;
 - React: 18 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
-- retired-runtime and competing-fee-formula audits: no unexpected matches;
-- Gitleaks: all 258 reachable commits scanned with no leaks.
+- retired-runtime audit: only expected negative assertions matched;
+- Gitleaks: all 263 reachable commits scanned with no leaks.
 
-PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/116
+PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/117
 
 ## Important transition warning
 

@@ -6,6 +6,8 @@ using Gw2Tp.Analytics.OrderBooks;
 using Gw2Tp.Application.AccountConnection;
 using Gw2Tp.Application.Dashboard;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.MarketHistory;
+using Gw2Tp.Application.Time;
 using Gw2Tp.Application.MarketScanning;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Domain.Finance;
@@ -229,6 +231,69 @@ public sealed class LocalHostIntegrationTests
         Assert.Equal("no-store", invalid.Headers.CacheControl?.ToString());
         Assert.Equal(1, scanner.CallCount);
         Assert.Contains("invalid_scanner_settings", await invalid.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Market_history_collector_endpoints_are_safe_no_store_and_manual_runs_are_origin_protected()
+    {
+        var collector = new FixedMarketHistoryCollector();
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IMarketHistoryCollector>();
+                services.AddSingleton<IMarketHistoryCollector>(collector);
+            });
+        using var client = app.GetTestClient();
+
+        using var health = new HttpRequestMessage(HttpMethod.Get, "/api/market-history/collector");
+        health.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var healthResponse = await client.SendAsync(health);
+        var healthBody = await healthResponse.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
+        Assert.Equal("no-store", healthResponse.Headers.CacheControl?.ToString());
+        Assert.Contains("\"state\":\"idle\"", healthBody, StringComparison.Ordinal);
+        Assert.Contains("\"trackedItemCount\":2", healthBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("credential", healthBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("authorization", healthBody, StringComparison.OrdinalIgnoreCase);
+
+        using var attacker = new HttpRequestMessage(HttpMethod.Post, "/api/market-history/collector/run");
+        attacker.Headers.Add("Origin", "https://attacker.example");
+        attacker.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var attackerResponse = await client.SendAsync(attacker);
+        Assert.Equal(HttpStatusCode.Forbidden, attackerResponse.StatusCode);
+        Assert.Equal(0, collector.ManualRunCount);
+
+        using var manual = new HttpRequestMessage(HttpMethod.Post, "/api/market-history/collector/run");
+        manual.Headers.Add("Origin", "http://localhost");
+        manual.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var manualResponse = await client.SendAsync(manual);
+        var manualBody = await manualResponse.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, manualResponse.StatusCode);
+        Assert.Equal("no-store", manualResponse.Headers.CacheControl?.ToString());
+        Assert.Equal(1, collector.ManualRunCount);
+        Assert.Contains("\"outcome\":\"succeeded\"", manualBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("credential", manualBody, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Market_history_collector_hosted_service_runs_and_stops_without_turning_shutdown_into_a_failure()
+    {
+        var collector = new FixedMarketHistoryCollector();
+        var service = new MarketHistoryCollectorHostedService(
+            collector,
+            new MarketHistoryCollectionSchedulerSettings(TimeSpan.FromMinutes(1)),
+            new FixedClock(new DateTimeOffset(2026, 9, 8, 12, 0, 0, TimeSpan.Zero)));
+
+        await service.StartAsync(CancellationToken.None);
+        await collector.DueRunStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.NotNull(collector.LastScheduledRunAtUtc);
+
+        await service.StopAsync(CancellationToken.None);
+
+        Assert.Null(collector.LastScheduledRunAtUtc);
     }
 
     [Fact]
@@ -806,6 +871,45 @@ public sealed class LocalHostIntegrationTests
             CallCount++;
             return Task.FromResult(result);
         }
+    }
+
+    private sealed class FixedMarketHistoryCollector : IMarketHistoryCollector
+    {
+        private readonly MarketHistoryCollectorHealth health = new(
+            MarketHistoryCollectorState.Idle,
+            new DateTimeOffset(2026, 9, 8, 12, 0, 0, TimeSpan.Zero),
+            null,
+            0,
+            2,
+            new DateTimeOffset(2026, 9, 8, 12, 1, 0, TimeSpan.Zero));
+
+        public int ManualRunCount { get; private set; }
+        public TaskCompletionSource DueRunStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public DateTimeOffset? LastScheduledRunAtUtc { get; private set; }
+
+        public Task<MarketHistoryCollectionRun> CollectDueAsync(CancellationToken cancellationToken = default)
+        {
+            DueRunStarted.TrySetResult();
+            return Task.FromResult(new MarketHistoryCollectionRun(MarketHistoryCollectionOutcome.Succeeded, 2, 0, 0, 0, null, health.NextRunAtUtc));
+        }
+
+        public Task<MarketHistoryCollectionRun> CollectNowAsync(CancellationToken cancellationToken = default)
+        {
+            ManualRunCount++;
+            return Task.FromResult(new MarketHistoryCollectionRun(MarketHistoryCollectionOutcome.Succeeded, 2, 2, 2, 0, null, health.NextRunAtUtc));
+        }
+
+        public MarketHistoryCollectorHealth GetHealth() => health;
+
+        public void SetNextRunAtUtc(DateTimeOffset? nextRunAtUtc)
+        {
+            LastScheduledRunAtUtc = nextRunAtUtc;
+        }
+    }
+
+    private sealed class FixedClock(DateTimeOffset utcNow) : IClock
+    {
+        public DateTimeOffset UtcNow { get; } = utcNow;
     }
 
     private sealed class FixedDashboardService : IPersonalDashboardService
