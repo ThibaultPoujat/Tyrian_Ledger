@@ -306,6 +306,23 @@ public sealed class LiveMarketScannerTests
     }
 
     [Fact]
+    public async Task Scanner_returns_the_best_ten_order_book_levels_in_execution_order()
+    {
+        var scanner = CreateScanner(new StubMarketDataClient(
+            listings: ids => Success(ids.Select(itemId => new MarketListing(
+                itemId,
+                Enumerable.Range(0, 12).Select(index => new MarketOrderLevel(1, 10, 100 + index)).ToArray(),
+                Enumerable.Range(0, 12).Reverse().Select(index => new MarketOrderLevel(1, 10, 200 + index)).ToArray())))));
+
+        var liquidity = Assert.Single((await scanner.ScanAsync(LiveMarketScannerSettings.Default)).Candidates).Liquidity;
+
+        Assert.Equal(10, liquidity.TopBuyLevels.Count);
+        Assert.Equal(Enumerable.Range(102, 10).Reverse(), liquidity.TopBuyLevels.Select(level => level.UnitPriceInCopper));
+        Assert.Equal(10, liquidity.TopSellLevels.Count);
+        Assert.Equal(Enumerable.Range(200, 10), liquidity.TopSellLevels.Select(level => level.UnitPriceInCopper));
+    }
+
+    [Fact]
     public async Task Aggregate_collection_reads_only_complete_price_data()
     {
         var client = new StubMarketDataClient();

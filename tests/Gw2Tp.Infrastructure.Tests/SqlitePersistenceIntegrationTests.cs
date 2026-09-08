@@ -1037,6 +1037,7 @@ public sealed class SqlitePersistenceIntegrationTests
                 FirstObservedAtUtc));
         }
         await database.UserSettings.SaveAsync(new UserSettings(1, 500, null, null, FirstObservedAtUtc));
+        await database.Watchlist.AddAsync(new WatchlistEntry(84, FirstObservedAtUtc));
         var backup = await database.Recovery.CreateBackupAsync();
         var staleIncomingPath = Path.Combine(Path.GetDirectoryName(database.Path)!, $".tyrian-ledger-restore-{Guid.NewGuid():N}.incoming");
         var staleDatabasePath = Path.Combine(Path.GetDirectoryName(database.Path)!, $".tyrian-ledger-restore-{Guid.NewGuid():N}.db");
@@ -1058,7 +1059,7 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(0, await database.GetTableCountAsync("current_order_sync_batches"));
         Assert.Equal(1, await database.GetTableCountAsync("item_metadata"));
         Assert.Equal(1, await database.GetTableCountAsync("user_settings"));
-        Assert.Equal(0, await database.GetTableCountAsync("watchlist_entries"));
+        Assert.Equal([84], (await database.Watchlist.GetAllAsync()).Select(entry => entry.ItemId));
         Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
         Assert.True(File.Exists(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)));
         Assert.False(File.Exists(staleIncomingPath));
