@@ -5,7 +5,7 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFactory)
 {
-    private const int LatestVersion = 4;
+    private const int LatestVersion = 6;
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> LatestSchemaColumns =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
@@ -53,6 +53,19 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             {
                 "item_id", "added_at_utc",
             },
+            ["market_price_observations"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "id", "observed_at_utc", "item_id", "highest_buy_price_in_copper", "lowest_sell_price_in_copper",
+                "aggregate_buy_quantity", "aggregate_sell_quantity", "source_status", "sampling_tier", "sampling_policy_version",
+            },
+            ["market_order_book_snapshots"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "id", "observed_at_utc", "item_id", "source_status", "sampling_tier", "sampling_policy_version",
+            },
+            ["market_order_book_levels"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "id", "snapshot_id", "side", "level_ordinal", "unit_price_in_copper", "quantity", "listings",
+            },
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, SqliteColumnDefinition>> LatestColumnDefinitions =
@@ -67,6 +80,9 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["schema_migrations"] = Columns(("version", "INTEGER", false, 1), ("name", "TEXT", true, 0), ("applied_at_utc", "TEXT", true, 0)),
             ["user_settings"] = Columns(("singleton_id", "INTEGER", false, 1), ("settings_version", "INTEGER", true, 0), ("minimum_profit_in_copper", "INTEGER", false, 0), ("minimum_roi_basis_points", "INTEGER", false, 0), ("cash_reserve_basis_points", "INTEGER", false, 0), ("updated_at_utc", "TEXT", true, 0)),
             ["watchlist_entries"] = Columns(("item_id", "INTEGER", false, 1), ("added_at_utc", "TEXT", true, 0)),
+            ["market_price_observations"] = Columns(("id", "INTEGER", false, 1), ("observed_at_utc", "TEXT", true, 0), ("item_id", "INTEGER", true, 0), ("highest_buy_price_in_copper", "INTEGER", true, 0), ("lowest_sell_price_in_copper", "INTEGER", true, 0), ("aggregate_buy_quantity", "INTEGER", true, 0), ("aggregate_sell_quantity", "INTEGER", true, 0), ("source_status", "INTEGER", true, 0), ("sampling_tier", "INTEGER", true, 0), ("sampling_policy_version", "INTEGER", true, 0)),
+            ["market_order_book_snapshots"] = Columns(("id", "INTEGER", false, 1), ("observed_at_utc", "TEXT", true, 0), ("item_id", "INTEGER", true, 0), ("source_status", "INTEGER", true, 0), ("sampling_tier", "INTEGER", true, 0), ("sampling_policy_version", "INTEGER", true, 0)),
+            ["market_order_book_levels"] = Columns(("id", "INTEGER", false, 1), ("snapshot_id", "INTEGER", true, 0), ("side", "INTEGER", true, 0), ("level_ordinal", "INTEGER", true, 0), ("unit_price_in_copper", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0), ("listings", "INTEGER", true, 0)),
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<SqliteIndexDefinition>> RequiredIndexes =
@@ -76,6 +92,9 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["completed_tp_transactions"] = [new(null, true, ["account_profile_id", "external_transaction_id"]), new("ix_completed_transactions_account_completed_at", false, ["account_profile_id", "completed_at_utc"])],
             ["current_tp_orders"] = [new(null, true, ["account_profile_id", "external_order_id"])],
             ["current_tp_order_observations"] = [new(null, true, ["sync_batch_id", "external_order_id"]), new("ix_current_order_observations_account_observed_at", false, ["account_profile_id", "observed_at_utc"])],
+            ["market_price_observations"] = [new(null, true, ["item_id", "observed_at_utc"])],
+            ["market_order_book_snapshots"] = [new(null, true, ["item_id", "observed_at_utc"])],
+            ["market_order_book_levels"] = [new(null, true, ["snapshot_id", "side", "level_ordinal"])],
         };
 
     private static readonly IReadOnlyList<SqliteForeignKeyDefinition> RequiredForeignKeys =
@@ -86,6 +105,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         new("current_tp_orders", "sync_batch_id", "current_order_sync_batches", "id"),
         new("current_tp_order_observations", "account_profile_id", "account_profiles", "id"),
         new("current_tp_order_observations", "sync_batch_id", "current_order_sync_batches", "id"),
+        new("market_order_book_levels", "snapshot_id", "market_order_book_snapshots", "id"),
     ];
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> RequiredCheckConstraints =
@@ -98,7 +118,16 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["item_metadata"] = Checks("item_id>0", "length(name)>0"),
             ["user_settings"] = Checks("singleton_id=1", "settings_version>0", "minimum_profit_in_copper>=0", "minimum_roi_basis_pointsbetween0and10000", "cash_reserve_basis_pointsbetween0and10000"),
             ["watchlist_entries"] = Checks("item_id>0"),
+            ["market_price_observations"] = Checks("item_id>0", "highest_buy_price_in_copper>=0", "lowest_sell_price_in_copper>=0", "aggregate_buy_quantity>=0", "aggregate_sell_quantity>=0", "source_status=1", "sampling_tierbetween1and3", "sampling_policy_version>0"),
+            ["market_order_book_snapshots"] = Checks("item_id>0", "source_status=1", "sampling_tierbetween1and3", "sampling_policy_version>0"),
+            ["market_order_book_levels"] = Checks("snapshot_id>0", "sidein(1,2)", "level_ordinal>=0", "unit_price_in_copper>=0", "quantity>0", "listings>0"),
         };
+
+    // Version 6 was briefly published with this stricter equivalent constraint.
+    // Accepting it keeps those local databases usable while current migration 6
+    // preserves schema-valid version-5 zero-price evidence without rewriting it.
+    private static readonly IReadOnlySet<string> StrictOrderBookLevelPriceChecks =
+        Checks("snapshot_id>0", "sidein(1,2)", "level_ordinal>=0", "unit_price_in_copper>0", "quantity>0", "listings>0");
 
     private static readonly IReadOnlyList<SqliteSchemaMigration> Migrations =
     [
@@ -222,12 +251,80 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 added_at_utc TEXT NOT NULL
             );
             """),
+        new(
+            5,
+            "market_history_schema",
+            """
+            CREATE TABLE market_price_observations (
+                id INTEGER PRIMARY KEY,
+                observed_at_utc TEXT NOT NULL,
+                item_id INTEGER NOT NULL CHECK (item_id > 0),
+                highest_buy_price_in_copper INTEGER NOT NULL CHECK (highest_buy_price_in_copper >= 0),
+                lowest_sell_price_in_copper INTEGER NOT NULL CHECK (lowest_sell_price_in_copper >= 0),
+                aggregate_buy_quantity INTEGER NOT NULL CHECK (aggregate_buy_quantity >= 0),
+                aggregate_sell_quantity INTEGER NOT NULL CHECK (aggregate_sell_quantity >= 0),
+                source_status INTEGER NOT NULL CHECK (source_status = 1),
+                sampling_tier INTEGER NOT NULL CHECK (sampling_tier BETWEEN 1 AND 3),
+                sampling_policy_version INTEGER NOT NULL CHECK (sampling_policy_version > 0),
+                CONSTRAINT uq_market_price_observations_item_observed_at UNIQUE (item_id, observed_at_utc)
+            );
+
+            CREATE INDEX ix_market_price_observations_item_observed_at
+                ON market_price_observations (item_id, observed_at_utc);
+
+            CREATE TABLE market_order_book_snapshots (
+                id INTEGER PRIMARY KEY,
+                observed_at_utc TEXT NOT NULL,
+                item_id INTEGER NOT NULL CHECK (item_id > 0),
+                source_status INTEGER NOT NULL CHECK (source_status = 1),
+                sampling_tier INTEGER NOT NULL CHECK (sampling_tier BETWEEN 1 AND 3),
+                sampling_policy_version INTEGER NOT NULL CHECK (sampling_policy_version > 0),
+                CONSTRAINT uq_market_order_book_snapshots_item_observed_at UNIQUE (item_id, observed_at_utc)
+            );
+
+            CREATE INDEX ix_market_order_book_snapshots_item_observed_at
+                ON market_order_book_snapshots (item_id, observed_at_utc);
+
+            CREATE TABLE market_order_book_levels (
+                id INTEGER PRIMARY KEY,
+                snapshot_id INTEGER NOT NULL CHECK (snapshot_id > 0),
+                side INTEGER NOT NULL CHECK (side IN (1, 2)),
+                level_ordinal INTEGER NOT NULL CHECK (level_ordinal >= 0),
+                unit_price_in_copper INTEGER NOT NULL CHECK (unit_price_in_copper >= 0),
+                quantity INTEGER NOT NULL CHECK (quantity > 0),
+                listings INTEGER NOT NULL CHECK (listings > 0),
+                CONSTRAINT fk_market_order_book_levels_snapshot FOREIGN KEY (snapshot_id)
+                    REFERENCES market_order_book_snapshots(id) ON DELETE RESTRICT,
+                CONSTRAINT uq_market_order_book_levels_snapshot_side_ordinal
+                    UNIQUE (snapshot_id, side, level_ordinal)
+            );
+
+            CREATE INDEX ix_market_order_book_levels_snapshot
+                ON market_order_book_levels (snapshot_id);
+            """),
+        new(
+            6,
+            "market_history_validation_hardening",
+            """
+            DROP INDEX IF EXISTS ix_market_price_observations_item_observed_at;
+            DROP INDEX IF EXISTS ix_market_order_book_snapshots_item_observed_at;
+            DROP INDEX IF EXISTS ix_market_order_book_levels_snapshot;
+            """),
     ];
 
     public Task MigrateAsync(CancellationToken cancellationToken = default) =>
-        MigrateToAsync(LatestVersion, cancellationToken);
+        MigrateToAsync(LatestVersion, validatePersistedData: false, cancellationToken);
 
-    internal async Task MigrateToAsync(int targetVersion, CancellationToken cancellationToken = default)
+    internal Task MigrateToAsync(int targetVersion, CancellationToken cancellationToken = default) =>
+        MigrateToAsync(targetVersion, validatePersistedData: false, cancellationToken);
+
+    internal Task MigrateAndValidatePersistedDataAsync(CancellationToken cancellationToken = default) =>
+        MigrateToAsync(LatestVersion, validatePersistedData: true, cancellationToken);
+
+    private async Task MigrateToAsync(
+        int targetVersion,
+        bool validatePersistedData,
+        CancellationToken cancellationToken)
     {
         if (targetVersion is < 0 or > LatestVersion)
         {
@@ -246,7 +343,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
 
         if (targetVersion == LatestVersion)
         {
-            await ValidateLatestSchemaAsync(connection, cancellationToken).ConfigureAwait(false);
+            await ValidateLatestSchemaAsync(connection, validatePersistedData, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -282,6 +379,10 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         }
 
         ValidateAppliedMigrations(appliedMigrations);
+        if (appliedMigrations.Count == LatestVersion)
+        {
+            await ValidateLatestSchemaAsync(connection, validatePersistedData: true, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static async Task EnsureMigrationHistoryAsync(SqliteConnection connection, CancellationToken cancellationToken)
@@ -329,9 +430,11 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         }
     }
 
-    private static async Task ValidateLatestSchemaAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    private static async Task ValidateLatestSchemaAsync(
+        SqliteConnection connection,
+        bool validatePersistedData,
+        CancellationToken cancellationToken)
     {
-        await ValidateIntegrityAsync(connection, cancellationToken).ConfigureAwait(false);
         await ValidateTableSetAsync(connection, cancellationToken).ConfigureAwait(false);
         foreach (var (tableName, expectedColumns) in LatestSchemaColumns)
         {
@@ -373,9 +476,15 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         }
 
         await ValidateForeignKeysAsync(connection, cancellationToken).ConfigureAwait(false);
+        await ValidateNoExecutableSchemaObjectsAsync(connection, cancellationToken).ConfigureAwait(false);
+
+        if (!validatePersistedData)
+        {
+            return;
+        }
+
         await ValidatePersistedValuesAsync(connection, cancellationToken).ConfigureAwait(false);
         await ValidatePersistedDomainInvariantsAsync(connection, cancellationToken).ConfigureAwait(false);
-        await ValidateNoExecutableSchemaObjectsAsync(connection, cancellationToken).ConfigureAwait(false);
 
         await using var foreignKeyCheck = connection.CreateCommand();
         foreignKeyCheck.CommandText = "PRAGMA foreign_key_check;";
@@ -414,7 +523,9 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         command.Parameters.AddWithValue("$tableName", tableName);
         var schemaSql = Convert.ToString(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture);
         var actualChecks = ExtractCheckConstraints(schemaSql);
-        if (!actualChecks.SetEquals(requiredChecks))
+        var acceptsStrictOrderBookLevelPrices = tableName == "market_order_book_levels"
+            && actualChecks.SetEquals(StrictOrderBookLevelPriceChecks);
+        if (!actualChecks.SetEquals(requiredChecks) && !acceptsStrictOrderBookLevelPrices)
         {
             throw new InvalidDataException($"The SQLite database schema for '{tableName}' has incompatible check constraints.");
         }
@@ -576,6 +687,9 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["current_tp_order_observations"] = $"id <= 0 OR sync_batch_id <= 0 OR account_profile_id <= 0 OR external_order_id <= 0 OR side NOT IN (1, 2) OR item_id <= 0 OR item_id > {Int32Maximum} OR unit_price_in_copper < 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum}",
             ["item_metadata"] = $"item_id <= 0 OR item_id > {Int32Maximum}",
             ["watchlist_entries"] = $"item_id <= 0 OR item_id > {Int32Maximum}",
+            ["market_price_observations"] = $"id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR highest_buy_price_in_copper < 0 OR highest_buy_price_in_copper > {Int32Maximum} OR lowest_sell_price_in_copper < 0 OR lowest_sell_price_in_copper > {Int32Maximum} OR aggregate_buy_quantity < 0 OR aggregate_buy_quantity > {Int32Maximum} OR aggregate_sell_quantity < 0 OR aggregate_sell_quantity > {Int32Maximum} OR source_status <> 1 OR sampling_tier NOT BETWEEN 1 AND 3 OR sampling_policy_version <= 0 OR sampling_policy_version > {Int32Maximum}",
+            ["market_order_book_snapshots"] = $"id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR source_status <> 1 OR sampling_tier NOT BETWEEN 1 AND 3 OR sampling_policy_version <= 0 OR sampling_policy_version > {Int32Maximum}",
+            ["market_order_book_levels"] = $"id <= 0 OR snapshot_id <= 0 OR side NOT IN (1, 2) OR level_ordinal < 0 OR level_ordinal > {Int32Maximum} OR unit_price_in_copper < 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum} OR listings <= 0 OR listings > {Int32Maximum}",
             ["schema_migrations"] = "version <= 0 OR trim(name) = ''",
             ["user_settings"] = $"singleton_id <> 1 OR settings_version <= 0 OR settings_version > {Int32Maximum} OR (minimum_profit_in_copper IS NOT NULL AND (minimum_profit_in_copper < 0 OR minimum_profit_in_copper > {Int32Maximum})) OR (minimum_roi_basis_points IS NOT NULL AND (minimum_roi_basis_points < 0 OR minimum_roi_basis_points > 10000)) OR (cash_reserve_basis_points IS NOT NULL AND (cash_reserve_basis_points < 0 OR cash_reserve_basis_points > 10000))",
         };

@@ -70,7 +70,7 @@ internal sealed class SqliteLocalDataRecoveryService(
             {
                 await CopyDatabaseAsync(incomingPath, stagedDatabasePath, cancellationToken).ConfigureAwait(false);
                 var stagedMigrator = new SqliteSchemaMigrator(new SqliteConnectionFactory(stagedDatabasePath));
-                await stagedMigrator.MigrateAsync(cancellationToken).ConfigureAwait(false);
+                await stagedMigrator.MigrateAndValidatePersistedDataAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

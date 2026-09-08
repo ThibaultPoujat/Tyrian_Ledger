@@ -1,6 +1,7 @@
 using Gw2Tp.Application.AccountConnection;
 using Gw2Tp.Application.Dashboard;
 using Gw2Tp.Application.MarketScanning;
+using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.AccountConnection;
@@ -48,6 +49,10 @@ public static class Program
         builder.Services.AddSingleton<IPersonalDashboardService, PersonalDashboardService>();
         builder.Services.AddSingleton<PublicMarketSnapshotCollector>();
         builder.Services.AddSingleton<ILiveMarketScanner, LiveMarketScanner>();
+        builder.Services.AddSingleton(CreateMarketSamplingSettings(builder.Configuration));
+        builder.Services.AddSingleton<IMarketSamplingSource, CurrentPersonalOrderMarketSamplingSource>();
+        builder.Services.AddSingleton<IMarketSamplingSource, WatchlistMarketSamplingSource>();
+        builder.Services.AddSingleton<IAdaptiveMarketSamplingPolicy, AdaptiveMarketSamplingPolicy>();
         builder.Services.AddHostFiltering(options =>
         {
             options.AllowedHosts = hostOptions.AllowedHosts;
@@ -171,5 +176,17 @@ public static class Program
         app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
         app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
         app.MapFallbackToFile("index.html", new StaticFileOptions { FileProvider = fileProvider });
+    }
+
+    private static MarketSamplingSettings CreateMarketSamplingSettings(IConfiguration configuration)
+    {
+        var defaults = MarketSamplingSettings.Default;
+        var settings = new MarketSamplingSettings(
+            configuration.GetValue<int?>("TyrianLedger:MarketSampling:PolicyVersion") ?? defaults.PolicyVersion,
+            TimeSpan.FromMinutes(configuration.GetValue<double?>("TyrianLedger:MarketSampling:CurrentPersonalOrderIntervalMinutes") ?? defaults.CurrentPersonalOrderInterval.TotalMinutes),
+            TimeSpan.FromMinutes(configuration.GetValue<double?>("TyrianLedger:MarketSampling:WatchlistIntervalMinutes") ?? defaults.WatchlistInterval.TotalMinutes),
+            TimeSpan.FromMinutes(configuration.GetValue<double?>("TyrianLedger:MarketSampling:BroadMarketIntervalMinutes") ?? defaults.BroadMarketInterval.TotalMinutes));
+        settings.Validate();
+        return settings;
     }
 }
