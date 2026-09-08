@@ -798,6 +798,30 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Restore_rejects_malformed_version_five_history_after_staged_migration_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.Watchlist.AddAsync(new WatchlistEntry(42, FirstObservedAtUtc));
+        await using var versionFiveDatabase = await TestDatabase.CreateAsync(migrate: false, databaseFileName: "version-five-history.db");
+        await versionFiveDatabase.Migrator.MigrateToAsync(5);
+        await using (var connection = await versionFiveDatabase.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                INSERT INTO market_price_observations (
+                    observed_at_utc, item_id, highest_buy_price_in_copper, lowest_sell_price_in_copper,
+                    aggregate_buy_quantity, aggregate_sell_quantity, source_status, sampling_tier, sampling_policy_version)
+                VALUES ('not-a-timestamp', 84, 100, 120, 10, 20, 1, 2, 1);
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using var backup = File.OpenRead(versionFiveDatabase.Path);
+        Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(backup)).Outcome);
+        Assert.Equal([42], (await database.Watchlist.GetAllAsync()).Select(entry => entry.ItemId));
+    }
+
+    [Fact]
     public async Task Restore_rejects_domain_invalid_identifiers_without_changing_live_data()
     {
         await using var database = await TestDatabase.CreateAsync();

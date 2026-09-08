@@ -94,8 +94,8 @@ TKT-M18-01 local validation on 2026-09-08 reported:
 
 - Release solution build: zero warnings and zero errors;
 - focused adaptive sampling policy: 107 tests passed;
-- focused SQLite persistence: 148 tests passed;
-- full .NET regression suite: 308 tests passed;
+- focused SQLite persistence: 149 tests passed;
+- full .NET regression suite: 309 tests passed;
 - React: 18 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;

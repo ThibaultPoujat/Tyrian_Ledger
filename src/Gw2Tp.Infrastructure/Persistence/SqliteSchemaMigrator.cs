@@ -313,9 +313,18 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
     ];
 
     public Task MigrateAsync(CancellationToken cancellationToken = default) =>
-        MigrateToAsync(LatestVersion, cancellationToken);
+        MigrateToAsync(LatestVersion, validatePersistedData: false, cancellationToken);
 
-    internal async Task MigrateToAsync(int targetVersion, CancellationToken cancellationToken = default)
+    internal Task MigrateToAsync(int targetVersion, CancellationToken cancellationToken = default) =>
+        MigrateToAsync(targetVersion, validatePersistedData: false, cancellationToken);
+
+    internal Task MigrateAndValidatePersistedDataAsync(CancellationToken cancellationToken = default) =>
+        MigrateToAsync(LatestVersion, validatePersistedData: true, cancellationToken);
+
+    private async Task MigrateToAsync(
+        int targetVersion,
+        bool validatePersistedData,
+        CancellationToken cancellationToken)
     {
         if (targetVersion is < 0 or > LatestVersion)
         {
@@ -334,7 +343,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
 
         if (targetVersion == LatestVersion)
         {
-            await ValidateLatestSchemaAsync(connection, validatePersistedData: false, cancellationToken).ConfigureAwait(false);
+            await ValidateLatestSchemaAsync(connection, validatePersistedData, cancellationToken).ConfigureAwait(false);
         }
     }
 
