@@ -144,7 +144,10 @@ public sealed class PersonalPerformanceCalculator
                         exchangeFees[index],
                         netSale,
                         profit,
-                        CreateRoi(profit, FullUpFrontCost(fragment.Match.AllocatedAcquisitionBasis, listingFees[index]))));
+                        Gw2TradingPostFeePolicy.TryCalculateExactRoi(
+                            profit,
+                            fragment.Match.AllocatedAcquisitionBasis,
+                            listingFees[index])));
                     continue;
                 }
 
@@ -268,7 +271,7 @@ public sealed class PersonalPerformanceCalculator
                 CurrentLiquidationStatus.FullyValued, evidence.ObservedAtUtc, 0,
                 liquidation.GrossSaleValue, liquidation.ListingFee, liquidation.ExchangeFee,
                 liquidation.NetSaleProceeds, liquidation.NetProfit,
-                CreateRoi(liquidation.NetProfit, FullUpFrontCost(basis, liquidation.ListingFee))));
+                Gw2TradingPostFeePolicy.TryCalculateExactRoi(liquidation.NetProfit, basis, liquidation.ListingFee)));
         }
 
         var openQuantity = checked((int)openLots.Sum(lot => (long)lot.RemainingQuantity));
@@ -283,7 +286,9 @@ public sealed class PersonalPerformanceCalculator
             isFullyValued,
             liquidationValue,
             unrealizedProfit,
-            unrealizedProfit is { } profit ? CreateRoi(profit, FullUpFrontCost(openBasis, listingFees!.Value)) : null,
+            unrealizedProfit is { } profit
+                ? Gw2TradingPostFeePolicy.TryCalculateExactRoi(profit, openBasis, listingFees!.Value)
+                : null,
             items.AsReadOnly());
     }
 
@@ -300,7 +305,10 @@ public sealed class PersonalPerformanceCalculator
             Sum(values.Select(allocation => allocation.NetSaleProceeds)),
             acquisitionBasis,
             netProfit,
-            CreateRoi(netProfit, FullUpFrontCost(acquisitionBasis, Sum(values.Select(allocation => allocation.ListingFee)))));
+            Gw2TradingPostFeePolicy.TryCalculateExactRoi(
+                netProfit,
+                acquisitionBasis,
+                Sum(values.Select(allocation => allocation.ListingFee))));
     }
 
     private static bool IsWithin(DateTimeOffset timestamp, DateTimeOffset start, DateTimeOffset end) =>
@@ -308,13 +316,6 @@ public sealed class PersonalPerformanceCalculator
 
     private static Money TotalValue(int unitPriceInCopper, int quantity) =>
         new(checked((long)unitPriceInCopper * quantity));
-
-    private static ExactRoi? CreateRoi(Money profit, Money cost) =>
-        cost.Copper > 0 ? new ExactRoi(profit, cost) : null;
-
-    // The listing fee is non-refundable and therefore part of the full up-front
-    // cost denominator used consistently by current and historical ROI.
-    private static Money FullUpFrontCost(Money acquisitionBasis, Money listingFee) => acquisitionBasis + listingFee;
 
     private static Money Sum(IEnumerable<Money> values)
     {

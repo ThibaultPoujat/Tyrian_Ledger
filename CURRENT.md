@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: 2026-09-07
+Last updated: 2026-09-08
 
 ## Active direction
 
@@ -19,7 +19,7 @@ architecture to extend.
 
 ## Active milestone
 
-**M16 - Personal Dashboard and Current Orders**
+**M17 - Live Market Intelligence**
 
 M13 is complete through the local host, secure API-key validation, and typed
 personal Trading Post gateway work merged in PRs #102-#105. M14 is complete
@@ -46,7 +46,7 @@ realized P&L, explicit unknown-basis exclusion, open FIFO basis, and current
 liquidation/unrealized results only where complete market evidence exists.
 VERIFY-013 remains OPEN, so every fee-derived value is provisional.
 
-TKT-M16-01 / #78 is implemented on `codex/TKT-M16-01-dashboard`. It adds a
+TKT-M16-01 / #78 merged in PR #112. It adds a
 backend-authoritative local dashboard and current-order view: manual sync,
 connection and retained-coverage status, 7/30/90 realized results, separately
 labeled open/unrealized exposure, current buy/sell capital, recent trades,
@@ -55,27 +55,35 @@ only safe structured result data; fee, P&L, liquidation, and market comparison
 logic stay in the application/backend layers. Missing coverage, unknown basis,
 partial liquidation depth, and unavailable market evidence remain explicit.
 
-TKT-M16-01 is **NORMAL**. Required local validation is green; independent
-review remains for the owner to trigger. PR #112 is open for the owner review.
-After the #78 merge handoff, the next valid implementation ticket is:
+TKT-M17-01 / #79 is implemented in PR #113. It adds a backend-authoritative
+current aggregate-market scanner with configurable ROI/profit and bid/list
+policy, exact canonical fee economics, maximum integer bid, aggregate side
+quantity, observation time, and structured inclusion/exclusion evidence. The
+local no-store API encodes copper as strings and reports the fee-rounding model
+as provisional while VERIFY-013 remains OPEN. It deliberately does not read
+detailed order books, size positions, persist history, or add scanner UI.
 
-**TKT-M17-01 / #79 - Build the Live Fee-Aware Market Scanner.**
+TKT-M17-01 is **NORMAL**. Required local validation and refreshed CI are green;
+independent review remains for the owner to trigger. After the #79 review/merge handoff,
+the next valid implementation ticket is:
+
+**TKT-M17-02 / #80 - Add Order-Book Depth, Liquidity Quality, and Liquidity-Aware Sizing Evidence.**
 
 ## Known-good baseline
 
-TKT-M16-01 local validation on 2026-09-07 reported:
+TKT-M17-01 local validation on 2026-09-07 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused dashboard query/accounting: 83 tests passed; web integration: 30 tests passed;
-- full .NET: 273 tests passed;
+- focused live scanner/collector: 15 tests passed; web integration: 32 tests passed;
+- full .NET: 288 tests passed;
 - React: 15 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime and competing-fee-formula audits: no unexpected matches;
-- Gitleaks: complete reachable history scanned with no leaks.
+- Gitleaks: all 241 reachable commits scanned with no leaks.
 
-PR #111 is merged into `develop` as merge commit
-`c925d37ac201b55022b8b729d4c0d5e70c2902d5`.
+PR #112 is merged into `develop` as merge commit
+`df6c87989aded3c3977f7a7c193ec7110d136389`.
 
 ## Important transition warning
 

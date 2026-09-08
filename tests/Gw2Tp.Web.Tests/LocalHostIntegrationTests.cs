@@ -1,9 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
+using Gw2Tp.Analytics.Finance;
 using Gw2Tp.Application.AccountConnection;
 using Gw2Tp.Application.Dashboard;
+using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.MarketScanning;
 using Gw2Tp.Application.PersonalTradingPost;
+using Gw2Tp.Domain.Finance;
 using Gw2Tp.Web.Hosting;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Builder;
@@ -167,6 +171,91 @@ public sealed class LocalHostIntegrationTests
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("accountScope", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Live_market_scanner_endpoint_returns_safe_exact_money_strings_and_validates_query_settings()
+    {
+        var scanner = new FixedLiveMarketScanner(ReadyScannerResult());
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<ILiveMarketScanner>();
+                services.AddSingleton<ILiveMarketScanner>(scanner);
+            });
+        using var client = app.GetTestClient();
+
+        using var scannerRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            "/api/live-market-scanner?minimumRoiBasisPoints=5000&minimumNetProfitCopper=60&bidIncrementCopper=1&listUndercutCopper=1");
+        scannerRequest.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var response = await client.SendAsync(scannerRequest);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Equal(1, scanner.CallCount);
+        Assert.Contains("\"state\":\"ready\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"netProfit\":{\"copper\":\"9007199254740993\"}", body, StringComparison.Ordinal);
+        Assert.Contains("\"minimumRoiBasisPoints\":5000", body, StringComparison.Ordinal);
+        Assert.Contains("\"qualifyingCandidateCount\":1", body, StringComparison.Ordinal);
+        Assert.Contains("\"isTruncated\":false", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
+
+        using var invalidRequest = new HttpRequestMessage(HttpMethod.Get, "/api/live-market-scanner?minimumRoiBasisPoints=not-a-number");
+        invalidRequest.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var invalid = await client.SendAsync(invalidRequest);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("no-store", invalid.Headers.CacheControl?.ToString());
+        Assert.Equal(1, scanner.CallCount);
+        Assert.Contains("invalid_scanner_settings", await invalid.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Untrusted_origin_cannot_trigger_live_market_scan()
+    {
+        var scanner = new FixedLiveMarketScanner(ReadyScannerResult());
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<ILiveMarketScanner>();
+                services.AddSingleton<ILiveMarketScanner>(scanner);
+            });
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/live-market-scanner");
+        request.Headers.Add("Origin", "https://attacker.example");
+        request.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(0, scanner.CallCount);
+
+        using var trailingSlashRequest = new HttpRequestMessage(HttpMethod.Get, "/api/live-market-scanner/");
+        trailingSlashRequest.Headers.Add("Origin", "https://attacker.example");
+        trailingSlashRequest.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var trailingSlashResponse = await client.SendAsync(trailingSlashRequest);
+
+        Assert.Equal(HttpStatusCode.Forbidden, trailingSlashResponse.StatusCode);
+        Assert.Equal(0, scanner.CallCount);
+
+        using var headRequest = new HttpRequestMessage(HttpMethod.Head, "/api/live-market-scanner");
+        headRequest.Headers.Add("Origin", "https://attacker.example");
+        using var headResponse = await client.SendAsync(headRequest);
+
+        Assert.Equal(HttpStatusCode.Forbidden, headResponse.StatusCode);
+        Assert.Equal(0, scanner.CallCount);
     }
 
     [Fact]
@@ -676,6 +765,45 @@ public sealed class LocalHostIntegrationTests
     {
         public Task<PersonalDashboard> GetAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(PersonalDashboard.NotSynchronized());
+    }
+
+    private static LiveMarketScannerResult ReadyScannerResult()
+    {
+        var profit = new Money(9_007_199_254_740_993);
+        var totalCost = new Money(9_007_199_254_741_003);
+        return new LiveMarketScannerResult(
+            LiveMarketScannerState.Ready,
+            null,
+            new DateTimeOffset(2026, 9, 7, 12, 0, 0, TimeSpan.Zero),
+            LiveMarketScannerSettings.Default,
+            IsFeeRoundingExternallyVerified: false,
+            QualifyingCandidateCount: 1,
+            IsTruncated: false,
+            [new LiveMarketScannerCandidate(
+                new MarketItemMetadata(42, "Synthetic item", MarketItemStackPolicy.NormalStackLimit),
+                new MarketOrderSummary(10, 100),
+                new MarketOrderSummary(20, 200),
+                new Money(101),
+                new Money(199),
+                new FlipProfitScenario(new Money(101), new Money(199), new Money(10), new Money(20), new Money(169), profit),
+                totalCost,
+                new ExactRoi(profit, totalCost),
+                new Money(168),
+                [LiveMarketScannerInclusionReason.MeetsMinimumRoi])],
+            []);
+    }
+
+    private sealed class FixedLiveMarketScanner(LiveMarketScannerResult result) : ILiveMarketScanner
+    {
+        public int CallCount { get; private set; }
+
+        public Task<LiveMarketScannerResult> ScanAsync(
+            LiveMarketScannerSettings settings,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(result with { Settings = settings });
+        }
     }
 
     private static Task<HttpResponseMessage> SendWithOriginAsync(

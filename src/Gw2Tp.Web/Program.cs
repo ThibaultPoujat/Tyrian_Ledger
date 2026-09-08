@@ -1,5 +1,7 @@
 using Gw2Tp.Application.AccountConnection;
 using Gw2Tp.Application.Dashboard;
+using Gw2Tp.Application.MarketScanning;
+using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Infrastructure.Persistence;
@@ -44,6 +46,8 @@ public static class Program
         builder.Services.AddTyrianLedgerAccountConnection(builder.Environment, builder.Configuration);
         builder.Services.AddTyrianLedgerPersistence(builder.Configuration);
         builder.Services.AddSingleton<IPersonalDashboardService, PersonalDashboardService>();
+        builder.Services.AddSingleton<PublicMarketSnapshotCollector>();
+        builder.Services.AddSingleton<ILiveMarketScanner, LiveMarketScanner>();
         builder.Services.AddHostFiltering(options =>
         {
             options.AllowedHosts = hostOptions.AllowedHosts;
@@ -118,6 +122,28 @@ public static class Program
             {
                 var dashboard = await dashboardService.GetAsync(cancellationToken).ConfigureAwait(false);
                 await PersonalDashboardResponseWriter.WriteAsync(context, dashboard).ConfigureAwait(false);
+            });
+        app.MapGet(
+            "/api/live-market-scanner",
+            async (
+                HttpContext context,
+                ILiveMarketScanner scanner,
+                CancellationToken cancellationToken) =>
+            {
+                if (!LiveMarketScannerResponseWriter.TryReadSettings(context.Request.Query, out var settings))
+                {
+                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    await LiveMarketScannerResponseWriter.WriteInvalidSettingsAsync(context).ConfigureAwait(false);
+                    return;
+                }
+
+                var result = await scanner.ScanAsync(settings, cancellationToken).ConfigureAwait(false);
+                if (result.State == LiveMarketScannerState.Unavailable)
+                {
+                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                }
+
+                await LiveMarketScannerResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
             });
         app.MapLocalDataEndpoints();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));

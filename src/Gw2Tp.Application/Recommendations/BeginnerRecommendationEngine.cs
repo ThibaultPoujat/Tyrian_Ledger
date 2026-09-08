@@ -219,14 +219,14 @@ public sealed class BeginnerRecommendationEngine
         var buyOrderReserve = new Money(checked(buyUnitPrice.Copper * quantity));
         var grossSale = new Money(checked(saleUnitPrice.Copper * quantity));
         var profitScenario = profitCalculator.Calculate(buyOrderReserve, grossSale);
-        var totalCost = buyOrderReserve + profitScenario.ListingFee;
+        var totalCost = Gw2TradingPostFeePolicy.CalculateFullUpFrontCost(buyOrderReserve, profitScenario.ListingFee);
 
         return new RecommendationMetrics(
             quantity,
             buyOrderReserve,
             totalCost,
             profitScenario,
-            new ExactRoi(profitScenario.NetProfit, totalCost));
+            Gw2TradingPostFeePolicy.CalculateExactRoi(profitScenario.NetProfit, buyOrderReserve, profitScenario.ListingFee));
     }
 
     private static long CalculateSellerQuantityAtOrBelowBuyPrice(
