@@ -15,7 +15,8 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
     {
         var isUnsafeRequest = !SafeMethods.Contains(context.Request.Method);
         var isProtectedGet = HttpMethods.IsGet(context.Request.Method)
-            && (context.Request.Path == AccountConnectionPath || context.Request.Path == LiveMarketScannerPath);
+            && (IsProtectedPath(context.Request.Path, AccountConnectionPath) ||
+                IsProtectedPath(context.Request.Path, LiveMarketScannerPath));
         var hasOrigin = context.Request.Headers.Origin.Count > 0;
         var unsafeRequestDenied = isUnsafeRequest
             && (!originValidator.IsAllowed(context.Request) || !HasRequestHeader(context.Request));
@@ -41,4 +42,10 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
         return values.Count == 1
             && string.Equals(values[0], RequestHeaderValue, StringComparison.Ordinal);
     }
+
+    private static bool IsProtectedPath(PathString requestPath, PathString protectedPath) =>
+        string.Equals(
+            requestPath.Value?.TrimEnd('/'),
+            protectedPath.Value,
+            StringComparison.OrdinalIgnoreCase);
 }

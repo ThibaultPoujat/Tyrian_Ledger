@@ -239,6 +239,16 @@ public sealed class LocalHostIntegrationTests
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(0, scanner.CallCount);
+
+        using var trailingSlashRequest = new HttpRequestMessage(HttpMethod.Get, "/api/live-market-scanner/");
+        trailingSlashRequest.Headers.Add("Origin", "https://attacker.example");
+        trailingSlashRequest.Headers.Add(
+            LocalRequestOriginProtectionMiddleware.RequestHeader,
+            LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var trailingSlashResponse = await client.SendAsync(trailingSlashRequest);
+
+        Assert.Equal(HttpStatusCode.Forbidden, trailingSlashResponse.StatusCode);
+        Assert.Equal(0, scanner.CallCount);
     }
 
     [Fact]

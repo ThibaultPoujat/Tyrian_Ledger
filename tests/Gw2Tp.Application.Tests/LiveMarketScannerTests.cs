@@ -58,6 +58,40 @@ public sealed class LiveMarketScannerTests
     }
 
     [Fact]
+    public async Task Scan_applies_non_default_bid_and_list_price_policy_exactly()
+    {
+        var scanner = CreateScanner(new StubMarketDataClient(
+            prices: _ => Success([Price(1, 10, 100, 10, 200)])));
+        var settings = new LiveMarketScannerSettings(0, new(1), BidIncrementCopper: 5, ListUndercutCopper: 4);
+
+        var result = await scanner.ScanAsync(settings);
+
+        var candidate = Assert.Single(result.Candidates);
+        Assert.Equal(105, candidate.PlannedBid.Copper);
+        Assert.Equal(196, candidate.PlannedListPrice.Copper);
+        Assert.Equal(10, candidate.ProfitScenario.ListingFee.Copper);
+        Assert.Equal(20, candidate.ProfitScenario.ExchangeFee.Copper);
+        Assert.Equal(61, candidate.ProfitScenario.NetProfit.Copper);
+        Assert.Equal(165, candidate.MaximumBid.Copper);
+    }
+
+    [Fact]
+    public async Task Scan_reports_a_market_that_misses_only_the_minimum_roi_filter()
+    {
+        var scanner = CreateScanner(new StubMarketDataClient(
+            prices: _ => Success([Price(1, 10, 100, 10, 200)])));
+        var settings = new LiveMarketScannerSettings(MinimumRoiBasisPoints: 7_000, MinimumNetProfit: new(60), 1, 1);
+
+        var result = await scanner.ScanAsync(settings);
+
+        Assert.Empty(result.Candidates);
+        Assert.Contains(result.Exclusions, exclusion =>
+            exclusion.Reason == LiveMarketScannerExclusionReason.MinimumRoiNotMet && exclusion.Count == 1);
+        Assert.DoesNotContain(result.Exclusions, exclusion =>
+            exclusion.Reason == LiveMarketScannerExclusionReason.MinimumNetProfitNotMet);
+    }
+
+    [Fact]
     public async Task Scan_preserves_independent_fee_round_up_at_small_copper_values()
     {
         var scanner = CreateScanner(new StubMarketDataClient(
