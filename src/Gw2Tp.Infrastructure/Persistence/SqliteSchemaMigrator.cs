@@ -5,7 +5,7 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFactory)
 {
-    private const int LatestVersion = 3;
+    private const int LatestVersion = 4;
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> LatestSchemaColumns =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
@@ -49,6 +49,10 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 "singleton_id", "settings_version", "minimum_profit_in_copper",
                 "minimum_roi_basis_points", "cash_reserve_basis_points", "updated_at_utc",
             },
+            ["watchlist_entries"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "item_id", "added_at_utc",
+            },
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, SqliteColumnDefinition>> LatestColumnDefinitions =
@@ -62,6 +66,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["item_metadata"] = Columns(("item_id", "INTEGER", false, 1), ("name", "TEXT", true, 0), ("observed_at_utc", "TEXT", true, 0)),
             ["schema_migrations"] = Columns(("version", "INTEGER", false, 1), ("name", "TEXT", true, 0), ("applied_at_utc", "TEXT", true, 0)),
             ["user_settings"] = Columns(("singleton_id", "INTEGER", false, 1), ("settings_version", "INTEGER", true, 0), ("minimum_profit_in_copper", "INTEGER", false, 0), ("minimum_roi_basis_points", "INTEGER", false, 0), ("cash_reserve_basis_points", "INTEGER", false, 0), ("updated_at_utc", "TEXT", true, 0)),
+            ["watchlist_entries"] = Columns(("item_id", "INTEGER", false, 1), ("added_at_utc", "TEXT", true, 0)),
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<SqliteIndexDefinition>> RequiredIndexes =
@@ -92,6 +97,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["current_tp_order_observations"] = Checks("sidein(1,2)", "item_id>0", "unit_price_in_copper>=0", "quantity>0"),
             ["item_metadata"] = Checks("item_id>0", "length(name)>0"),
             ["user_settings"] = Checks("singleton_id=1", "settings_version>0", "minimum_profit_in_copper>=0", "minimum_roi_basis_pointsbetween0and10000", "cash_reserve_basis_pointsbetween0and10000"),
+            ["watchlist_entries"] = Checks("item_id>0"),
         };
 
     private static readonly IReadOnlyList<SqliteSchemaMigration> Migrations =
@@ -206,6 +212,15 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ALTER TABLE account_profiles ADD COLUMN last_sync_error_category INTEGER NULL CHECK (last_sync_error_category BETWEEN 0 AND 11);
             ALTER TABLE account_profiles ADD COLUMN history_coverage_start_utc TEXT NULL;
             ALTER TABLE account_profiles ADD COLUMN history_coverage_end_utc TEXT NULL;
+            """),
+        new(
+            4,
+            "local_watchlist_schema",
+            """
+            CREATE TABLE watchlist_entries (
+                item_id INTEGER PRIMARY KEY CHECK (item_id > 0),
+                added_at_utc TEXT NOT NULL
+            );
             """),
     ];
 

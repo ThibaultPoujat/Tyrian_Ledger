@@ -58,6 +58,33 @@ afterEach(() => {
 });
 
 describe('M14 local data controls', () => {
+  it('renders backend-authoritative scanner evidence and toggles a durable watchlist entry', async () => {
+    const scanner = {
+      state: 'ready', error: null, observedAtUtc: '2026-09-08T12:00:00Z', isFeeRoundingExternallyVerified: false,
+      exclusions: [{ reason: 'feeLosing', count: 2 }],
+      candidates: [{ itemId: 42, itemName: 'Scanner item', plannedBid: { copper: '100' }, plannedListPrice: { copper: '200' }, netProfit: { copper: '70' }, totalCost: { copper: '105' }, maximumBid: { copper: '120' }, modeledRoi: { profit: { copper: '70' }, totalCost: { copper: '105' } }, liquidity: { participationCapQuantity: 3, reasons: ['buyPriceCliff'], acquisition: { requestedQuantity: 1, filledQuantity: 1, isFullyFilled: true, totalValue: { copper: '110' } }, liquidation: { requestedQuantity: 1, filledQuantity: 1, isFullyFilled: true, totalValue: { copper: '200' } }, topBuyLevels: [{ listings: 2, quantity: 5, unitPrice: { copper: '100' } }], topSellLevels: [{ listings: 3, quantity: 8, unitPrice: { copper: '200' } }] } }],
+    };
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (typeof input === 'string' && input.startsWith('/api/live-market-scanner')) return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(scanner) } as unknown as Response);
+      if (input === '/api/watchlist') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ itemIds: [] }) } as unknown as Response);
+      if (input === '/api/watchlist/42' && init?.method === 'PUT') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'watching' }) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Current scanner and watchlist' })).toBeVisible();
+    expect(await screen.findByText('Scanner item')).toBeVisible();
+    expect(screen.getByText(/Risk: Buy Price Cliff/)).toBeVisible();
+    fireEvent.click(screen.getByText('Order-book detail'));
+    expect(screen.getByRole('heading', { name: 'Buy orders' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Add to watchlist' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/watchlist/42', expect.objectContaining({ method: 'PUT' })));
+    expect(Storage.prototype.setItem).not.toHaveBeenCalled();
+  });
+
   it('shows the local foundation, safe no-key status, and guarded recovery controls', async () => {
     render(<App />);
 

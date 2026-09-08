@@ -161,6 +161,14 @@ No migration in M14 creates a credential, API-key, authorization,
 token, raw-upstream-payload, accounting, market-history, position, or
 recommendation table.
 
+### M17 watchlist schema
+
+TKT-M17-03 adds `watchlist_entries` through migration 4. It is a local-user
+table (not an account or credential table): `item_id` is the positive primary
+key and `added_at_utc` records when the market was approved. It is retained by
+clear-personal-account-data alongside local settings, and participates in the
+existing local backup/restore workflow.
+
 ## 4. Accounting entities
 
 ### InventoryLot

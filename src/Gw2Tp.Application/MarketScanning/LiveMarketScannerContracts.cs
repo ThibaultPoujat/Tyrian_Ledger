@@ -83,7 +83,9 @@ public sealed record LiveMarketScannerLiquidityEvidence(
     OrderBookExecutionScenario Acquisition,
     OrderBookExecutionScenario Liquidation,
     int ParticipationCapQuantity,
-    IReadOnlyList<LiveMarketScannerLiquidityReason> Reasons);
+    IReadOnlyList<LiveMarketScannerLiquidityReason> Reasons,
+    IReadOnlyList<MarketOrderLevel> TopBuyLevels,
+    IReadOnlyList<MarketOrderLevel> TopSellLevels);
 
 public enum LiveMarketScannerState
 {

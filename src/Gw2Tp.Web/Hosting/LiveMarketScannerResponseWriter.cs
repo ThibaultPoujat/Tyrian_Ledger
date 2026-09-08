@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketScanning;
 using Gw2Tp.Domain.Finance;
 using Microsoft.AspNetCore.Http;
@@ -110,7 +111,14 @@ internal static class LiveMarketScannerResponseWriter
         ToExecutionResponse(liquidity.Acquisition),
         ToExecutionResponse(liquidity.Liquidation),
         liquidity.ParticipationCapQuantity,
-        liquidity.Reasons.ToArray());
+        liquidity.Reasons.ToArray(),
+        liquidity.TopBuyLevels.Select(ToOrderBookLevelResponse).ToArray(),
+        liquidity.TopSellLevels.Select(ToOrderBookLevelResponse).ToArray());
+
+    private static ScannerOrderBookLevelResponse ToOrderBookLevelResponse(MarketOrderLevel level) => new(
+        level.Listings,
+        level.Quantity,
+        MoneyResponse.From(new Money(level.UnitPriceInCopper)));
 
     private static ScannerExecutionResponse ToExecutionResponse(Gw2Tp.Analytics.OrderBooks.OrderBookExecutionScenario scenario) => new(
         scenario.RequestedQuantity,
@@ -214,7 +222,11 @@ internal static class LiveMarketScannerResponseWriter
         ScannerExecutionResponse Acquisition,
         ScannerExecutionResponse Liquidation,
         int ParticipationCapQuantity,
-        IReadOnlyList<LiveMarketScannerLiquidityReason> Reasons);
+        IReadOnlyList<LiveMarketScannerLiquidityReason> Reasons,
+        IReadOnlyList<ScannerOrderBookLevelResponse> TopBuyLevels,
+        IReadOnlyList<ScannerOrderBookLevelResponse> TopSellLevels);
+
+    private sealed record ScannerOrderBookLevelResponse(int Listings, int Quantity, MoneyResponse UnitPrice);
 
     private sealed record ScannerExclusionResponse(LiveMarketScannerExclusionReason Reason, int Count);
 

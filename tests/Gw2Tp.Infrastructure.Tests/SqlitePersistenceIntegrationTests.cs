@@ -21,7 +21,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Migrator.MigrateAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
         Assert.Equal(
             [
                 "account_profiles",
@@ -32,6 +32,7 @@ public sealed class SqlitePersistenceIntegrationTests
                 "item_metadata",
                 "schema_migrations",
                 "user_settings",
+                "watchlist_entries",
             ],
             await database.GetTableNamesAsync());
     }
@@ -47,10 +48,26 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await database.Migrator.MigrateAsync();
 
-        Assert.Equal([1, 2, 3], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
         var stored = Assert.Single(await database.PersonalTradingPost.GetCompletedTransactionsAsync(account));
         Assert.Equal(transaction, stored.Transaction);
         Assert.Contains("last_sync_outcome", await database.GetAccountProfileColumnNamesAsync());
+    }
+
+    [Fact]
+    public async Task Local_watchlist_is_idempotent_and_survives_restart()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.Watchlist.AddAsync(new WatchlistEntry(42, FirstObservedAtUtc));
+        await database.Watchlist.AddAsync(new WatchlistEntry(42, SecondObservedAtUtc));
+        await database.Watchlist.AddAsync(new WatchlistEntry(84, SecondObservedAtUtc));
+
+        Assert.Equal([42, 84], (await database.Watchlist.GetAllAsync()).Select(entry => entry.ItemId));
+        await database.Watchlist.RemoveAsync(42);
+        await database.Watchlist.RemoveAsync(42);
+
+        var restarted = new SqliteWatchlistRepository(database.Factory, database.Gate);
+        Assert.Equal([84], (await restarted.GetAllAsync()).Select(entry => entry.ItemId));
     }
 
     [Fact]
@@ -1001,7 +1018,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await using var backup = File.OpenRead(olderBackupPath);
         Assert.Equal(LocalDataRestoreOutcome.Restored, (await database.Recovery.RestoreAsync(backup)).Outcome);
-        Assert.Equal([1, 2, 3], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
     }
 
     [Fact]
@@ -1041,7 +1058,8 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(0, await database.GetTableCountAsync("current_order_sync_batches"));
         Assert.Equal(1, await database.GetTableCountAsync("item_metadata"));
         Assert.Equal(1, await database.GetTableCountAsync("user_settings"));
-        Assert.Equal([1, 2, 3], await database.GetMigrationVersionsAsync());
+        Assert.Equal(0, await database.GetTableCountAsync("watchlist_entries"));
+        Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
         Assert.True(File.Exists(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)));
         Assert.False(File.Exists(staleIncomingPath));
         Assert.False(File.Exists(staleDatabasePath));
@@ -1058,7 +1076,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Recovery.CleanupStaleRestoreArtifactsAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4], await database.GetMigrationVersionsAsync());
     }
 
     private static CompletedPersonalTradingPostTransaction CompletedTransaction(
@@ -1168,6 +1186,7 @@ public sealed class SqlitePersistenceIntegrationTests
             SynchronizationStore = new SqlitePersonalTradingPostSynchronizationStore(factory, Gate);
             ItemMetadata = new SqliteItemMetadataRepository(factory, Gate);
             UserSettings = new SqliteUserSettingsRepository(factory, Gate);
+            Watchlist = new SqliteWatchlistRepository(factory, Gate);
             Recovery = new SqliteLocalDataRecoveryService(factory, Gate, OperationGate);
         }
 
@@ -1186,6 +1205,8 @@ public sealed class SqlitePersistenceIntegrationTests
         public SqliteItemMetadataRepository ItemMetadata { get; }
 
         public SqliteUserSettingsRepository UserSettings { get; }
+
+        public SqliteWatchlistRepository Watchlist { get; }
 
         public SqliteLocalDataRecoveryService Recovery { get; }
 

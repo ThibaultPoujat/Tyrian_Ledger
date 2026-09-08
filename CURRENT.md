@@ -63,26 +63,33 @@ local no-store API encodes copper as strings and reports the fee-rounding model
 as provisional while VERIFY-013 remains OPEN. It deliberately does not read
 detailed order books, size positions, persist history, or add scanner UI.
 
-TKT-M17-02 / #80 is implemented in PR #114 and ready for its NORMAL
-owner-triggered independent review. It enriches every scanner shortlist candidate with complete
-visible order-book depth, near-best quantity/listing evidence, exact simulator
-acquisition/liquidation outcomes for a requested quantity, next-level price
-gaps/cliffs, shallow-book reasons, and a conservative visible-depth participation
-cap. The evidence remains current-book-only and does not become historical
-volume, a fill guarantee, or final portfolio sizing.
+TKT-M17-02 / #80 merged in PR #114. It enriches every scanner shortlist
+candidate with complete visible order-book depth, near-best quantity/listing
+evidence, exact simulator acquisition/liquidation outcomes for a requested
+quantity, next-level price gaps/cliffs, shallow-book reasons, and a conservative
+visible-depth participation cap. The evidence remains current-book-only and
+does not become historical volume, a fill guarantee, or final portfolio sizing.
 
-After the #80 review/merge handoff, the next valid implementation ticket is:
+TKT-M17-03 / #81 is implemented for NORMAL owner-triggered independent review.
+It adds an accessible local scanner screen with backend-returned current
+economics, filters/sorts, freshness and risk/rejection visibility, and bounded
+same-scan order-book detail. Its local-user watchlist is durable in SQLite,
+works without account connection, uses protected no-store loopback routes, and
+is retained with local settings through personal-account clearing and local
+backup/restore. React only displays backend financial and liquidity evidence.
 
-**TKT-M17-03 / #81 - Build the Live Scanner UI and Watchlist Workflow.**
+After the #81 review/merge handoff, the next valid implementation ticket is:
+
+**TKT-M18-01 / #82 - Define and Implement Owned Market-Observation Storage.**
 
 ## Known-good baseline
 
-TKT-M17-02 local validation on 2026-09-08 reported:
+TKT-M17-03 local validation on 2026-09-08 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused live scanner/depth: 15 tests passed; focused web integration: 1 test passed;
+- persistence/watchlist: 141 tests passed; web integration: 33 tests passed;
 - full .NET regression suite passed;
-- React: 15 component tests passed and the production build succeeded;
+- React: 16 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime and competing-fee-formula audits: no unexpected matches;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import './App.css';
+import ScannerPanel from './ScannerPanel';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
 type AccountConnectionState =
@@ -253,6 +254,7 @@ export default function App() {
               {syncStatus === 'failed' && <p role="alert">Synchronization could not be confirmed. Your existing local data was kept.</p>}
             </section>
             <DashboardPanel dashboard={dashboard} status={dashboardStatus} />
+            <ScannerPanel />
             <LocalDataPanel onPersonalDataChanged={loadDashboard} />
           </section>
         </main>

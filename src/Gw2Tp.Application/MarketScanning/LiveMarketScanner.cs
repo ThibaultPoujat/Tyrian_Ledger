@@ -13,6 +13,7 @@ namespace Gw2Tp.Application.MarketScanning;
 /// </summary>
 public sealed class LiveMarketScanner : ILiveMarketScanner
 {
+    public const int MaximumOrderBookDetailLevels = 10;
     public const int MaximumCandidateCount = 200;
     private const int MinimumVisibleSideQuantity = 10;
     private const int MinimumVisibleSideListings = 3;
@@ -279,7 +280,9 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
             acquisition,
             liquidation,
             participationCap,
-            reasons.OrderBy(reason => reason).ToArray());
+            reasons.OrderBy(reason => reason).ToArray(),
+            buys.Take(MaximumOrderBookDetailLevels).ToArray(),
+            sells.Take(MaximumOrderBookDetailLevels).ToArray());
     }
 
     private static bool HasExactItemSet<T>(IReadOnlyCollection<int> expectedItemIds, IReadOnlyList<T> values, Func<T, int> itemId) =>
