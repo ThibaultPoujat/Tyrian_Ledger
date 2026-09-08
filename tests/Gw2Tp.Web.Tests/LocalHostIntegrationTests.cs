@@ -279,6 +279,51 @@ public sealed class LocalHostIntegrationTests
     }
 
     [Fact]
+    public async Task Market_history_status_endpoint_exposes_safe_non_cacheable_governance_data_and_validates_filters()
+    {
+        await using var app = await StartApplicationAsync("Production");
+        using var client = app.GetTestClient();
+
+        using var statusRequest = new HttpRequestMessage(HttpMethod.Get, "/api/market-history");
+        statusRequest.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var status = await client.SendAsync(statusRequest);
+        var statusBody = await status.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, status.StatusCode);
+        Assert.Equal("no-store", status.Headers.CacheControl?.ToString());
+        Assert.Contains("\"evidenceKind\":\"aggregatePrices\"", statusBody, StringComparison.Ordinal);
+        Assert.Contains("\"evidenceKind\":\"detailedOrderBooks\"", statusBody, StringComparison.Ordinal);
+        Assert.Contains("\"mode\":\"preserveAllRawEvidence\"", statusBody, StringComparison.Ordinal);
+        Assert.Contains("\"integrityState\":\"passed\"", statusBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("credential", statusBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("authorization", statusBody, StringComparison.OrdinalIgnoreCase);
+
+        using var browserTimestampRequest = new HttpRequestMessage(HttpMethod.Get, "/api/market-history?itemId=42&fromInclusiveUtc=2026-09-08T12:00:00.000Z&toInclusiveUtc=2026-09-08T12:00:01Z");
+        browserTimestampRequest.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var browserTimestamp = await client.SendAsync(browserTimestampRequest);
+        Assert.Equal(HttpStatusCode.OK, browserTimestamp.StatusCode);
+        Assert.Equal("no-store", browserTimestamp.Headers.CacheControl?.ToString());
+
+        using var invalidRequest = new HttpRequestMessage(HttpMethod.Get, "/api/market-history?fromInclusiveUtc=2026-09-08T12:00:00.0000000Z");
+        invalidRequest.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var invalid = await client.SendAsync(invalidRequest);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("no-store", invalid.Headers.CacheControl?.ToString());
+        Assert.Contains("invalid_market_history_coverage_query", await invalid.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        using var missingZoneRequest = new HttpRequestMessage(HttpMethod.Get, "/api/market-history?fromInclusiveUtc=2026-09-08T12:00:00&toInclusiveUtc=2026-09-08T12:00:01Z");
+        missingZoneRequest.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var missingZone = await client.SendAsync(missingZoneRequest);
+        Assert.Equal(HttpStatusCode.BadRequest, missingZone.StatusCode);
+
+        using var untrustedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/market-history");
+        untrustedRequest.Headers.Add("Origin", "https://attacker.example");
+        untrustedRequest.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var untrusted = await client.SendAsync(untrustedRequest);
+        Assert.Equal(HttpStatusCode.Forbidden, untrusted.StatusCode);
+    }
+
+    [Fact]
     public async Task Market_history_collector_hosted_service_runs_and_stops_without_turning_shutdown_into_a_failure()
     {
         var collector = new FixedMarketHistoryCollector();

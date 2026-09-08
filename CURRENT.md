@@ -83,8 +83,7 @@ validation, item/time indexes, and an append-only repository boundary. Its
 typed adaptive policy composes current personal orders, watchlist entries, and
 future registered sources; full books require explicit high-interest opt-in.
 
-TKT-M18-02 / #83 is implemented in the pending owner-triggered NORMAL review
-handoff. It starts a loopback hosted collector that resumes per-item cadence
+TKT-M18-02 / #83 merged in PR #117. It starts a loopback hosted collector that resumes per-item cadence
 from retained aggregate observations, uses the typed gateway's existing request
 budget/batching/retry behavior, appends only valid complete evidence, exposes
 safe no-store health, and accepts a protected manual one-shot run. The worker
@@ -93,26 +92,40 @@ books remain an explicit policy opt-in. VERIFY-004, VERIFY-005, VERIFY-006,
 VERIFY-010, and VERIFY-011 remain OPEN with conservative configurable limits;
 no live keyed probe was performed.
 
-After the #83 NORMAL review/merge handoff, the next valid implementation ticket
+TKT-M18-03 / #84 is implemented in the pending owner-triggered NORMAL review
+handoff. It adds a read-only local history-status API with measured database
+size, per-item/time-window aggregate and detailed-book coverage, and on-demand
+integrity results. Retention policy version 1 independently preserves all raw
+aggregate and detailed-book evidence: it performs no deletion, rewriting, or
+downsampling without a future owner-approved migration. Populated backup/restore
+and clear-personal-data tests prove market history remains recoverable and
+separate from account-scoped clearing. Follow-up fixes also require exact
+current migration history, report SQLite corruption as failed integrity, and
+accept browser-standard UTC timestamp precision. A subsequent security follow-up
+protects the expensive integrity read from cross-origin use, validates schema
+shape before migration history, and rejects zone-less timestamps; no VERIFY
+entries changed.
+
+After the #84 NORMAL review/merge handoff, the next valid implementation ticket
 is:
 
-**TKT-M18-03 / #84 - Add Market-History Retention, Integrity, Storage Statistics, and Backup Coverage.**
+**TKT-M19-01 / #85 - Add Historical Market Metrics and Coverage-Aware Baselines.**
 
 ## Known-good baseline
 
-TKT-M18-02 local validation on 2026-09-08 reported:
+TKT-M18-03 local validation on 2026-09-08 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused collector: 9 tests passed; focused local-host collector endpoints and shutdown: 3 tests passed;
-- focused SQLite persistence: 8 tests passed;
-- full .NET regression suite: 323 tests passed;
+- focused market-history persistence: 14 tests passed; focused market-history status endpoint: 1 test passed;
+- clear-personal-data separation with retained market history: 1 test passed;
+- full .NET regression suite: 330 tests passed;
 - React: 18 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime audit: only expected negative assertions matched;
-- Gitleaks: all 263 reachable commits scanned with no leaks.
+- Gitleaks: all 270 reachable commits scanned with no leaks.
 
-PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/117
+PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/118
 
 ## Important transition warning
 

@@ -32,6 +32,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<IUserSettingsRepository, SqliteUserSettingsRepository>();
         services.AddSingleton<IWatchlistRepository, SqliteWatchlistRepository>();
         services.AddSingleton<IMarketHistoryRepository, SqliteMarketHistoryRepository>();
+        services.AddSingleton<IMarketHistoryStatusService, SqliteMarketHistoryStatusService>();
         services.AddSingleton<ILocalDataRecoveryService, SqliteLocalDataRecoveryService>();
         services.AddHostedService<SqliteDatabaseInitializationService>();
 

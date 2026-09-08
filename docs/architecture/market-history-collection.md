@@ -89,3 +89,27 @@ will expose measured usage before any retention policy is introduced.
 Raw rows are not rewritten, aggregated, or deleted by this ticket. A future
 downsampling or retention migration must retain its own versioned rules and
 must not corrupt or reinterpret the existing raw evidence.
+
+## Retention and integrity policy
+
+M18-03 establishes retention policy version 1 separately for aggregate
+best-price observations and detailed order-book captures. Both policies are
+`PreserveAllRawEvidence`: the application performs no automatic deletion,
+rewriting, or downsampling of either evidence class. Measured database size and
+coverage are exposed through the local `GET /api/market-history` status endpoint
+so a later policy can be proposed from actual usage rather than planning
+estimates.
+
+The status endpoint accepts an optional `itemId` and a paired UTC
+`fromInclusiveUtc`/`toInclusiveUtc` window. It reports database-file size,
+aggregate/book counts and observed ranges, the two policy identities, and an
+on-demand integrity result. Integrity validation checks SQLite integrity,
+schema/index/foreign-key consistency, UTC timestamp storage, duplicate-key
+constraints, and persisted market value invariants. A failed check is reported
+without attempting to repair, delete, or reinterpret retained evidence.
+
+Any future destructive retention or downsampling change requires an explicit
+owner-approved policy and a new versioned migration that preserves its stated
+raw window and derived aggregate semantics. Backup/restore continues to copy
+all market-history tables, while clear-personal-data remains limited to
+account-scoped data and does not clear public market history.

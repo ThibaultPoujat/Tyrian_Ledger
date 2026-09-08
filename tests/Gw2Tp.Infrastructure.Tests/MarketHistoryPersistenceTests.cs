@@ -193,6 +193,121 @@ public sealed class MarketHistoryPersistenceTests
         await Assert.ThrowsAsync<InvalidDataException>(() => SqliteSchemaMigrator.ValidateBackupCandidateAsync(database.Path));
     }
 
+    [Fact]
+    public async Task Status_reports_versioned_non_destructive_policy_storage_coverage_and_integrity()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.History.AppendPriceObservationAsync(Price(42, FirstObservedAtUtc));
+        await database.History.AppendPriceObservationAsync(Price(42, SecondObservedAtUtc));
+        await database.History.AppendOrderBookSnapshotAsync(new MarketOrderBookSnapshot(
+            FirstObservedAtUtc, 42, MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1,
+            [
+                new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 5, 2),
+                new MarketOrderBookLevel(MarketOrderBookSide.Sell, 0, 120, 7, 3),
+            ]));
+
+        var status = await database.Status.GetStatusAsync(new MarketHistoryCoverageQuery(42, FirstObservedAtUtc, FirstObservedAtUtc));
+
+        Assert.Equal(MarketHistoryIntegrityState.Passed, status.IntegrityState);
+        Assert.True(status.DatabaseFileBytes > 0);
+        Assert.Equal(
+        [
+            new MarketHistoryRetentionPolicy(1, MarketHistoryEvidenceKind.AggregatePrices, MarketHistoryRetentionMode.PreserveAllRawEvidence),
+            new MarketHistoryRetentionPolicy(1, MarketHistoryEvidenceKind.DetailedOrderBooks, MarketHistoryRetentionMode.PreserveAllRawEvidence),
+        ], status.RetentionPolicies);
+        Assert.Equal(1, status.Coverage.AggregateObservationCount);
+        Assert.Equal(FirstObservedAtUtc, status.Coverage.AggregateFirstObservedAtUtc);
+        Assert.Equal(FirstObservedAtUtc, status.Coverage.AggregateLastObservedAtUtc);
+        Assert.Equal(1, status.Coverage.DetailedBookSnapshotCount);
+        Assert.Equal(2, status.Coverage.DetailedBookLevelCount);
+        Assert.Equal(FirstObservedAtUtc, status.Coverage.DetailedBookFirstObservedAtUtc);
+        Assert.Equal(FirstObservedAtUtc, status.Coverage.DetailedBookLastObservedAtUtc);
+    }
+
+    [Fact]
+    public async Task Status_marks_malformed_retained_history_as_failed_without_rewriting_evidence()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var observation = Price(42, FirstObservedAtUtc);
+        await database.History.AppendPriceObservationAsync(observation);
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "UPDATE market_price_observations SET observed_at_utc = 'not-a-timestamp';";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var status = await database.Status.GetStatusAsync(new MarketHistoryCoverageQuery(null, null, null));
+
+        Assert.Equal(MarketHistoryIntegrityState.Failed, status.IntegrityState);
+        Assert.Equal(0, status.Coverage.AggregateObservationCount);
+    }
+
+    [Fact]
+    public async Task Status_marks_inconsistent_current_migration_history_as_failed()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "DELETE FROM schema_migrations WHERE version = 6;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var status = await database.Status.GetStatusAsync(new MarketHistoryCoverageQuery(null, null, null));
+
+        Assert.Equal(MarketHistoryIntegrityState.Failed, status.IntegrityState);
+    }
+
+    [Fact]
+    public async Task Status_marks_a_missing_migration_history_table_as_failed()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "DROP TABLE schema_migrations;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var status = await database.Status.GetStatusAsync(new MarketHistoryCoverageQuery(null, null, null));
+
+        Assert.Equal(MarketHistoryIntegrityState.Failed, status.IntegrityState);
+    }
+
+    [Fact]
+    public async Task Status_maps_an_unreadable_sqlite_database_to_failed_integrity()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        SqliteConnection.ClearAllPools();
+        await File.WriteAllTextAsync(database.Path, "not a SQLite database");
+
+        var status = await database.Status.GetStatusAsync(new MarketHistoryCoverageQuery(null, null, null));
+
+        Assert.Equal(MarketHistoryIntegrityState.Failed, status.IntegrityState);
+    }
+
+    [Fact]
+    public async Task Backup_and_restore_round_trip_preserves_market_history_without_personal_data_clear_behavior()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var first = Price(42, FirstObservedAtUtc);
+        await database.History.AppendPriceObservationAsync(first);
+        await database.History.AppendOrderBookSnapshotAsync(new MarketOrderBookSnapshot(
+            FirstObservedAtUtc, 42, MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1,
+            [new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 5, 2)]));
+        var backup = await database.Recovery.CreateBackupAsync();
+        await database.History.AppendPriceObservationAsync(Price(42, SecondObservedAtUtc));
+
+        await using var contents = File.OpenRead(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName));
+        var restored = await database.Recovery.RestoreAsync(contents);
+
+        Assert.Equal(Gw2Tp.Application.LocalData.LocalDataRestoreOutcome.Restored, restored.Outcome);
+        Assert.Equal([first], await database.History.GetPriceObservationsAsync(42, FirstObservedAtUtc, SecondObservedAtUtc));
+        Assert.Equal([new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 5, 2)], await database.GetOrderBookLevelsAsync());
+        Assert.Equal(MarketHistoryIntegrityState.Passed, (await database.Status.GetStatusAsync(new MarketHistoryCoverageQuery(null, null, null))).IntegrityState);
+    }
+
     private static MarketPriceObservation Price(int itemId, DateTimeOffset observedAtUtc) => new(
         observedAtUtc, itemId, 100, 120, 10, 20,
         MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1);
@@ -205,12 +320,16 @@ public sealed class MarketHistoryPersistenceTests
             Factory = factory;
             Migrator = new SqliteSchemaMigrator(factory);
             History = new SqliteMarketHistoryRepository(factory, gate);
+            Status = new SqliteMarketHistoryStatusService(factory, Migrator, gate);
+            Recovery = new SqliteLocalDataRecoveryService(factory, gate);
         }
 
         public string DirectoryPath { get; }
         public SqliteConnectionFactory Factory { get; }
         public SqliteSchemaMigrator Migrator { get; }
         public SqliteMarketHistoryRepository History { get; }
+        public SqliteMarketHistoryStatusService Status { get; }
+        public SqliteLocalDataRecoveryService Recovery { get; }
         public string Path => Factory.DatabasePath;
 
         public static async Task<TestDatabase> CreateAsync(bool migrate = true)
