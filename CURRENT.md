@@ -99,7 +99,9 @@ integrity results. Retention policy version 1 independently preserves all raw
 aggregate and detailed-book evidence: it performs no deletion, rewriting, or
 downsampling without a future owner-approved migration. Populated backup/restore
 and clear-personal-data tests prove market history remains recoverable and
-separate from account-scoped clearing; no VERIFY entries changed.
+separate from account-scoped clearing. Follow-up fixes also require exact
+current migration history, report SQLite corruption as failed integrity, and
+accept browser-standard UTC timestamp precision; no VERIFY entries changed.
 
 After the #84 NORMAL review/merge handoff, the next valid implementation ticket
 is:
@@ -111,14 +113,14 @@ is:
 TKT-M18-03 local validation on 2026-09-08 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused market-history persistence: 11 tests passed; focused market-history local-host endpoints: 4 tests passed;
+- focused market-history persistence: 13 tests passed; focused market-history status endpoint: 1 test passed;
 - clear-personal-data separation with retained market history: 1 test passed;
-- full .NET regression suite: 327 tests passed;
+- full .NET regression suite: 329 tests passed;
 - React: 18 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime audit: only expected negative assertions matched;
-- Gitleaks: all 267 reachable commits scanned with no leaks.
+- Gitleaks: all 269 reachable commits scanned with no leaks.
 
 PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/118
 

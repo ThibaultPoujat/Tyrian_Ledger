@@ -296,6 +296,10 @@ public sealed class LocalHostIntegrationTests
         Assert.DoesNotContain("credential", statusBody, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("authorization", statusBody, StringComparison.OrdinalIgnoreCase);
 
+        using var browserTimestamp = await client.GetAsync("/api/market-history?itemId=42&fromInclusiveUtc=2026-09-08T12:00:00.000Z&toInclusiveUtc=2026-09-08T12:00:01Z");
+        Assert.Equal(HttpStatusCode.OK, browserTimestamp.StatusCode);
+        Assert.Equal("no-store", browserTimestamp.Headers.CacheControl?.ToString());
+
         using var invalid = await client.GetAsync("/api/market-history?fromInclusiveUtc=2026-09-08T12:00:00.0000000Z");
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         Assert.Equal("no-store", invalid.Headers.CacheControl?.ToString());

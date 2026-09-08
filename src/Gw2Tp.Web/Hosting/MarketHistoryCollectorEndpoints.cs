@@ -100,7 +100,11 @@ internal static class MarketHistoryCollectorEndpoints
         }
 
         if (rawValue.Count != 1 || !DateTimeOffset.TryParseExact(
-                rawValue[0], "O", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed))
+                rawValue[0],
+                ["yyyy-MM-dd'T'HH:mm:ssK", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK"],
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var parsed))
         {
             return false;
         }

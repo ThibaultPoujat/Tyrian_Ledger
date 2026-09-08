@@ -244,6 +244,34 @@ public sealed class MarketHistoryPersistenceTests
     }
 
     [Fact]
+    public async Task Status_marks_inconsistent_current_migration_history_as_failed()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "DELETE FROM schema_migrations WHERE version = 6;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var status = await database.Status.GetStatusAsync(new MarketHistoryCoverageQuery(null, null, null));
+
+        Assert.Equal(MarketHistoryIntegrityState.Failed, status.IntegrityState);
+    }
+
+    [Fact]
+    public async Task Status_maps_an_unreadable_sqlite_database_to_failed_integrity()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        SqliteConnection.ClearAllPools();
+        await File.WriteAllTextAsync(database.Path, "not a SQLite database");
+
+        var status = await database.Status.GetStatusAsync(new MarketHistoryCoverageQuery(null, null, null));
+
+        Assert.Equal(MarketHistoryIntegrityState.Failed, status.IntegrityState);
+    }
+
+    [Fact]
     public async Task Backup_and_restore_round_trip_preserves_market_history_without_personal_data_clear_behavior()
     {
         await using var database = await TestDatabase.CreateAsync();

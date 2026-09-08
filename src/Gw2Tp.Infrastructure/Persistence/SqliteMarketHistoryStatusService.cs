@@ -52,6 +52,13 @@ internal sealed class SqliteMarketHistoryStatusService(
         {
             return MarketHistoryIntegrityState.Failed;
         }
+        catch (SqliteException exception) when (exception.SqliteErrorCode is 11 or 26)
+        {
+            // SQLITE_CORRUPT and SQLITE_NOTADB describe unusable database
+            // contents. Other database failures remain operational errors and
+            // must not be misrepresented as a completed integrity check.
+            return MarketHistoryIntegrityState.Failed;
+        }
     }
 
     private long GetDatabaseFileBytes() => File.Exists(connectionFactory.DatabasePath)

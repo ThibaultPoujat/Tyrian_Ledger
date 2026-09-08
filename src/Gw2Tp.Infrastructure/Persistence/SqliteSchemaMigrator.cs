@@ -331,6 +331,21 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
     {
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await ValidateIntegrityAsync(connection, cancellationToken).ConfigureAwait(false);
+        var appliedMigrations = await GetAppliedMigrationsAsync(connection, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ValidateAppliedMigrations(appliedMigrations);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new InvalidDataException("The SQLite database has inconsistent migration history.", exception);
+        }
+
+        if (appliedMigrations.Count != LatestVersion)
+        {
+            throw new InvalidDataException("The SQLite database does not have the current migration history.");
+        }
+
         await ValidateLatestSchemaAsync(connection, validatePersistedData: true, cancellationToken).ConfigureAwait(false);
     }
 
