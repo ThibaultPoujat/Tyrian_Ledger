@@ -179,8 +179,9 @@ window reads. Optional `market_order_book_snapshots` and immutable ordered
 `market_order_book_levels` are separate tables with their own item/time and
 snapshot indexes, so detailed depth is stored only after explicit policy opt-in.
 Migration 6 removes redundant explicit indexes already covered by uniqueness
-constraints and strengthens order-book-level prices to require a positive
-integer-copper value without invalidating existing version-5 databases.
+constraints. The repository rejects zero-price order-book levels for all new
+captures; schema-valid version-5 zero-price rows are retained unchanged as
+legacy raw evidence so migration and restore never rewrite or discard history.
 The full collection policy and representative storage-growth estimate are in
 `docs/architecture/market-history-collection.md`.
 

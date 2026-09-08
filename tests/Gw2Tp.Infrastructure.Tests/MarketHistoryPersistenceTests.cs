@@ -19,6 +19,13 @@ public sealed class MarketHistoryPersistenceTests
         await database.History.AppendOrderBookSnapshotAsync(new MarketOrderBookSnapshot(
             FirstObservedAtUtc, 42, MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1,
             [new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 5, 2)]));
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "UPDATE market_order_book_levels SET unit_price_in_copper = 0;";
+            await command.ExecuteNonQueryAsync();
+        }
+
         await database.Migrator.MigrateAsync();
         await database.Migrator.MigrateAsync();
 
@@ -31,8 +38,9 @@ public sealed class MarketHistoryPersistenceTests
         ],
         (await database.GetTableNamesAsync()).Where(name => name.StartsWith("market_", StringComparison.Ordinal)).ToArray());
         Assert.Equal(
-            [new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 5, 2)],
+            [new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 0, 5, 2)],
             await database.GetOrderBookLevelsAsync());
+        await SqliteSchemaMigrator.ValidateBackupCandidateAsync(database.Path);
     }
 
     [Fact]
@@ -47,6 +55,36 @@ public sealed class MarketHistoryPersistenceTests
         Assert.Equal([first, second], await database.History.GetPriceObservationsAsync(42, FirstObservedAtUtc, SecondObservedAtUtc));
         Assert.Empty(await database.History.GetPriceObservationsAsync(84, FirstObservedAtUtc, SecondObservedAtUtc));
         await Assert.ThrowsAsync<InvalidOperationException>(() => database.History.AppendPriceObservationAsync(first));
+    }
+
+    [Fact]
+    public async Task Schema_validation_accepts_the_briefly_published_strict_version_six_order_book_shape()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                ALTER TABLE market_order_book_levels RENAME TO market_order_book_levels_current;
+                CREATE TABLE market_order_book_levels (
+                    id INTEGER PRIMARY KEY,
+                    snapshot_id INTEGER NOT NULL CHECK (snapshot_id > 0),
+                    side INTEGER NOT NULL CHECK (side IN (1, 2)),
+                    level_ordinal INTEGER NOT NULL CHECK (level_ordinal >= 0),
+                    unit_price_in_copper INTEGER NOT NULL CHECK (unit_price_in_copper > 0),
+                    quantity INTEGER NOT NULL CHECK (quantity > 0),
+                    listings INTEGER NOT NULL CHECK (listings > 0),
+                    CONSTRAINT fk_market_order_book_levels_snapshot FOREIGN KEY (snapshot_id)
+                        REFERENCES market_order_book_snapshots(id) ON DELETE RESTRICT,
+                    CONSTRAINT uq_market_order_book_levels_snapshot_side_ordinal
+                        UNIQUE (snapshot_id, side, level_ordinal)
+                );
+                DROP TABLE market_order_book_levels_current;
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await database.Migrator.MigrateAsync();
     }
 
     [Fact]
@@ -95,12 +133,28 @@ public sealed class MarketHistoryPersistenceTests
         {
             await connection.OpenAsync();
             await using var command = connection.CreateCommand();
-            command.CommandText = "PRAGMA ignore_check_constraints = ON; UPDATE market_order_book_levels SET unit_price_in_copper = 0;";
+            command.CommandText = "PRAGMA ignore_check_constraints = ON; UPDATE market_order_book_snapshots SET sampling_tier = 9;";
             await command.ExecuteNonQueryAsync();
         }
 
         await Assert.ThrowsAsync<InvalidDataException>(() => SqliteSchemaMigrator.ValidateBackupCandidateAsync(malformedPath));
         Assert.Equal([observation], await database.History.GetPriceObservationsAsync(42, FirstObservedAtUtc, FirstObservedAtUtc));
+    }
+
+    [Fact]
+    public async Task Startup_schema_validation_does_not_scan_raw_history_but_backup_validation_does()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.History.AppendPriceObservationAsync(Price(42, FirstObservedAtUtc));
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "UPDATE market_price_observations SET observed_at_utc = 'not-a-timestamp';";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await database.Migrator.MigrateAsync();
+        await Assert.ThrowsAsync<InvalidDataException>(() => SqliteSchemaMigrator.ValidateBackupCandidateAsync(database.Path));
     }
 
     private static MarketPriceObservation Price(int itemId, DateTimeOffset observedAtUtc) => new(
