@@ -261,6 +261,9 @@ public sealed class MarketHistoryCollectorTests
         public Task<IReadOnlyList<MarketPriceObservation>> GetPriceObservationsAsync(int itemId, DateTimeOffset fromInclusiveUtc, DateTimeOffset toInclusiveUtc, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<MarketPriceObservation>>(Prices.Where(observation => observation.ItemId == itemId && observation.ObservedAtUtc >= fromInclusiveUtc && observation.ObservedAtUtc <= toInclusiveUtc).ToArray());
 
+        public Task<MarketPriceObservation?> GetLatestPriceObservationAsync(int itemId, LatestMarketPriceObservationQuery query, CancellationToken cancellationToken = default) =>
+            Task.FromResult<MarketPriceObservation?>(null);
+
         public Task<IReadOnlyDictionary<int, MarketPriceObservation>> GetLatestPriceObservationsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
         {
             var orderedItemIds = itemIds.OrderBy(itemId => itemId).ToArray();

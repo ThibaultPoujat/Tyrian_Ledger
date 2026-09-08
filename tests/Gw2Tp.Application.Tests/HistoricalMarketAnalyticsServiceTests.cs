@@ -128,6 +128,25 @@ public sealed class HistoricalMarketAnalyticsServiceTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.GetAsync(0));
     }
 
+    [Fact]
+    public async Task Latest_observed_roi_uses_the_latest_eligible_retained_observation_outside_the_analytics_windows()
+    {
+        var repository = new InMemoryHistoryRepository();
+        var olderEligible = Observation(42, AsOfUtc.AddDays(-31));
+        repository.Prices.Add(olderEligible);
+        repository.Prices.Add(Observation(42, AsOfUtc.AddDays(-1)) with { AggregateBuyQuantity = 0 });
+
+        var analytics = await new HistoricalMarketAnalyticsService(repository, new FixedClock(AsOfUtc)).GetAsync(42);
+
+        Assert.Equal(olderEligible.ObservedAtUtc, analytics.LatestObservedNetRoi?.ObservedAtUtc);
+        Assert.All(analytics.Windows, window =>
+        {
+            Assert.Equal(HistoricalMarketWindowState.InsufficientData, window.State);
+            Assert.Equal(1, window.Coverage.RawObservationCount);
+            Assert.Equal(0, window.Coverage.EligibleObservationCount);
+        });
+    }
+
     private static MarketPriceObservation Observation(int itemId, DateTimeOffset observedAtUtc) => new(
         observedAtUtc,
         itemId,
@@ -173,6 +192,22 @@ public sealed class HistoricalMarketAnalyticsServiceTests
             return Task.FromResult<IReadOnlyList<MarketPriceObservation>>(Prices
                 .Where(observation => observation.ItemId == itemId && observation.ObservedAtUtc >= fromInclusiveUtc && observation.ObservedAtUtc <= toInclusiveUtc)
                 .ToArray());
+        }
+
+        public Task<MarketPriceObservation?> GetLatestPriceObservationAsync(
+            int itemId,
+            LatestMarketPriceObservationQuery query,
+            CancellationToken cancellationToken = default)
+        {
+            query.Validate();
+            return Task.FromResult(Prices
+                .Where(observation => observation.ItemId == itemId &&
+                    observation.HighestBuyPriceInCopper <= query.MaximumHighestBuyPriceInCopper &&
+                    observation.LowestSellPriceInCopper >= query.MinimumLowestSellPriceInCopper &&
+                    observation.AggregateBuyQuantity >= query.MinimumAggregateBuyQuantity &&
+                    observation.AggregateSellQuantity >= query.MinimumAggregateSellQuantity)
+                .OrderByDescending(observation => observation.ObservedAtUtc)
+                .FirstOrDefault());
         }
 
         public Task<IReadOnlyDictionary<int, MarketPriceObservation>> GetLatestPriceObservationsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) =>

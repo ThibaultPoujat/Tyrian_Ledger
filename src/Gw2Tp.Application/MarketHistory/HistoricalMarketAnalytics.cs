@@ -107,13 +107,19 @@ public sealed class HistoricalMarketAnalyticsService(
         var asOfUtc = clock.UtcNow;
         if (asOfUtc.Offset != TimeSpan.Zero) throw new InvalidOperationException("The historical analytics clock must return UTC.");
         var longestWindow = settings.Windows.MaxBy(window => window.Duration)!;
-        var allObservations = await repository.GetPriceObservationsAsync(
+        var allObservationsTask = repository.GetPriceObservationsAsync(
             itemId,
             asOfUtc - longestWindow.Duration,
             asOfUtc,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken);
+        var latestObservationTask = GetLatestEligibleObservationAsync(itemId, cancellationToken);
+        await Task.WhenAll(allObservationsTask, latestObservationTask).ConfigureAwait(false);
+        var allObservations = await allObservationsTask.ConfigureAwait(false);
+        var latestObservation = await latestObservationTask.ConfigureAwait(false);
 
-        var latestCalculation = calculator.Calculate(ToAnalyticsObservations(allObservations), settings.Metrics);
+        var latestCalculation = calculator.Calculate(
+            latestObservation is null ? [] : ToAnalyticsObservations([latestObservation]),
+            settings.Metrics);
         var windows = settings.Windows
             .OrderBy(window => window.Duration)
             .Select(window => BuildWindow(window, asOfUtc, allObservations))
@@ -126,6 +132,21 @@ public sealed class HistoricalMarketAnalyticsService(
             settings,
             latestCalculation.LatestEligibleNetRoi,
             windows);
+    }
+
+    private Task<MarketPriceObservation?> GetLatestEligibleObservationAsync(int itemId, CancellationToken cancellationToken)
+    {
+        var maximumBuyPrice = (long)int.MaxValue - settings.Metrics.BidIncrementCopper;
+        var minimumSellPrice = (long)settings.Metrics.ListUndercutCopper + 1;
+        if (maximumBuyPrice <= 0 || minimumSellPrice > int.MaxValue)
+        {
+            return Task.FromResult<MarketPriceObservation?>(null);
+        }
+
+        return repository.GetLatestPriceObservationAsync(
+            itemId,
+            new LatestMarketPriceObservationQuery((int)maximumBuyPrice, (int)minimumSellPrice, 1, 1),
+            cancellationToken);
     }
 
     private HistoricalMarketWindowAnalytics BuildWindow(

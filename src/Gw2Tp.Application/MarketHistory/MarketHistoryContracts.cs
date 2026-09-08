@@ -42,6 +42,26 @@ public sealed record MarketPriceObservation(
     int SamplingPolicyVersion);
 
 /// <summary>
+/// A bounded raw-evidence filter for finding one most-recent observation. The
+/// caller owns the financial interpretation of these structural predicates.
+/// </summary>
+public sealed record LatestMarketPriceObservationQuery(
+    int MaximumHighestBuyPriceInCopper,
+    int MinimumLowestSellPriceInCopper,
+    int MinimumAggregateBuyQuantity,
+    int MinimumAggregateSellQuantity)
+{
+    public void Validate()
+    {
+        if (MaximumHighestBuyPriceInCopper <= 0 || MinimumLowestSellPriceInCopper <= 0 ||
+            MinimumAggregateBuyQuantity <= 0 || MinimumAggregateSellQuantity <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(LatestMarketPriceObservationQuery));
+        }
+    }
+}
+
+/// <summary>
 /// One explicitly requested full order-book capture. It is deliberately a
 /// separate record from cheap aggregate observations because its storage cost is
 /// materially higher.
@@ -185,6 +205,16 @@ public interface IMarketHistoryRepository
         int itemId,
         DateTimeOffset fromInclusiveUtc,
         DateTimeOffset toInclusiveUtc,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the most-recent retained aggregate observation for one item that
+    /// satisfies caller-provided raw-evidence bounds. This is a bounded lookup,
+    /// not a request to materialize all retained observations.
+    /// </summary>
+    Task<MarketPriceObservation?> GetLatestPriceObservationAsync(
+        int itemId,
+        LatestMarketPriceObservationQuery query,
         CancellationToken cancellationToken = default);
 
     /// <summary>

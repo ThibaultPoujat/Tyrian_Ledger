@@ -115,13 +115,13 @@ implementation ticket is:
 TKT-M19-01 local validation on 2026-09-08 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused historical analytics: 20 Analytics tests, 121 Application tests, and 40 Web tests passed;
-- full .NET regression suite: 344 tests passed;
+- focused historical analytics: 20 Analytics tests, 122 Application tests, and 40 Web tests passed;
+- full .NET regression suite: 346 tests passed;
 - React: 21 component tests passed and the production build succeeded;
 - Playwright: 12 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime audit: only expected negative assertions matched;
-- Gitleaks: all 279 reachable commits scanned with no leaks.
+- Gitleaks: all 280 reachable commits scanned with no leaks.
 
 PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/119 (Draft; pending owner-triggered Sol XHigh review)
 

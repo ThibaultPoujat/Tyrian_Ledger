@@ -108,6 +108,11 @@ derives modeled net ROI from integer-copper acquisition, listing fee, exchange
 fee, and profit inputs. The latest eligible retained observation is labeled
 `latest observed`; it is not a new live read.
 
+The latest-observed lookup is independent of the bounded trailing-window read,
+so retained valid evidence older than 30 days remains visible when no newer
+eligible observation exists. It is still one retained observation, not a live
+price or a forecast.
+
 The fixed 7-day and 30-day UTC windows are inclusive. They are available only
 when they contain at least 20 and 60 eligible observations respectively and
 the first-to-last eligible observation spans at least 80% of the requested
