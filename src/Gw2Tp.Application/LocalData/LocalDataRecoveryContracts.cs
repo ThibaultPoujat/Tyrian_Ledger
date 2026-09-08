@@ -39,6 +39,15 @@ public interface ILocalDataRecoveryService
         Stream backupContents,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Restores an application-created backup already held in the managed
+    /// local backup directory. The implementation must not accept paths or
+    /// arbitrary files through this operation.
+    /// </summary>
+    Task<LocalDataRestoreResult> RestoreManagedBackupAsync(
+        string backupFileName,
+        CancellationToken cancellationToken = default);
+
     Task ClearPersonalDataAsync(CancellationToken cancellationToken = default);
 
     Task CleanupStaleRestoreArtifactsAsync(CancellationToken cancellationToken = default);

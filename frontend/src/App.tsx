@@ -20,6 +20,7 @@ type AccountConnectionResponse = {
 type LocalDataLocation = {
   databasePath: string;
   backupDirectoryPath: string;
+  managedBackupUploadLimitBytes?: number;
 };
 
 type LocalDataLocationState =
@@ -87,7 +88,12 @@ function isLocalDataLocation(payload: unknown): payload is LocalDataLocation {
   }
 
   const candidate = payload as Record<string, unknown>;
-  return typeof candidate.databasePath === 'string' && typeof candidate.backupDirectoryPath === 'string';
+  return typeof candidate.databasePath === 'string'
+    && typeof candidate.backupDirectoryPath === 'string'
+    && (candidate.managedBackupUploadLimitBytes === undefined
+      || (typeof candidate.managedBackupUploadLimitBytes === 'number'
+        && Number.isSafeInteger(candidate.managedBackupUploadLimitBytes)
+        && candidate.managedBackupUploadLimitBytes > 0));
 }
 
 function localRequestHeaders(): Record<string, string> {
@@ -493,13 +499,28 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
 
     setIsRestoring(true);
     setMessage(null);
-    const form = new FormData();
-    form.append('backup', restoreFile);
-    form.append('confirmation', restoreConfirmation);
-    void fetch('/api/local-data/restore', { method: 'POST', headers: localRequestHeaders(), body: form })
+    const managedBackupUploadLimit = location.kind === 'ready'
+      ? location.location.managedBackupUploadLimitBytes
+      : undefined;
+    const restoreFromManagedBackup = managedBackupUploadLimit !== undefined && restoreFile.size > managedBackupUploadLimit;
+    const request = restoreFromManagedBackup
+      ? fetch('/api/local-data/restore-managed', {
+        method: 'POST',
+        headers: { ...localRequestHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: restoreConfirmation, backupFileName: restoreFile.name }),
+      })
+      : (() => {
+        const form = new FormData();
+        form.append('backup', restoreFile);
+        form.append('confirmation', restoreConfirmation);
+        return fetch('/api/local-data/restore', { method: 'POST', headers: localRequestHeaders(), body: form });
+      })();
+    void request
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('The selected backup could not be restored. Your current local data was kept.');
+          setMessage(restoreFromManagedBackup
+            ? 'Large backups must be Tyrian Ledger backups still kept in the managed Backups folder. Your current local data was kept.'
+            : 'The selected backup could not be restored. Your current local data was kept.');
           return;
         }
         const payload: unknown = await response.json();
@@ -556,7 +577,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     <section aria-labelledby="local-data-title" className="local-data-panel">
       <p className="eyebrow">Local data</p>
       <h2 id="local-data-title">Backup and recovery</h2>
-      <p>Backups stay on this computer. Tyrian Ledger never uploads your database or your backup files.</p>
+      <p>Backups stay on this computer. Tyrian Ledger handles restore files only through its local loopback host and never sends them to a cloud service.</p>
       {location.kind === 'loading' && <p aria-live="polite" role="status">Finding local data locations…</p>}
       {location.kind === 'unavailable' && <p role="alert">Local data locations are unavailable. Check that the local host is running.</p>}
       {location.kind === 'ready' && (
@@ -575,6 +596,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
       <div className="local-data-action">
         <h3>Restore a backup</h3>
         <p>Restoring replaces the active database only after the selected file is checked. A backup of the current data is created first.</p>
+        {location.kind === 'ready' && location.location.managedBackupUploadLimitBytes !== undefined && <p>Large Tyrian Ledger backups kept in the managed Backups folder are restored locally without a browser upload. Other selected backup files are limited to {Math.floor(location.location.managedBackupUploadLimitBytes / (1024 * 1024))} MiB.</p>}
         <label htmlFor="restore-backup">Backup file</label>
         <input ref={restoreFileInput} id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
         <label htmlFor="restore-confirmation">Type RESTORE LOCAL DATA to continue</label>

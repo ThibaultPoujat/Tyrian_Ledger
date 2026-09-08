@@ -40,6 +40,56 @@ internal sealed class SqliteLocalDataRecoveryService(
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         CleanupStaleRestoreArtifactsCore();
 
+        return await RestoreCoreAsync(backupContents, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<LocalDataRestoreResult> RestoreManagedBackupAsync(
+        string backupFileName,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryGetManagedBackupPath(backupFileName, out var backupPath))
+        {
+            return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+        }
+
+        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        CleanupStaleRestoreArtifactsCore();
+
+        if (!IsRegularManagedBackupFile(backupPath))
+        {
+            return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+        }
+
+        try
+        {
+            await using var backupContents = new FileStream(
+                backupPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 81920,
+                useAsync: true);
+            return await RestoreCoreAsync(backupContents, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (IOException)
+        {
+            return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+        }
+    }
+
+    private async Task<LocalDataRestoreResult> RestoreCoreAsync(
+        Stream backupContents,
+        CancellationToken cancellationToken)
+    {
         var stagingDirectory = Path.GetDirectoryName(connectionFactory.DatabasePath)
             ?? throw new InvalidOperationException("The local database path has no parent directory.");
         var incomingPath = Path.Combine(stagingDirectory, $"{RestoreArtifactPrefix}{Guid.NewGuid():N}.incoming");
@@ -249,7 +299,17 @@ internal sealed class SqliteLocalDataRecoveryService(
             return false;
         }
 
-        var backupStem = fileName[..markerIndex];
+        return IsManagedBackupFileName($"{fileName[..markerIndex]}.db");
+    }
+
+    private static bool IsManagedBackupFileName(string fileName)
+    {
+        if (!fileName.EndsWith(".db", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var backupStem = fileName[..^3];
         const string backupPrefix = "tyrian-ledger-backup-";
         const string preRestorePrefix = "tyrian-ledger-pre-restore-";
         var timestampAndCollisionSuffix = backupStem.StartsWith(backupPrefix, StringComparison.Ordinal)
@@ -258,6 +318,58 @@ internal sealed class SqliteLocalDataRecoveryService(
                 ? backupStem[preRestorePrefix.Length..]
                 : null;
         return timestampAndCollisionSuffix is not null && IsManagedBackupTimestamp(timestampAndCollisionSuffix);
+    }
+
+    private bool TryGetManagedBackupPath(string backupFileName, out string backupPath)
+    {
+        backupPath = string.Empty;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(backupFileName) ||
+                !string.Equals(backupFileName, Path.GetFileName(backupFileName), StringComparison.Ordinal) ||
+                !IsManagedBackupFileName(backupFileName))
+            {
+                return false;
+            }
+
+            var backupDirectory = Path.GetFullPath(GetBackupDirectoryPath());
+            var candidatePath = Path.GetFullPath(Path.Combine(backupDirectory, backupFileName));
+            var relativePath = Path.GetRelativePath(backupDirectory, candidatePath);
+            if (Path.IsPathRooted(relativePath) ||
+                relativePath.Equals("..", StringComparison.Ordinal) ||
+                relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            backupPath = candidatePath;
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsRegularManagedBackupFile(string backupPath)
+    {
+        try
+        {
+            var file = new FileInfo(backupPath);
+            return file.Exists && file.LinkTarget is null && (file.Attributes & FileAttributes.ReparsePoint) == 0;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static bool IsManagedBackupTimestamp(string timestampAndCollisionSuffix)

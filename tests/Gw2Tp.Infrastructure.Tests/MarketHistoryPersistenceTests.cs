@@ -288,6 +288,23 @@ public sealed class MarketHistoryPersistenceTests
     }
 
     [Fact]
+    public async Task Status_maps_a_64_bit_out_of_range_migration_version_to_failed_integrity()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "INSERT INTO schema_migrations (version, name, applied_at_utc) VALUES (2147483648, 'out_of_range', '2026-09-08T12:00:00.0000000+00:00');";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var status = await database.Status.GetStatusAsync(new MarketHistoryCoverageQuery(null, null, null));
+
+        Assert.Equal(MarketHistoryIntegrityState.Failed, status.IntegrityState);
+        await Assert.ThrowsAsync<InvalidDataException>(() => SqliteSchemaMigrator.ValidateBackupCandidateAsync(database.Path));
+    }
+
+    [Fact]
     public async Task Backup_and_restore_round_trip_preserves_market_history_without_personal_data_clear_behavior()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -299,8 +316,7 @@ public sealed class MarketHistoryPersistenceTests
         var backup = await database.Recovery.CreateBackupAsync();
         await database.History.AppendPriceObservationAsync(Price(42, SecondObservedAtUtc));
 
-        await using var contents = File.OpenRead(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName));
-        var restored = await database.Recovery.RestoreAsync(contents);
+        var restored = await database.Recovery.RestoreManagedBackupAsync(backup.FileName);
 
         Assert.Equal(Gw2Tp.Application.LocalData.LocalDataRestoreOutcome.Restored, restored.Outcome);
         Assert.Equal([first], await database.History.GetPriceObservationsAsync(42, FirstObservedAtUtc, SecondObservedAtUtc));

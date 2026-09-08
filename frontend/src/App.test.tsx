@@ -359,6 +359,45 @@ describe('M14 local data controls', () => {
     expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeDisabled();
   });
 
+  it('restores an oversized managed backup through the local managed-backup route', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/health') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      }
+      if (input === '/api/local-data') {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            databasePath: '/synthetic/tyrian-ledger.db',
+            backupDirectoryPath: '/synthetic/backups',
+            managedBackupUploadLimitBytes: 512 * 1024 * 1024,
+          }),
+        } as unknown as Response);
+      }
+      if (input === '/api/local-data/restore-managed') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
+      } as unknown as Response);
+    });
+    render(<App />);
+
+    const backup = new File(['synthetic'], 'tyrian-ledger-backup-20260908T120000000Z.db', { type: 'application/x-sqlite3' });
+    Object.defineProperty(backup, 'size', { value: 512 * 1024 * 1024 + 1 });
+    fireEvent.change(await screen.findByLabelText('Backup file'), { target: { files: [backup] } });
+    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
+
+    expect(await screen.findByText('Backup restored.')).toBeVisible();
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/local-data/restore-managed', expect.objectContaining({
+      method: 'POST',
+      headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ confirmation: 'RESTORE LOCAL DATA', backupFileName: backup.name }),
+    }));
+  });
+
   it('reports an unknown outcome when restore or clear loses its response', async () => {
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       if (input === '/api/health') {

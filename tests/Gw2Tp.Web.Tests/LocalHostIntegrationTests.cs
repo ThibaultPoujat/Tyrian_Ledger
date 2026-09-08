@@ -324,6 +324,45 @@ public sealed class LocalHostIntegrationTests
     }
 
     [Fact]
+    public async Task Market_history_status_endpoint_reports_out_of_range_migration_versions_as_failed_integrity()
+    {
+        var databaseDirectory = Path.Combine(Path.GetTempPath(), "TyrianLedger.Web.Tests", Guid.NewGuid().ToString("N"));
+        var databasePath = Path.Combine(databaseDirectory, "tyrian-ledger.db");
+        try
+        {
+            await using var app = await StartApplicationAsync("Production", new Dictionary<string, string?>
+            {
+                ["TyrianLedger:Database:Path"] = databasePath,
+            });
+            await using (var connection = new SqliteConnection($"Data Source={databasePath};Foreign Keys=True"))
+            {
+                await connection.OpenAsync();
+                await using var command = connection.CreateCommand();
+                command.CommandText = "INSERT INTO schema_migrations (version, name, applied_at_utc) VALUES (2147483648, 'out_of_range', '2026-09-08T12:00:00.0000000+00:00');";
+                await command.ExecuteNonQueryAsync();
+            }
+
+            using var client = app.GetTestClient();
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/api/market-history");
+            request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+            using var response = await client.SendAsync(request);
+            var body = await response.Content.ReadAsStringAsync();
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+            Assert.Contains("\"integrityState\":\"failed\"", body, StringComparison.Ordinal);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(databaseDirectory))
+            {
+                Directory.Delete(databaseDirectory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task Market_history_collector_hosted_service_runs_and_stops_without_turning_shutdown_into_a_failure()
     {
         var collector = new FixedMarketHistoryCollector();
@@ -486,11 +525,19 @@ public sealed class LocalHostIntegrationTests
                 restoreEndpoint.Metadata.GetMetadata<RequestFormLimitsAttribute>()?.MultipartBodyLengthLimit);
             Assert.True(LocalDataEndpoints.MaxRestoreRequestBytes > LocalDataEndpoints.MaxRestoreBackupBytes);
 
+            var managedRestoreEndpoint = app.Services.GetServices<EndpointDataSource>()
+                .SelectMany(source => source.Endpoints)
+                .OfType<RouteEndpoint>()
+                .Single(endpoint => string.Equals(endpoint.RoutePattern.RawText, "/api/local-data/restore-managed", StringComparison.Ordinal));
+            Assert.Null(managedRestoreEndpoint.Metadata.GetMetadata<IRequestSizeLimitMetadata>());
+            Assert.Null(managedRestoreEndpoint.Metadata.GetMetadata<RequestFormLimitsAttribute>());
+
             using var locationResponse = await client.GetAsync("/api/local-data");
             var locationBody = await locationResponse.Content.ReadAsStringAsync();
             Assert.Equal(HttpStatusCode.OK, locationResponse.StatusCode);
             Assert.Equal("no-store", locationResponse.Headers.CacheControl?.ToString());
             Assert.Contains("backupDirectoryPath", locationBody, StringComparison.Ordinal);
+            Assert.Contains("managedBackupUploadLimitBytes", locationBody, StringComparison.Ordinal);
             Assert.DoesNotContain("credential", locationBody, StringComparison.OrdinalIgnoreCase);
 
             using var rejectedClear = await SendJsonAsync(client, "/api/local-data/clear-personal", new { confirmation = "clear" });
@@ -504,6 +551,26 @@ public sealed class LocalHostIntegrationTests
             Assert.Contains("fileName", backupBody, StringComparison.Ordinal);
             Assert.DoesNotContain(databasePath, backupBody, StringComparison.Ordinal);
 
+            using var backupDocument = System.Text.Json.JsonDocument.Parse(backupBody);
+            var backupFileName = backupDocument.RootElement.GetProperty("fileName").GetString();
+            Assert.False(string.IsNullOrWhiteSpace(backupFileName));
+
+            using var managedRestore = await SendJsonAsync(client, "/api/local-data/restore-managed", new
+            {
+                confirmation = "RESTORE LOCAL DATA",
+                backupFileName,
+            });
+            Assert.Equal(HttpStatusCode.OK, managedRestore.StatusCode);
+            Assert.Equal("no-store", managedRestore.Headers.CacheControl?.ToString());
+
+            using var invalidManagedRestore = await SendJsonAsync(client, "/api/local-data/restore-managed", new
+            {
+                confirmation = "RESTORE LOCAL DATA",
+                backupFileName = "../tyrian-ledger-backup-20260908T120000000Z.db",
+            });
+            Assert.Equal(HttpStatusCode.BadRequest, invalidManagedRestore.StatusCode);
+            Assert.Equal("no-store", invalidManagedRestore.Headers.CacheControl?.ToString());
+
             using var invalidRestore = await SendRestoreAsync(client, "RESTORE LOCAL DATA", "not a database");
             Assert.Equal(HttpStatusCode.BadRequest, invalidRestore.StatusCode);
             Assert.Equal("no-store", invalidRestore.Headers.CacheControl?.ToString());
@@ -516,6 +583,7 @@ public sealed class LocalHostIntegrationTests
                      {
                          CreateUntrustedLocalDataRequest("/api/local-data/backup"),
                          CreateUntrustedLocalDataRequest("/api/local-data/restore", new MultipartFormDataContent()),
+                         CreateUntrustedLocalDataRequest("/api/local-data/restore-managed", JsonContent.Create(new { confirmation = "RESTORE LOCAL DATA", backupFileName })),
                          CreateUntrustedLocalDataRequest("/api/local-data/clear-personal", JsonContent.Create(new { confirmation = "CLEAR PERSONAL DATA" })),
                      })
             {

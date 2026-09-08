@@ -112,4 +112,7 @@ Any future destructive retention or downsampling change requires an explicit
 owner-approved policy and a new versioned migration that preserves its stated
 raw window and derived aggregate semantics. Backup/restore continues to copy
 all market-history tables, while clear-personal-data remains limited to
-account-scoped data and does not clear public market history.
+account-scoped data and does not clear public market history. Application-created
+backups retained in the managed backup directory can be restored locally without
+the imported-file browser upload limit, so that limit does not become a
+retention or recoverability boundary for accumulated history.
