@@ -51,6 +51,18 @@ public sealed class AdaptiveMarketSamplingPolicyTests
     }
 
     [Fact]
+    public void Policy_rejects_intervals_that_invert_tier_priority()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveMarketSamplingPolicy(
+            Array.Empty<IMarketSamplingSource>(),
+            new MarketSamplingSettings(1, TimeSpan.FromMinutes(30), TimeSpan.FromMinutes(15), TimeSpan.FromHours(6))));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new AdaptiveMarketSamplingPolicy(
+            Array.Empty<IMarketSamplingSource>(),
+            new MarketSamplingSettings(1, TimeSpan.FromMinutes(15), TimeSpan.FromHours(7), TimeSpan.FromHours(6))));
+    }
+
+    [Fact]
     public async Task Current_personal_order_source_returns_empty_without_a_synced_profile()
     {
         var source = new CurrentPersonalOrderMarketSamplingSource(

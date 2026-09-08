@@ -56,7 +56,8 @@ public sealed record MarketSamplingSettings(
     public void Validate()
     {
         if (PolicyVersion <= 0 || CurrentPersonalOrderInterval <= TimeSpan.Zero ||
-            WatchlistInterval <= TimeSpan.Zero || BroadMarketInterval <= TimeSpan.Zero)
+            WatchlistInterval <= TimeSpan.Zero || BroadMarketInterval <= TimeSpan.Zero ||
+            CurrentPersonalOrderInterval > WatchlistInterval || WatchlistInterval > BroadMarketInterval)
         {
             throw new ArgumentOutOfRangeException(nameof(MarketSamplingSettings));
         }

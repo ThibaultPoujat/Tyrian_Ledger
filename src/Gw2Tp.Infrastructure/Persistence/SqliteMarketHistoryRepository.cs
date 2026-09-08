@@ -164,7 +164,7 @@ internal sealed class SqliteMarketHistoryRepository(
         foreach (var level in snapshot.Levels)
         {
             ArgumentNullException.ThrowIfNull(level);
-            if (!Enum.IsDefined(level.Side) || level.LevelOrdinal < 0 || level.UnitPriceInCopper < 0 || level.Quantity <= 0 || level.Listings <= 0 || !seenLevels.Add((level.Side, level.LevelOrdinal)))
+            if (!Enum.IsDefined(level.Side) || level.LevelOrdinal < 0 || level.UnitPriceInCopper <= 0 || level.Quantity <= 0 || level.Listings <= 0 || !seenLevels.Add((level.Side, level.LevelOrdinal)))
             {
                 throw new ArgumentOutOfRangeException(nameof(snapshot));
             }

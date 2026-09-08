@@ -15,10 +15,14 @@ public sealed class MarketHistoryPersistenceTests
     {
         await using var database = await TestDatabase.CreateAsync(migrate: false);
         await database.Migrator.MigrateToAsync(4);
+        await database.Migrator.MigrateToAsync(5);
+        await database.History.AppendOrderBookSnapshotAsync(new MarketOrderBookSnapshot(
+            FirstObservedAtUtc, 42, MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1,
+            [new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 5, 2)]));
         await database.Migrator.MigrateAsync();
         await database.Migrator.MigrateAsync();
 
-        Assert.Equal([1, 2, 3, 4, 5], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6], await database.GetMigrationVersionsAsync());
         Assert.Equal(
         [
             "market_order_book_levels",
@@ -26,6 +30,9 @@ public sealed class MarketHistoryPersistenceTests
             "market_price_observations",
         ],
         (await database.GetTableNamesAsync()).Where(name => name.StartsWith("market_", StringComparison.Ordinal)).ToArray());
+        Assert.Equal(
+            [new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 5, 2)],
+            await database.GetOrderBookLevelsAsync());
     }
 
     [Fact]
@@ -52,6 +59,9 @@ public sealed class MarketHistoryPersistenceTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => database.History.AppendOrderBookSnapshotAsync(new MarketOrderBookSnapshot(
             FirstObservedAtUtc, 42, MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1,
             [new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 0, 1)])));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => database.History.AppendOrderBookSnapshotAsync(new MarketOrderBookSnapshot(
+            FirstObservedAtUtc, 42, MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1,
+            [new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 0, 1, 1)])));
 
         await database.History.AppendOrderBookSnapshotAsync(new MarketOrderBookSnapshot(
             FirstObservedAtUtc, 42, MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1,
@@ -60,8 +70,12 @@ public sealed class MarketHistoryPersistenceTests
                 new MarketOrderBookLevel(MarketOrderBookSide.Sell, 0, 120, 7, 3),
             ]));
 
-        Assert.Equal(1, await database.GetTableCountAsync("market_order_book_snapshots"));
-        Assert.Equal(2, await database.GetTableCountAsync("market_order_book_levels"));
+        Assert.Equal(
+        [
+            new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 5, 2),
+            new MarketOrderBookLevel(MarketOrderBookSide.Sell, 0, 120, 7, 3),
+        ],
+        await database.GetOrderBookLevelsAsync());
         Assert.Equal(0, await database.GetTableCountAsync("market_price_observations"));
     }
 
@@ -71,6 +85,9 @@ public sealed class MarketHistoryPersistenceTests
         await using var database = await TestDatabase.CreateAsync();
         var observation = Price(42, FirstObservedAtUtc);
         await database.History.AppendPriceObservationAsync(observation);
+        await database.History.AppendOrderBookSnapshotAsync(new MarketOrderBookSnapshot(
+            FirstObservedAtUtc, 42, MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1,
+            [new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 5, 2)]));
         var malformedPath = Path.Combine(database.DirectoryPath, "malformed-history.db");
         File.Copy(database.Path, malformedPath);
 
@@ -78,7 +95,7 @@ public sealed class MarketHistoryPersistenceTests
         {
             await connection.OpenAsync();
             await using var command = connection.CreateCommand();
-            command.CommandText = "PRAGMA ignore_check_constraints = ON; UPDATE market_price_observations SET sampling_tier = 9;";
+            command.CommandText = "PRAGMA ignore_check_constraints = ON; UPDATE market_order_book_levels SET unit_price_in_copper = 0;";
             await command.ExecuteNonQueryAsync();
         }
 
@@ -146,6 +163,22 @@ public sealed class MarketHistoryPersistenceTests
             await using var command = connection.CreateCommand();
             command.CommandText = $"SELECT COUNT(*) FROM {tableName};";
             return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        public async Task<IReadOnlyList<MarketOrderBookLevel>> GetOrderBookLevelsAsync()
+        {
+            await using var connection = await Factory.OpenConnectionAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT side, level_ordinal, unit_price_in_copper, quantity, listings FROM market_order_book_levels ORDER BY side, level_ordinal;";
+            await using var reader = await command.ExecuteReaderAsync();
+            var levels = new List<MarketOrderBookLevel>();
+            while (await reader.ReadAsync())
+            {
+                levels.Add(new MarketOrderBookLevel(
+                    (MarketOrderBookSide)reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4)));
+            }
+
+            return levels;
         }
 
         public ValueTask DisposeAsync()

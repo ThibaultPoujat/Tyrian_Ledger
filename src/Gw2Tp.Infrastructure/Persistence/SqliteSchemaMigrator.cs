@@ -5,7 +5,7 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFactory)
 {
-    private const int LatestVersion = 5;
+    private const int LatestVersion = 6;
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> LatestSchemaColumns =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
@@ -92,9 +92,9 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["completed_tp_transactions"] = [new(null, true, ["account_profile_id", "external_transaction_id"]), new("ix_completed_transactions_account_completed_at", false, ["account_profile_id", "completed_at_utc"])],
             ["current_tp_orders"] = [new(null, true, ["account_profile_id", "external_order_id"])],
             ["current_tp_order_observations"] = [new(null, true, ["sync_batch_id", "external_order_id"]), new("ix_current_order_observations_account_observed_at", false, ["account_profile_id", "observed_at_utc"])],
-            ["market_price_observations"] = [new(null, true, ["item_id", "observed_at_utc"]), new("ix_market_price_observations_item_observed_at", false, ["item_id", "observed_at_utc"])],
-            ["market_order_book_snapshots"] = [new(null, true, ["item_id", "observed_at_utc"]), new("ix_market_order_book_snapshots_item_observed_at", false, ["item_id", "observed_at_utc"])],
-            ["market_order_book_levels"] = [new(null, true, ["snapshot_id", "side", "level_ordinal"]), new("ix_market_order_book_levels_snapshot", false, ["snapshot_id"])],
+            ["market_price_observations"] = [new(null, true, ["item_id", "observed_at_utc"])],
+            ["market_order_book_snapshots"] = [new(null, true, ["item_id", "observed_at_utc"])],
+            ["market_order_book_levels"] = [new(null, true, ["snapshot_id", "side", "level_ordinal"])],
         };
 
     private static readonly IReadOnlyList<SqliteForeignKeyDefinition> RequiredForeignKeys =
@@ -120,7 +120,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["watchlist_entries"] = Checks("item_id>0"),
             ["market_price_observations"] = Checks("item_id>0", "highest_buy_price_in_copper>=0", "lowest_sell_price_in_copper>=0", "aggregate_buy_quantity>=0", "aggregate_sell_quantity>=0", "source_status=1", "sampling_tierbetween1and3", "sampling_policy_version>0"),
             ["market_order_book_snapshots"] = Checks("item_id>0", "source_status=1", "sampling_tierbetween1and3", "sampling_policy_version>0"),
-            ["market_order_book_levels"] = Checks("snapshot_id>0", "sidein(1,2)", "level_ordinal>=0", "unit_price_in_copper>=0", "quantity>0", "listings>0"),
+            ["market_order_book_levels"] = Checks("snapshot_id>0", "sidein(1,2)", "level_ordinal>=0", "unit_price_in_copper>0", "quantity>0", "listings>0"),
         };
 
     private static readonly IReadOnlyList<SqliteSchemaMigration> Migrations =
@@ -295,6 +295,36 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
 
             CREATE INDEX ix_market_order_book_levels_snapshot
                 ON market_order_book_levels (snapshot_id);
+            """),
+        new(
+            6,
+            "market_history_validation_hardening",
+            """
+            DROP INDEX IF EXISTS ix_market_price_observations_item_observed_at;
+            DROP INDEX IF EXISTS ix_market_order_book_snapshots_item_observed_at;
+
+            ALTER TABLE market_order_book_levels RENAME TO market_order_book_levels_v5;
+
+            CREATE TABLE market_order_book_levels (
+                id INTEGER PRIMARY KEY,
+                snapshot_id INTEGER NOT NULL CHECK (snapshot_id > 0),
+                side INTEGER NOT NULL CHECK (side IN (1, 2)),
+                level_ordinal INTEGER NOT NULL CHECK (level_ordinal >= 0),
+                unit_price_in_copper INTEGER NOT NULL CHECK (unit_price_in_copper > 0),
+                quantity INTEGER NOT NULL CHECK (quantity > 0),
+                listings INTEGER NOT NULL CHECK (listings > 0),
+                CONSTRAINT fk_market_order_book_levels_snapshot FOREIGN KEY (snapshot_id)
+                    REFERENCES market_order_book_snapshots(id) ON DELETE RESTRICT,
+                CONSTRAINT uq_market_order_book_levels_snapshot_side_ordinal
+                    UNIQUE (snapshot_id, side, level_ordinal)
+            );
+
+            INSERT INTO market_order_book_levels (
+                id, snapshot_id, side, level_ordinal, unit_price_in_copper, quantity, listings)
+            SELECT id, snapshot_id, side, level_ordinal, unit_price_in_copper, quantity, listings
+            FROM market_order_book_levels_v5;
+
+            DROP TABLE market_order_book_levels_v5;
             """),
     ];
 
@@ -656,7 +686,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["watchlist_entries"] = $"item_id <= 0 OR item_id > {Int32Maximum}",
             ["market_price_observations"] = $"id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR highest_buy_price_in_copper < 0 OR highest_buy_price_in_copper > {Int32Maximum} OR lowest_sell_price_in_copper < 0 OR lowest_sell_price_in_copper > {Int32Maximum} OR aggregate_buy_quantity < 0 OR aggregate_buy_quantity > {Int32Maximum} OR aggregate_sell_quantity < 0 OR aggregate_sell_quantity > {Int32Maximum} OR source_status <> 1 OR sampling_tier NOT BETWEEN 1 AND 3 OR sampling_policy_version <= 0 OR sampling_policy_version > {Int32Maximum}",
             ["market_order_book_snapshots"] = $"id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR source_status <> 1 OR sampling_tier NOT BETWEEN 1 AND 3 OR sampling_policy_version <= 0 OR sampling_policy_version > {Int32Maximum}",
-            ["market_order_book_levels"] = $"id <= 0 OR snapshot_id <= 0 OR side NOT IN (1, 2) OR level_ordinal < 0 OR level_ordinal > {Int32Maximum} OR unit_price_in_copper < 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum} OR listings <= 0 OR listings > {Int32Maximum}",
+            ["market_order_book_levels"] = $"id <= 0 OR snapshot_id <= 0 OR side NOT IN (1, 2) OR level_ordinal < 0 OR level_ordinal > {Int32Maximum} OR unit_price_in_copper <= 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum} OR listings <= 0 OR listings > {Int32Maximum}",
             ["schema_migrations"] = "version <= 0 OR trim(name) = ''",
             ["user_settings"] = $"singleton_id <> 1 OR settings_version <= 0 OR settings_version > {Int32Maximum} OR (minimum_profit_in_copper IS NOT NULL AND (minimum_profit_in_copper < 0 OR minimum_profit_in_copper > {Int32Maximum})) OR (minimum_roi_basis_points IS NOT NULL AND (minimum_roi_basis_points < 0 OR minimum_roi_basis_points > 10000)) OR (cash_reserve_basis_points IS NOT NULL AND (cash_reserve_basis_points < 0 OR cash_reserve_basis_points > 10000))",
         };
