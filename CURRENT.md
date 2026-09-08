@@ -101,7 +101,10 @@ downsampling without a future owner-approved migration. Populated backup/restore
 and clear-personal-data tests prove market history remains recoverable and
 separate from account-scoped clearing. Follow-up fixes also require exact
 current migration history, report SQLite corruption as failed integrity, and
-accept browser-standard UTC timestamp precision; no VERIFY entries changed.
+accept browser-standard UTC timestamp precision. A subsequent security follow-up
+protects the expensive integrity read from cross-origin use, validates schema
+shape before migration history, and rejects zone-less timestamps; no VERIFY
+entries changed.
 
 After the #84 NORMAL review/merge handoff, the next valid implementation ticket
 is:
@@ -113,14 +116,14 @@ is:
 TKT-M18-03 local validation on 2026-09-08 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused market-history persistence: 13 tests passed; focused market-history status endpoint: 1 test passed;
+- focused market-history persistence: 14 tests passed; focused market-history status endpoint: 1 test passed;
 - clear-personal-data separation with retained market history: 1 test passed;
-- full .NET regression suite: 329 tests passed;
+- full .NET regression suite: 330 tests passed;
 - React: 18 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime audit: only expected negative assertions matched;
-- Gitleaks: all 269 reachable commits scanned with no leaks.
+- Gitleaks: all 270 reachable commits scanned with no leaks.
 
 PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/118
 

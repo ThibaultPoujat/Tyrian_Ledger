@@ -260,6 +260,22 @@ public sealed class MarketHistoryPersistenceTests
     }
 
     [Fact]
+    public async Task Status_marks_a_missing_migration_history_table_as_failed()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "DROP TABLE schema_migrations;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var status = await database.Status.GetStatusAsync(new MarketHistoryCoverageQuery(null, null, null));
+
+        Assert.Equal(MarketHistoryIntegrityState.Failed, status.IntegrityState);
+    }
+
+    [Fact]
     public async Task Status_maps_an_unreadable_sqlite_database_to_failed_integrity()
     {
         await using var database = await TestDatabase.CreateAsync();

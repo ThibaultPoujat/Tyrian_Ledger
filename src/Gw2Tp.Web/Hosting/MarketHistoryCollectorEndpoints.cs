@@ -7,6 +7,18 @@ namespace Gw2Tp.Web.Hosting;
 
 internal static class MarketHistoryCollectorEndpoints
 {
+    private static readonly string[] UtcTimestampFormats =
+    [
+        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'",
+    ];
+
+    private static readonly string[] OffsetTimestampFormats =
+    [
+        "yyyy-MM-dd'T'HH:mm:sszzz",
+        "yyyy-MM-dd'T'HH:mm:ss.FFFFFFFzzz",
+    ];
+
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
@@ -99,18 +111,33 @@ internal static class MarketHistoryCollectorEndpoints
             return true;
         }
 
-        if (rawValue.Count != 1 || !DateTimeOffset.TryParseExact(
-                rawValue[0],
-                ["yyyy-MM-dd'T'HH:mm:ssK", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK"],
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.None,
-                out var parsed))
+        if (rawValue.Count != 1 || !TryParseExplicitOffsetUtc(rawValue[0], out var parsed))
         {
             return false;
         }
 
         value = parsed;
         return true;
+    }
+
+    private static bool TryParseExplicitOffsetUtc(string? rawValue, out DateTimeOffset parsed)
+    {
+        if (rawValue is not null && rawValue.EndsWith('Z'))
+        {
+            return DateTimeOffset.TryParseExact(
+                rawValue,
+                UtcTimestampFormats,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal,
+                out parsed);
+        }
+
+        return DateTimeOffset.TryParseExact(
+            rawValue,
+            OffsetTimestampFormats,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out parsed);
     }
 
     private static object ToHealthResponse(MarketHistoryCollectorHealth health) => new

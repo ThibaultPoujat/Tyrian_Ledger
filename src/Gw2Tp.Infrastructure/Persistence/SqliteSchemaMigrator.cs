@@ -331,6 +331,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
     {
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await ValidateIntegrityAsync(connection, cancellationToken).ConfigureAwait(false);
+        await ValidateLatestSchemaAsync(connection, validatePersistedData: false, cancellationToken).ConfigureAwait(false);
         var appliedMigrations = await GetAppliedMigrationsAsync(connection, cancellationToken).ConfigureAwait(false);
         try
         {
