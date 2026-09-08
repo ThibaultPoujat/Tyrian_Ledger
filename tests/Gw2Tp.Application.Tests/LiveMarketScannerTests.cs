@@ -37,6 +37,9 @@ public sealed class LiveMarketScannerTests
         Assert.Equal(1, result.QualifyingCandidateCount);
         Assert.False(result.IsTruncated);
         Assert.Contains(LiveMarketScannerInclusionReason.MeetsMinimumRoi, candidate.InclusionReasons);
+        Assert.Equal(1, candidate.Liquidity.Acquisition.RequestedQuantity);
+        Assert.Equal(1, candidate.Liquidity.Liquidation.RequestedQuantity);
+        Assert.Equal(1, candidate.Liquidity.ParticipationCapQuantity);
     }
 
     [Fact]
@@ -48,7 +51,8 @@ public sealed class LiveMarketScannerTests
             MinimumRoiBasisPoints: 5_000,
             MinimumNetProfit: new(1),
             BidIncrementCopper: 1,
-            ListUndercutCopper: 1);
+            ListUndercutCopper: 1,
+            IntendedQuantity: 1);
 
         var result = await scanner.ScanAsync(settings);
 
@@ -62,7 +66,7 @@ public sealed class LiveMarketScannerTests
     {
         var scanner = CreateScanner(new StubMarketDataClient(
             prices: _ => Success([Price(1, 10, 100, 10, 200)])));
-        var settings = new LiveMarketScannerSettings(0, new(1), BidIncrementCopper: 5, ListUndercutCopper: 4);
+        var settings = new LiveMarketScannerSettings(0, new(1), BidIncrementCopper: 5, ListUndercutCopper: 4, IntendedQuantity: 1);
 
         var result = await scanner.ScanAsync(settings);
 
@@ -80,7 +84,7 @@ public sealed class LiveMarketScannerTests
     {
         var scanner = CreateScanner(new StubMarketDataClient(
             prices: _ => Success([Price(1, 10, 100, 10, 200)])));
-        var settings = new LiveMarketScannerSettings(MinimumRoiBasisPoints: 7_000, MinimumNetProfit: new(60), 1, 1);
+        var settings = new LiveMarketScannerSettings(MinimumRoiBasisPoints: 7_000, MinimumNetProfit: new(60), 1, 1, IntendedQuantity: 1);
 
         var result = await scanner.ScanAsync(settings);
 
@@ -116,7 +120,7 @@ public sealed class LiveMarketScannerTests
                 Price(2, 10, 100, 10, 200),
                 Price(3, 10, 100, 10, 200),
             ])));
-        var settings = new LiveMarketScannerSettings(7_000, new(70), 1, 1);
+        var settings = new LiveMarketScannerSettings(7_000, new(70), 1, 1, IntendedQuantity: 1);
 
         var result = await scanner.ScanAsync(settings);
 
@@ -137,6 +141,66 @@ public sealed class LiveMarketScannerTests
         Assert.Contains(result.Exclusions, exclusion => exclusion.Reason == LiveMarketScannerExclusionReason.PricePolicyInvalid);
         Assert.Empty(client.MetadataRequests);
         Assert.Empty(client.ListingRequests);
+    }
+
+    [Fact]
+    public async Task Scan_exposes_simulator_depth_price_cliffs_and_participation_cap_for_intended_quantity()
+    {
+        var scanner = CreateScanner(new StubMarketDataClient(
+            listings: _ => Success([
+                new MarketListing(
+                    1,
+                    [new MarketOrderLevel(2, 3, 100), new MarketOrderLevel(1, 10, 80)],
+                    [new MarketOrderLevel(2, 3, 200), new MarketOrderLevel(1, 10, 240)]),
+            ])));
+
+        var result = await scanner.ScanAsync(new LiveMarketScannerSettings(0, new(1), 1, 1, IntendedQuantity: 7));
+
+        var liquidity = Assert.Single(result.Candidates).Liquidity;
+        Assert.Equal(13, liquidity.TotalBuyQuantity);
+        Assert.Equal(13, liquidity.TotalSellQuantity);
+        Assert.Equal(3, liquidity.NearBestBuyQuantity);
+        Assert.Equal(3, liquidity.NearBestSellQuantity);
+        Assert.Equal(2, liquidity.NearBestBuyListings);
+        Assert.Equal(2, liquidity.NearBestSellListings);
+        Assert.Equal(20, liquidity.BuyNextLevelGap!.Value.Copper);
+        Assert.Equal(40, liquidity.SellNextLevelGap!.Value.Copper);
+        Assert.True(liquidity.HasBuyPriceCliff);
+        Assert.True(liquidity.HasSellPriceCliff);
+        Assert.Equal(1_560, liquidity.Acquisition.TotalValue.Copper);
+        Assert.Equal(160, liquidity.Acquisition.PriceImpact.Copper);
+        Assert.Equal(620, liquidity.Liquidation.TotalValue.Copper);
+        Assert.Equal(80, liquidity.Liquidation.PriceImpact.Copper);
+        Assert.Equal(1, liquidity.ParticipationCapQuantity);
+        Assert.Contains(LiveMarketScannerLiquidityReason.BuyPriceCliff, liquidity.Reasons);
+        Assert.Contains(LiveMarketScannerLiquidityReason.SellPriceCliff, liquidity.Reasons);
+        Assert.Contains(LiveMarketScannerLiquidityReason.ParticipationCapBelowIntendedQuantity, liquidity.Reasons);
+    }
+
+    [Fact]
+    public async Task Scan_flags_one_unit_top_and_insufficient_depth_without_hiding_profitable_candidate()
+    {
+        var scanner = CreateScanner(new StubMarketDataClient(
+            listings: _ => Success([
+                new MarketListing(
+                    1,
+                    [new MarketOrderLevel(1, 1, 100)],
+                    [new MarketOrderLevel(1, 1, 200)]),
+            ])));
+
+        var result = await scanner.ScanAsync(new LiveMarketScannerSettings(0, new(1), 1, 1, IntendedQuantity: 5));
+
+        var liquidity = Assert.Single(result.Candidates).Liquidity;
+        Assert.False(liquidity.Acquisition.IsFullyFilled);
+        Assert.False(liquidity.Liquidation.IsFullyFilled);
+        Assert.Equal(4, liquidity.Acquisition.RemainingQuantity);
+        Assert.Equal(0, liquidity.ParticipationCapQuantity);
+        Assert.Contains(LiveMarketScannerLiquidityReason.InsufficientBuyListingDepth, liquidity.Reasons);
+        Assert.Contains(LiveMarketScannerLiquidityReason.InsufficientSellListingDepth, liquidity.Reasons);
+        Assert.Contains(LiveMarketScannerLiquidityReason.InsufficientBuyQuantityDepth, liquidity.Reasons);
+        Assert.Contains(LiveMarketScannerLiquidityReason.InsufficientSellQuantityDepth, liquidity.Reasons);
+        Assert.Contains(LiveMarketScannerLiquidityReason.IntendedQuantityCannotFullyAcquire, liquidity.Reasons);
+        Assert.Contains(LiveMarketScannerLiquidityReason.IntendedQuantityCannotFullyLiquidate, liquidity.Reasons);
     }
 
     [Fact]
@@ -176,6 +240,24 @@ public sealed class LiveMarketScannerTests
             itemIds: [1, 2],
             prices: _ => Success([Price(1, 10, 100, 10, 200), Price(2, 10, 100, 10, 200)]),
             metadata: _ => Success([new MarketItemMetadata(1, "Only one", MarketItemStackPolicy.NormalStackLimit)])));
+
+        var result = await scanner.ScanAsync(LiveMarketScannerSettings.Default);
+
+        Assert.Equal(LiveMarketScannerState.Unavailable, result.State);
+        Assert.Equal(Gw2ApiErrorCategory.IncompleteData, result.ErrorCategory);
+        Assert.Empty(result.Candidates);
+    }
+
+    [Fact]
+    public async Task Scan_rejects_incomplete_detailed_listings_without_returning_partial_candidates()
+    {
+        var scanner = CreateScanner(new StubMarketDataClient(
+            itemIds: [1, 2],
+            prices: _ => Success([Price(1, 10, 100, 10, 200), Price(2, 10, 100, 10, 200)]),
+            listings: _ => Success([new MarketListing(
+                1,
+                [new MarketOrderLevel(3, 10, 100)],
+                [new MarketOrderLevel(3, 10, 200)])])));
 
         var result = await scanner.ScanAsync(LiveMarketScannerSettings.Default);
 
@@ -244,7 +326,7 @@ public sealed class LiveMarketScannerTests
         {
             this.itemIds = itemIds ?? [1];
             this.prices = prices ?? (ids => Success(ids.Select(itemId => Price(itemId, 10, 100, 10, 200))));
-            this.listings = listings ?? (_ => Success(Array.Empty<MarketListing>()));
+            this.listings = listings ?? (ids => Success(ids.Select(Listing)));
             this.metadata = metadata ?? (ids => Success(ids.Select(itemId => new MarketItemMetadata(
                 itemId,
                 $"Item {itemId}",
@@ -256,6 +338,11 @@ public sealed class LiveMarketScannerTests
         public List<IReadOnlyList<int>> ListingRequests { get; } = [];
 
         public List<IReadOnlyList<int>> MetadataRequests { get; } = [];
+
+        private static MarketListing Listing(int itemId) => new(
+            itemId,
+            [new MarketOrderLevel(3, 10, 100)],
+            [new MarketOrderLevel(3, 10, 200)]);
 
         public Task<Gw2ApiResult<IReadOnlyList<int>>> GetPriceItemIdsAsync(CancellationToken cancellationToken = default)
         {

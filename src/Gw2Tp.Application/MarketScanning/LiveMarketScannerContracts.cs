@@ -1,4 +1,5 @@
 using Gw2Tp.Analytics.Finance;
+using Gw2Tp.Analytics.OrderBooks;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Domain.Finance;
 
@@ -12,13 +13,15 @@ public sealed record LiveMarketScannerSettings(
     int MinimumRoiBasisPoints,
     Money MinimumNetProfit,
     int BidIncrementCopper,
-    int ListUndercutCopper)
+    int ListUndercutCopper,
+    int IntendedQuantity)
 {
     public static LiveMarketScannerSettings Default { get; } = new(
         MinimumRoiBasisPoints: 0,
         MinimumNetProfit: new Money(1),
         BidIncrementCopper: 1,
-        ListUndercutCopper: 1);
+        ListUndercutCopper: 1,
+        IntendedQuantity: 1);
 
     public void Validate()
     {
@@ -41,8 +44,46 @@ public sealed record LiveMarketScannerSettings(
         {
             throw new ArgumentOutOfRangeException(nameof(ListUndercutCopper));
         }
+
+        if (IntendedQuantity <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(IntendedQuantity));
+        }
     }
 }
+
+public enum LiveMarketScannerLiquidityReason
+{
+    InsufficientBuyListingDepth,
+    InsufficientSellListingDepth,
+    InsufficientBuyQuantityDepth,
+    InsufficientSellQuantityDepth,
+    BuyPriceCliff,
+    SellPriceCliff,
+    IntendedQuantityCannotFullyAcquire,
+    IntendedQuantityCannotFullyLiquidate,
+    ParticipationCapBelowIntendedQuantity,
+}
+
+/// <summary>
+/// Visible current-book evidence. It is not a fill guarantee, historical-volume
+/// estimate, or final portfolio-size recommendation.
+/// </summary>
+public sealed record LiveMarketScannerLiquidityEvidence(
+    long TotalBuyQuantity,
+    long TotalSellQuantity,
+    long NearBestBuyQuantity,
+    long NearBestSellQuantity,
+    long NearBestBuyListings,
+    long NearBestSellListings,
+    Money? BuyNextLevelGap,
+    Money? SellNextLevelGap,
+    bool HasBuyPriceCliff,
+    bool HasSellPriceCliff,
+    OrderBookExecutionScenario Acquisition,
+    OrderBookExecutionScenario Liquidation,
+    int ParticipationCapQuantity,
+    IReadOnlyList<LiveMarketScannerLiquidityReason> Reasons);
 
 public enum LiveMarketScannerState
 {
@@ -73,8 +114,8 @@ public sealed record LiveMarketScannerExclusionCount(
     int Count);
 
 /// <summary>
-/// Backend-authoritative one-unit economics for a current aggregate market.
-/// Detailed execution depth and suggested quantity are intentionally deferred.
+/// Backend-authoritative one-unit economics and visible execution-depth evidence
+/// for a current aggregate market.
 /// </summary>
 public sealed record LiveMarketScannerCandidate(
     MarketItemMetadata Item,
@@ -86,7 +127,8 @@ public sealed record LiveMarketScannerCandidate(
     Money TotalCost,
     ExactRoi ModeledRoi,
     Money MaximumBid,
-    IReadOnlyList<LiveMarketScannerInclusionReason> InclusionReasons);
+    IReadOnlyList<LiveMarketScannerInclusionReason> InclusionReasons,
+    LiveMarketScannerLiquidityEvidence Liquidity);
 
 public sealed record LiveMarketScannerResult(
     LiveMarketScannerState State,

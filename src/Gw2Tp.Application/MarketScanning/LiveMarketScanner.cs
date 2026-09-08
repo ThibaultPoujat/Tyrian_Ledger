@@ -1,4 +1,5 @@
 using Gw2Tp.Analytics.Finance;
+using Gw2Tp.Analytics.OrderBooks;
 using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketSnapshots;
@@ -8,12 +9,15 @@ namespace Gw2Tp.Application.MarketScanning;
 
 /// <summary>
 /// Screens the complete current aggregate market through the typed gateway.
-/// It owns no persistence, browser policy, detailed order-book assessment, or
-/// recommendation/sizing behavior.
+/// It owns no persistence, browser policy, or final recommendation/sizing behavior.
 /// </summary>
 public sealed class LiveMarketScanner : ILiveMarketScanner
 {
     public const int MaximumCandidateCount = 200;
+    private const int MinimumVisibleSideQuantity = 10;
+    private const int MinimumVisibleSideListings = 3;
+    private const int PriceCliffBasisPoints = 500;
+    private const int ParticipationCapDivisor = 10;
 
     private static readonly IReadOnlyList<LiveMarketScannerInclusionReason> InclusionReasons = Array.AsReadOnly(
     [
@@ -26,6 +30,7 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
     private readonly PublicMarketSnapshotCollector collector;
     private readonly IGw2ApiClient marketDataClient;
     private readonly FlipProfitCalculator profitCalculator = new(Gw2TradingPostFeePolicy.Create());
+    private readonly OrderBookExecutionSimulator orderBookExecutionSimulator = new();
 
     public LiveMarketScanner(PublicMarketSnapshotCollector collector, IGw2ApiClient marketDataClient)
     {
@@ -73,25 +78,35 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
             return Ready(snapshot, settings, qualifyingCandidateCount, [], exclusions);
         }
 
-        var metadataResult = await marketDataClient.GetItemMetadataAsync(
-            selected.Select(candidate => candidate.ItemId).ToArray(),
-            cancellationToken).ConfigureAwait(false);
-        if (!metadataResult.IsSuccess || metadataResult.IsPartialData || metadataResult.Value is null)
+        var selectedItemIds = selected.Select(candidate => candidate.ItemId).ToArray();
+        var metadataTask = marketDataClient.GetItemMetadataAsync(selectedItemIds, cancellationToken);
+        var listingsTask = marketDataClient.GetListingsAsync(selectedItemIds, cancellationToken);
+        await Task.WhenAll(metadataTask, listingsTask).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var metadataResult = await metadataTask.ConfigureAwait(false);
+        var listingsResult = await listingsTask.ConfigureAwait(false);
+        if (!metadataResult.IsSuccess || metadataResult.IsPartialData || metadataResult.Value is null ||
+            !listingsResult.IsSuccess || listingsResult.IsPartialData || listingsResult.Value is null)
         {
             return LiveMarketScannerResult.Unavailable(
                 settings,
-                metadataResult.ErrorCategory ?? Gw2ApiErrorCategory.IncompleteData);
+                metadataResult.ErrorCategory ?? listingsResult.ErrorCategory ?? Gw2ApiErrorCategory.IncompleteData);
         }
 
         var metadata = metadataResult.Value;
-        if (metadata.Count != selected.Length || metadata.Any(item => item is null || item.ItemId <= 0 || string.IsNullOrWhiteSpace(item.Name)) ||
-            metadata.Select(item => item.ItemId).Distinct().Count() != selected.Length)
+        var listings = listingsResult.Value;
+        if (!HasExactItemSet(selectedItemIds, metadata, item => item.ItemId) ||
+            metadata.Any(item => item is null || item.ItemId <= 0 || string.IsNullOrWhiteSpace(item.Name)) ||
+            !HasExactItemSet(selectedItemIds, listings, listing => listing.ItemId) ||
+            listings.Any(listing => !IsValidListing(listing)))
         {
             return LiveMarketScannerResult.Unavailable(settings, Gw2ApiErrorCategory.IncompleteData);
         }
 
         var metadataByItemId = metadata.ToDictionary(item => item.ItemId);
-        if (selected.Any(candidate => !metadataByItemId.ContainsKey(candidate.ItemId)))
+        var listingByItemId = listings.ToDictionary(listing => listing.ItemId);
+        if (selected.Any(candidate => !metadataByItemId.ContainsKey(candidate.ItemId) || !listingByItemId.ContainsKey(candidate.ItemId)))
         {
             return LiveMarketScannerResult.Unavailable(settings, Gw2ApiErrorCategory.IncompleteData);
         }
@@ -100,7 +115,9 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
             snapshot,
             settings,
             qualifyingCandidateCount,
-            selected.Select(candidate => candidate.ToContract(metadataByItemId[candidate.ItemId])).ToArray(),
+            selected.Select(candidate => candidate.ToContract(
+                metadataByItemId[candidate.ItemId],
+                CalculateLiquidityEvidence(listingByItemId[candidate.ItemId], settings.IntendedQuantity))).ToArray(),
             exclusions);
     }
 
@@ -215,6 +232,84 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
             Gw2TradingPostFeePolicy.CalculateExactRoi(scenario.NetProfit, bid, scenario.ListingFee));
     }
 
+    private LiveMarketScannerLiquidityEvidence CalculateLiquidityEvidence(MarketListing listing, int intendedQuantity)
+    {
+        var buys = listing.Buys.OrderByDescending(level => level.UnitPriceInCopper).ToArray();
+        var sells = listing.Sells.OrderBy(level => level.UnitPriceInCopper).ToArray();
+        var buyTotalQuantity = SumQuantities(buys);
+        var sellTotalQuantity = SumQuantities(sells);
+        var nearBestBuys = SamePriceLevels(buys, buys[0].UnitPriceInCopper);
+        var nearBestSells = SamePriceLevels(sells, sells[0].UnitPriceInCopper);
+        var buyNextLevelGap = FindNextLevelGap(buys, buys[0].UnitPriceInCopper, isBuy: true);
+        var sellNextLevelGap = FindNextLevelGap(sells, sells[0].UnitPriceInCopper, isBuy: false);
+        var hasBuyPriceCliff = IsPriceCliff(buyNextLevelGap, buys[0].UnitPriceInCopper);
+        var hasSellPriceCliff = IsPriceCliff(sellNextLevelGap, sells[0].UnitPriceInCopper);
+        var acquisition = orderBookExecutionSimulator.SimulateAcquisition(ToExecutionLevels(sells), intendedQuantity);
+        var liquidation = orderBookExecutionSimulator.SimulateLiquidation(ToExecutionLevels(buys), intendedQuantity);
+        var participationCap = CalculateParticipationCap(Math.Min(buyTotalQuantity, sellTotalQuantity));
+        var reasons = new List<LiveMarketScannerLiquidityReason>();
+
+        if (SumListings(buys) < MinimumVisibleSideListings) reasons.Add(LiveMarketScannerLiquidityReason.InsufficientBuyListingDepth);
+        if (SumListings(sells) < MinimumVisibleSideListings) reasons.Add(LiveMarketScannerLiquidityReason.InsufficientSellListingDepth);
+        if (buyTotalQuantity < MinimumVisibleSideQuantity) reasons.Add(LiveMarketScannerLiquidityReason.InsufficientBuyQuantityDepth);
+        if (sellTotalQuantity < MinimumVisibleSideQuantity) reasons.Add(LiveMarketScannerLiquidityReason.InsufficientSellQuantityDepth);
+        if (hasBuyPriceCliff) reasons.Add(LiveMarketScannerLiquidityReason.BuyPriceCliff);
+        if (hasSellPriceCliff) reasons.Add(LiveMarketScannerLiquidityReason.SellPriceCliff);
+        if (!acquisition.IsFullyFilled) reasons.Add(LiveMarketScannerLiquidityReason.IntendedQuantityCannotFullyAcquire);
+        if (!liquidation.IsFullyFilled) reasons.Add(LiveMarketScannerLiquidityReason.IntendedQuantityCannotFullyLiquidate);
+        if (participationCap < intendedQuantity) reasons.Add(LiveMarketScannerLiquidityReason.ParticipationCapBelowIntendedQuantity);
+
+        return new LiveMarketScannerLiquidityEvidence(
+            buyTotalQuantity,
+            sellTotalQuantity,
+            SumQuantities(nearBestBuys),
+            SumQuantities(nearBestSells),
+            SumListings(nearBestBuys),
+            SumListings(nearBestSells),
+            buyNextLevelGap,
+            sellNextLevelGap,
+            hasBuyPriceCliff,
+            hasSellPriceCliff,
+            acquisition,
+            liquidation,
+            participationCap,
+            reasons.OrderBy(reason => reason).ToArray());
+    }
+
+    private static bool HasExactItemSet<T>(IReadOnlyCollection<int> expectedItemIds, IReadOnlyList<T> values, Func<T, int> itemId) =>
+        values.Count == expectedItemIds.Count &&
+        values.All(value => value is not null && expectedItemIds.Contains(itemId(value))) &&
+        values.Select(itemId).Distinct().Count() == expectedItemIds.Count;
+
+    private static bool IsValidListing(MarketListing? listing) => listing is not null && listing.ItemId > 0 &&
+        listing.Buys is { Count: > 0 } && listing.Sells is { Count: > 0 } &&
+        listing.Buys.All(IsValidLevel) && listing.Sells.All(IsValidLevel);
+
+    private static bool IsValidLevel(MarketOrderLevel? level) => level is not null && level.Listings > 0 &&
+        level.Quantity > 0 && level.UnitPriceInCopper > 0;
+
+    private static MarketOrderLevel[] SamePriceLevels(IReadOnlyList<MarketOrderLevel> levels, int price) =>
+        levels.Where(level => level.UnitPriceInCopper == price).ToArray();
+
+    private static Money? FindNextLevelGap(IReadOnlyList<MarketOrderLevel> levels, int bestPrice, bool isBuy)
+    {
+        var next = levels.FirstOrDefault(level => level.UnitPriceInCopper != bestPrice);
+        return next is null ? null : new Money(isBuy ? bestPrice - next.UnitPriceInCopper : next.UnitPriceInCopper - bestPrice);
+    }
+
+    private static bool IsPriceCliff(Money? gap, int bestPrice) => gap is not null &&
+        checked(gap.Value.Copper * 10_000) >= checked((long)bestPrice * PriceCliffBasisPoints);
+
+    private static long SumQuantities(IEnumerable<MarketOrderLevel> levels) => levels.Sum(level => (long)level.Quantity);
+
+    private static long SumListings(IEnumerable<MarketOrderLevel> levels) => levels.Sum(level => (long)level.Listings);
+
+    private static IReadOnlyList<OrderBookLevel> ToExecutionLevels(IEnumerable<MarketOrderLevel> levels) =>
+        levels.Select(level => new OrderBookLevel(level.Quantity, new Money(level.UnitPriceInCopper))).ToArray();
+
+    private static int CalculateParticipationCap(long smallerSideQuantity) =>
+        (int)Math.Min(int.MaxValue, smallerSideQuantity / ParticipationCapDivisor);
+
     private sealed record CandidateMetrics(FlipProfitScenario ProfitScenario, Money TotalCost, ExactRoi ModeledRoi);
 
     private sealed record CandidateEvaluation(CalculatedCandidate? Candidate, LiveMarketScannerExclusionReason? ExclusionReason)
@@ -235,7 +330,7 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
         ExactRoi ModeledRoi,
         Money MaximumBid)
     {
-        public LiveMarketScannerCandidate ToContract(MarketItemMetadata item) => new(
+        public LiveMarketScannerCandidate ToContract(MarketItemMetadata item, LiveMarketScannerLiquidityEvidence liquidity) => new(
             item,
             BestBuy,
             LowestSell,
@@ -245,7 +340,8 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
             TotalCost,
             ModeledRoi,
             MaximumBid,
-            InclusionReasons);
+            InclusionReasons,
+            liquidity);
     }
 
     private sealed class CalculatedCandidateComparer : IComparer<CalculatedCandidate>
