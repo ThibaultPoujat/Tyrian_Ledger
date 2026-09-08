@@ -555,6 +555,13 @@ public sealed class LocalHostIntegrationTests
             var backupFileName = backupDocument.RootElement.GetProperty("fileName").GetString();
             Assert.False(string.IsNullOrWhiteSpace(backupFileName));
 
+            using var managedBackupInventory = await client.GetAsync("/api/local-data");
+            var managedBackupInventoryBody = await managedBackupInventory.Content.ReadAsStringAsync();
+            Assert.Equal(HttpStatusCode.OK, managedBackupInventory.StatusCode);
+            Assert.Equal("no-store", managedBackupInventory.Headers.CacheControl?.ToString());
+            Assert.Contains("managedBackups", managedBackupInventoryBody, StringComparison.Ordinal);
+            Assert.Contains(backupFileName, managedBackupInventoryBody, StringComparison.Ordinal);
+
             using var managedRestore = await SendJsonAsync(client, "/api/local-data/restore-managed", new
             {
                 confirmation = "RESTORE LOCAL DATA",

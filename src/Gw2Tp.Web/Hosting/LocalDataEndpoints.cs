@@ -132,6 +132,11 @@ internal static class LocalDataResponseWriter
             databasePath = location.DatabasePath,
             backupDirectoryPath = location.BackupDirectoryPath,
             managedBackupUploadLimitBytes = LocalDataEndpoints.MaxRestoreBackupBytes,
+            managedBackups = location.ManagedBackups.Select(backup => new
+            {
+                fileName = backup.FileName,
+                createdAtUtc = backup.CreatedAtUtc,
+            }),
         });
 
     internal static IResult CreateBackupResponse(LocalDataBackup backup) =>

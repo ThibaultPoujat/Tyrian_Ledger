@@ -475,6 +475,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.UserSettings.SaveAsync(new UserSettings(1, 500, 250, 1500, FirstObservedAtUtc));
 
         var backup = await database.Recovery.CreateBackupAsync();
+        Assert.Contains(database.Recovery.GetLocation().ManagedBackups, candidate => candidate.FileName == backup.FileName);
         await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
             "opaque-account-a",
             [CompletedTransaction(1002, PersonalTradingPostSide.Sell, 84, 999, 1)],

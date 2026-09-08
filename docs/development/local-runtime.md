@@ -115,9 +115,11 @@ requires the exact `RESTORE LOCAL DATA` confirmation. The host validates its
 SQLite integrity and migration compatibility in a staging copy before it can
 replace the live database, and it creates a `pre-restore` backup of the current
 database first. A failed, cancelled, corrupt, or incompatible restore leaves
-the live database unchanged. The restore request and multipart parser both
-support selected backup files up to 512 MiB; larger files must be retained
-locally until a future supported recovery path is available.
+the live database unchanged. Imported selected backup files use a 512 MiB
+restore-request and multipart-parser limit. Application-created backups already
+listed in the managed backup folder can be selected separately and restored by
+the local host without that browser upload limit; move an oversized retained
+backup into that folder before selecting it there.
 
 Clearing personal account data requires the exact `CLEAR PERSONAL DATA`
 confirmation. It removes all account scopes, completed transactions, current
