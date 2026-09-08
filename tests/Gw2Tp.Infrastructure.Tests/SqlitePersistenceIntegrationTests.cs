@@ -1,4 +1,5 @@
 using Gw2Tp.Application.LocalData;
+using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
@@ -1090,6 +1091,12 @@ public sealed class SqlitePersistenceIntegrationTests
         }
         await database.UserSettings.SaveAsync(new UserSettings(1, 500, null, null, FirstObservedAtUtc));
         await database.Watchlist.AddAsync(new WatchlistEntry(84, FirstObservedAtUtc));
+        await database.History.AppendPriceObservationAsync(new MarketPriceObservation(
+            FirstObservedAtUtc, 42, 100, 120, 10, 20,
+            MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1));
+        await database.History.AppendOrderBookSnapshotAsync(new MarketOrderBookSnapshot(
+            FirstObservedAtUtc, 42, MarketObservationSourceStatus.Complete, MarketSamplingTier.Watchlist, 1,
+            [new MarketOrderBookLevel(MarketOrderBookSide.Buy, 0, 100, 10, 2)]));
         var backup = await database.Recovery.CreateBackupAsync();
         var staleIncomingPath = Path.Combine(Path.GetDirectoryName(database.Path)!, $".tyrian-ledger-restore-{Guid.NewGuid():N}.incoming");
         var staleDatabasePath = Path.Combine(Path.GetDirectoryName(database.Path)!, $".tyrian-ledger-restore-{Guid.NewGuid():N}.db");
@@ -1111,6 +1118,9 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(0, await database.GetTableCountAsync("current_order_sync_batches"));
         Assert.Equal(1, await database.GetTableCountAsync("item_metadata"));
         Assert.Equal(1, await database.GetTableCountAsync("user_settings"));
+        Assert.Equal(1, await database.GetTableCountAsync("market_price_observations"));
+        Assert.Equal(1, await database.GetTableCountAsync("market_order_book_snapshots"));
+        Assert.Equal(1, await database.GetTableCountAsync("market_order_book_levels"));
         Assert.Equal([84], (await database.Watchlist.GetAllAsync()).Select(entry => entry.ItemId));
         Assert.Equal([1, 2, 3, 4, 5, 6], await database.GetMigrationVersionsAsync());
         Assert.True(File.Exists(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)));
@@ -1240,6 +1250,7 @@ public sealed class SqlitePersistenceIntegrationTests
             ItemMetadata = new SqliteItemMetadataRepository(factory, Gate);
             UserSettings = new SqliteUserSettingsRepository(factory, Gate);
             Watchlist = new SqliteWatchlistRepository(factory, Gate);
+            History = new SqliteMarketHistoryRepository(factory, Gate);
             Recovery = new SqliteLocalDataRecoveryService(factory, Gate, OperationGate);
         }
 
@@ -1260,6 +1271,8 @@ public sealed class SqlitePersistenceIntegrationTests
         public SqliteUserSettingsRepository UserSettings { get; }
 
         public SqliteWatchlistRepository Watchlist { get; }
+
+        public SqliteMarketHistoryRepository History { get; }
 
         public SqliteLocalDataRecoveryService Recovery { get; }
 

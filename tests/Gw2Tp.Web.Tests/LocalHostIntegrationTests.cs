@@ -279,6 +279,30 @@ public sealed class LocalHostIntegrationTests
     }
 
     [Fact]
+    public async Task Market_history_status_endpoint_exposes_safe_non_cacheable_governance_data_and_validates_filters()
+    {
+        await using var app = await StartApplicationAsync("Production");
+        using var client = app.GetTestClient();
+
+        using var status = await client.GetAsync("/api/market-history");
+        var statusBody = await status.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, status.StatusCode);
+        Assert.Equal("no-store", status.Headers.CacheControl?.ToString());
+        Assert.Contains("\"evidenceKind\":\"aggregatePrices\"", statusBody, StringComparison.Ordinal);
+        Assert.Contains("\"evidenceKind\":\"detailedOrderBooks\"", statusBody, StringComparison.Ordinal);
+        Assert.Contains("\"mode\":\"preserveAllRawEvidence\"", statusBody, StringComparison.Ordinal);
+        Assert.Contains("\"integrityState\":\"passed\"", statusBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("credential", statusBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("authorization", statusBody, StringComparison.OrdinalIgnoreCase);
+
+        using var invalid = await client.GetAsync("/api/market-history?fromInclusiveUtc=2026-09-08T12:00:00.0000000Z");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Equal("no-store", invalid.Headers.CacheControl?.ToString());
+        Assert.Contains("invalid_market_history_coverage_query", await invalid.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Market_history_collector_hosted_service_runs_and_stops_without_turning_shutdown_into_a_failure()
     {
         var collector = new FixedMarketHistoryCollector();

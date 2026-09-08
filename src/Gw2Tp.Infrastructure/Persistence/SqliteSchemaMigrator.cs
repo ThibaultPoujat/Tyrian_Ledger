@@ -321,6 +321,19 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
     internal Task MigrateAndValidatePersistedDataAsync(CancellationToken cancellationToken = default) =>
         MigrateToAsync(LatestVersion, validatePersistedData: true, cancellationToken);
 
+    /// <summary>
+    /// Performs the same full schema, SQLite, value, duplicate/index, and
+    /// foreign-key validation used for a restore candidate against the live
+    /// initialized database. This is intentionally on-demand because raw
+    /// market-history validation scales with retained evidence.
+    /// </summary>
+    internal async Task ValidatePersistedDataAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await ValidateIntegrityAsync(connection, cancellationToken).ConfigureAwait(false);
+        await ValidateLatestSchemaAsync(connection, validatePersistedData: true, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task MigrateToAsync(
         int targetVersion,
         bool validatePersistedData,
