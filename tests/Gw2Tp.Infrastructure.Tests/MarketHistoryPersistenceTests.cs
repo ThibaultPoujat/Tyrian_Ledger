@@ -54,9 +54,26 @@ public sealed class MarketHistoryPersistenceTests
 
         Assert.Equal([first, second], await database.History.GetPriceObservationsAsync(42, FirstObservedAtUtc, SecondObservedAtUtc));
         Assert.Empty(await database.History.GetPriceObservationsAsync(84, FirstObservedAtUtc, SecondObservedAtUtc));
-        Assert.Equal(second, await database.History.GetLatestPriceObservationAsync(42));
-        Assert.Null(await database.History.GetLatestPriceObservationAsync(84));
+        var latest = await database.History.GetLatestPriceObservationsAsync([42, 84]);
+        Assert.Equal(second, latest[42]);
+        Assert.False(latest.ContainsKey(84));
         await Assert.ThrowsAsync<InvalidOperationException>(() => database.History.AppendPriceObservationAsync(first));
+    }
+
+    [Fact]
+    public async Task Latest_observation_lookup_batches_a_broad_item_set_on_one_connection()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var itemIds = Enumerable.Range(1, 201).ToArray();
+        foreach (var itemId in itemIds)
+        {
+            await database.History.AppendPriceObservationAsync(Price(itemId, FirstObservedAtUtc));
+        }
+
+        var latest = await database.History.GetLatestPriceObservationsAsync(itemIds);
+
+        Assert.Equal(201, latest.Count);
+        Assert.Equal(Price(201, FirstObservedAtUtc), latest[201]);
     }
 
     [Fact]

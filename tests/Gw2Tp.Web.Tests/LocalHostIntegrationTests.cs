@@ -285,7 +285,8 @@ public sealed class LocalHostIntegrationTests
         var service = new MarketHistoryCollectorHostedService(
             collector,
             new MarketHistoryCollectionSchedulerSettings(TimeSpan.FromMinutes(1)),
-            new FixedClock(new DateTimeOffset(2026, 9, 8, 12, 0, 0, TimeSpan.Zero)));
+            new FixedClock(new DateTimeOffset(2026, 9, 8, 12, 0, 0, TimeSpan.Zero)),
+            new BlockingCollectionDelay());
 
         await service.StartAsync(CancellationToken.None);
         await collector.DueRunStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -293,6 +294,26 @@ public sealed class LocalHostIntegrationTests
 
         await service.StopAsync(CancellationToken.None);
 
+        Assert.Null(collector.LastScheduledRunAtUtc);
+    }
+
+    [Fact]
+    public async Task Market_history_collector_hosted_service_prefers_the_next_due_capture_then_bounds_it_by_source_refresh()
+    {
+        var now = new DateTimeOffset(2026, 9, 8, 12, 0, 0, TimeSpan.Zero);
+        var collector = new RepeatingMarketHistoryCollector(now);
+        var delay = new RecordingCollectionDelay();
+        var service = new MarketHistoryCollectorHostedService(
+            collector,
+            new MarketHistoryCollectionSchedulerSettings(TimeSpan.FromMinutes(1)),
+            new FixedClock(now),
+            delay);
+
+        await service.StartAsync(CancellationToken.None);
+        await collector.SecondRunStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal([TimeSpan.FromSeconds(20), TimeSpan.FromMinutes(1)], delay.Delays);
+        await service.StopAsync(CancellationToken.None);
         Assert.Null(collector.LastScheduledRunAtUtc);
     }
 
@@ -910,6 +931,52 @@ public sealed class LocalHostIntegrationTests
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock
     {
         public DateTimeOffset UtcNow { get; } = utcNow;
+    }
+
+    private sealed class BlockingCollectionDelay : IMarketHistoryCollectionDelay
+    {
+        public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken) =>
+            Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+    }
+
+    private sealed class RecordingCollectionDelay : IMarketHistoryCollectionDelay
+    {
+        public List<TimeSpan> Delays { get; } = [];
+
+        public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
+        {
+            Delays.Add(delay);
+            return Delays.Count == 1
+                ? Task.CompletedTask
+                : Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+    }
+
+    private sealed class RepeatingMarketHistoryCollector(DateTimeOffset now) : IMarketHistoryCollector
+    {
+        private int dueRunCount;
+
+        public TaskCompletionSource SecondRunStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public DateTimeOffset? LastScheduledRunAtUtc { get; private set; }
+
+        public Task<MarketHistoryCollectionRun> CollectDueAsync(CancellationToken cancellationToken = default)
+        {
+            dueRunCount++;
+            if (dueRunCount == 2)
+            {
+                SecondRunStarted.TrySetResult();
+            }
+
+            var nextDueAtUtc = dueRunCount == 1 ? now.AddSeconds(20) : now.AddMinutes(2);
+            return Task.FromResult(new MarketHistoryCollectionRun(MarketHistoryCollectionOutcome.Succeeded, 1, 0, 0, 0, null, nextDueAtUtc));
+        }
+
+        public Task<MarketHistoryCollectionRun> CollectNowAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new MarketHistoryCollectionRun(MarketHistoryCollectionOutcome.Succeeded, 1, 1, 1, 0, null, now));
+
+        public MarketHistoryCollectorHealth GetHealth() => new(MarketHistoryCollectorState.Idle, null, null, 0, 1, LastScheduledRunAtUtc);
+
+        public void SetNextRunAtUtc(DateTimeOffset? nextRunAtUtc) => LastScheduledRunAtUtc = nextRunAtUtc;
     }
 
     private sealed class FixedDashboardService : IPersonalDashboardService

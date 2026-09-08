@@ -25,7 +25,8 @@ internal sealed record MarketHistoryCollectionSchedulerSettings(TimeSpan SourceR
 internal sealed class MarketHistoryCollectorHostedService(
     IMarketHistoryCollector collector,
     MarketHistoryCollectionSchedulerSettings settings,
-    IClock clock) : BackgroundService
+    IClock clock,
+    IMarketHistoryCollectionDelay delay) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -41,7 +42,7 @@ internal sealed class MarketHistoryCollectorHostedService(
                     ? nextDue
                     : sourceRefreshAtUtc;
                 collector.SetNextRunAtUtc(nextRunAtUtc);
-                await Task.Delay(nextRunAtUtc - now, stoppingToken).ConfigureAwait(false);
+                await delay.DelayAsync(nextRunAtUtc - now, stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -57,4 +58,21 @@ internal sealed class MarketHistoryCollectorHostedService(
     private static DateTimeOffset RequireUtc(DateTimeOffset value) => value.Offset == TimeSpan.Zero
         ? value
         : throw new ArgumentException("Collection timestamps must be UTC.", nameof(value));
+}
+
+internal interface IMarketHistoryCollectionDelay
+{
+    Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken);
+}
+
+internal sealed class SystemMarketHistoryCollectionDelay : IMarketHistoryCollectionDelay
+{
+    internal static readonly SystemMarketHistoryCollectionDelay Instance = new();
+
+    private SystemMarketHistoryCollectionDelay()
+    {
+    }
+
+    public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken) =>
+        Task.Delay(delay, cancellationToken);
 }

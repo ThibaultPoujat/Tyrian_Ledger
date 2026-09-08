@@ -83,11 +83,12 @@ public interface IMarketHistoryRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets the newest raw aggregate observation for one item. Collection uses
-    /// this only to resume the configured sampling cadence after a restart; it
-    /// never changes or interprets the retained raw evidence.
+    /// Gets the newest raw aggregate observation for each requested item.
+    /// Collection uses this one batched lookup to resume the configured
+    /// sampling cadence after a restart; it never changes or interprets the
+    /// retained raw evidence.
     /// </summary>
-    Task<MarketPriceObservation?> GetLatestPriceObservationAsync(
-        int itemId,
+    Task<IReadOnlyDictionary<int, MarketPriceObservation>> GetLatestPriceObservationsAsync(
+        IReadOnlyCollection<int> itemIds,
         CancellationToken cancellationToken = default);
 }

@@ -103,9 +103,9 @@ is:
 TKT-M18-02 local validation on 2026-09-08 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused collector: 7 tests passed; focused local-host collector endpoints and shutdown: 2 tests passed;
-- focused SQLite persistence: 6 tests passed;
-- full .NET regression suite: 318 tests passed;
+- focused collector: 9 tests passed; focused local-host collector endpoints and shutdown: 3 tests passed;
+- focused SQLite persistence: 7 tests passed;
+- full .NET regression suite: 322 tests passed;
 - React: 18 component tests passed and the production build succeeded;
 - Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;

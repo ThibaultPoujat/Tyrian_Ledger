@@ -98,9 +98,11 @@ public sealed class MarketHistoryCollector(
             SetCollecting(true);
             var plan = await samplingPolicy.BuildPlanAsync(cancellationToken).ConfigureAwait(false);
             var requestedAtUtc = RequireUtc(clock.UtcNow);
-            var dueTargets = await GetDueTargetsAsync(plan.Targets, requestedAtUtc, forceAllTargets, cancellationToken).ConfigureAwait(false);
-            var observedAtUtc = await GetUniqueObservedAtUtcAsync(dueTargets, requestedAtUtc, cancellationToken).ConfigureAwait(false);
-            var nextDueAtUtc = await GetNextDueAtUtcAsync(plan.Targets, observedAtUtc, cancellationToken).ConfigureAwait(false);
+            var latestObservations = await marketHistoryRepository.GetLatestPriceObservationsAsync(
+                plan.Targets.Select(target => target.ItemId).ToArray(), cancellationToken).ConfigureAwait(false);
+            var dueTargets = GetDueTargets(plan.Targets, latestObservations, requestedAtUtc, forceAllTargets);
+            var observedAtUtc = GetUniqueObservedAtUtc(dueTargets, latestObservations, requestedAtUtc);
+            var nextDueAtUtc = GetNextDueAtUtc(plan.Targets, latestObservations, observedAtUtc);
             SetTrackedItemCount(plan.Targets.Count);
 
             if (dueTargets.Count == 0)
@@ -166,10 +168,6 @@ public sealed class MarketHistoryCollector(
         {
             throw;
         }
-        catch
-        {
-            return RecordFailure(GetHealth().TrackedItemCount, 0, Gw2ApiErrorCategory.UnexpectedResponse, null);
-        }
         finally
         {
             SetCollecting(false);
@@ -177,17 +175,16 @@ public sealed class MarketHistoryCollector(
         }
     }
 
-    private async Task<IReadOnlyList<MarketSamplingTarget>> GetDueTargetsAsync(
+    private static IReadOnlyList<MarketSamplingTarget> GetDueTargets(
         IReadOnlyList<MarketSamplingTarget> targets,
+        IReadOnlyDictionary<int, MarketPriceObservation> latestObservations,
         DateTimeOffset observedAtUtc,
-        bool forceAllTargets,
-        CancellationToken cancellationToken)
+        bool forceAllTargets)
     {
         var dueTargets = new List<MarketSamplingTarget>();
         foreach (var target in targets)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var latest = await marketHistoryRepository.GetLatestPriceObservationAsync(target.ItemId, cancellationToken).ConfigureAwait(false);
+            latestObservations.TryGetValue(target.ItemId, out var latest);
             if (forceAllTargets || latest is null || latest.ObservedAtUtc + target.Interval <= observedAtUtc)
             {
                 dueTargets.Add(target);
@@ -197,16 +194,15 @@ public sealed class MarketHistoryCollector(
         return dueTargets;
     }
 
-    private async Task<DateTimeOffset?> GetNextDueAtUtcAsync(
+    private static DateTimeOffset? GetNextDueAtUtc(
         IReadOnlyList<MarketSamplingTarget> targets,
-        DateTimeOffset observedAtUtc,
-        CancellationToken cancellationToken)
+        IReadOnlyDictionary<int, MarketPriceObservation> latestObservations,
+        DateTimeOffset observedAtUtc)
     {
         DateTimeOffset? nextDueAtUtc = null;
         foreach (var target in targets)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var latest = await marketHistoryRepository.GetLatestPriceObservationAsync(target.ItemId, cancellationToken).ConfigureAwait(false);
+            latestObservations.TryGetValue(target.ItemId, out var latest);
             var candidate = latest is null ? observedAtUtc : latest.ObservedAtUtc + target.Interval;
             if (nextDueAtUtc is null || candidate < nextDueAtUtc)
             {
@@ -217,16 +213,15 @@ public sealed class MarketHistoryCollector(
         return nextDueAtUtc;
     }
 
-    private async Task<DateTimeOffset> GetUniqueObservedAtUtcAsync(
+    private static DateTimeOffset GetUniqueObservedAtUtc(
         IReadOnlyList<MarketSamplingTarget> dueTargets,
-        DateTimeOffset requestedAtUtc,
-        CancellationToken cancellationToken)
+        IReadOnlyDictionary<int, MarketPriceObservation> latestObservations,
+        DateTimeOffset requestedAtUtc)
     {
         var observedAtUtc = requestedAtUtc;
         foreach (var target in dueTargets)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var latest = await marketHistoryRepository.GetLatestPriceObservationAsync(target.ItemId, cancellationToken).ConfigureAwait(false);
+            latestObservations.TryGetValue(target.ItemId, out var latest);
             if (latest is not null && latest.ObservedAtUtc >= observedAtUtc)
             {
                 observedAtUtc = latest.ObservedAtUtc.AddTicks(1);

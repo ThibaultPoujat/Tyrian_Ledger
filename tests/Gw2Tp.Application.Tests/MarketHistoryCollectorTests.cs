@@ -137,6 +137,27 @@ public sealed class MarketHistoryCollectorTests
     }
 
     [Fact]
+    public async Task Collection_loads_latest_observations_once_for_the_entire_policy_plan()
+    {
+        var targets = Enumerable.Range(1, 500)
+            .Select(itemId => new MarketSamplingTarget(itemId, MarketSamplingTier.BroadMarket, TimeSpan.FromHours(6), false, ["broad"]))
+            .ToArray();
+        var repository = new InMemoryHistoryRepository();
+        var client = new StubMarketDataClient
+        {
+            Prices = Gw2ApiResult<IReadOnlyList<MarketPrice>>.Success(targets.Select(target => Price(target.ItemId)).ToArray()),
+        };
+        var collector = CreateCollector(new MutableClock(FirstObservedAtUtc), repository, client, targets);
+
+        var result = await collector.CollectDueAsync();
+
+        Assert.Equal(MarketHistoryCollectionOutcome.Succeeded, result.Outcome);
+        Assert.Single(repository.LatestObservationQueries);
+        Assert.Equal(Enumerable.Range(1, 500), repository.LatestObservationQueries[0]);
+        Assert.Equal(500, repository.Prices.Count);
+    }
+
+    [Fact]
     public async Task Cancellation_propagates_without_recording_a_failed_capture()
     {
         using var cancellation = new CancellationTokenSource();
@@ -155,6 +176,20 @@ public sealed class MarketHistoryCollectorTests
         cancellation.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => capture);
+        Assert.Null(collector.GetHealth().LastFailure);
+        Assert.Equal(MarketHistoryCollectorState.Idle, collector.GetHealth().State);
+    }
+
+    [Fact]
+    public async Task Local_persistence_failure_propagates_instead_of_being_misclassified_as_an_upstream_response()
+    {
+        var repository = new InMemoryHistoryRepository { AppendPriceException = new IOException("synthetic local write failure") };
+        var client = new StubMarketDataClient { Prices = Gw2ApiResult<IReadOnlyList<MarketPrice>>.Success([Price(42)]) };
+        var collector = CreateCollector(new MutableClock(FirstObservedAtUtc), repository, client,
+            [new MarketSamplingTarget(42, MarketSamplingTier.CurrentPersonalOrder, TimeSpan.FromMinutes(15), false, ["orders"])]);
+
+        await Assert.ThrowsAsync<IOException>(() => collector.CollectDueAsync());
+
         Assert.Null(collector.GetHealth().LastFailure);
         Assert.Equal(MarketHistoryCollectorState.Idle, collector.GetHealth().State);
     }
@@ -189,9 +224,16 @@ public sealed class MarketHistoryCollectorTests
     {
         public List<MarketPriceObservation> Prices { get; } = [];
         public List<MarketOrderBookSnapshot> Books { get; } = [];
+        public List<int[]> LatestObservationQueries { get; } = [];
+        public Exception? AppendPriceException { get; init; }
 
         public Task AppendPriceObservationAsync(MarketPriceObservation observation, CancellationToken cancellationToken = default)
         {
+            if (AppendPriceException is { } exception)
+            {
+                throw exception;
+            }
+
             Prices.Add(observation);
             return Task.CompletedTask;
         }
@@ -205,8 +247,15 @@ public sealed class MarketHistoryCollectorTests
         public Task<IReadOnlyList<MarketPriceObservation>> GetPriceObservationsAsync(int itemId, DateTimeOffset fromInclusiveUtc, DateTimeOffset toInclusiveUtc, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<MarketPriceObservation>>(Prices.Where(observation => observation.ItemId == itemId && observation.ObservedAtUtc >= fromInclusiveUtc && observation.ObservedAtUtc <= toInclusiveUtc).ToArray());
 
-        public Task<MarketPriceObservation?> GetLatestPriceObservationAsync(int itemId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Prices.Where(observation => observation.ItemId == itemId).OrderByDescending(observation => observation.ObservedAtUtc).FirstOrDefault());
+        public Task<IReadOnlyDictionary<int, MarketPriceObservation>> GetLatestPriceObservationsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default)
+        {
+            var orderedItemIds = itemIds.OrderBy(itemId => itemId).ToArray();
+            LatestObservationQueries.Add(orderedItemIds);
+            return Task.FromResult<IReadOnlyDictionary<int, MarketPriceObservation>>(Prices
+                .Where(observation => orderedItemIds.Contains(observation.ItemId))
+                .GroupBy(observation => observation.ItemId)
+                .ToDictionary(group => group.Key, group => group.OrderByDescending(observation => observation.ObservedAtUtc).First()));
+        }
     }
 
     private sealed class StubMarketDataClient : IGw2ApiClient

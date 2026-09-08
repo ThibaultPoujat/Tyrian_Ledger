@@ -55,6 +55,7 @@ public static class Program
         builder.Services.AddSingleton<IAdaptiveMarketSamplingPolicy, AdaptiveMarketSamplingPolicy>();
         builder.Services.AddSingleton(CreateMarketHistoryCollectionSchedulerSettings(builder.Configuration));
         builder.Services.AddSingleton<IMarketHistoryCollector, MarketHistoryCollector>();
+        builder.Services.AddSingleton<IMarketHistoryCollectionDelay>(SystemMarketHistoryCollectionDelay.Instance);
         builder.Services.AddHostedService<MarketHistoryCollectorHostedService>();
         builder.Services.AddHostFiltering(options =>
         {
