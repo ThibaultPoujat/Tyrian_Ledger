@@ -65,6 +65,7 @@ describe('M14 local data controls', () => {
       exclusions: [{ reason: 'feeLosing', count: 2 }],
       candidates: [{ itemId: 42, itemName: 'Scanner item', bestBuy: { quantity: 5, unitPrice: { copper: '100' } }, lowestSell: { quantity: 8, unitPrice: { copper: '200' } }, plannedBid: { copper: '100' }, plannedListPrice: { copper: '200' }, netProfit: { copper: '70' }, totalCost: { copper: '105' }, maximumBid: { copper: '120' }, modeledRoi: { profit: { copper: '70' }, totalCost: { copper: '105' }, displayPercent: '66.67%' }, liquidity: { participationCapQuantity: 3, reasons: ['buyPriceCliff'], acquisition: { requestedQuantity: 1, filledQuantity: 1, isFullyFilled: true, totalValue: { copper: '110' } }, liquidation: { requestedQuantity: 1, filledQuantity: 1, isFullyFilled: true, totalValue: { copper: '200' } }, topBuyLevels: [{ listings: 2, quantity: 5, unitPrice: { copper: '100' } }], topSellLevels: [{ listings: 3, quantity: 8, unitPrice: { copper: '200' } }] } }],
     };
+    scanner.candidates.push({ ...scanner.candidates[0], itemId: 43, itemName: 'Higher maximum bid', netProfit: { copper: '60' }, maximumBid: { copper: '130' } });
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       if (typeof input === 'string' && input.startsWith('/api/live-market-scanner')) return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(scanner) } as unknown as Response);
       if (input === '/api/watchlist') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ itemIds: watched ? [42] : [] }) } as unknown as Response);
@@ -79,10 +80,13 @@ describe('M14 local data controls', () => {
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Current scanner and watchlist' })).toBeVisible();
     expect(await screen.findByText('Scanner item')).toBeVisible();
-    expect(screen.getByText('66.67%')).toBeVisible();
-    expect(screen.getByText(/Risk: Buy Price Cliff/)).toBeVisible();
-    fireEvent.click(screen.getByText('Order-book detail'));
-    expect(screen.getByRole('heading', { name: 'Buy orders' })).toBeVisible();
+    expect(screen.getAllByText('66.67%')).toHaveLength(2);
+    expect(screen.getAllByText(/Risk: Buy Price Cliff/)).toHaveLength(2);
+    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'maxBid' } });
+    expect(document.querySelector('.scanner-candidate h3')?.textContent).toBe('Higher maximum bid');
+    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'profit' } });
+    fireEvent.click(screen.getAllByText('Order-book detail')[0]);
+    expect(screen.getAllByRole('heading', { name: 'Buy orders' })).toHaveLength(2);
     fireEvent.change(screen.getByLabelText('Max planned bid (copper)'), { target: { value: '99' } });
     expect(screen.getByText('No current candidates match these presentation filters.')).toBeVisible();
     fireEvent.change(screen.getByLabelText('Max planned bid (copper)'), { target: { value: '100' } });
@@ -98,7 +102,7 @@ describe('M14 local data controls', () => {
     fireEvent.change(screen.getByLabelText('Intended quantity'), { target: { value: '2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Refresh scanner' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/live-market-scanner?minimumRoiBasisPoints=250&minimumNetProfitCopper=50&intendedQuantity=2', expect.anything()));
-    fireEvent.click(screen.getByRole('button', { name: 'Add to watchlist' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add to watchlist' })[0]);
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/watchlist/42', expect.objectContaining({ method: 'PUT' })));
     expect(await screen.findByRole('button', { name: 'Remove from watchlist' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Remove from watchlist' }));
