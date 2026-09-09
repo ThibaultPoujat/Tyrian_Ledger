@@ -1,4 +1,5 @@
 using Gw2Tp.Analytics.MarketHistory;
+using Gw2Tp.Analytics.OrderBooks;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.MarketScanning;
 
@@ -500,6 +501,9 @@ public sealed class OpportunityScoreService : IOpportunityScoreService
             liquidity.NearBestBuyListings < 0 || liquidity.NearBestSellListings < 0 ||
             liquidity.ParticipationCapQuantity < 0 || liquidity.Acquisition.RequestedQuantity <= 0 ||
             liquidity.Acquisition.RequestedQuantity != liquidity.Liquidation.RequestedQuantity ||
+            liquidity.ParticipationCapQuantity > Math.Min(liquidity.TotalBuyQuantity, liquidity.TotalSellQuantity) / 10 ||
+            !IsConsistentExecution(liquidity.Acquisition, liquidity.TotalSellQuantity) ||
+            !IsConsistentExecution(liquidity.Liquidation, liquidity.TotalBuyQuantity) ||
             input.History.AsOfUtc.Offset != TimeSpan.Zero || input.History.Windows is null ||
             input.History.Windows.Any(window => window is null ||
                 window.Coverage.FromInclusiveUtc.Offset != TimeSpan.Zero ||
@@ -510,6 +514,13 @@ public sealed class OpportunityScoreService : IOpportunityScoreService
             throw new ArgumentException("Opportunity evidence is inconsistent or outside supported bounds.", nameof(input));
         }
     }
+
+    private static bool IsConsistentExecution(OrderBookExecutionScenario scenario, long visibleSideQuantity) =>
+        scenario.RequestedQuantity > 0 && scenario.FilledQuantity >= 0 &&
+        scenario.FilledQuantity <= scenario.RequestedQuantity &&
+        scenario.FilledQuantity <= visibleSideQuantity &&
+        scenario.RemainingQuantity == scenario.RequestedQuantity - scenario.FilledQuantity &&
+        scenario.IsFullyFilled == (scenario.RemainingQuantity == 0);
 
     private sealed record CalculatedOpportunity(OpportunityScore Score, long ModeledProfitCopper);
 }

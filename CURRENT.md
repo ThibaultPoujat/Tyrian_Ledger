@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: 2026-09-08
+Last updated: 2026-09-09
 
 ## Active direction
 
@@ -132,10 +132,10 @@ Concentration Risk.**
 TKT-M19-02 local validation on 2026-09-09 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused opportunity scoring: 13 tests passed; combined scoring, historical,
-  scanner, order-book, and fee prerequisite suites: 38 Application and 20
+- focused opportunity scoring: 14 tests passed; combined scoring, historical,
+  scanner, order-book, and fee prerequisite suites: 25 Application and 20
   Analytics tests passed;
-- full .NET regression suite: 361 tests passed (4 Domain, 21 Analytics, 136
+- full .NET regression suite: 362 tests passed (4 Domain, 21 Analytics, 137
   Application, 160 Infrastructure, and 40 Web);
 - React: 21 component tests passed and the production build succeeded;
 - Playwright: 12 tests passed across Chromium, Firefox, and WebKit;

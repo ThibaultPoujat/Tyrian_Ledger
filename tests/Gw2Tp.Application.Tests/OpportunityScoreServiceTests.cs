@@ -20,8 +20,8 @@ public sealed class OpportunityScoreServiceTests
     {
         var stable = Input(
             itemId: 1,
-            acquisitionCost: 1_000,
-            grossSale: 1_500,
+            plannedBid: 100,
+            plannedListPrice: 150,
             aggregateQuantity: 100,
             nearBestQuantity: 20,
             nearBestListings: 5,
@@ -30,8 +30,8 @@ public sealed class OpportunityScoreServiceTests
             history: History(1, availableSevenDay: true, availableThirtyDay: true, StableSummary()));
         var extreme = Input(
             itemId: 2,
-            acquisitionCost: 10,
-            grossSale: 30,
+            plannedBid: 10,
+            plannedListPrice: 30,
             aggregateQuantity: 1,
             nearBestQuantity: 1,
             nearBestListings: 1,
@@ -42,9 +42,34 @@ public sealed class OpportunityScoreServiceTests
         var scores = new OpportunityScoreService().Calculate([extreme, stable]);
 
         Assert.Equal([1, 2], scores.Select(score => score.ItemId));
-        Assert.True(scores[0].TotalPoints > scores[1].TotalPoints);
-        Assert.Contains(scores[1].Anomalies, anomaly => anomaly.Flag == OpportunityAnomalyFlag.ShallowBestLevels);
-        Assert.Contains(scores[1].Anomalies, anomaly => anomaly.Flag == OpportunityAnomalyFlag.IntendedPositionExceedsVisibleDepth);
+        var stableScore = scores[0];
+        var extremeScore = scores[1];
+        Assert.Equal(2_500m, RoiBasisPoints(stable.Current.ModeledRoi));
+        Assert.Equal(12_500m, RoiBasisPoints(extreme.Current.ModeledRoi));
+        Assert.Equal(stable.Current.BestBuy.UnitPriceInCopper + 1, stable.Current.PlannedBid.Copper);
+        Assert.Equal(stable.Current.LowestSell.UnitPriceInCopper - 1, stable.Current.PlannedListPrice.Copper);
+        Assert.True(stable.Current.Liquidity.Acquisition.IsFullyFilled);
+        Assert.True(stable.Current.Liquidity.Liquidation.IsFullyFilled);
+        Assert.Equal(1, extreme.Current.Liquidity.Acquisition.FilledQuantity);
+        Assert.Equal(4, extreme.Current.Liquidity.Acquisition.RemainingQuantity);
+        Assert.False(extreme.Current.Liquidity.Acquisition.IsFullyFilled);
+        Assert.Equal(1, extreme.Current.Liquidity.Liquidation.FilledQuantity);
+        Assert.Equal(4, extreme.Current.Liquidity.Liquidation.RemainingQuantity);
+        Assert.False(extreme.Current.Liquidity.Liquidation.IsFullyFilled);
+        Assert.Equal(12.5270m, Component(stableScore, OpportunityScoreComponentName.ExpectedEconomics).AwardedPoints);
+        Assert.Equal(25m, Component(stableScore, OpportunityScoreComponentName.CurrentLiquidity).AwardedPoints);
+        Assert.Equal(20m, Component(stableScore, OpportunityScoreComponentName.HistoricalPersistence).AwardedPoints);
+        Assert.Equal(15m, Component(stableScore, OpportunityScoreComponentName.HistoricalStability).AwardedPoints);
+        Assert.Equal(15m, Component(stableScore, OpportunityScoreComponentName.HistoricalConfidence).AwardedPoints);
+        Assert.Equal(87.5270m, stableScore.BasePoints);
+        Assert.Equal(0m, stableScore.AppliedPenaltyPoints);
+        Assert.Equal(87.5270m, stableScore.TotalPoints);
+        Assert.Equal(3.8667m, Component(extremeScore, OpportunityScoreComponentName.CurrentLiquidity).AwardedPoints);
+        Assert.Equal(18.8817m, extremeScore.BasePoints);
+        Assert.Equal(25m, extremeScore.AppliedPenaltyPoints);
+        Assert.Equal(0m, extremeScore.TotalPoints);
+        Assert.Contains(extremeScore.Anomalies, anomaly => anomaly.Flag == OpportunityAnomalyFlag.ShallowBestLevels);
+        Assert.Contains(extremeScore.Anomalies, anomaly => anomaly.Flag == OpportunityAnomalyFlag.IntendedPositionExceedsVisibleDepth);
     }
 
     [Fact]
@@ -73,8 +98,8 @@ public sealed class OpportunityScoreServiceTests
         var score = Assert.Single(new OpportunityScoreService().Calculate([
             Input(
                 1,
-                acquisitionCost: 100,
-                grossSale: 200,
+                plannedBid: 100,
+                plannedListPrice: 200,
                 aggregateQuantity: 50,
                 nearBestQuantity: 2,
                 nearBestListings: 1,
@@ -122,17 +147,15 @@ public sealed class OpportunityScoreServiceTests
     {
         var input = Input(
             1,
-            acquisitionCost: 1,
-            grossSale: 1_000_000,
+            plannedBid: 2,
+            plannedListPrice: 1_000_000,
             aggregateQuantity: 1,
-            nearBestQuantity: 0,
-            nearBestListings: 0,
+            nearBestQuantity: 1,
+            nearBestListings: 1,
             intendedQuantity: 100,
             participationCap: 0,
             History(1, true, true, StableSummary()),
-            hasPriceCliff: true,
-            currentBuyPrice: 1_000,
-            currentSellPrice: 2_000);
+            hasPriceCliff: true);
 
         var score = Assert.Single(new OpportunityScoreService().Calculate([input]));
 
@@ -217,17 +240,15 @@ public sealed class OpportunityScoreServiceTests
     {
         var input = Input(
             1,
-            acquisitionCost: 100,
-            grossSale: 400,
+            plannedBid: 131,
+            plannedListPrice: 249,
             aggregateQuantity: 10,
             nearBestQuantity: 1,
             nearBestListings: 1,
             intendedQuantity: 5,
             participationCap: 1,
-            History(1, true, true, StableSummary()),
-            hasPriceCliff: true,
-            currentBuyPrice: 130,
-            currentSellPrice: 250);
+            History(1, true, true, PriceBaseline()),
+            hasPriceCliff: true);
 
         var flags = Assert.Single(new OpportunityScoreService().Calculate([input])).Anomalies.Select(anomaly => anomaly.Flag).ToArray();
 
@@ -243,8 +264,8 @@ public sealed class OpportunityScoreServiceTests
     [Fact]
     public void Price_deviation_boundary_is_not_flagged_but_a_value_beyond_it_is()
     {
-        var atBoundary = Input(1, 1_000, 1_500, 100, 20, 5, 5, 10, History(1, true, true, StableSummary()), currentBuyPrice: 120, currentSellPrice: 240);
-        var beyondDrop = Input(2, 1_000, 1_500, 100, 20, 5, 5, 10, History(2, true, true, StableSummary()), currentBuyPrice: 79, currentSellPrice: 119);
+        var atBoundary = Input(1, 121, 239, 100, 20, 5, 5, 10, History(1, true, true, PriceBaseline()));
+        var beyondDrop = Input(2, 80, 118, 100, 20, 5, 5, 10, History(2, true, true, PriceBaseline()));
 
         var results = new OpportunityScoreService().Calculate([atBoundary, beyondDrop]).ToDictionary(score => score.ItemId);
 
@@ -263,24 +284,60 @@ public sealed class OpportunityScoreServiceTests
         Assert.Throws<ArgumentException>(() => service.Calculate([mismatched]));
     }
 
+    [Fact]
+    public void Execution_claims_that_exceed_visible_depth_are_rejected()
+    {
+        var shallow = Input(1, 10, 30, 1, 1, 1, 5, 0, History(1, false, false, StableSummary()));
+        var falseFullFill = shallow with
+        {
+            Current = shallow.Current with
+            {
+                Liquidity = shallow.Current.Liquidity with
+                {
+                    Acquisition = shallow.Current.Liquidity.Acquisition with
+                    {
+                        FilledQuantity = 5,
+                        RemainingQuantity = 0,
+                        IsFullyFilled = true,
+                    },
+                },
+            },
+        };
+
+        Assert.Throws<ArgumentException>(() => new OpportunityScoreService().Calculate([falseFullFill]));
+    }
+
     private static OpportunityScoreCandidate Input(
         int itemId,
-        long acquisitionCost,
-        long grossSale,
+        long plannedBid,
+        long plannedListPrice,
         int aggregateQuantity,
         int nearBestQuantity,
         int nearBestListings,
         int intendedQuantity,
         int participationCap,
         HistoricalMarketAnalytics history,
-        bool hasPriceCliff = false,
-        int currentBuyPrice = 100,
-        int currentSellPrice = 200)
+        bool hasPriceCliff = false)
     {
-        var profit = new FlipProfitCalculator(Gw2TradingPostFeePolicy.Create()).Calculate(new Money(acquisitionCost), new Money(grossSale));
-        var totalCost = Gw2TradingPostFeePolicy.CalculateFullUpFrontCost(new Money(acquisitionCost), profit.ListingFee);
-        var acquisition = Execution(OrderBookExecutionKind.Acquisition, intendedQuantity);
-        var liquidation = Execution(OrderBookExecutionKind.Liquidation, intendedQuantity);
+        if (plannedBid is <= 1 or > int.MaxValue || plannedListPrice is <= 0 or >= int.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(nameof(plannedBid));
+        }
+
+        var bestBuyPrice = checked((int)plannedBid - 1);
+        var lowestSellPrice = checked((int)plannedListPrice + 1);
+
+        var buys = OrderLevels(aggregateQuantity, nearBestQuantity, nearBestListings, bestBuyPrice, isBuy: true);
+        var sells = OrderLevels(aggregateQuantity, nearBestQuantity, nearBestListings, lowestSellPrice, isBuy: false);
+        var simulator = new OrderBookExecutionSimulator();
+        var acquisition = simulator.SimulateAcquisition(
+            sells.Select(level => new OrderBookLevel(level.Quantity, new Money(level.UnitPriceInCopper))).ToArray(),
+            intendedQuantity);
+        var liquidation = simulator.SimulateLiquidation(
+            buys.Select(level => new OrderBookLevel(level.Quantity, new Money(level.UnitPriceInCopper))).ToArray(),
+            intendedQuantity);
+        var profit = new FlipProfitCalculator(Gw2TradingPostFeePolicy.Create()).Calculate(new Money(plannedBid), new Money(plannedListPrice));
+        var totalCost = Gw2TradingPostFeePolicy.CalculateFullUpFrontCost(new Money(plannedBid), profit.ListingFee);
         var liquidity = new LiveMarketScannerLiquidityEvidence(
             aggregateQuantity,
             aggregateQuantity,
@@ -296,33 +353,43 @@ public sealed class OpportunityScoreServiceTests
             liquidation,
             participationCap,
             [],
-            [],
-            []);
+            buys,
+            sells);
         var current = new LiveMarketScannerCandidate(
             new MarketItemMetadata(itemId, $"Item {itemId}", MarketItemStackPolicy.NormalStackLimit),
-            new MarketOrderSummary(aggregateQuantity, currentBuyPrice),
-            new MarketOrderSummary(aggregateQuantity, currentSellPrice),
-            new Money(acquisitionCost),
-            new Money(grossSale),
+            new MarketOrderSummary(aggregateQuantity, bestBuyPrice),
+            new MarketOrderSummary(aggregateQuantity, lowestSellPrice),
+            new Money(plannedBid),
+            new Money(plannedListPrice),
             profit,
             totalCost,
             new ExactRoi(profit.NetProfit, totalCost),
-            new Money(currentBuyPrice),
+            new Money(bestBuyPrice),
             [],
             liquidity);
         return new OpportunityScoreCandidate(current, history);
     }
 
-    private static OrderBookExecutionScenario Execution(OrderBookExecutionKind kind, int requestedQuantity) => new(
-        kind,
-        requestedQuantity,
-        requestedQuantity,
-        0,
-        true,
-        [],
-        Money.Zero,
-        null,
-        Money.Zero);
+    private static IReadOnlyList<MarketOrderLevel> OrderLevels(
+        int aggregateQuantity,
+        int nearBestQuantity,
+        int nearBestListings,
+        int bestPrice,
+        bool isBuy)
+    {
+        if (aggregateQuantity <= 0 || nearBestQuantity <= 0 || nearBestQuantity > aggregateQuantity || nearBestListings <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(aggregateQuantity));
+        }
+
+        var levels = new List<MarketOrderLevel> { new(nearBestListings, nearBestQuantity, bestPrice) };
+        if (aggregateQuantity > nearBestQuantity)
+        {
+            levels.Add(new MarketOrderLevel(1, aggregateQuantity - nearBestQuantity, isBuy ? bestPrice - 1 : bestPrice + 1));
+        }
+
+        return levels;
+    }
 
     private static HistoricalMarketAnalytics History(
         int itemId,
@@ -358,7 +425,7 @@ public sealed class OpportunityScoreServiceTests
         available ? summary : null);
 
     private static HistoricalMarketMetricSummary StableSummary() => new(
-        MedianNetRoiBasisPoints: 2_000m,
+        MedianNetRoiBasisPoints: 2_500m,
         RoiThresholdRates: [new(1_500, 100m), new(2_000, 100m)],
         PositiveNetRoiPercent: 100m,
         BuyPricePopulationCoefficientOfVariation: 0d,
@@ -367,9 +434,15 @@ public sealed class OpportunityScoreServiceTests
         MedianAggregateBuyQuantity: 100m,
         MedianAggregateSellQuantity: 100m,
         MinimumSideDepthPopulationCoefficientOfVariation: 0d,
-        BuyPriceRange: new HistoricalPriceRange(80, 100),
-        SellPriceRange: new HistoricalPriceRange(150, 200),
+        BuyPriceRange: new HistoricalPriceRange(99, 99),
+        SellPriceRange: new HistoricalPriceRange(151, 151),
         MaximumSellPriceDrawdownPercent: 0d);
+
+    private static HistoricalMarketMetricSummary PriceBaseline() => StableSummary() with
+    {
+        BuyPriceRange = new HistoricalPriceRange(100, 100),
+        SellPriceRange = new HistoricalPriceRange(200, 200),
+    };
 
     private static void AssertScoresEqual(IReadOnlyList<OpportunityScore> expected, IReadOnlyList<OpportunityScore> actual)
     {
@@ -381,4 +454,9 @@ public sealed class OpportunityScoreServiceTests
             Assert.Equal(expected[index].Anomalies, actual[index].Anomalies);
         }
     }
+
+    private static OpportunityScoreComponent Component(OpportunityScore score, OpportunityScoreComponentName name) =>
+        Assert.Single(score.Components, component => component.Name == name);
+
+    private static decimal RoiBasisPoints(ExactRoi roi) => roi.Profit.Copper * 10_000m / roi.TotalCost.Copper;
 }
