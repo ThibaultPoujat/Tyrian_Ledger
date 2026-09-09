@@ -110,8 +110,7 @@ ROI and coverage-aware 7/30-day persistence, volatility, depth, range, and
 drawdown evidence. Insufficient samples or observed span remain explicit, and
 the analytics do not predict prices, fills, or profit.
 
-TKT-M19-02 / #86 is implemented in Draft PR #121. It remains SOL-GATED pending
-the owner-triggered fresh Sol XHigh review. The versioned deterministic score
+TKT-M19-02 / #86 merged in PR #121. The versioned deterministic score
 combines bounded current economics, visible liquidity, historical persistence,
 stability, and explicit 7/30-day confidence, then exposes every named component
 and anomaly penalty. Missing history contributes no invented stability;
@@ -121,11 +120,20 @@ Personal evidence is an explicit zero-weight placeholder for later sufficiently
 sampled M20 work. No scanner/API/UI orchestration or final position sizing is
 included.
 
-After the #86 SOL-GATED review/merge handoff, the next valid implementation
+TKT-M19-03 / #87 is implemented in Draft PR #122. It adds a pure deterministic
+position-sizing policy with a 15% reserve; 5%/3%/1.5% high/medium/low-liquidity
+item caps; and 20% strategy/25% category caps. Explicit complete portfolio
+snapshots include current-order/position capital at risk; unknown, negative,
+duplicate, or incomplete state returns no allocation. Ranked candidates consume
+cash and grouped capacity sequentially, and every binding cap remains structured
+for later M19-04 orchestration. The Draft remains SOL-GATED pending the
+owner-triggered fresh Sol XHigh review; no VERIFY entries changed.
+
+After the #87 SOL-GATED review/merge handoff, the next valid implementation
 ticket is:
 
-**TKT-M19-03 / #87 - Add Bankroll-Aware Position Sizing, Cash Reserve, and
-Concentration Risk.**
+**TKT-M19-04 / #88 - Build the Primary `What Should I Do?` Recommendation
+Screen.**
 
 ## Known-good baseline
 
