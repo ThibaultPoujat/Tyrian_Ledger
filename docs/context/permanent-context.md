@@ -6,6 +6,35 @@ Tyrian Ledger is a local-first personal Guild Wars 2 Trading Post assistant.
 Codex/coding agents are development tools only; no application LLM participates
 in runtime financial truth.
 
+## Pre-0.1 development status
+
+Until the owner explicitly declares the first `0.1` release, Tyrian Ledger is a
+pre-release development project with **no production users and no user data that
+must be preserved across development changes**. The owner may run manual tests,
+but those runs do not create a backward-compatibility or data-retention
+obligation.
+
+During this pre-0.1 period:
+
+- development/test databases and locally generated test data may be treated as
+  disposable;
+- do not add compatibility migrations, data-conversion paths, legacy-schema
+  support, or one-off preservation procedures solely to protect pre-0.1 local
+  data unless the assigned ticket explicitly requires them;
+- prefer the cleanest correct target schema/behavior when a pre-release change
+  would otherwise require carrying legacy development state;
+- it is acceptable for documented development setup to require clearing or
+  recreating local data when necessary, provided secrets remain protected and
+  the action is explicit;
+- do not infer deployed-user constraints, upgrade guarantees, or production
+  migration obligations before `0.1`.
+
+This does **not** authorize removing or weakening migration, backup/restore,
+recovery, integrity, or data-safety capabilities that are themselves part of
+the intended `0.1` product. Those features must still satisfy their tickets and
+tests. The policy only means pre-0.1 development data does not need preservation
+for its own sake.
+
 ## Hard constraints
 
 - Read-only toward Guild Wars 2; no gameplay or Trading Post automation.
