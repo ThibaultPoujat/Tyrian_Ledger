@@ -181,6 +181,7 @@ internal sealed class SqliteMarketHistoryRepository(
                    sampling_policy_version
             FROM market_price_observations
             WHERE item_id = $itemId
+              AND observed_at_utc <= $maximumObservedAtUtc
               AND highest_buy_price_in_copper >= $minimumHighestBuyPriceInCopper
               AND lowest_sell_price_in_copper >= $minimumLowestSellPriceInCopper
               AND aggregate_buy_quantity >= $minimumAggregateBuyQuantity
@@ -189,6 +190,7 @@ internal sealed class SqliteMarketHistoryRepository(
             LIMIT 1;
             """;
         command.Parameters.AddWithValue("$itemId", itemId);
+        command.Parameters.AddWithValue("$maximumObservedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(query.MaximumObservedAtUtc, nameof(query.MaximumObservedAtUtc)));
         command.Parameters.AddWithValue("$minimumHighestBuyPriceInCopper", query.MinimumHighestBuyPriceInCopper);
         command.Parameters.AddWithValue("$minimumLowestSellPriceInCopper", query.MinimumLowestSellPriceInCopper);
         command.Parameters.AddWithValue("$minimumAggregateBuyQuantity", query.MinimumAggregateBuyQuantity);

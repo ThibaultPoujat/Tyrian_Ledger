@@ -87,11 +87,12 @@ public sealed class MarketHistoryPersistenceTests
         };
         var newerZeroDepth = Price(42, SecondObservedAtUtc) with { AggregateBuyQuantity = 0 };
         var newerZeroBuyPrice = Price(42, SecondObservedAtUtc.AddMinutes(15)) with { HighestBuyPriceInCopper = 0 };
-        await database.History.AppendPriceObservationsAsync([eligible, newerZeroDepth, newerZeroBuyPrice]);
+        var futureEligible = Price(42, SecondObservedAtUtc.AddMinutes(30));
+        await database.History.AppendPriceObservationsAsync([eligible, newerZeroDepth, newerZeroBuyPrice, futureEligible]);
 
         var latest = await database.History.GetLatestPriceObservationAsync(
             42,
-            new LatestMarketPriceObservationQuery(1, 2, 1, 1));
+            new LatestMarketPriceObservationQuery(SecondObservedAtUtc, 1, 2, 1, 1));
 
         Assert.Equal(eligible, latest);
     }

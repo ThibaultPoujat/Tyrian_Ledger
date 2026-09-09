@@ -148,6 +148,19 @@ public sealed class HistoricalMarketAnalyticsServiceTests
         });
     }
 
+    [Fact]
+    public async Task Latest_observed_roi_does_not_include_observations_after_the_analytics_as_of_time()
+    {
+        var repository = new InMemoryHistoryRepository();
+        var asOfEligible = Observation(42, AsOfUtc);
+        repository.Prices.Add(asOfEligible);
+        repository.Prices.Add(Observation(42, AsOfUtc.AddTicks(1)) with { HighestBuyPriceInCopper = 101 });
+
+        var analytics = await new HistoricalMarketAnalyticsService(repository, new FixedClock(AsOfUtc)).GetAsync(42);
+
+        Assert.Equal(asOfEligible.ObservedAtUtc, analytics.LatestObservedNetRoi?.ObservedAtUtc);
+    }
+
     private static MarketPriceObservation Observation(int itemId, DateTimeOffset observedAtUtc) => new(
         observedAtUtc,
         itemId,
@@ -203,6 +216,7 @@ public sealed class HistoricalMarketAnalyticsServiceTests
             query.Validate();
             return Task.FromResult(Prices
                 .Where(observation => observation.ItemId == itemId &&
+                    observation.ObservedAtUtc <= query.MaximumObservedAtUtc &&
                     observation.HighestBuyPriceInCopper >= query.MinimumHighestBuyPriceInCopper &&
                     observation.LowestSellPriceInCopper >= query.MinimumLowestSellPriceInCopper &&
                     observation.AggregateBuyQuantity >= query.MinimumAggregateBuyQuantity &&

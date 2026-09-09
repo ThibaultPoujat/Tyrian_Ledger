@@ -46,6 +46,7 @@ public sealed record MarketPriceObservation(
 /// caller owns the financial interpretation of these structural predicates.
 /// </summary>
 public sealed record LatestMarketPriceObservationQuery(
+    DateTimeOffset MaximumObservedAtUtc,
     int MinimumHighestBuyPriceInCopper,
     int MinimumLowestSellPriceInCopper,
     int MinimumAggregateBuyQuantity,
@@ -53,7 +54,8 @@ public sealed record LatestMarketPriceObservationQuery(
 {
     public void Validate()
     {
-        if (MinimumHighestBuyPriceInCopper <= 0 || MinimumLowestSellPriceInCopper <= 0 ||
+        if (MaximumObservedAtUtc.Offset != TimeSpan.Zero ||
+            MinimumHighestBuyPriceInCopper <= 0 || MinimumLowestSellPriceInCopper <= 0 ||
             MinimumAggregateBuyQuantity <= 0 || MinimumAggregateSellQuantity <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(LatestMarketPriceObservationQuery));

@@ -76,8 +76,12 @@ internal static class HistoricalMarketAnalyticsEndpoints
         metrics.MedianAggregateBuyQuantity,
         metrics.MedianAggregateSellQuantity,
         metrics.MinimumSideDepthPopulationCoefficientOfVariation,
-        new HistoricalPriceRangeResponse(metrics.BuyPriceRange.MinimumCopper, metrics.BuyPriceRange.MaximumCopper),
-        new HistoricalPriceRangeResponse(metrics.SellPriceRange.MinimumCopper, metrics.SellPriceRange.MaximumCopper),
+        new HistoricalPriceRangeResponse(
+            MoneyResponse.From(new Money(metrics.BuyPriceRange.MinimumCopper)),
+            MoneyResponse.From(new Money(metrics.BuyPriceRange.MaximumCopper))),
+        new HistoricalPriceRangeResponse(
+            MoneyResponse.From(new Money(metrics.SellPriceRange.MinimumCopper)),
+            MoneyResponse.From(new Money(metrics.SellPriceRange.MaximumCopper))),
         metrics.MaximumSellPriceDrawdownPercent);
 
     private static IResult NoStoreJson(int statusCode, object payload) => new NoStoreJsonResult(statusCode, payload);
@@ -146,7 +150,7 @@ internal static class HistoricalMarketAnalyticsEndpoints
 
     private sealed record HistoricalRoiThresholdRateResponse(int ThresholdBasisPoints, decimal Percent);
 
-    private sealed record HistoricalPriceRangeResponse(int MinimumCopper, int MaximumCopper);
+    private sealed record HistoricalPriceRangeResponse(MoneyResponse MinimumCopper, MoneyResponse MaximumCopper);
 
     private sealed record HistoricalMarketAnalyticsResponse(
         int ItemId,

@@ -463,8 +463,8 @@ public sealed class LocalHostIntegrationTests
             Assert.Contains("\"medianAggregateBuyQuantity\":10", body, StringComparison.Ordinal);
             Assert.Contains("\"medianAggregateSellQuantity\":20", body, StringComparison.Ordinal);
             Assert.Contains("\"minimumSideDepthPopulationCoefficientOfVariation\":0", body, StringComparison.Ordinal);
-            Assert.Contains("\"buyPriceRange\":{\"minimumCopper\":100,\"maximumCopper\":100}", body, StringComparison.Ordinal);
-            Assert.Contains("\"sellPriceRange\":{\"minimumCopper\":150,\"maximumCopper\":150}", body, StringComparison.Ordinal);
+            Assert.Contains("\"buyPriceRange\":{\"minimumCopper\":{\"copper\":\"100\"},\"maximumCopper\":{\"copper\":\"100\"}}", body, StringComparison.Ordinal);
+            Assert.Contains("\"sellPriceRange\":{\"minimumCopper\":{\"copper\":\"150\"},\"maximumCopper\":{\"copper\":\"150\"}}", body, StringComparison.Ordinal);
             Assert.Contains("\"maximumSellPriceDrawdownPercent\":0", body, StringComparison.Ordinal);
         }
         finally

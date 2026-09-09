@@ -112,7 +112,7 @@ public sealed class HistoricalMarketAnalyticsService(
             asOfUtc - longestWindow.Duration,
             asOfUtc,
             cancellationToken);
-        var latestObservationTask = GetLatestEligibleObservationAsync(itemId, cancellationToken);
+        var latestObservationTask = GetLatestEligibleObservationAsync(itemId, asOfUtc, cancellationToken);
         await Task.WhenAll(allObservationsTask, latestObservationTask).ConfigureAwait(false);
         var allObservations = await allObservationsTask.ConfigureAwait(false);
         var latestObservation = await latestObservationTask.ConfigureAwait(false);
@@ -134,7 +134,10 @@ public sealed class HistoricalMarketAnalyticsService(
             windows);
     }
 
-    private Task<MarketPriceObservation?> GetLatestEligibleObservationAsync(int itemId, CancellationToken cancellationToken)
+    private Task<MarketPriceObservation?> GetLatestEligibleObservationAsync(
+        int itemId,
+        DateTimeOffset asOfUtc,
+        CancellationToken cancellationToken)
     {
         var minimumSellPrice = (long)settings.Metrics.ListUndercutCopper + 1;
         if (minimumSellPrice > int.MaxValue)
@@ -144,7 +147,7 @@ public sealed class HistoricalMarketAnalyticsService(
 
         return repository.GetLatestPriceObservationAsync(
             itemId,
-            new LatestMarketPriceObservationQuery(1, (int)minimumSellPrice, 1, 1),
+            new LatestMarketPriceObservationQuery(asOfUtc, 1, (int)minimumSellPrice, 1, 1),
             cancellationToken);
     }
 
