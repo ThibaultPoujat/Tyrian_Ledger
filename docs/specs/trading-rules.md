@@ -221,15 +221,34 @@ Suggested size is bounded by the minimum of independently explainable caps:
 - strategy/category concentration cap;
 - speculative/illiquid cap where applicable.
 
-Initial configurable reference defaults may include approximately:
+### Position-sizing policy version 1
 
-- 15% cash reserve;
-- up to ~5% of bankroll for high-liquidity single-market exposure;
-- ~2.5-3% for medium-liquidity exposure;
-- ~1-2% for low-liquidity/speculative exposure.
+The disclosed, configurable default policy reserves 15% of total bankroll,
+caps high/medium/low-liquidity item exposure at 5%/3%/1.5%, caps a strategy at
+20%, and caps a category at 25%. All percentages use integer basis points.
+Reserve rounds up to preserve safety; cap money and affordable quantities round
+down so a suggestion cannot exceed a cap.
 
-These are starting policy values to validate through use; they are not hidden
-hard-coded truths. Existing positions/orders count toward the relevant cap.
+Version one receives a complete explicit portfolio snapshot: available cash and
+non-negative capital-at-risk entries for current orders and held positions.
+Total bankroll is available cash plus those entries. Every entry and candidate
+must name a strategy and category; incomplete, duplicate, unknown, negative,
+or otherwise invalid evidence produces no allocation rather than silently
+bypassing a limit. Callers must not represent the same committed capital as both
+an order and a position.
+
+Candidates are allocated in disclosed score-rank order (then item ID). Each
+suggestion is the minimum of remaining cash after reserve, remaining item,
+strategy, and category capacity, and the scanner's visible participation cap.
+After each suggestion its modeled capital is counted before the next candidate
+is sized, so a group of otherwise attractive candidates cannot compose around
+the reserve or concentration limits. Every returned allocation exposes all cap
+quantities and every constraint tied for the minimum.
+
+Capital per suggested unit uses the scanner's existing authoritative one-unit
+`TotalCost`, including the modeled listing fee. This is deliberately
+conservative for quantity scaling while VERIFY-013's fractional-copper fee
+rounding remains open; it is not a fill, profit, or execution guarantee.
 
 ## 9. Buy-order actions
 
