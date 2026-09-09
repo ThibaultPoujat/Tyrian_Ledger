@@ -77,6 +77,27 @@ public sealed class MarketHistoryPersistenceTests
     }
 
     [Fact]
+    public async Task Latest_eligible_observation_lookup_uses_bounded_structural_filters()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var eligible = Price(42, FirstObservedAtUtc) with
+        {
+            HighestBuyPriceInCopper = int.MaxValue,
+            LowestSellPriceInCopper = int.MaxValue,
+        };
+        var newerZeroDepth = Price(42, SecondObservedAtUtc) with { AggregateBuyQuantity = 0 };
+        var newerZeroBuyPrice = Price(42, SecondObservedAtUtc.AddMinutes(15)) with { HighestBuyPriceInCopper = 0 };
+        var futureEligible = Price(42, SecondObservedAtUtc.AddMinutes(30));
+        await database.History.AppendPriceObservationsAsync([eligible, newerZeroDepth, newerZeroBuyPrice, futureEligible]);
+
+        var latest = await database.History.GetLatestPriceObservationAsync(
+            42,
+            new LatestMarketPriceObservationQuery(SecondObservedAtUtc, 1, 2, 1, 1));
+
+        Assert.Equal(eligible, latest);
+    }
+
+    [Fact]
     public async Task Price_observation_batch_is_atomic_and_never_partially_commits_a_duplicate()
     {
         await using var database = await TestDatabase.CreateAsync();

@@ -19,7 +19,7 @@ architecture to extend.
 
 ## Active milestone
 
-**M18 - Owned Historical Market Dataset**
+**M19 - Core Recommendation Product**
 
 M13 is complete through the local host, secure API-key validation, and typed
 personal Trading Post gateway work merged in PRs #102-#105. M14 is complete
@@ -112,19 +112,18 @@ implementation ticket is:
 
 ## Known-good baseline
 
-TKT-M18-03 local validation on 2026-09-08 reported:
+TKT-M19-01 local validation on 2026-09-09 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused market-history persistence: 14 tests passed; focused market-history status endpoint: 1 test passed;
-- clear-personal-data separation with retained market history: 1 test passed;
-- full .NET regression suite: 330 tests passed;
-- React: 18 component tests passed and the production build succeeded;
-- Playwright: 9 tests passed across Chromium, Firefox, and WebKit;
+- focused historical analytics: 21 Analytics tests, 123 Application tests, and 40 Web tests passed;
+- full .NET regression suite: 348 tests passed;
+- React: 21 component tests passed and the production build succeeded after rebasing the M18-03 #120 frontend fixes;
+- Playwright: 12 tests passed across Chromium, Firefox, and WebKit after rebasing the M18-03 #120 browser coverage;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime audit: only expected negative assertions matched;
-- Gitleaks: all 270 reachable commits scanned with no leaks.
+- Gitleaks: all 283 reachable commits scanned with no leaks.
 
-PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/118
+PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/119 (Draft; pending owner-triggered Sol XHigh review)
 
 ## Important transition warning
 

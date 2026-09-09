@@ -98,6 +98,43 @@ Locally owned observations should eventually inform:
 A requested historical window with insufficient coverage is `InsufficientData`,
 not a shorter window mislabeled as 30 days.
 
+### Historical market-metric semantics
+
+Historical market research is descriptive evidence, never a price, fill, or
+profit prediction. Version one calculates each eligible aggregate observation
+using the same proposed-price convention as the current scanner: highest buy
+plus one copper and lowest sell minus one copper. The canonical fee policy then
+derives modeled net ROI from integer-copper acquisition, listing fee, exchange
+fee, and profit inputs. The latest eligible retained observation is labeled
+`latest observed`; it is not a new live read.
+
+The latest-observed lookup is independent of the bounded trailing-window read,
+so retained valid evidence older than 30 days remains visible when no newer
+eligible observation exists. It is still one retained observation, not a live
+price or a forecast.
+
+The fixed 7-day and 30-day UTC windows are inclusive. They are available only
+when they contain at least 20 and 60 eligible observations respectively and
+the first-to-last eligible observation spans at least 80% of the requested
+duration. Every result reports its exact bounds, raw/eligible/excluded sample
+counts, observed-span percentage, and largest eligible gap. Tradable ROI and
+depth metrics require strictly positive aggregate buy and sell quantities;
+zero-side, missing, or legacy-invalid observations are excluded from metrics
+and remain visible in coverage. The application never fills, interpolates, or
+creates missing observations.
+
+The initial disclosed ROI thresholds are 15% and 20% (1,500 and 2,000 basis
+points), compared exactly against integer-copper ROI numerators and
+denominators. Sufficient windows report median net ROI, threshold rates,
+positive-ROI persistence, median aggregate quantities, observed price ranges,
+and maximum sell-price drawdown. Buy/sell prices, raw sell-to-buy spread ratio,
+and minimum-side aggregate depth use population coefficient of variation as
+their stability measure. These unitless volatility and drawdown values use
+IEEE-754 numeric precision; ROI medians and percentages use decimal statistical
+ratios, with the even-sample median defined as the arithmetic midpoint of the
+two central ordered ROI values. Monetary inputs and returned monetary values
+remain integer copper.
+
 Current extreme ROI relative to history is an anomaly signal, not automatically
 a stronger opportunity.
 

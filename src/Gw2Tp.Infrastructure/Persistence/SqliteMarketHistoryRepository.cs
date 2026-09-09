@@ -163,6 +163,44 @@ internal sealed class SqliteMarketHistoryRepository(
         return observations;
     }
 
+    public async Task<MarketPriceObservation?> GetLatestPriceObservationAsync(
+        int itemId,
+        LatestMarketPriceObservationQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        if (itemId <= 0) throw new ArgumentOutOfRangeException(nameof(itemId));
+        ArgumentNullException.ThrowIfNull(query);
+        query.Validate();
+
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT observed_at_utc, item_id, highest_buy_price_in_copper, lowest_sell_price_in_copper,
+                   aggregate_buy_quantity, aggregate_sell_quantity, source_status, sampling_tier,
+                   sampling_policy_version
+            FROM market_price_observations
+            WHERE item_id = $itemId
+              AND observed_at_utc <= $maximumObservedAtUtc
+              AND highest_buy_price_in_copper >= $minimumHighestBuyPriceInCopper
+              AND lowest_sell_price_in_copper >= $minimumLowestSellPriceInCopper
+              AND aggregate_buy_quantity >= $minimumAggregateBuyQuantity
+              AND aggregate_sell_quantity >= $minimumAggregateSellQuantity
+            ORDER BY observed_at_utc DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$itemId", itemId);
+        command.Parameters.AddWithValue("$maximumObservedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(query.MaximumObservedAtUtc, nameof(query.MaximumObservedAtUtc)));
+        command.Parameters.AddWithValue("$minimumHighestBuyPriceInCopper", query.MinimumHighestBuyPriceInCopper);
+        command.Parameters.AddWithValue("$minimumLowestSellPriceInCopper", query.MinimumLowestSellPriceInCopper);
+        command.Parameters.AddWithValue("$minimumAggregateBuyQuantity", query.MinimumAggregateBuyQuantity);
+        command.Parameters.AddWithValue("$minimumAggregateSellQuantity", query.MinimumAggregateSellQuantity);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? ReadPriceObservation(reader)
+            : null;
+    }
+
     public async Task<IReadOnlyDictionary<int, MarketPriceObservation>> GetLatestPriceObservationsAsync(
         IReadOnlyCollection<int> itemIds,
         CancellationToken cancellationToken = default)
