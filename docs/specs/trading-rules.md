@@ -156,6 +156,60 @@ near-zero depth.
 
 No runtime LLM or opaque ML model may own this score.
 
+### Opportunity-score policy version 1
+
+The first opportunity-score policy is a deterministic application-layer
+comparison of already-calculated current scanner evidence and historical
+analytics. It does not fetch data, size a position, choose an action, or predict
+a future price or fill. Results expose the policy version, rank, base points,
+applied penalty, final points, historical-confidence state, every named
+component, and every anomaly flag. Scores are comparative decision-support
+evidence, not probabilities.
+
+The base score is bounded to 100 points:
+
+- expected economics contributes at most 25 points. Sixty percent of that
+  component is current exact net ROI normalized linearly to a 30% ceiling; forty
+  percent is modeled absolute net profit normalized linearly to a 10,000-copper
+  ceiling. Values beyond either ceiling do not add points;
+- current liquidity contributes at most 25 points. Forty percent uses the
+  smaller aggregate side normalized to ten times intended quantity, forty
+  percent uses the smaller near-best side normalized to intended quantity, and
+  twenty percent uses the smaller near-best listing count normalized to three;
+- historical persistence contributes at most 20 points, split equally between
+  the percent of positive-net-ROI observations and the mean of the disclosed
+  historical ROI-threshold rates;
+- historical stability contributes at most 15 points. It averages the inverse
+  quality of buy-price, sell-price, spread-ratio, and minimum-side-depth
+  population coefficients of variation. Each measure falls linearly from full
+  quality at zero to no quality at a coefficient of variation of 0.5;
+- historical confidence contributes at most 15 points: five for an available
+  7-day window and ten for an independently available 30-day window;
+- personal fill/turnover evidence is explicitly `NotYetAvailable` and has zero
+  weight until a later ticket supplies sufficiently sampled evidence.
+
+The available 30-day window is the comparison baseline; the available 7-day
+window is used only when 30-day evidence is insufficient. With neither window,
+persistence and stability contribute zero and confidence is `Insufficient`.
+Exactly one available window is `Partial`; both are `Strong`. Missing coverage
+is flagged but receives no additional penalty because its effect is already
+represented by the unavailable components and lower confidence.
+
+Version one flags current ROI that is both at least 20 percentage points and at
+least twice the non-negative historical median; near-best quantity below the
+intended quantity or fewer than three near-best listings; an existing current
+price cliff; current buy or sell prices more than 20% outside their historical
+ranges; aggregate buy or sell quantity more than 50% away from its historical
+median; and intended quantity above the current visible-depth participation
+cap. The respective penalties are 10, 10, 5, 5, 5, and 15 points, with separate
+5-point price-spike and price-drop flags where applicable. Total applied
+penalties are capped at 40 points and the final score is clamped to 0-100.
+
+All component values and totals are decimal values rounded to four decimal
+places away from zero. Candidate order cannot affect results. Ranking sorts by
+final score descending, then modeled profit descending, then item ID ascending.
+The fee-derived inputs remain modeled and provisional while VERIFY-013 is open.
+
 ## 8. Position sizing and bankroll protection
 
 Suggested size is bounded by the minimum of independently explainable caps:
