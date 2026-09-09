@@ -136,16 +136,15 @@ public sealed class HistoricalMarketAnalyticsService(
 
     private Task<MarketPriceObservation?> GetLatestEligibleObservationAsync(int itemId, CancellationToken cancellationToken)
     {
-        var maximumBuyPrice = (long)int.MaxValue - settings.Metrics.BidIncrementCopper;
         var minimumSellPrice = (long)settings.Metrics.ListUndercutCopper + 1;
-        if (maximumBuyPrice <= 0 || minimumSellPrice > int.MaxValue)
+        if (minimumSellPrice > int.MaxValue)
         {
             return Task.FromResult<MarketPriceObservation?>(null);
         }
 
         return repository.GetLatestPriceObservationAsync(
             itemId,
-            new LatestMarketPriceObservationQuery((int)maximumBuyPrice, (int)minimumSellPrice, 1, 1),
+            new LatestMarketPriceObservationQuery(1, (int)minimumSellPrice, 1, 1),
             cancellationToken);
     }
 

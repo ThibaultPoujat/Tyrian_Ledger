@@ -181,7 +181,7 @@ internal sealed class SqliteMarketHistoryRepository(
                    sampling_policy_version
             FROM market_price_observations
             WHERE item_id = $itemId
-              AND highest_buy_price_in_copper <= $maximumHighestBuyPriceInCopper
+              AND highest_buy_price_in_copper >= $minimumHighestBuyPriceInCopper
               AND lowest_sell_price_in_copper >= $minimumLowestSellPriceInCopper
               AND aggregate_buy_quantity >= $minimumAggregateBuyQuantity
               AND aggregate_sell_quantity >= $minimumAggregateSellQuantity
@@ -189,7 +189,7 @@ internal sealed class SqliteMarketHistoryRepository(
             LIMIT 1;
             """;
         command.Parameters.AddWithValue("$itemId", itemId);
-        command.Parameters.AddWithValue("$maximumHighestBuyPriceInCopper", query.MaximumHighestBuyPriceInCopper);
+        command.Parameters.AddWithValue("$minimumHighestBuyPriceInCopper", query.MinimumHighestBuyPriceInCopper);
         command.Parameters.AddWithValue("$minimumLowestSellPriceInCopper", query.MinimumLowestSellPriceInCopper);
         command.Parameters.AddWithValue("$minimumAggregateBuyQuantity", query.MinimumAggregateBuyQuantity);
         command.Parameters.AddWithValue("$minimumAggregateSellQuantity", query.MinimumAggregateSellQuantity);

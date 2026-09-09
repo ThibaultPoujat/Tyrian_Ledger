@@ -87,6 +87,19 @@ public sealed class HistoricalMarketMetricsCalculatorTests
     }
 
     [Fact]
+    public void Large_valid_threshold_inputs_do_not_overflow_exact_threshold_comparison()
+    {
+        var settings = new HistoricalMarketMetricsSettings(int.MaxValue, 1, [int.MaxValue]);
+        var result = CreateCalculator().Calculate(
+        [
+            Observation(Start, int.MaxValue, int.MaxValue, 10, 10),
+        ], settings);
+
+        var summary = Assert.IsType<HistoricalMarketMetricSummary>(result.Summary);
+        Assert.Equal(0m, Assert.Single(summary.RoiThresholdRates).Percent);
+    }
+
+    [Fact]
     public void Repeated_calculation_is_deterministic_regardless_of_input_order()
     {
         HistoricalMarketObservation[] observations =

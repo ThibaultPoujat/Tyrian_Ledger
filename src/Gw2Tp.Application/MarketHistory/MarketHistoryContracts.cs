@@ -46,14 +46,14 @@ public sealed record MarketPriceObservation(
 /// caller owns the financial interpretation of these structural predicates.
 /// </summary>
 public sealed record LatestMarketPriceObservationQuery(
-    int MaximumHighestBuyPriceInCopper,
+    int MinimumHighestBuyPriceInCopper,
     int MinimumLowestSellPriceInCopper,
     int MinimumAggregateBuyQuantity,
     int MinimumAggregateSellQuantity)
 {
     public void Validate()
     {
-        if (MaximumHighestBuyPriceInCopper <= 0 || MinimumLowestSellPriceInCopper <= 0 ||
+        if (MinimumHighestBuyPriceInCopper <= 0 || MinimumLowestSellPriceInCopper <= 0 ||
             MinimumAggregateBuyQuantity <= 0 || MinimumAggregateSellQuantity <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(LatestMarketPriceObservationQuery));

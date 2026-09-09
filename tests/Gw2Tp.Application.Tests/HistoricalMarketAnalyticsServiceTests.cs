@@ -135,6 +135,7 @@ public sealed class HistoricalMarketAnalyticsServiceTests
         var olderEligible = Observation(42, AsOfUtc.AddDays(-31));
         repository.Prices.Add(olderEligible);
         repository.Prices.Add(Observation(42, AsOfUtc.AddDays(-1)) with { AggregateBuyQuantity = 0 });
+        repository.Prices.Add(Observation(42, AsOfUtc.AddHours(-1)) with { HighestBuyPriceInCopper = 0 });
 
         var analytics = await new HistoricalMarketAnalyticsService(repository, new FixedClock(AsOfUtc)).GetAsync(42);
 
@@ -142,7 +143,7 @@ public sealed class HistoricalMarketAnalyticsServiceTests
         Assert.All(analytics.Windows, window =>
         {
             Assert.Equal(HistoricalMarketWindowState.InsufficientData, window.State);
-            Assert.Equal(1, window.Coverage.RawObservationCount);
+            Assert.Equal(2, window.Coverage.RawObservationCount);
             Assert.Equal(0, window.Coverage.EligibleObservationCount);
         });
     }
@@ -202,7 +203,7 @@ public sealed class HistoricalMarketAnalyticsServiceTests
             query.Validate();
             return Task.FromResult(Prices
                 .Where(observation => observation.ItemId == itemId &&
-                    observation.HighestBuyPriceInCopper <= query.MaximumHighestBuyPriceInCopper &&
+                    observation.HighestBuyPriceInCopper >= query.MinimumHighestBuyPriceInCopper &&
                     observation.LowestSellPriceInCopper >= query.MinimumLowestSellPriceInCopper &&
                     observation.AggregateBuyQuantity >= query.MinimumAggregateBuyQuantity &&
                     observation.AggregateSellQuantity >= query.MinimumAggregateSellQuantity)

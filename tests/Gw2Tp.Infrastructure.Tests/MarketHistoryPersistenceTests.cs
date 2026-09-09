@@ -80,13 +80,18 @@ public sealed class MarketHistoryPersistenceTests
     public async Task Latest_eligible_observation_lookup_uses_bounded_structural_filters()
     {
         await using var database = await TestDatabase.CreateAsync();
-        var eligible = Price(42, FirstObservedAtUtc);
+        var eligible = Price(42, FirstObservedAtUtc) with
+        {
+            HighestBuyPriceInCopper = int.MaxValue,
+            LowestSellPriceInCopper = int.MaxValue,
+        };
         var newerZeroDepth = Price(42, SecondObservedAtUtc) with { AggregateBuyQuantity = 0 };
-        await database.History.AppendPriceObservationsAsync([eligible, newerZeroDepth]);
+        var newerZeroBuyPrice = Price(42, SecondObservedAtUtc.AddMinutes(15)) with { HighestBuyPriceInCopper = 0 };
+        await database.History.AppendPriceObservationsAsync([eligible, newerZeroDepth, newerZeroBuyPrice]);
 
         var latest = await database.History.GetLatestPriceObservationAsync(
             42,
-            new LatestMarketPriceObservationQuery(int.MaxValue - 1, 2, 1, 1));
+            new LatestMarketPriceObservationQuery(1, 2, 1, 1));
 
         Assert.Equal(eligible, latest);
     }

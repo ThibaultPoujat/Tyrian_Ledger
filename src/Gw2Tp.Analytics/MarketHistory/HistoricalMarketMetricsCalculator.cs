@@ -224,7 +224,7 @@ public sealed class HistoricalMarketMetricsCalculator
     private static decimal ToBasisPoints(ExactRoi roi) => decimal.Divide(roi.Profit.Copper * 10_000m, roi.TotalCost.Copper);
 
     private static bool MeetsThreshold(HistoricalNetRoi roi, int thresholdBasisPoints) =>
-        roi.NetProfit.Copper * 10_000m >= roi.TotalCost.Copper * thresholdBasisPoints;
+        roi.NetProfit.Copper * 10_000m >= roi.TotalCost.Copper * (decimal)thresholdBasisPoints;
 
     private static decimal Percent(int matchingCount, int totalCount) => totalCount == 0 ? 0 : matchingCount * 100m / totalCount;
 
