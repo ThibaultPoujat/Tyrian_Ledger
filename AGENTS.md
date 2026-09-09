@@ -12,6 +12,16 @@ M0-M11 are historical milestones. The active pivot starts at M12. Follow the
 active source-of-truth documents rather than inferring architecture from old
 files.
 
+Until the owner explicitly declares the first `0.1` release, this is a
+**pre-release development project with no production users and no user data that
+must be preserved across development changes**. Manual owner testing before
+`0.1` does not create a migration/backward-compatibility obligation. Follow the
+full pre-0.1 development-data policy in `docs/context/permanent-context.md`:
+do not carry legacy development state or add preservation-only migrations unless
+the assigned ticket requires them, while still preserving the migration,
+backup/recovery, integrity, and data-safety capabilities intended for the
+released product.
+
 ## Read order for an implementation ticket
 
 1. `CURRENT.md`.
