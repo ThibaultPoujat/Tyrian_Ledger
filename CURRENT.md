@@ -151,7 +151,7 @@ TKT-M19-02 local validation on 2026-09-09 reported:
 - retired-runtime audit: only expected negative assertions matched;
 - Gitleaks: complete reachable history scanned with no leaks.
 
-PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/121 (Draft; pending owner-triggered Sol XHigh review)
+PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/122 (Draft; pending targeted fresh Sol XHigh re-review)
 
 ## Important transition warning
 

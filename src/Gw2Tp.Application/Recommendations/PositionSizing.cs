@@ -42,6 +42,12 @@ public enum PositionSizingAllocationState
     Unavailable = 3,
 }
 
+public enum CashReserveStatus
+{
+    Satisfied = 1,
+    Breached = 2,
+}
+
 public enum PositionSizingConstraintName
 {
     CashAfterReserve = 1,
@@ -144,6 +150,8 @@ public sealed record PositionSizingResult(
     int PolicyVersion,
     Money? TotalBankroll,
     Money? CashReserve,
+    CashReserveStatus? CashReserveStatus,
+    Money? CashReserveShortfall,
     Money? RemainingCashAfterSizing,
     IReadOnlyList<PositionSizingAllocation> Allocations);
 
@@ -182,6 +190,7 @@ public sealed class PositionSizingService : IPositionSizingService
         }
 
         var cashReserve = PercentageRoundUp(totalBankroll, policy.CashReserveBasisPoints);
+        var reserveShortfall = new Money(Math.Max(0L, cashReserve.Copper - availableCash.Copper));
         var remainingDeployableCash = Math.Max(0L, availableCash.Copper - cashReserve.Copper);
         var itemExposure = exposures.GroupBy(exposure => exposure.ItemId).ToDictionary(group => group.Key, group => Sum(group.Select(exposure => exposure.CapitalAtRisk.Copper)));
         var strategyExposure = exposures.GroupBy(exposure => NormalizeGroup(exposure.Strategy), StringComparer.OrdinalIgnoreCase).ToDictionary(group => group.Key, group => Sum(group.Select(exposure => exposure.CapitalAtRisk.Copper)), StringComparer.OrdinalIgnoreCase);
@@ -232,6 +241,8 @@ public sealed class PositionSizingService : IPositionSizingService
             policy.Version,
             totalBankroll,
             cashReserve,
+            reserveShortfall.Copper == 0 ? CashReserveStatus.Satisfied : CashReserveStatus.Breached,
+            reserveShortfall,
             new Money(checked(availableCash.Copper - allocations.Sum(allocation => allocation.SuggestedCapital.Copper))),
             allocations);
     }
@@ -240,6 +251,8 @@ public sealed class PositionSizingService : IPositionSizingService
         PositionSizingResultState.Unavailable,
         reason,
         policy.Version,
+        null,
+        null,
         null,
         null,
         null,
@@ -300,7 +313,10 @@ public sealed class PositionSizingService : IPositionSizingService
     private static bool IsValid(PositionSizingCandidate? candidate) => candidate?.Score is not null && candidate.Market?.Item is not null &&
         candidate.Score.Rank > 0 && candidate.Score.ItemId == candidate.Market.Item.ItemId && candidate.Market.Item.ItemId > 0 &&
         candidate.Market.TotalCost.Copper > 0 && candidate.Market.Liquidity is not null &&
-        candidate.Market.Liquidity.ParticipationCapQuantity >= 0 && Enum.IsDefined(candidate.Liquidity) &&
+        candidate.Market.Liquidity.TotalBuyQuantity >= 0 && candidate.Market.Liquidity.TotalSellQuantity >= 0 &&
+        candidate.Market.Liquidity.ParticipationCapQuantity >= 0 &&
+        candidate.Market.Liquidity.ParticipationCapQuantity <= Math.Min(candidate.Market.Liquidity.TotalBuyQuantity, candidate.Market.Liquidity.TotalSellQuantity) / 10 &&
+        Enum.IsDefined(candidate.Liquidity) &&
         !string.IsNullOrWhiteSpace(candidate.Strategy) && !string.IsNullOrWhiteSpace(candidate.Category);
 
     private int ItemCap(PositionSizingLiquidity liquidity) => liquidity switch

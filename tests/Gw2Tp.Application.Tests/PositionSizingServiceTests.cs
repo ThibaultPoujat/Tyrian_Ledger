@@ -30,7 +30,7 @@ public sealed class PositionSizingServiceTests
     {
         var service = new PositionSizingService();
         var high = Assert.Single(service.Size(Snapshot(1_000_000), [Candidate(1, 1, PositionSizingLiquidity.High, participationCap: 3)]).Allocations);
-        var lowCandidate = Candidate(2, 1, PositionSizingLiquidity.Low, participationCap: 10_000);
+        var lowCandidate = Candidate(2, 1, PositionSizingLiquidity.Low, participationCap: 1_000);
         var low = Assert.Single(service.Size(Snapshot(1_000_000), [lowCandidate]).Allocations);
 
         Assert.Equal(3, high.SuggestedQuantity);
@@ -105,6 +105,11 @@ public sealed class PositionSizingServiceTests
         Assert.True(result.Allocations.Single(allocation => allocation.ItemId == 6).SuggestedQuantity > 0);
         Assert.Contains(result.Allocations.Single(allocation => allocation.ItemId == 5).Constraints,
             constraint => constraint.Name == PositionSizingConstraintName.StrategyConcentration && constraint.IsBinding);
+
+        var categoryCandidates = Enumerable.Range(10, 6).Select(itemId => Candidate(itemId, itemId, PositionSizingLiquidity.High, strategy: $"strategy-{itemId}", category: "Shared"));
+        var categoryResult = new PositionSizingService().Size(Snapshot(1_000_000), categoryCandidates.ToArray());
+        Assert.True(categoryResult.Allocations.Sum(allocation => allocation.SuggestedCapital.Copper) <= 250_000);
+        Assert.Contains(categoryResult.Allocations.Last().Constraints, constraint => constraint.Name == PositionSizingConstraintName.CategoryConcentration && constraint.IsBinding);
     }
 
     [Theory]
@@ -137,11 +142,31 @@ public sealed class PositionSizingServiceTests
     }
 
     [Fact]
+    public void Reserve_breach_is_explicit_with_and_without_candidates()
+    {
+        var snapshot = Snapshot(10_000, [Exposure("held", PortfolioExposureKind.HeldPosition, 2, "Other", "Other", 100_000)]);
+        var without = new PositionSizingService().Size(snapshot, []);
+        var with = new PositionSizingService().Size(snapshot, [Candidate(1, 1, PositionSizingLiquidity.High)]);
+
+        Assert.Equal(CashReserveStatus.Breached, without.CashReserveStatus);
+        Assert.True(with.CashReserveShortfall!.Value.Copper > 0);
+        Assert.Equal(0, Assert.Single(with.Allocations).SuggestedQuantity);
+    }
+
+    [Fact]
+    public void Overstated_participation_cap_fails_safe()
+    {
+        var invalid = Candidate(1, 1, PositionSizingLiquidity.High, participationCap: 1_001);
+        var result = new PositionSizingService().Size(Snapshot(100_000), [invalid]);
+        Assert.Equal(PositionSizingResultState.Unavailable, result.State);
+    }
+
+    [Fact]
     public void Extreme_visible_depth_cannot_overflow_a_constraint_or_allocate_past_financial_caps()
     {
-        var candidate = Candidate(1, 1, PositionSizingLiquidity.High, participationCap: int.MaxValue) with
+        var candidate = Candidate(1, 1, PositionSizingLiquidity.High, participationCap: 1_000) with
         {
-            Market = Candidate(1, 1, PositionSizingLiquidity.High, participationCap: int.MaxValue).Market with { TotalCost = new Money(long.MaxValue) },
+            Market = Candidate(1, 1, PositionSizingLiquidity.High, participationCap: 1_000).Market with { TotalCost = new Money(long.MaxValue) },
         };
 
         var allocation = Assert.Single(new PositionSizingService().Size(Snapshot(long.MaxValue), [candidate]).Allocations);
@@ -162,7 +187,7 @@ public sealed class PositionSizingServiceTests
         int itemId,
         int rank,
         PositionSizingLiquidity liquidity,
-        int participationCap = 10_000,
+        int participationCap = 1_000,
         string strategy = "Flip",
         string category = "Materials")
     {
