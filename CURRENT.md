@@ -104,26 +104,46 @@ restore path so retained history is not bounded by the 512 MiB imported-file
 upload cap, and maps out-of-range SQLite migration IDs to failed integrity
 rather than a server error. No VERIFY entries changed.
 
-TKT-M19-01 / #85 is implemented in Draft PR #119. It remains SOL-GATED pending
-the owner-triggered fresh Sol XHigh review. After that PR merges, the next valid
-implementation ticket is:
+TKT-M19-01 / #85 merged in PR #119. It adds deterministic historical market
+baselines from retained aggregate observations, with latest-observed modeled
+ROI and coverage-aware 7/30-day persistence, volatility, depth, range, and
+drawdown evidence. Insufficient samples or observed span remain explicit, and
+the analytics do not predict prices, fills, or profit.
 
-**TKT-M19-02 / #86 - Add Deterministic Opportunity Score and Anomaly Logic.**
+TKT-M19-02 / #86 is implemented in Draft PR #121. It remains SOL-GATED pending
+the owner-triggered fresh Sol XHigh review. The versioned deterministic score
+combines bounded current economics, visible liquidity, historical persistence,
+stability, and explicit 7/30-day confidence, then exposes every named component
+and anomaly penalty. Missing history contributes no invented stability;
+extreme ROI, shallow books, price cliffs, abrupt price/depth changes, and an
+intended quantity above visible-depth participation remain structured flags.
+Personal evidence is an explicit zero-weight placeholder for later sufficiently
+sampled M20 work. No scanner/API/UI orchestration or final position sizing is
+included.
+
+After the #86 SOL-GATED review/merge handoff, the next valid implementation
+ticket is:
+
+**TKT-M19-03 / #87 - Add Bankroll-Aware Position Sizing, Cash Reserve, and
+Concentration Risk.**
 
 ## Known-good baseline
 
-TKT-M19-01 local validation on 2026-09-09 reported:
+TKT-M19-02 local validation on 2026-09-09 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused historical analytics: 21 Analytics tests, 123 Application tests, and 40 Web tests passed;
-- full .NET regression suite: 348 tests passed;
-- React: 21 component tests passed and the production build succeeded after rebasing the M18-03 #120 frontend fixes;
-- Playwright: 12 tests passed across Chromium, Firefox, and WebKit after rebasing the M18-03 #120 browser coverage;
+- focused opportunity scoring: 13 tests passed; combined scoring, historical,
+  scanner, order-book, and fee prerequisite suites: 38 Application and 20
+  Analytics tests passed;
+- full .NET regression suite: 361 tests passed (4 Domain, 21 Analytics, 136
+  Application, 160 Infrastructure, and 40 Web);
+- React: 21 component tests passed and the production build succeeded;
+- Playwright: 12 tests passed across Chromium, Firefox, and WebKit;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime audit: only expected negative assertions matched;
-- Gitleaks: all 283 reachable commits scanned with no leaks.
+- Gitleaks: complete reachable history scanned with no leaks.
 
-PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/119 (Draft; pending owner-triggered Sol XHigh review)
+PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/121 (Draft; pending owner-triggered Sol XHigh review)
 
 ## Important transition warning
 
