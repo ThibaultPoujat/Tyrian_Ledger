@@ -36,48 +36,50 @@ context remains.
 
 1. Read the ticket and minimum context.
 2. Inspect current Git/repository state and relevant VERIFY items.
-3. Make a plan of at most five steps.
-4. Implement only the ticket outcome.
-5. Run focused validation, then broader checks when justified.
-6. Inspect the diff for scope expansion, secrets, data-loss risk, and stale docs.
-7. Run the review path selected by `model-effort-guide.md`.
-8. Commit/push/open the PR according to `delivery-protocol.md`.
-9. Write the required completion report including the short functional summary.
-10. Stop.
+3. Make a short in-session plan of at most five steps. Use dedicated Plan mode only when `model-effort-guide.md` or a genuine unresolved owner decision warrants it.
+4. If a genuine ambiguity/contradiction cannot be resolved from the repository, ask the owner with a recommendation and concise alternatives before implementing; do not ask routine technical questions.
+5. Implement only the ticket outcome.
+6. Run focused validation, then broader checks when justified.
+7. Inspect the diff for scope expansion, secrets, data-loss risk, and stale docs.
+8. Run the review path selected by `model-effort-guide.md`.
+9. Commit/push/open or update the PR according to `delivery-protocol.md`.
+10. Write the required completion report including the short functional summary, then stop.
 
 The next session recovers from repository state; it does not require previous
 chat history.
 
 ## Review paths
 
-Review-model selection is defined centrally in
+Review-model selection and effort are defined centrally in
 `docs/workflow/model-effort-guide.md`. **R3 by itself does not require Sol.**
 
 ### NORMAL
 
 For tickets not listed in the explicit Sol gate:
 
-- Terra High planning/implementation is the default;
-- use an independent Terra review subagent/check when supported;
+- use the risk-based Terra effort from the model-effort guide rather than High for every ticket;
+- use an independent Terra review subagent/check **inside the same implementation run** when supported;
+- use Medium review by default for R0/R1 and High for R2/R3, escalating when findings or uncertainty justify it;
 - run all ticket-required tests and CI;
-- a separate review session is optional, not a merge requirement;
-- escalate to Sol only for unresolved high-consequence ambiguity, uncertain
-  Important/Blocker findings, or explicit owner request.
+- a second owner-triggered review session is optional, not a merge requirement;
+- escalate to Sol only for unresolved high-consequence ambiguity, uncertain Important/Blocker findings, or explicit owner request.
 
 ### SOL-GATED
 
-For the explicit Sol-gated ticket list:
+For the explicit active Sol-gated ticket list:
 
 - implement/fix with Terra High by default;
 - open the PR as Draft;
-- use `.codex/skills/tyrian-pr-review/SKILL.md` in a fresh separate Sol XHigh
-  session;
+- complete required local validation and let required GitHub CI go green before spending the Sol review session;
+- use `.codex/skills/tyrian-pr-review/SKILL.md` in a fresh separate Sol XHigh session;
 - keep the PR Draft while findings remain;
+- fix confirmed findings with Terra High, rerun affected validation/CI, and use a targeted fresh Sol re-review unless the fix materially broadened the authority/scope under review;
 - after APPROVE and green validation, mark the PR Ready for Review;
 - owner performs the final merge.
 
 Draft state is the merge blocker. Do not rely on the owner remembering the
-Sol-gate list manually.
+Sol-gate list manually. If quota is exhausted, keep the Draft/handoff intact and
+resume later rather than weakening the gate.
 
 ## VERIFY and BLOCKED
 
@@ -95,6 +97,8 @@ and proceed with assumptions clearly isolated from financial truth.
 - Do not reread unchanged files more than twice without new reason.
 - Do not retry the same failed operation more than twice without changing the
   approach.
+- Do not start a second NORMAL review session when a valid same-run independent review already completed.
+- Do not spend Sol review quota before required validation/CI is green unless Sol is explicitly needed to resolve a blocking high-consequence ambiguity.
 - Stop after the coherent ticket slice is delivered.
 
 ## Testing policy
@@ -104,7 +108,7 @@ narrow relevant tests first; broaden when integration risk justifies it.
 
 R3 tickets still require edge/regression cases appropriate to their authority,
 regardless of whether review path is NORMAL or SOL-GATED. The quota-aware policy
-changes reviewer/model selection, not correctness standards.
+changes effort/reviewer allocation, not correctness standards.
 
 Never weaken/delete a test merely to obtain green CI.
 
