@@ -1,9 +1,13 @@
+using Gw2Tp.Domain.Finance;
+
 namespace Gw2Tp.Application.Recommendations;
 
 /// <summary>Pure, deterministic version-one graduated action policy.</summary>
 public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
 {
     public const int Version = 1;
+    private const int BuySmallQuantityDivisor = 2;
+    private readonly PrimaryRecommendationEconomicsCalculator economicsCalculator = new();
 
     private static readonly HashSet<OpportunityAnomalyFlag> HardAnomalies =
     [
@@ -30,7 +34,7 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
             .ToArray();
     }
 
-    private static PrimaryRecommendationRecord EvaluateOne(PrimaryRecommendationEvidence item)
+    private PrimaryRecommendationRecord EvaluateOne(PrimaryRecommendationEvidence item)
     {
         var (action, reasons) = item.Source switch
         {
@@ -40,11 +44,35 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
             PrimaryRecommendationSource.Inventory => Inventory(item),
             _ => Review(PrimaryRecommendationReasonCode.EvidenceMissing),
         };
+        var quantity = item.SuggestedQuantity;
+        var capital = item.SuggestedCapital;
+        var economics = item.Economics;
+        var portfolioConstraints = item.PortfolioConstraints;
+        if (action == PrimaryRecommendationAction.BuySmall)
+        {
+            if (item.Prices.PlannedBid is not { } plannedBid || item.Prices.PlannedListPrice is not { } plannedList)
+            {
+                action = PrimaryRecommendationAction.Review;
+                reasons = [Reason(PrimaryRecommendationReasonCode.EvidenceMissing)];
+                quantity = 0;
+                capital = Money.Zero;
+                economics = null;
+            }
+            else
+            {
+                quantity = Math.Max(1, quantity / BuySmallQuantityDivisor);
+                economics = economicsCalculator.CalculateUnitPrices(plannedBid, plannedList, quantity);
+                capital = economics.TotalCost;
+                portfolioConstraints = item.PortfolioConstraints
+                    .Select(constraint => constraint with { IsBinding = constraint.QuantityCapacity == quantity })
+                    .ToArray();
+            }
+        }
         reasons.Add(Reason(PrimaryRecommendationReasonCode.ReadOnlyManualAction));
         return new PrimaryRecommendationRecord(
             action, item.Source, item.OrderState, item.OrderId, item.ItemId, item.ItemName,
-            item.SuggestedQuantity, item.SuggestedCapital, item.Prices, item.Economics,
-            item.Score, item.History, item.Liquidity, item.PortfolioConstraints, reasons);
+            quantity, capital, item.Prices, economics,
+            item.Score, item.History, item.Liquidity, portfolioConstraints, reasons);
     }
 
     private static (PrimaryRecommendationAction, List<PrimaryRecommendationReason>) NewOpportunity(PrimaryRecommendationEvidence item)
@@ -81,6 +109,8 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
             return With(PrimaryRecommendationAction.CancelBid, PrimaryRecommendationReasonCode.BidAboveMaximum);
         if (item.IsReserveCancellation)
             return With(PrimaryRecommendationAction.CancelBid, PrimaryRecommendationReasonCode.ReserveRestoration);
+        if (item.IsExposureExceeded)
+            return (PrimaryRecommendationAction.Review, ExposureReasons(item));
         if (!item.IsEvidenceComplete || item.History is null || item.Prices.MaximumBid is null)
             return Review(PrimaryRecommendationReasonCode.EvidenceMissing);
         if (item.OrderState == PrimaryRecommendationOrderState.Competitive &&
@@ -128,8 +158,10 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
         if (item.IsUnknownBasis) return Review(PrimaryRecommendationReasonCode.UnknownCostBasis);
         if (!item.IsEvidenceComplete || item.History is null || item.Liquidity is null)
             return Review(PrimaryRecommendationReasonCode.EvidenceMissing);
-        if (item.IsExposureExceeded && item.SuggestedQuantity > 0)
-            return With(PrimaryRecommendationAction.Reduce, PrimaryRecommendationReasonCode.ItemExposureExceeded, PrimaryRecommendationReasonCode.SafeDepthLimited);
+        if (item.IsExposureExceeded)
+            return item.SuggestedQuantity > 0
+                ? With(PrimaryRecommendationAction.Reduce, PrimaryRecommendationReasonCode.ItemExposureExceeded, PrimaryRecommendationReasonCode.SafeDepthLimited)
+                : With(PrimaryRecommendationAction.Review, PrimaryRecommendationReasonCode.ItemExposureExceeded, PrimaryRecommendationReasonCode.SafeDepthLimited);
         if (item.IsImmediateFullExitPositive)
             return With(PrimaryRecommendationAction.Sell, PrimaryRecommendationReasonCode.PositiveImmediateExit);
         if (item.IsImmediatePartialExitPositive && item.SuggestedQuantity > 0)
@@ -143,6 +175,23 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
 
     private static (PrimaryRecommendationAction, List<PrimaryRecommendationReason>) Review(PrimaryRecommendationReasonCode reason) =>
         With(PrimaryRecommendationAction.Review, reason);
+
+    private static List<PrimaryRecommendationReason> ExposureReasons(PrimaryRecommendationEvidence item)
+    {
+        var codes = item.PortfolioConstraints.Where(constraint => constraint.IsBinding)
+            .Select(constraint => constraint.Name switch
+            {
+                PositionSizingConstraintName.ItemExposure => PrimaryRecommendationReasonCode.ItemExposureExceeded,
+                PositionSizingConstraintName.StrategyConcentration => PrimaryRecommendationReasonCode.StrategyExposureExceeded,
+                PositionSizingConstraintName.CategoryConcentration => PrimaryRecommendationReasonCode.CategoryExposureExceeded,
+                _ => PrimaryRecommendationReasonCode.EvidenceMissing,
+            })
+            .Distinct()
+            .ToArray();
+        return (codes.Length == 0 ? [PrimaryRecommendationReasonCode.EvidenceMissing] : codes)
+            .Select(Reason)
+            .ToList();
+    }
 
     private static (PrimaryRecommendationAction, List<PrimaryRecommendationReason>) With(
         PrimaryRecommendationAction action, params PrimaryRecommendationReasonCode[] reasons) =>
@@ -178,6 +227,8 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
         PrimaryRecommendationReasonCode.ReadOnlyManualAction => "This is read-only decision support; you must perform any Trading Post action manually.",
         PrimaryRecommendationReasonCode.PenalizedEvidence => "The disclosed score contains a non-critical anomaly penalty, so the position is reduced.",
         PrimaryRecommendationReasonCode.FullBuyEvidenceNotMet => "The evidence does not meet the strict full-BUY threshold required to update an outbid order.",
+        PrimaryRecommendationReasonCode.StrategyExposureExceeded => "Current exposure exceeds the disclosed strategy concentration cap.",
+        PrimaryRecommendationReasonCode.CategoryExposureExceeded => "Current exposure exceeds the disclosed category concentration cap.",
         _ => throw new ArgumentOutOfRangeException(nameof(code)),
     });
 

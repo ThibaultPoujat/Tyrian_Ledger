@@ -215,7 +215,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             sizing.State == PositionSizingResultState.Sized));
         evidence.AddRange(BuildOrderEvidence(
             local, historyByItem, listingsByItem, candidatesByItem,
-            scoresByItem, allocationsByItem, reserveCancellations));
+            scoresByItem, allocationsByItem, reserveCancellations, sizing));
         evidence.AddRange(BuildInventoryEvidence(
             local, historyByItem, listingsByItem, candidatesByItem,
             scoresByItem, sellQuantityByItem, sizing));
@@ -264,7 +264,8 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         IReadOnlyDictionary<int, LiveMarketScannerCandidate> candidates,
         IReadOnlyDictionary<int, OpportunityScore> scores,
         IReadOnlyDictionary<int, PositionSizingAllocation> allocations,
-        IReadOnlySet<long> reserveCancellations)
+        IReadOnlySet<long> reserveCancellations,
+        PositionSizingResult sizing)
     {
         var result = new List<PrimaryRecommendationEvidence>();
         var sellBasisByOrder = BuildSellListingBasis(local);
@@ -293,7 +294,8 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 : SellOrderState(order.UnitPriceInCopper, lowestSell);
             var hasKnownSellBasis = order.Side != PersonalTradingPostSide.Sell || sellBasisByOrder.ContainsKey(order.ExternalOrderId);
             var complete = order.Side == PersonalTradingPostSide.Buy
-                ? itemHistory is not null && liquidity is not null && maximumBid is not null
+                ? itemHistory is not null && liquidity is not null && maximumBid is not null &&
+                    sizing.State == PositionSizingResultState.Sized
                 : listing is not null && lowestSell > 0 && hasKnownSellBasis;
             var quantity = order.Quantity;
             var economics = order.Side == PersonalTradingPostSide.Buy && plannedList is { } list
@@ -306,6 +308,13 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                     : null;
             var displayedCapital = order.Side == PersonalTradingPostSide.Sell && sellBasisByOrder.TryGetValue(order.ExternalOrderId, out basis)
                 ? basis : capital;
+            var orderConstraints = order.Side == PersonalTradingPostSide.Buy
+                ? BuildCurrentBuyOrderConstraints(local, order, sizing, classification)
+                : allocation?.Constraints ?? [];
+            var exposureExceeded = orderConstraints.Any(constraint => constraint.IsBinding && constraint.Name is
+                PositionSizingConstraintName.ItemExposure or
+                PositionSizingConstraintName.StrategyConcentration or
+                PositionSizingConstraintName.CategoryConcentration);
             result.Add(new PrimaryRecommendationEvidence(
                 order.Side == PersonalTradingPostSide.Buy ? PrimaryRecommendationSource.BuyOrder : PrimaryRecommendationSource.SellListing,
                 orderState, order.ExternalOrderId.ToString(CultureInfo.InvariantCulture), order.ItemId,
@@ -315,9 +324,9 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                     lowestSell > 0 ? new Money(lowestSell) : null, plannedBid, plannedList, maximumBid),
                 economics, score is null ? null : Score(score), itemHistory is null ? null : History(itemHistory),
                 liquidity is null || classification is null ? null : Liquidity(liquidity, classification.Value, liquidity.ParticipationCapQuantity),
-                allocation?.Constraints ?? [], complete, allocation?.State == PositionSizingAllocationState.Suggested,
+                orderConstraints, complete, allocation?.State == PositionSizingAllocationState.Suggested,
                 reserveCancellations.Contains(order.ExternalOrderId), !hasKnownSellBasis,
-                false, false, false, false, incremental, capacity));
+                exposureExceeded, false, false, false, incremental, capacity));
         }
         return result;
     }
@@ -367,8 +376,13 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 : partialImmediate?.NetProfit.Copper > 0 ? partialQuantity : unlistedQuantity;
             var selectedEconomics = exposureExceeded && suggestedQuantity > 0 && listing is not null
                 ? TryLiquidationEconomics(listing, unlistedLots, suggestedQuantity)
+                : exposureExceeded ? null
                 : fullImmediate?.NetProfit.Copper > 0 ? fullImmediate
                 : partialImmediate?.NetProfit.Copper > 0 ? partialImmediate : listingEconomics;
+            var constraints = BuildInventoryConstraints(
+                unlistedLots, unlistedQuantity, requiredReduction, safeQuantity, itemCap, exposureExceeded,
+                partialQuantity < unlistedQuantity && partialImmediate?.NetProfit.Copper > 0,
+                liquidity is not null, sizing.State);
             result.Add(new PrimaryRecommendationEvidence(
                 PrimaryRecommendationSource.Inventory, PrimaryRecommendationOrderState.NotApplicable,
                 null, itemId, NameFor(itemId, local.Metadata, candidate?.Item.Name),
@@ -378,7 +392,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                     LowestSell(listing) > 0 ? new Money(LowestSell(listing)) : null,
                     candidate?.PlannedBid, plannedList, candidate?.MaximumBid),
                 selectedEconomics, score is null ? null : Score(score), itemHistory is null ? null : History(itemHistory),
-                liquidity is null ? null : Liquidity(liquidity, classification, safeQuantity), [],
+                liquidity is null ? null : Liquidity(liquidity, classification, safeQuantity), constraints,
                 listing is not null && itemHistory is not null && BestBuy(listing) > 0 && LowestSell(listing) > 1,
                 sizing.State == PositionSizingResultState.Sized, false, false, exposureExceeded,
                 fullImmediate?.NetProfit.Copper > 0,
@@ -386,6 +400,98 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 listingEconomics?.NetProfit.Copper > 0, Money.Zero, Money.Zero));
         }
         return result;
+    }
+
+    private static IReadOnlyList<PositionSizingConstraint> BuildCurrentBuyOrderConstraints(
+        LocalSnapshot local,
+        CurrentPersonalTradingPostOrder order,
+        PositionSizingResult sizing,
+        PositionSizingLiquidity? liquidity)
+    {
+        if (sizing.State != PositionSizingResultState.Sized || sizing.TotalBankroll is not { } bankroll || liquidity is null)
+            return [];
+
+        var exposures = BuildExposures(local);
+        var currentExposureId = $"buy-{order.ExternalOrderId.ToString(CultureInfo.InvariantCulture)}";
+        var otherExposures = exposures.Where(exposure => !string.Equals(
+            exposure.ExposureId, currentExposureId, StringComparison.Ordinal)).ToArray();
+        var itemCap = PercentageRoundDown(bankroll.Copper, ItemCapBasisPoints(local.SizingPolicy, liquidity.Value));
+        var strategyCap = PercentageRoundDown(bankroll.Copper, local.SizingPolicy.StrategyCapBasisPoints);
+        var categoryCap = PercentageRoundDown(bankroll.Copper, local.SizingPolicy.CategoryCapBasisPoints);
+        var currentCapital = Multiply(order.UnitPriceInCopper, order.Quantity);
+
+        return
+        [
+            CurrentOrderConstraint(
+                PositionSizingConstraintName.ItemExposure,
+                itemCap,
+                otherExposures.Where(exposure => exposure.ItemId == order.ItemId).Sum(exposure => exposure.CapitalAtRisk.Copper),
+                order.UnitPriceInCopper,
+                currentCapital),
+            CurrentOrderConstraint(
+                PositionSizingConstraintName.StrategyConcentration,
+                strategyCap,
+                otherExposures.Where(exposure => string.Equals(exposure.Strategy, Strategy, StringComparison.OrdinalIgnoreCase))
+                    .Sum(exposure => exposure.CapitalAtRisk.Copper),
+                order.UnitPriceInCopper,
+                currentCapital),
+            CurrentOrderConstraint(
+                PositionSizingConstraintName.CategoryConcentration,
+                categoryCap,
+                otherExposures.Where(exposure => string.Equals(exposure.Category, Category, StringComparison.OrdinalIgnoreCase))
+                    .Sum(exposure => exposure.CapitalAtRisk.Copper),
+                order.UnitPriceInCopper,
+                currentCapital),
+        ];
+    }
+
+    private static PositionSizingConstraint CurrentOrderConstraint(
+        PositionSizingConstraintName name,
+        long cap,
+        long otherExposure,
+        int unitPrice,
+        Money currentCapital)
+    {
+        var capacity = Math.Max(0L, cap - otherExposure);
+        var quantityCapacity = Math.Min(int.MaxValue, capacity / unitPrice);
+        return new PositionSizingConstraint(
+            name,
+            new Money(capacity),
+            (int)quantityCapacity,
+            currentCapital.Copper > capacity);
+    }
+
+    private static IReadOnlyList<PositionSizingConstraint> BuildInventoryConstraints(
+        IReadOnlyList<LotSlice> lots,
+        int unlistedQuantity,
+        int requiredReduction,
+        int safeQuantity,
+        long itemCap,
+        bool exposureExceeded,
+        bool isImmediatePartialExitPositive,
+        bool liquidityAvailable,
+        PositionSizingResultState sizingState)
+    {
+        if (sizingState != PositionSizingResultState.Sized) return [];
+        var constraints = new List<PositionSizingConstraint>
+        {
+            new PositionSizingConstraint(
+                PositionSizingConstraintName.ItemExposure,
+                new Money(itemCap),
+                Math.Max(0, unlistedQuantity - requiredReduction),
+                exposureExceeded),
+        };
+        if (liquidityAvailable)
+        {
+            constraints.Add(new PositionSizingConstraint(
+                PositionSizingConstraintName.LiquidityParticipation,
+                BasisFor(lots, Math.Min(unlistedQuantity, safeQuantity)),
+                safeQuantity,
+                exposureExceeded
+                    ? safeQuantity < requiredReduction
+                    : isImmediatePartialExitPositive && safeQuantity < unlistedQuantity));
+        }
+        return constraints;
     }
 
     private PrimaryRecommendationEconomics? TryLiquidationEconomics(MarketListing listing, IReadOnlyList<LotSlice> lots, int quantity)

@@ -1,7 +1,12 @@
+using Gw2Tp.Analytics.Finance;
+using Gw2Tp.Analytics.MarketHistory;
+using Gw2Tp.Analytics.OrderBooks;
+using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.MarketScanning;
+using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Recommendations;
@@ -126,20 +131,199 @@ public sealed class PrimaryRecommendationServiceTests
         Assert.Equal(0, repository.MutationCount);
     }
 
+    [Fact]
+    public async Task Composed_new_opportunities_size_full_buy_and_half_sized_buy_small_with_exact_economics()
+    {
+        var repository = SynchronizedRepository();
+        var candidates = new[] { Candidate(1), Candidate(2) };
+        var histories = new Dictionary<int, HistoricalMarketAnalytics>
+        {
+            [1] = History(1, sevenDayAvailable: true, thirtyDayAvailable: true),
+            [2] = History(2, sevenDayAvailable: true, thirtyDayAvailable: false),
+        };
+        var marketClient = new ScenarioMarketClient(
+            listings: candidates.Select(candidate => Listing(candidate.Item.ItemId, 100)).ToDictionary(value => value.ItemId));
+        var service = CreateService(
+            SuccessfulPortfolio(1_000_000),
+            repository,
+            scanner: new StaticScanner(candidates),
+            marketClient: marketClient,
+            historyService: new FakeHistoryService(histories));
+
+        var result = await service.GetAsync();
+
+        var buy = Assert.Single(result.Actions, action =>
+            action.Source == PrimaryRecommendationSource.NewOpportunity && action.ItemId == 1);
+        var buySmall = Assert.Single(result.Actions, action =>
+            action.Source == PrimaryRecommendationSource.NewOpportunity && action.ItemId == 2);
+        Assert.Equal(PrimaryRecommendationAction.Buy, buy.Action);
+        Assert.Equal(10, buy.Quantity);
+        Assert.Equal(1_110, buy.Capital.Copper);
+        Assert.Equal(1_110, buy.Economics!.TotalCost.Copper);
+        Assert.Equal(PrimaryRecommendationAction.BuySmall, buySmall.Action);
+        Assert.Equal(5, buySmall.Quantity);
+        Assert.Equal(buy.Quantity / 2, buySmall.Quantity);
+        Assert.Equal(555, buySmall.Capital.Copper);
+        Assert.Equal(555, buySmall.Economics!.TotalCost.Copper);
+        Assert.Equal(995, buySmall.Economics.GrossSaleValue.Copper);
+        Assert.Equal(50, buySmall.Economics.ListingFee.Copper);
+        Assert.Equal(100, buySmall.Economics.ExchangeFee.Copper);
+        Assert.DoesNotContain(buySmall.PortfolioConstraints, constraint => constraint.IsBinding);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
+    [Fact]
+    public async Task Composed_competitive_buy_order_is_kept_only_when_current_exposure_is_within_every_cap()
+    {
+        var repository = SynchronizedRepository([
+            new CurrentPersonalTradingPostOrder(77, PersonalTradingPostSide.Buy, 42, 100, 10, Now.AddHours(-1)),
+        ]);
+        var candidate = Candidate(42);
+        var service = CreateService(
+            SuccessfulPortfolio(99_000),
+            repository,
+            scanner: new StaticScanner([candidate]),
+            marketClient: new ScenarioMarketClient(listings: new Dictionary<int, MarketListing> { [42] = Listing(42, 100) }),
+            historyService: new FakeHistoryService(new Dictionary<int, HistoricalMarketAnalytics> { [42] = History(42, true, true) }));
+
+        var result = await service.GetAsync();
+
+        var order = Assert.Single(result.Actions, action => action.Source == PrimaryRecommendationSource.BuyOrder);
+        Assert.Equal(PrimaryRecommendationAction.KeepBid, order.Action);
+        Assert.Equal(3, order.PortfolioConstraints.Count);
+        Assert.DoesNotContain(order.PortfolioConstraints, constraint => constraint.IsBinding);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
+    [Fact]
+    public async Task Composed_competitive_buy_order_requires_review_when_item_strategy_and_category_caps_are_breached()
+    {
+        var repository = SynchronizedRepository([
+            new CurrentPersonalTradingPostOrder(77, PersonalTradingPostSide.Buy, 42, 100, 300, Now.AddHours(-1)),
+        ]);
+        var candidate = Candidate(42);
+        var service = CreateService(
+            SuccessfulPortfolio(70_000),
+            repository,
+            scanner: new StaticScanner([candidate]),
+            marketClient: new ScenarioMarketClient(listings: new Dictionary<int, MarketListing> { [42] = Listing(42, 400) }),
+            historyService: new FakeHistoryService(new Dictionary<int, HistoricalMarketAnalytics> { [42] = History(42, true, true) }));
+
+        var result = await service.GetAsync();
+
+        var order = Assert.Single(result.Actions, action => action.Source == PrimaryRecommendationSource.BuyOrder);
+        Assert.Equal(PrimaryRecommendationAction.Review, order.Action);
+        Assert.Equal(
+            [PositionSizingConstraintName.ItemExposure, PositionSizingConstraintName.StrategyConcentration, PositionSizingConstraintName.CategoryConcentration],
+            order.PortfolioConstraints.Where(constraint => constraint.IsBinding).Select(constraint => constraint.Name));
+        Assert.Equal([5_000L, 20_000L, 25_000L], order.PortfolioConstraints.Select(constraint => constraint.CapitalCapacity.Copper));
+        Assert.Contains(order.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.ItemExposureExceeded);
+        Assert.Contains(order.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.StrategyExposureExceeded);
+        Assert.Contains(order.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.CategoryExposureExceeded);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
+    [Fact]
+    public async Task Composed_inventory_reduction_uses_only_safe_depth_and_exact_fifo_scope()
+    {
+        var repository = InventoryRepository(quantity: 10);
+        var service = CreateService(
+            SuccessfulPortfolio(9_000),
+            repository,
+            scanner: new EmptyScanner(),
+            marketClient: new ScenarioMarketClient(listings: new Dictionary<int, MarketListing> { [42] = Listing(42, 100) }),
+            historyService: new FakeHistoryService(new Dictionary<int, HistoricalMarketAnalytics> { [42] = History(42, true, true) }));
+
+        var result = await service.GetAsync();
+
+        var inventory = Assert.Single(result.Actions, action => action.Source == PrimaryRecommendationSource.Inventory);
+        Assert.Equal(PrimaryRecommendationAction.Reduce, inventory.Action);
+        Assert.Equal(5, inventory.Quantity);
+        Assert.Equal(500, inventory.Capital.Copper);
+        Assert.Equal(500, inventory.Economics!.AcquisitionCost.Copper);
+        Assert.Equal(500, inventory.Economics.GrossSaleValue.Copper);
+        Assert.Contains(inventory.PortfolioConstraints, constraint =>
+            constraint.Name == PositionSizingConstraintName.ItemExposure && constraint.IsBinding);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
+    [Fact]
+    public async Task Composed_inventory_breach_with_zero_safe_depth_reviews_with_zero_scoped_economics()
+    {
+        var repository = InventoryRepository(quantity: 10);
+        var service = CreateService(
+            SuccessfulPortfolio(9_000),
+            repository,
+            scanner: new EmptyScanner(),
+            marketClient: new ScenarioMarketClient(listings: new Dictionary<int, MarketListing> { [42] = Listing(42, 1) }),
+            historyService: new FakeHistoryService(new Dictionary<int, HistoricalMarketAnalytics> { [42] = History(42, true, true) }));
+
+        var result = await service.GetAsync();
+
+        var inventory = Assert.Single(result.Actions, action => action.Source == PrimaryRecommendationSource.Inventory);
+        Assert.Equal(PrimaryRecommendationAction.Review, inventory.Action);
+        Assert.Equal(0, inventory.Quantity);
+        Assert.Equal(0, inventory.Capital.Copper);
+        Assert.Null(inventory.Economics);
+        Assert.Contains(inventory.PortfolioConstraints, constraint =>
+            constraint.Name == PositionSizingConstraintName.ItemExposure && constraint.IsBinding);
+        Assert.Contains(inventory.PortfolioConstraints, constraint =>
+            constraint.Name == PositionSizingConstraintName.LiquidityParticipation && constraint.IsBinding && constraint.QuantityCapacity == 0);
+        Assert.Contains(inventory.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.ItemExposureExceeded);
+        Assert.Contains(inventory.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.SafeDepthLimited);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
+    [Fact]
+    public async Task Two_hundred_and_first_affordable_market_survives_scan_and_becomes_the_final_recommendation()
+    {
+        var expensiveItemIds = Enumerable.Range(1, LiveMarketScanner.MaximumCandidateCount).ToArray();
+        var affordableItemId = LiveMarketScanner.MaximumCandidateCount + 1;
+        var itemIds = expensiveItemIds.Append(affordableItemId).ToArray();
+        var prices = expensiveItemIds
+            .Select(itemId => Price(itemId, 10_000, 20_000))
+            .Append(Price(affordableItemId, 100, 200))
+            .ToDictionary(value => value.ItemId);
+        var listings = itemIds.ToDictionary(itemId => itemId, itemId =>
+            itemId == affordableItemId ? Listing(itemId, 100) : Listing(itemId, 100, 10_000, 20_000));
+        var marketClient = new ScenarioMarketClient(itemIds, prices, listings);
+        var scanner = new LiveMarketScanner(new PublicMarketSnapshotCollector(marketClient, new FixedClock(Now)), marketClient);
+        var repository = SynchronizedRepository();
+        var service = CreateService(
+            SuccessfulPortfolio(100_000),
+            repository,
+            scanner: scanner,
+            marketClient: marketClient,
+            historyService: new FakeHistoryService(new Dictionary<int, HistoricalMarketAnalytics>
+            {
+                [affordableItemId] = History(affordableItemId, true, true),
+            }));
+
+        var result = await service.GetAsync();
+
+        var action = Assert.Single(result.Actions, value => value.Source == PrimaryRecommendationSource.NewOpportunity);
+        Assert.Equal(affordableItemId, action.ItemId);
+        Assert.Equal(PrimaryRecommendationAction.Buy, action.Action);
+        Assert.True(action.Quantity > 0);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
     private static PrimaryRecommendationService CreateService(
         IAccountPortfolioGateway portfolioGateway,
         FakeRepository repository,
         MarketListing? listing = null,
         RecordingGate? gate = null,
-        ILiveMarketScanner? scanner = null) => new(
+        ILiveMarketScanner? scanner = null,
+        IGw2ApiClient? marketClient = null,
+        IHistoricalMarketAnalyticsService? historyService = null) => new(
             portfolioGateway,
             repository,
             new FakeMetadataRepository(),
             new FakeSettingsRepository(),
             gate ?? new RecordingGate(),
             scanner ?? new EmptyScanner(),
-            new FakeMarketClient(listing),
-            new FakeHistoryService(),
+            marketClient ?? new FakeMarketClient(listing),
+            historyService ?? new FakeHistoryService(),
             new FixedClock(Now),
             new OpportunityScoreService(),
             new PrimaryRecommendationPolicy());
@@ -163,10 +347,105 @@ public sealed class PrimaryRecommendationServiceTests
         };
     }
 
+    private static FakeRepository SynchronizedRepository(IReadOnlyList<CurrentPersonalTradingPostOrder>? orders = null) => new()
+    {
+        Profile = Profile,
+        CurrentOrders = new CurrentPersonalTradingPostOrderSnapshot(Now.AddMinutes(-1), orders ?? []),
+    };
+
+    private static FakeRepository InventoryRepository(int quantity)
+    {
+        var buy = new CompletedPersonalTradingPostTransaction(
+            10, PersonalTradingPostSide.Buy, 42, 100, quantity, Now.AddDays(-2), Now.AddDays(-2));
+        return new FakeRepository
+        {
+            Profile = Profile,
+            Coverage = new PersonalTradingPostHistoryCoverage(Now.AddDays(-30), Now),
+            Completed = [new StoredCompletedPersonalTradingPostTransaction(buy, Now.AddDays(-2), Now.AddDays(-2))],
+            CurrentOrders = new CurrentPersonalTradingPostOrderSnapshot(Now.AddMinutes(-1), []),
+        };
+    }
+
     private static MarketListing MarketListingFor(int itemId) => new(
         itemId,
         [new MarketOrderLevel(3, 100, 100)],
         [new MarketOrderLevel(3, 100, 200)]);
+
+    private static LiveMarketScannerCandidate Candidate(int itemId)
+    {
+        var plannedBid = new Money(101);
+        var plannedList = new Money(199);
+        var profit = new FlipProfitCalculator(Gw2TradingPostFeePolicy.Create()).Calculate(plannedBid, plannedList);
+        var totalCost = Gw2TradingPostFeePolicy.CalculateFullUpFrontCost(plannedBid, profit.ListingFee);
+        var buys = new[] { new MarketOrderLevel(3, 100, 100) };
+        var sells = new[] { new MarketOrderLevel(3, 100, 200) };
+        var simulator = new OrderBookExecutionSimulator();
+        var liquidity = new LiveMarketScannerLiquidityEvidence(
+            100, 100, 100, 100, 3, 3, null, null, false, false,
+            simulator.SimulateAcquisition([new OrderBookLevel(100, new Money(200))], 1),
+            simulator.SimulateLiquidation([new OrderBookLevel(100, new Money(100))], 1),
+            10, [], buys, sells);
+        return new LiveMarketScannerCandidate(
+            new MarketItemMetadata(itemId, $"Item {itemId}", MarketItemStackPolicy.NormalStackLimit),
+            new MarketOrderSummary(100, 100), new MarketOrderSummary(100, 200),
+            plannedBid, plannedList, profit, totalCost, new ExactRoi(profit.NetProfit, totalCost),
+            new Money(168), [], liquidity);
+    }
+
+    private static MarketListing Listing(int itemId, int quantity, int buyPrice = 100, int sellPrice = 200) => new(
+        itemId,
+        [new MarketOrderLevel(3, quantity, buyPrice)],
+        [new MarketOrderLevel(3, quantity, sellPrice)]);
+
+    private static MarketPrice Price(int itemId, int buyPrice, int sellPrice) => new(
+        itemId, false, new MarketOrderSummary(100, buyPrice), new MarketOrderSummary(100, sellPrice));
+
+    private static HistoricalMarketAnalytics History(
+        int itemId,
+        bool sevenDayAvailable,
+        bool thirtyDayAvailable)
+    {
+        var summary = new HistoricalMarketMetricSummary(
+            6_000m,
+            [new(1_500, 100m), new(2_000, 100m)],
+            100m,
+            0d,
+            0d,
+            0d,
+            100m,
+            100m,
+            0d,
+            new HistoricalPriceRange(100, 100),
+            new HistoricalPriceRange(200, 200),
+            0d);
+        return new HistoricalMarketAnalytics(
+            itemId,
+            Now,
+            false,
+            HistoricalMarketAnalyticsSettings.Default,
+            null,
+            [
+                HistoryWindow(TimeSpan.FromDays(7), sevenDayAvailable, summary),
+                HistoryWindow(TimeSpan.FromDays(30), thirtyDayAvailable, summary),
+            ]);
+    }
+
+    private static HistoricalMarketWindowAnalytics HistoryWindow(
+        TimeSpan duration,
+        bool available,
+        HistoricalMarketMetricSummary summary) => new(
+        available ? HistoricalMarketWindowState.Available : HistoricalMarketWindowState.InsufficientData,
+        new HistoricalMarketWindowCoverage(
+            Now - duration,
+            Now,
+            available ? 100 : 0,
+            available ? 100 : 0,
+            0,
+            available ? Now - duration : null,
+            available ? Now : null,
+            available ? 100m : 0m,
+            available ? TimeSpan.FromHours(8) : null),
+        available ? summary : null);
 
     private sealed class FakePortfolioGateway(Gw2ApiResult<AccountPortfolioSnapshot> result) : IAccountPortfolioGateway
     {
@@ -256,6 +535,59 @@ public sealed class PrimaryRecommendationServiceTests
         }
     }
 
+    private sealed class StaticScanner(IReadOnlyList<LiveMarketScannerCandidate> candidates) : ILiveMarketScanner
+    {
+        public Task<LiveMarketScannerResult> ScanAsync(
+            LiveMarketScannerSettings settings,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new LiveMarketScannerResult(
+                LiveMarketScannerState.Ready,
+                null,
+                Now,
+                settings,
+                false,
+                candidates.Count,
+                false,
+                candidates,
+                []));
+    }
+
+    private sealed class ScenarioMarketClient(
+        IReadOnlyList<int>? itemIds = null,
+        IReadOnlyDictionary<int, MarketPrice>? prices = null,
+        IReadOnlyDictionary<int, MarketListing>? listings = null) : IGw2ApiClient
+    {
+        private readonly IReadOnlyList<int> itemIds = itemIds ?? [];
+        private readonly IReadOnlyDictionary<int, MarketPrice> prices = prices ?? new Dictionary<int, MarketPrice>();
+        private readonly IReadOnlyDictionary<int, MarketListing> listings = listings ?? new Dictionary<int, MarketListing>();
+
+        public Task<Gw2ApiResult<IReadOnlyList<int>>> GetPriceItemIdsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Success<IReadOnlyList<int>>(itemIds));
+
+        public Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>> GetPricesAsync(
+            IReadOnlyCollection<int> requestedItemIds,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Success<IReadOnlyList<MarketPrice>>(
+                requestedItemIds.Where(prices.ContainsKey).Select(itemId => prices[itemId]).ToArray()));
+
+        public Task<Gw2ApiResult<IReadOnlyList<MarketListing>>> GetListingsAsync(
+            IReadOnlyCollection<int> requestedItemIds,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Success<IReadOnlyList<MarketListing>>(
+                requestedItemIds.Where(listings.ContainsKey).Select(itemId => listings[itemId]).ToArray()));
+
+        public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(
+            IReadOnlyCollection<int> requestedItemIds,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Success<IReadOnlyList<MarketItemMetadata>>(
+                requestedItemIds.Select(itemId => new MarketItemMetadata(
+                    itemId,
+                    $"Item {itemId}",
+                    MarketItemStackPolicy.NormalStackLimit)).ToArray()));
+
+        private static Gw2ApiResult<T> Success<T>(T value) => Gw2ApiResult<T>.Success(value);
+    }
+
     private sealed class FakeMarketClient(MarketListing? listing) : IGw2ApiClient
     {
         public Task<Gw2ApiResult<IReadOnlyList<MarketListing>>> GetListingsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) =>
@@ -266,12 +598,12 @@ public sealed class PrimaryRecommendationServiceTests
         public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
-    private sealed class FakeHistoryService : IHistoricalMarketAnalyticsService
+    private sealed class FakeHistoryService(IReadOnlyDictionary<int, HistoricalMarketAnalytics>? histories = null) : IHistoricalMarketAnalyticsService
     {
         public Task<HistoricalMarketAnalytics> GetAsync(int itemId, CancellationToken cancellationToken = default) =>
             GetAtAsync(itemId, Now, cancellationToken);
         public Task<HistoricalMarketAnalytics> GetAtAsync(int itemId, DateTimeOffset asOfUtc, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new HistoricalMarketAnalytics(
+            Task.FromResult(histories?.GetValueOrDefault(itemId) ?? new HistoricalMarketAnalytics(
                 itemId, asOfUtc, false, HistoricalMarketAnalyticsSettings.Default, null, []));
     }
 

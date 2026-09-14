@@ -17,6 +17,7 @@ public enum PrimaryRecommendationReasonCode
     OneCopperUndercutProtected, SellMateriallyUndercut, ItemExposureExceeded,
     SafeDepthLimited, PositiveImmediateExit, PositiveListingExit, NoPositiveExit,
     UnknownCostBasis, ReadOnlyManualAction, PenalizedEvidence, FullBuyEvidenceNotMet,
+    StrategyExposureExceeded, CategoryExposureExceeded,
 }
 
 public sealed record PrimaryRecommendationReason(PrimaryRecommendationReasonCode Code, string Message);

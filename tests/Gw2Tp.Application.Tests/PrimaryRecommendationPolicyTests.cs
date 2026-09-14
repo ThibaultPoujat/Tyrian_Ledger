@@ -90,6 +90,80 @@ public sealed class PrimaryRecommendationPolicyTests
     }
 
     [Fact]
+    public void Buy_small_halves_the_full_buy_quantity_and_recalculates_exact_total_economics()
+    {
+        var fullEconomics = new PrimaryRecommendationEconomicsCalculator().CalculateUnitPrices(
+            new Money(110), new Money(199), 10);
+        var fullEvidence = NewOpportunity() with
+        {
+            SuggestedQuantity = 10,
+            SuggestedCapital = fullEconomics.TotalCost,
+            Economics = fullEconomics,
+        };
+        var smallEvidence = fullEvidence with { History = History(OpportunityHistoricalConfidence.Partial) };
+        var policy = new PrimaryRecommendationPolicy();
+
+        var full = Assert.Single(policy.Evaluate([fullEvidence]));
+        var small = Assert.Single(policy.Evaluate([smallEvidence]));
+
+        Assert.Equal(PrimaryRecommendationAction.Buy, full.Action);
+        Assert.Equal(10, full.Quantity);
+        Assert.Equal(PrimaryRecommendationAction.BuySmall, small.Action);
+        Assert.Equal(5, small.Quantity);
+        Assert.Equal(600, small.Capital.Copper);
+        Assert.Equal(600, small.Economics!.TotalCost.Copper);
+        Assert.Equal(995, small.Economics.GrossSaleValue.Copper);
+        Assert.Equal(50, small.Economics.ListingFee.Copper);
+        Assert.Equal(100, small.Economics.ExchangeFee.Copper);
+    }
+
+    [Fact]
+    public void Competitive_bid_with_a_binding_portfolio_cap_requires_review()
+    {
+        var evidence = BuyOrder(PrimaryRecommendationOrderState.Competitive) with
+        {
+            IsExposureExceeded = true,
+            PortfolioConstraints =
+            [
+                new PositionSizingConstraint(PositionSizingConstraintName.ItemExposure, new Money(500), 5, true),
+                new PositionSizingConstraint(PositionSizingConstraintName.StrategyConcentration, new Money(2_000), 20, true),
+                new PositionSizingConstraint(PositionSizingConstraintName.CategoryConcentration, new Money(2_500), 25, true),
+            ],
+        };
+
+        var action = Assert.Single(new PrimaryRecommendationPolicy().Evaluate([evidence]));
+
+        Assert.Equal(PrimaryRecommendationAction.Review, action.Action);
+        Assert.Contains(action.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.ItemExposureExceeded);
+        Assert.Contains(action.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.StrategyExposureExceeded);
+        Assert.Contains(action.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.CategoryExposureExceeded);
+    }
+
+    [Fact]
+    public void Exposure_breach_without_safe_reduction_depth_requires_review()
+    {
+        var evidence = Inventory(exposureExceeded: true, suggestedQuantity: 0) with
+        {
+            Economics = null,
+            SuggestedCapital = Money.Zero,
+            PortfolioConstraints =
+            [
+                new PositionSizingConstraint(PositionSizingConstraintName.ItemExposure, new Money(500), 5, true),
+                new PositionSizingConstraint(PositionSizingConstraintName.LiquidityParticipation, Money.Zero, 0, true),
+            ],
+        };
+
+        var action = Assert.Single(new PrimaryRecommendationPolicy().Evaluate([evidence]));
+
+        Assert.Equal(PrimaryRecommendationAction.Review, action.Action);
+        Assert.Equal(0, action.Quantity);
+        Assert.Equal(0, action.Capital.Copper);
+        Assert.Null(action.Economics);
+        Assert.Contains(action.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.ItemExposureExceeded);
+        Assert.Contains(action.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.SafeDepthLimited);
+    }
+
+    [Fact]
     public void Known_zero_capacity_waits_and_noncritical_liquidity_risk_buys_small()
     {
         var noCapacity = NewOpportunity() with { SuggestedQuantity = 0 };
