@@ -91,19 +91,33 @@ retirement ticket.
 4. current milestone context;
 5. assigned ticket;
 6. relevant `docs/verification/VERIFY-REGISTER.md` entries;
-7. only specialized source/spec/ADR files needed for the ticket.
+7. `docs/workflow/model-effort-guide.md`;
+8. only specialized source/spec/ADR files needed for the ticket.
 
 Do not load all historical milestone/ticket documents.
 
-## Session rule
+## Session and review rule
 
 One implementation ticket normally uses one implementation session. Work in one
-isolated branch/worktree, plan briefly, implement, validate, inspect the diff,
-open a PR, provide a functional summary, and stop.
+isolated branch/worktree, make a short in-session plan, implement, validate,
+inspect the diff, run the required review path, open/update the PR, provide a
+functional summary, and stop.
 
-Every PR receives a fresh independent review using
-`.codex/skills/tyrian-pr-review/SKILL.md`. Git/tests/tickets/docs are the durable
-handoff; previous chat context is not.
+Dedicated Plan mode is not mandatory for every ticket; use the active
+`docs/workflow/model-effort-guide.md` policy. If a genuine ambiguity,
+contradiction, or owner decision cannot be resolved from repository context,
+pause and ask the owner with a recommended choice and concise alternatives.
+Routine technical choices remain autonomous.
+
+Review also follows the model-effort guide:
+
+- NORMAL tickets use an independent Terra review subagent/check in the same implementation run when supported; a second owner-triggered review session is not required by default.
+- SOL-GATED tickets stay Draft, complete required validation/CI before the fresh separate Sol XHigh review, and use targeted fresh Sol re-review after scoped fixes.
+- quota exhaustion changes scheduling, not correctness gates.
+
+`.codex/skills/tyrian-pr-review/SKILL.md` defines the independent findings-first
+review checklist. Git/tests/tickets/docs are the durable handoff; previous chat
+context is not.
 
 ## VERIFY versus BLOCKED
 

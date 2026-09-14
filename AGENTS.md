@@ -30,13 +30,14 @@ released product.
 4. `docs/context/milestone-context-<M>.md` for the assigned milestone.
 5. The assigned ticket under `docs/milestones/<M>/tickets/`.
 6. `docs/verification/VERIFY-REGISTER.md`.
-7. `docs/workflow/model-effort-guide.md` for the active model/review gate.
+7. `docs/workflow/model-effort-guide.md` for the active effort/planning/review gate.
 8. Only the specialized specifications, ADRs, tests, and source files needed to
    satisfy that ticket.
 
 The ticket is the implementation contract for scope/behavior. The model-effort
-guide is authoritative for **review-model selection and PR Draft blocking** when
-older ticket annotations conflict with the current quota-aware policy.
+guide is authoritative for **model effort, dedicated Plan-mode use, review-model
+selection, and PR Draft blocking** when older annotations conflict with the
+current quota-aware policy.
 
 ## Active product boundaries
 
@@ -98,10 +99,17 @@ See:
 
 Default rule: **one implementation ticket = one implementation session**.
 
-Use one isolated worktree/branch. Inspect Git state, make a short plan of no
-more than five steps, implement one coherent ticket, run the required
+Use one isolated worktree/branch. Inspect Git state, make a short in-session plan
+of no more than five steps, implement one coherent ticket, run the required
 validation, inspect the diff, commit/push/open a PR, write the required report,
-and stop.
+and stop. Dedicated product Plan mode is used only when
+`docs/workflow/model-effort-guide.md` calls for it or a genuine owner decision
+must be resolved before build work.
+
+If a genuine ambiguity, contradiction, or owner/product decision cannot be
+resolved from the repository, pause and ask the owner with a recommended choice
+and concise alternatives. Do not ask the owner to decide routine technical
+choices already authorized by the ticket.
 
 Do not begin the next ticket in the same implementation session. Durable handoff
 comes from Git, the ticket, `CURRENT.md`, tests, and ADRs rather than chat
@@ -113,56 +121,57 @@ clear handoff.
 
 ## Review policy
 
-There are two review paths. **Risk class alone does not select the model.**
+There are two review paths. **Risk class alone does not select Sol.**
 
 ### NORMAL
 
 For every ticket not explicitly listed in the Sol gate in
 `docs/workflow/model-effort-guide.md`:
 
-- use Terra High for planning/implementation by default;
-- run an independent Terra review subagent/check before delivery when supported
-  by the coding environment;
+- use the risk-based Terra effort in the model-effort guide rather than High by default for every ticket;
+- run an independent Terra review subagent/check **inside the implementation run** when supported by the coding environment;
+- use Terra Medium by default for R0/R1 review and Terra High for R2/R3 review, escalating when findings/uncertainty justify it;
 - run all ticket-required tests and CI;
-- a separate Sol session is not a merge requirement;
-- do not put obsolete blanket `R3 requires fresh flagship XHigh` wording in the
-  PR body.
+- a second owner-triggered review session is not a merge requirement;
+- do not put obsolete blanket `R3 requires fresh flagship XHigh` wording in the PR body.
 
 Escalate to Sol only if Terra reports unresolved high-consequence ambiguity, an
 important review finding remains uncertain, or the owner explicitly requests it.
 
 ### SOL-GATED
 
-Only the explicit Sol-gate ticket list in `docs/workflow/model-effort-guide.md`
-requires a separate fresh Sol XHigh review.
+Only the explicit active Sol-gate ticket list in
+`docs/workflow/model-effort-guide.md` requires a separate fresh Sol XHigh review.
 
 For those tickets:
 
 - implement/fix with Terra High by default;
 - create the PR as **Draft**;
-- use `.codex/skills/tyrian-pr-review/SKILL.md` in a fresh separate Sol XHigh
-  review session;
+- complete required local validation and let required GitHub CI go green before spending the Sol review session;
+- use `.codex/skills/tyrian-pr-review/SKILL.md` in a fresh separate Sol XHigh review session;
 - keep the PR Draft while findings remain;
-- after APPROVE and green validation, the reviewer/fix handoff may mark it Ready
-  for Review;
+- use Terra High for fixes, rerun affected validation/CI, then use a targeted fresh Sol re-review focused on prior findings and changed regression risk unless the fix materially broadened scope;
+- after APPROVE and green validation, the reviewer/fix handoff may mark it Ready for Review;
 - the owner still makes the final merge decision.
 
 The Draft state is the merge blocker so the owner does not have to remember the
-Sol-gate list manually.
+Sol-gate list manually. If quota is exhausted, preserve the Draft/handoff and do
+not bypass the required Sol gate.
 
 ## Model and reasoning guidance
 
-- Mechanical docs/repository maintenance: Terra Medium/High.
-- Normal and complex implementation: **Terra High by default**.
-- Normal review: independent Terra review subagent/check plus required tests/CI.
-- Separate Sol XHigh: only the explicit Sol-gate tickets or an explicit
-  escalation under the rules above.
-- Max: only for unresolved ambiguity after normal XHigh review or an explicit
-  owner request.
+- R0 mechanical/docs/repository maintenance: **Terra Medium by default**.
+- R1 normal product implementation: **Terra Medium by default**, escalating to High when materially cross-layer/stateful/ambiguous.
+- R2 complex cross-layer/stateful implementation: **Terra High by default**.
+- R3 financial/data/security/statistical/recommendation authority: **Terra High by default**.
+- Dedicated Plan mode: only for owner-requested or materially ambiguous/high-consequence planning; a short in-session plan remains mandatory for every ticket.
+- NORMAL review: same-run independent Terra review subagent/check plus required tests/CI; Medium for R0/R1, High for R2/R3 unless escalation is justified.
+- Separate Sol XHigh: only the explicit active Sol-gate tickets or an explicit escalation under the rules above.
+- Max: only for unresolved ambiguity after XHigh review or an explicit owner request.
 
 Never lower testing or correctness standards because the cheaper review path is
-used. The quota-aware policy changes **who reviews**, not the acceptance criteria
-or validation burden.
+used. The quota-aware policy changes **effort and reviewer allocation**, not the
+acceptance criteria or validation burden.
 
 ## Decision gates reserved for the owner
 

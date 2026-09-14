@@ -8,9 +8,10 @@
 
 <!--
 Set the pull request's actual GitHub milestone to match the implementation issue.
-Review-path selection is defined by docs/workflow/model-effort-guide.md.
+Review-path selection and model effort are defined by docs/workflow/model-effort-guide.md.
 Do not infer SOL-GATED from R3 alone and do not paste legacy blanket R3/XHigh wording.
-SOL-GATED PRs must be opened as Draft and remain Draft until the required separate Sol review returns APPROVE.
+NORMAL review should use the same-run independent Terra review path when supported; do not require a second owner-triggered review session by default.
+SOL-GATED PRs must be opened as Draft, complete required validation/CI before the fresh Sol review, and remain Draft until the required Sol review returns APPROVE.
 -->
 
 ## Functional summary
@@ -44,8 +45,8 @@ work, include edge/regression evidence rather than only happy-path tests.
 
 ## Review result
 
-- NORMAL: independent Terra review subagent/check completed; required tests/CI green.
-- SOL-GATED: keep this PR Draft until a fresh separate Sol XHigh review returns APPROVE; record the verdict here before marking Ready.
+- NORMAL: same-run independent Terra review subagent/check completed when supported; required tests/CI green.
+- SOL-GATED: required validation/CI green before the fresh separate Sol XHigh review; keep this PR Draft until APPROVE. After scoped fixes, record the targeted fresh Sol re-review verdict before marking Ready.
 
 <!-- Keep only the review-result line that applies to this PR. -->
 
