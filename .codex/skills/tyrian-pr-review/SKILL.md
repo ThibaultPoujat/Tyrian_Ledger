@@ -25,7 +25,7 @@ Resolve:
 - PR base and head;
 - current milestone;
 - review path from `docs/workflow/model-effort-guide.md`;
-- implementation validation evidence if present.
+- implementation validation/CI evidence if present.
 
 If a PR/ticket is identifiable from context, do not ask the owner to repeat it.
 
@@ -49,6 +49,12 @@ Do not load unrelated historical tickets.
 
 Extract the ticket goal, acceptance criteria, non-goals, dependencies, risk
 class, review path, required tests, owner decisions, and functional outcome.
+
+For a SOL-GATED review, confirm required implementation validation/CI is green
+before spending the full review pass. If it is red for an ordinary implementation
+failure, return the PR for Terra fixes rather than performing an expensive full
+Sol audit. Continue only when Sol is explicitly needed to resolve a blocking
+high-consequence ambiguity in the failing state.
 
 ### 2. Inspect the diff before accepting the author's explanation
 
@@ -128,14 +134,14 @@ If there are no findings, say so explicitly; do not invent stylistic nits.
 
 Use `docs/workflow/model-effort-guide.md` as authority.
 
-- **NORMAL:** an independent Terra review subagent/check is sufficient by default
-  together with ticket-required tests and CI. A separate session is optional.
-- **SOL-GATED:** review in a fresh separate Sol XHigh session. The PR must remain
-  Draft until this review returns APPROVE and required validation is green.
+- **NORMAL:** an independent Terra review subagent/check in the implementation run is sufficient by default together with ticket-required tests and CI. Use Medium by default for R0/R1 and High for R2/R3, escalating when findings/uncertainty justify it. A second separate review session is optional.
+- **SOL-GATED:** review in a fresh separate Sol XHigh session after required validation/CI is green. The PR must remain Draft until this review returns APPROVE and required validation remains green.
 - Risk class R3 alone does not select Sol.
 
-For a SOL-GATED re-review after fixes, focus on the prior findings and regression
-risk while still checking new changes for introduced defects.
+For a SOL-GATED re-review after fixes, perform a **targeted fresh review** of the
+prior findings, changed diff, and plausible regression surface. Re-run the full
+Sol review only when the fixes materially broadened the changed authority/scope
+or the targeted review discovers new high-consequence uncertainty.
 
 ## PR state for SOL-GATED reviews
 
@@ -144,6 +150,10 @@ process finding** and convert it to Draft when the available GitHub tooling and
 review role permit. Do not mark it Ready while Blocker/Important findings remain.
 After APPROVE and green required validation, it may be marked Ready for the
 owner's final merge decision.
+
+If owner quota is exhausted before the required Sol review or re-review, leave
+the PR Draft with a clear handoff. Do not replace the required gate with a
+cheaper reviewer.
 
 ## Stop condition
 
