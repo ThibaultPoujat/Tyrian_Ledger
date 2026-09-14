@@ -112,12 +112,36 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 settings, sizingPolicy, policies);
         }
 
+        var sellQuantityByItem = local.CurrentOrders.Orders
+            .Where(order => order.Side == PersonalTradingPostSide.Sell)
+            .GroupBy(order => order.ItemId)
+            .ToDictionary(group => group.Key, group => checked((int)group.Sum(order => (long)order.Quantity)));
+        var knownQuantityByItem = local.Fifo.OpenLots.GroupBy(lot => lot.ItemId)
+            .ToDictionary(group => group.Key, group => checked((int)group.Sum(lot => (long)lot.RemainingQuantity)));
+        var hasUnknownSellBasis = sellQuantityByItem.Any(pair => pair.Value > knownQuantityByItem.GetValueOrDefault(pair.Key));
+
+        PortfolioSizingSnapshot sizingSnapshot;
+        try
+        {
+            var exposures = BuildExposures(local);
+            sizingSnapshot = hasUnknownSellBasis
+                ? new PortfolioSizingSnapshot(PortfolioSizingSnapshotState.Unknown, null, null)
+                : new PortfolioSizingSnapshot(PortfolioSizingSnapshotState.Available, portfolioResult.Value.AvailableCash, exposures);
+        }
+        catch (OverflowException)
+        {
+            sizingSnapshot = new PortfolioSizingSnapshot(PortfolioSizingSnapshotState.Unknown, null, null);
+        }
+
+        var sizingService = new PositionSizingService(local.SizingPolicy);
+        var discoveryCapitalLimit = sizingService.CalculateDiscoveryCapitalLimit(sizingSnapshot, Strategy, Category);
         var scannerSettings = new LiveMarketScannerSettings(
             local.Settings?.MinimumRoiBasisPoints ?? LiveMarketScannerSettings.Default.MinimumRoiBasisPoints,
             new Money(local.Settings?.MinimumProfitInCopper ?? checked((int)LiveMarketScannerSettings.Default.MinimumNetProfit.Copper)),
             LiveMarketScannerSettings.Default.BidIncrementCopper,
             LiveMarketScannerSettings.Default.ListUndercutCopper,
-            LiveMarketScannerSettings.Default.IntendedQuantity);
+            LiveMarketScannerSettings.Default.IntendedQuantity,
+            discoveryCapitalLimit);
         var scan = await scanner.ScanAsync(scannerSettings, cancellationToken).ConfigureAwait(false);
         if (scan.State != LiveMarketScannerState.Ready)
         {
@@ -177,31 +201,10 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
 
         var scoresByItem = scores.ToDictionary(value => value.ItemId);
         var candidatesByItem = scan.Candidates.ToDictionary(value => value.Item.ItemId);
-        var sellQuantityByItem = local.CurrentOrders.Orders
-            .Where(order => order.Side == PersonalTradingPostSide.Sell)
-            .GroupBy(order => order.ItemId)
-            .ToDictionary(group => group.Key, group => checked((int)group.Sum(order => (long)order.Quantity)));
-        var knownQuantityByItem = local.Fifo.OpenLots.GroupBy(lot => lot.ItemId)
-            .ToDictionary(group => group.Key, group => checked((int)group.Sum(lot => (long)lot.RemainingQuantity)));
-        var hasUnknownSellBasis = sellQuantityByItem.Any(pair => pair.Value > knownQuantityByItem.GetValueOrDefault(pair.Key));
-
-        PortfolioSizingSnapshot sizingSnapshot;
-        try
-        {
-            var exposures = BuildExposures(local);
-            sizingSnapshot = hasUnknownSellBasis
-                ? new PortfolioSizingSnapshot(PortfolioSizingSnapshotState.Unknown, null, null)
-                : new PortfolioSizingSnapshot(PortfolioSizingSnapshotState.Available, portfolioResult.Value.AvailableCash, exposures);
-        }
-        catch (OverflowException)
-        {
-            sizingSnapshot = new PortfolioSizingSnapshot(PortfolioSizingSnapshotState.Unknown, null, null);
-        }
-
         var sizingCandidates = scan.Candidates.Select(candidate => new PositionSizingCandidate(
             scoresByItem[candidate.Item.ItemId], candidate,
             ClassifyLiquidity(candidate.Liquidity.Reasons), Strategy, Category)).ToArray();
-        var sizing = new PositionSizingService(local.SizingPolicy).Size(sizingSnapshot, sizingCandidates);
+        var sizing = sizingService.Size(sizingSnapshot, sizingCandidates);
         var allocationsByItem = sizing.Allocations.ToDictionary(value => value.ItemId);
         var reserveCancellations = SelectReserveCancellations(
             local, listingsByItem, candidatesByItem, scoresByItem, sizing);

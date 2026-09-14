@@ -64,6 +64,23 @@ public sealed class PrimaryRecommendationServiceTests
     }
 
     [Fact]
+    public async Task Recommendation_scan_receives_the_bankroll_risk_discovery_limit()
+    {
+        var scanner = new RecordingScanner();
+        var repository = new FakeRepository
+        {
+            Profile = Profile,
+            CurrentOrders = new CurrentPersonalTradingPostOrderSnapshot(Now.AddMinutes(-1), []),
+        };
+        var service = CreateService(SuccessfulPortfolio(100_000), repository, scanner: scanner);
+
+        var result = await service.GetAsync();
+
+        Assert.Equal(PrimaryRecommendationState.Ready, result.State);
+        Assert.Equal(5_000, scanner.Settings?.MaximumCandidateTotalCost?.Copper);
+    }
+
+    [Fact]
     public async Task Sell_quantity_beyond_fifo_inventory_keeps_basis_unknown_and_disables_buy_sizing()
     {
         var repository = PersonalRepository(
@@ -113,13 +130,14 @@ public sealed class PrimaryRecommendationServiceTests
         IAccountPortfolioGateway portfolioGateway,
         FakeRepository repository,
         MarketListing? listing = null,
-        RecordingGate? gate = null) => new(
+        RecordingGate? gate = null,
+        ILiveMarketScanner? scanner = null) => new(
             portfolioGateway,
             repository,
             new FakeMetadataRepository(),
             new FakeSettingsRepository(),
             gate ?? new RecordingGate(),
-            new EmptyScanner(),
+            scanner ?? new EmptyScanner(),
             new FakeMarketClient(listing),
             new FakeHistoryService(),
             new FixedClock(Now),
@@ -222,6 +240,20 @@ public sealed class PrimaryRecommendationServiceTests
         public Task<LiveMarketScannerResult> ScanAsync(LiveMarketScannerSettings settings, CancellationToken cancellationToken = default) =>
             Task.FromResult(new LiveMarketScannerResult(
                 LiveMarketScannerState.Ready, null, Now, settings, false, 0, false, [], []));
+    }
+
+    private sealed class RecordingScanner : ILiveMarketScanner
+    {
+        public LiveMarketScannerSettings? Settings { get; private set; }
+
+        public Task<LiveMarketScannerResult> ScanAsync(
+            LiveMarketScannerSettings settings,
+            CancellationToken cancellationToken = default)
+        {
+            Settings = settings;
+            return Task.FromResult(new LiveMarketScannerResult(
+                LiveMarketScannerState.Ready, null, Now, settings, false, 0, false, [], []));
+        }
     }
 
     private sealed class FakeMarketClient(MarketListing? listing) : IGw2ApiClient

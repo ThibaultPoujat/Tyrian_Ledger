@@ -26,6 +26,22 @@ public sealed class PositionSizingServiceTests
     }
 
     [Fact]
+    public void Discovery_cap_applies_portfolio_risk_before_candidate_shortlisting()
+    {
+        var service = new PositionSizingService();
+
+        var emptyPortfolioLimit = service.CalculateDiscoveryCapitalLimit(
+            Snapshot(100_000), "FastFlip", "TradingPost");
+        var strategyLimited = service.CalculateDiscoveryCapitalLimit(
+            Snapshot(100_000, [
+                Exposure("existing", PortfolioExposureKind.HeldPosition, 2, "FastFlip", "Other", 19_000),
+            ]), "FastFlip", "TradingPost");
+
+        Assert.Equal(5_000, emptyPortfolioLimit?.Copper);
+        Assert.Equal(4_800, strategyLimited?.Copper);
+    }
+
+    [Fact]
     public void Liquidity_class_and_visible_participation_independently_limit_size()
     {
         var service = new PositionSizingService();

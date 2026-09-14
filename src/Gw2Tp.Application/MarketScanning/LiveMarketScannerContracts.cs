@@ -14,7 +14,8 @@ public sealed record LiveMarketScannerSettings(
     Money MinimumNetProfit,
     int BidIncrementCopper,
     int ListUndercutCopper,
-    int IntendedQuantity)
+    int IntendedQuantity,
+    Money? MaximumCandidateTotalCost = null)
 {
     public static LiveMarketScannerSettings Default { get; } = new(
         MinimumRoiBasisPoints: 0,
@@ -48,6 +49,11 @@ public sealed record LiveMarketScannerSettings(
         if (IntendedQuantity <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(IntendedQuantity));
+        }
+
+        if (MaximumCandidateTotalCost is { Copper: <= 0 })
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaximumCandidateTotalCost));
         }
     }
 }
@@ -108,6 +114,7 @@ public enum LiveMarketScannerExclusionReason
     FeeLosing,
     MinimumNetProfitNotMet,
     MinimumRoiNotMet,
+    CandidateCapitalLimitExceeded,
     ArithmeticOverflow,
 }
 

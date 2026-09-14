@@ -137,11 +137,13 @@ inventory, live depth, retained history, opportunity score, and conservative
 position sizing into explicit attention-first manual actions. Its protected
 read-only API returns exact full-quantity modeled economics, max-bid and
 portfolio constraints, confidence/liquidity evidence, and backend-generated
-reasons without returning credentials or account identity. React renders the
-backend contract, initially limits new opportunities to five, and provides
-accessible evidence expansion without recommendation formulas or browser
-storage. VERIFY-005 and VERIFY-013 remain OPEN. The PR remains SOL-GATED and
-Draft pending the owner-triggered fresh separate Sol XHigh review.
+reasons without returning credentials or account identity. Portfolio-fit
+capital is applied before bounded scanner truncation so unaffordable
+high-absolute-profit markets cannot crowd out an eligible affordable candidate.
+React renders the backend contract, initially limits new opportunities to five,
+and provides accessible evidence expansion without recommendation formulas or
+browser storage. VERIFY-005 and VERIFY-013 remain OPEN. The PR remains
+SOL-GATED and Draft pending the owner-triggered fresh separate Sol XHigh review.
 
 After the #88 SOL-GATED review/merge handoff, the next valid implementation
 ticket is:
@@ -154,8 +156,9 @@ intelligence.**
 TKT-M19-04 local validation on 2026-09-14 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused recommendation, wallet/readiness, and protected API suites passed;
-- full .NET regression suite: 424 tests passed (4 Domain, 21 Analytics, 184
+- focused scanner/sizing/recommendation suite: 68 tests passed; focused
+  wallet/readiness and protected API suites passed;
+- full .NET regression suite: 427 tests passed (4 Domain, 21 Analytics, 187
   Application, 172 Infrastructure, and 43 Web);
 - React: 24 component tests passed and the production build succeeded;
 - Playwright: 15 tests passed across Chromium, Firefox, and WebKit, including

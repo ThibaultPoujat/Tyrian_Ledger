@@ -270,6 +270,16 @@ multiplies one-unit fee/profit results. Existing minimum profit, minimum ROI,
 and cash-reserve settings take precedence; absent settings use the scanner
 defaults and the 15% sizing reserve.
 
+Before the scanner applies its bounded candidate shortlist, primary
+orchestration supplies an optimistic one-unit discovery ceiling derived from
+cash after reserve plus the high-liquidity item, `FastFlip` strategy, and
+`TradingPost` category headroom. Candidates that exceed every possible
+portfolio fit are excluded before profit ordering, so more than 200 expensive
+high-absolute-profit markets cannot crowd out an otherwise eligible affordable
+candidate. Candidate-specific history, liquidity class, existing item exposure,
+and sequential allocations still apply afterward; the discovery ceiling never
+grants capacity or bypasses final sizing.
+
 The version-one graduated action rules are:
 
 - New opportunities are `BUY` only with non-zero size, strong history, high

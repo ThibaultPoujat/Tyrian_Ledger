@@ -1,6 +1,7 @@
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketScanning;
 using Gw2Tp.Application.MarketSnapshots;
+using Gw2Tp.Domain.Finance;
 using Gw2Tp.Testing;
 using Xunit;
 
@@ -231,6 +232,35 @@ public sealed class LiveMarketScannerTests
         Assert.Equal(LiveMarketScanner.MaximumCandidateCount, result.Candidates.Count);
         Assert.Equal(LiveMarketScanner.MaximumCandidateCount + 1, result.QualifyingCandidateCount);
         Assert.True(result.IsTruncated);
+    }
+
+    [Fact]
+    public async Task Capital_limit_preserves_an_affordable_candidate_before_bounded_shortlist_truncation()
+    {
+        var expensiveItemIds = Enumerable.Range(1, LiveMarketScanner.MaximumCandidateCount).ToArray();
+        var affordableItemId = LiveMarketScanner.MaximumCandidateCount + 1;
+        var itemIds = expensiveItemIds.Append(affordableItemId).ToArray();
+        var scanner = CreateScanner(new StubMarketDataClient(
+            itemIds: itemIds,
+            prices: _ => Success(expensiveItemIds
+                .Select(itemId => Price(itemId, 100, 10_000, 100, 20_000))
+                .Append(Price(affordableItemId, 100, 100, 100, 200)))));
+        var settings = LiveMarketScannerSettings.Default with
+        {
+            MaximumCandidateTotalCost = new Money(111),
+        };
+
+        var result = await scanner.ScanAsync(settings);
+
+        var candidate = Assert.Single(result.Candidates);
+        Assert.Equal(affordableItemId, candidate.Item.ItemId);
+        Assert.Equal(111, candidate.TotalCost.Copper);
+        Assert.Equal(1, result.QualifyingCandidateCount);
+        Assert.False(result.IsTruncated);
+        Assert.Equal(
+            LiveMarketScanner.MaximumCandidateCount,
+            Assert.Single(result.Exclusions, exclusion =>
+                exclusion.Reason == LiveMarketScannerExclusionReason.CandidateCapitalLimitExceeded).Count);
     }
 
     [Fact]
