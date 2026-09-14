@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: 2026-09-09
+Last updated: 2026-09-14
 
 ## Active direction
 
@@ -120,38 +120,37 @@ Personal evidence is an explicit zero-weight placeholder for later sufficiently
 sampled M20 work. No scanner/API/UI orchestration or final position sizing is
 included.
 
-TKT-M19-03 / #87 is implemented in Draft PR #122. It adds a pure deterministic
-position-sizing policy with a 15% reserve; 5%/3%/1.5% high/medium/low-liquidity
-item caps; and 20% strategy/25% category caps. Explicit complete portfolio
-snapshots include current-order/position capital at risk; unknown, negative,
-duplicate, or incomplete state returns no allocation. Ranked candidates consume
-cash and grouped capacity sequentially, and every binding cap remains structured
-for later M19-04 orchestration. The Draft remains SOL-GATED pending the
-owner-triggered fresh Sol XHigh review; no VERIFY entries changed.
+TKT-M19-03 / #87 merged in PR #122 after the required SOL-GATED review and a
+targeted fresh Sol XHigh re-review. It adds a pure deterministic position-sizing
+policy with a 15% reserve; 5%/3%/1.5% high/medium/low-liquidity item caps; and
+20% strategy/25% category caps. Explicit complete portfolio snapshots include
+current-order/position capital at risk; unknown, negative, duplicate, or
+incomplete state returns no allocation. Ranked candidates consume cash and
+grouped capacity sequentially, participation caps fail safe against visible
+depth, reserve breach/shortfall is explicit result-level evidence, and every
+binding cap remains structured for M19-04 orchestration. No VERIFY entries
+changed.
 
-After the #87 SOL-GATED review/merge handoff, the next valid implementation
-ticket is:
+The next valid implementation ticket is:
 
 **TKT-M19-04 / #88 - Build the Primary `What Should I Do?` Recommendation
 Screen.**
 
 ## Known-good baseline
 
-TKT-M19-02 local validation on 2026-09-09 reported:
+TKT-M19-03 final validation/review on 2026-09-09 reported:
 
-- Release solution build: zero warnings and zero errors;
-- focused opportunity scoring: 14 tests passed; combined scoring, historical,
-  scanner, order-book, and fee prerequisite suites: 25 Application and 20
-  Analytics tests passed;
-- full .NET regression suite: 362 tests passed (4 Domain, 21 Analytics, 137
-  Application, 160 Infrastructure, and 40 Web);
-- React: 21 component tests passed and the production build succeeded;
+- focused position-sizing suite: 14/14 passed;
+- Application prerequisite suites: 80/80 passed;
+- Analytics fee/order-book prerequisites: 15/15 passed;
+- full Release .NET regression suite: 376/376 passed;
+- Release build: zero warnings/errors and diff check clean;
+- React: 21 component tests and production build passed;
 - Playwright: 12 tests passed across Chromium, Firefox, and WebKit;
-- CI workflow contracts: 3 tests passed;
-- retired-runtime audit: only expected negative assertions matched;
-- Gitleaks: complete reachable history scanned with no leaks.
+- GitHub CI was green for secret scan, backend, frontend, browser, and workflow contracts;
+- targeted fresh Sol XHigh re-review returned APPROVE with no remaining Blocker, Important, or Minor findings.
 
-PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/122 (Draft; pending targeted fresh Sol XHigh re-review)
+PR #122 merged into `develop` on 2026-09-09.
 
 ## Important transition warning
 
@@ -175,20 +174,22 @@ static product. Reuse them in the local-first architecture where compatible.
 - M21: crafting intelligence.
 - M22: alerts, hardening, packaging, and recommendation evaluation.
 
-## Review rule
+## Review and effort rule
 
-The active quota-aware review policy is in
+The active quota-aware policy is in
 `docs/workflow/model-effort-guide.md`.
 
-- NORMAL tickets: Terra High implementation + independent Terra review
-  subagent/check + required tests/CI is sufficient by default.
-- SOL-GATED tickets: the implementation PR must remain **Draft** until a fresh
-  separate Sol XHigh review returns APPROVE and validation is green.
+- R0/R1 implementation uses Terra Medium by default, escalating to High when complexity/uncertainty warrants it.
+- R2/R3 implementation uses Terra High by default.
+- NORMAL tickets use a same-run independent Terra review subagent/check when supported; a second owner-triggered review session is not required by default.
+- SOL-GATED tickets remain **Draft**, finish required validation/CI before the fresh Sol XHigh review, and use targeted fresh Sol re-review after scoped fixes.
 - R3 risk classification alone does not create a Sol review gate.
+- Dedicated Plan mode is not mandatory for every ticket; every ticket still receives a short in-session plan and genuine owner ambiguities are surfaced before build work proceeds.
 
-Do not rely on old ticket wording that equates every R3 ticket with mandatory
-flagship XHigh review; the central model-effort guide supersedes that review-model
-selection.
+Do not rely on old ticket/workflow wording that makes Terra High universal,
+requires actual Plan mode for every ticket, equates every R3 ticket with Sol, or
+requires a separate NORMAL review session. The central model-effort guide
+supersedes those model/workflow selections.
 
 ## State-maintenance rule
 
