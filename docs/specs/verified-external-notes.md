@@ -123,3 +123,28 @@ Sources:
 
 - https://wiki.guildwars2.com/wiki/API:2/tokeninfo
 - https://wiki.guildwars2.com/wiki/API:API_key
+
+## M19 wallet and Coin contract review
+
+On 2026-09-09, TKT-M19-04 reviewed the public Guild Wars 2 Wiki documentation
+for `/v2/account/wallet` and API-key permissions without using an account key.
+The wallet endpoint is a read-only authenticated account resource documented
+with `account` and `wallet` permission requirements. Its response is an array
+of currency records containing integer `id` and `value`; the public currency
+resource identifies currency ID 1 as Coin. Tyrian Ledger therefore treats the
+single currency-ID-1 value as available cash in copper, rejects malformed,
+negative, missing, or duplicate currency evidence, and never returns the
+account scope to React.
+
+A keyless read of `/v2.json?v=latest` confirmed the wallet route and listed
+`2025-08-29T01:00:00.000Z` as the newest global schema entry. A keyless read
+of `/v2/currencies/1?v=latest` confirmed Coin identity. These checks do not
+confirm the newest endpoint-specific wallet schema, so the shared global pin
+remains provisional and VERIFY-005 stays open. No live keyed probe was made.
+
+Sources:
+
+- https://wiki.guildwars2.com/wiki/API:2/account/wallet
+- https://wiki.guildwars2.com/wiki/API:API_key
+- https://api.guildwars2.com/v2.json?v=latest
+- https://api.guildwars2.com/v2/currencies/1?v=latest

@@ -12,6 +12,7 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
     private static readonly PathString LiveMarketScannerPath = "/api/live-market-scanner";
     private static readonly PathString MarketHistoryPath = "/api/market-history";
     private static readonly PathString WatchlistPath = "/api/watchlist";
+    private static readonly PathString RecommendationsPath = "/api/recommendations";
 
     public async Task InvokeAsync(HttpContext context, LocalRequestOriginValidator originValidator)
     {
@@ -21,7 +22,8 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
                 IsProtectedPath(context.Request.Path, LiveMarketScannerPath) ||
                 IsProtectedPath(context.Request.Path, MarketHistoryPath) ||
                 IsHistoricalMarketAnalyticsPath(context.Request.Path) ||
-                IsProtectedPath(context.Request.Path, WatchlistPath));
+                IsProtectedPath(context.Request.Path, WatchlistPath) ||
+                IsProtectedPath(context.Request.Path, RecommendationsPath));
         var hasOrigin = context.Request.Headers.Origin.Count > 0;
         var unsafeRequestDenied = isUnsafeRequest
             && (!originValidator.IsAllowed(context.Request) || !HasRequestHeader(context.Request));

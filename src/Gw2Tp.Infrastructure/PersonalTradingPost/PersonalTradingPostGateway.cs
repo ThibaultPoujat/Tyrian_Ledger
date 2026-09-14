@@ -6,6 +6,7 @@ using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.Secrets;
+using Gw2Tp.Domain.Finance;
 
 namespace Gw2Tp.Infrastructure.PersonalTradingPost;
 
@@ -13,7 +14,7 @@ namespace Gw2Tp.Infrastructure.PersonalTradingPost;
 /// Typed, authenticated read-only gateway for personal account and Trading
 /// Post data. It owns credential injection; no secret crosses its boundary.
 /// </summary>
-internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
+internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, IAccountPortfolioGateway
 {
     internal const string HttpClientName = "TyrianLedger.PersonalTradingPost";
     // The current global schema pin. Endpoint-specific schema verification is
@@ -52,6 +53,52 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
             $"account?v={SchemaVersion}",
             MapAccountScopeAsync,
             cancellationToken);
+
+    public async Task<Gw2ApiResult<AccountPortfolioSnapshot>> GetSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var credential = await ReadCredentialAsync(cancellationToken).ConfigureAwait(false);
+        if (!credential.Result.IsSuccess || credential.ApiKey is null)
+        {
+            return Gw2ApiResult<AccountPortfolioSnapshot>.Failure(
+                credential.Result.ErrorCategory ?? Gw2ApiErrorCategory.CredentialUnavailable);
+        }
+
+        var scope = GetCredentialScope(credential.ApiKey);
+        try
+        {
+            var accountTask = ScheduleReadAsync(
+                credential.ApiKey,
+                scope,
+                "personal/portfolio/account",
+                $"account?v={SchemaVersion}",
+                MapAccountScopeAsync,
+                cancellationToken);
+            var walletTask = ScheduleReadAsync(
+                credential.ApiKey,
+                scope,
+                "personal/portfolio/wallet",
+                $"account/wallet?v={SchemaVersion}",
+                MapCoinBalanceAsync,
+                cancellationToken);
+            await Task.WhenAll(accountTask, walletTask).ConfigureAwait(false);
+            var account = await accountTask.ConfigureAwait(false);
+            var wallet = await walletTask.ConfigureAwait(false);
+            if (!account.IsSuccess || account.IsPartialData || account.Value is null ||
+                !wallet.IsSuccess || wallet.IsPartialData)
+            {
+                return Gw2ApiResult<AccountPortfolioSnapshot>.Failure(
+                    account.ErrorCategory ?? wallet.ErrorCategory ?? Gw2ApiErrorCategory.IncompleteData);
+            }
+
+            return Gw2ApiResult<AccountPortfolioSnapshot>.Success(
+                new AccountPortfolioSnapshot(account.Value, wallet.Value));
+        }
+        catch (Gw2RequestSchedulerCapacityExceededException)
+        {
+            return Gw2ApiResult<AccountPortfolioSnapshot>.Failure(Gw2ApiErrorCategory.UpstreamUnavailable);
+        }
+    }
 
     public Task<Gw2ApiResult<PersonalTransactionPage>> GetCurrentBuyOrdersAsync(
         int page,
@@ -102,6 +149,32 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
         Func<HttpResponseMessage, CancellationToken, Task<T>> mapAsync,
         CancellationToken cancellationToken)
     {
+        var credential = await ReadCredentialAsync(cancellationToken).ConfigureAwait(false);
+        if (!credential.Result.IsSuccess || credential.ApiKey is null)
+        {
+            return Gw2ApiResult<T>.Failure(
+                credential.Result.ErrorCategory ?? Gw2ApiErrorCategory.CredentialUnavailable);
+        }
+
+        try
+        {
+            return await ScheduleReadAsync(
+                credential.ApiKey,
+                GetCredentialScope(credential.ApiKey),
+                schedulerKey,
+                requestPath,
+                mapAsync,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Gw2RequestSchedulerCapacityExceededException)
+        {
+            return Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.UpstreamUnavailable);
+        }
+    }
+
+    private async Task<(Gw2ApiResult<bool> Result, string? ApiKey)> ReadCredentialAsync(
+        CancellationToken cancellationToken)
+    {
         Gw2ApiKeyReadResult keyResult;
         try
         {
@@ -113,36 +186,35 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
         }
         catch
         {
-            return Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.CredentialUnavailable);
+            return (Gw2ApiResult<bool>.Failure(Gw2ApiErrorCategory.CredentialUnavailable), null);
         }
 
         if (keyResult.State == Gw2ApiKeyReadState.NotConfigured)
         {
-            return Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.CredentialNotConfigured);
+            return (Gw2ApiResult<bool>.Failure(Gw2ApiErrorCategory.CredentialNotConfigured), null);
         }
 
         if (keyResult.State != Gw2ApiKeyReadState.Available || string.IsNullOrWhiteSpace(keyResult.Value))
         {
-            return Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.CredentialUnavailable);
+            return (Gw2ApiResult<bool>.Failure(Gw2ApiErrorCategory.CredentialUnavailable), null);
         }
 
-        try
-        {
-            var credentialScope = GetCredentialScope(keyResult.Value);
-            return await _requestScheduler.ScheduleAsync(
-                // The credential itself never crosses this class's boundary.
-                // A monotonically rotating local generation keeps identical
-                // reads coalesced for one credential while preventing a later
-                // key replacement from joining an in-flight prior-account read.
-                new Gw2RequestKey($"{schedulerKey}/credential-scope-{credentialScope.ToString(CultureInfo.InvariantCulture)}"),
-                requestCancellationToken => SendAsync(keyResult.Value, requestPath, mapAsync, requestCancellationToken),
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (Gw2RequestSchedulerCapacityExceededException)
-        {
-            return Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.UpstreamUnavailable);
-        }
+        return (Gw2ApiResult<bool>.Success(true), keyResult.Value);
     }
+
+    private Task<Gw2ApiResult<T>> ScheduleReadAsync<T>(
+        string apiKey,
+        long credentialScope,
+        string schedulerKey,
+        string requestPath,
+        Func<HttpResponseMessage, CancellationToken, Task<T>> mapAsync,
+        CancellationToken cancellationToken) =>
+        _requestScheduler.ScheduleAsync(
+            // A rotating generation prevents a replacement key from joining
+            // an in-flight read made for the previous account.
+            new Gw2RequestKey($"{schedulerKey}/credential-scope-{credentialScope.ToString(CultureInfo.InvariantCulture)}"),
+            requestCancellationToken => SendAsync(apiKey, requestPath, mapAsync, requestCancellationToken),
+            cancellationToken);
 
     private long GetCredentialScope(string apiKey)
     {
@@ -238,6 +310,31 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway
         }
 
         return new AccountScope(payload.Id);
+    }
+
+    private static async Task<Money> MapCoinBalanceAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        var payload = await JsonSerializer.DeserializeAsync<AccountWalletCurrencyDto[]>(
+            stream,
+            SerializerOptions,
+            cancellationToken).ConfigureAwait(false);
+        if (payload is null || payload.Any(value => value is null || value.Id is null || value.Id <= 0 || value.Value is null || value.Value < 0))
+        {
+            throw new JsonException("The account wallet payload is structurally invalid.");
+        }
+        if (payload.Select(value => value.Id!.Value).Distinct().Count() != payload.Length)
+        {
+            throw new JsonException("The account wallet payload contains duplicate currencies.");
+        }
+        var coins = payload.Where(value => value.Id == 1).ToArray();
+        if (coins.Length != 1)
+        {
+            throw new JsonException("The account wallet payload must contain exactly one Coin currency.");
+        }
+        return new Money(coins[0].Value!.Value);
     }
 
     private static async Task<PersonalTransactionPage> MapTransactionPageAsync(

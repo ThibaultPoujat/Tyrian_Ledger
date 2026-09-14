@@ -11,6 +11,10 @@ being added to this table.
 - Reviewed live on **2026-08-21** via the Guild Wars 2 Wiki page source
   (`?action=raw`, HTTP 200 for every page listed in References) and the
   rendered pages.
+- TKT-M19-04 rechecked the public wallet/API-key documentation on
+  **2026-09-09** without a keyed request. A keyless `/v2.json?v=latest` read
+  confirmed the wallet route and the current global schema entry; a keyless
+  `/v2/currencies/1?v=latest` read confirmed currency ID 1 is Coin.
 - Facts below that the wiki states explicitly are recorded as-is.
 - Facts the wiki does not state, or that may have changed since the last
   review, are marked **VERIFY**. Quota and error-handling policy details
@@ -41,7 +45,9 @@ being added to this table.
   rechecked the public index on 2026-08-31: its newest `schema_versions` entry
   remains `2025-08-29T01:00:00.000Z`, pinned by the public prices, listings,
   and item clients. Remaining endpoint-specific verification is **VERIFY-005**
-  under TKT-M13-03, TKT-M18-02, or TKT-M21-01, as applicable.
+  under TKT-M13-03, TKT-M19-04, or TKT-M21-01, as applicable. M19 rechecked
+  the same newest global entry on 2026-09-09 for its provisional authenticated
+  wallet pin; endpoint-specific schema confirmation remains open.
   If omitted, the API returns the earliest schema.
 - Auth: `Authorization: Bearer <API key>` header (server-side; preferred) or
   `?access_token=`. This application uses the header only, from the
@@ -77,6 +83,7 @@ informed by the wiki where stated. Freshness classes:
 | `/v2/commerce/listings` (+ `/v2/commerce/listings/{id}`, `?ids=`) | GET | Full order book per finalist item (`buys`/`sells` arrays with `listings`, `unit_price`, `quantity` in copper); depth/price-impact input for M9. | None (public) | Yes, `ids`; M9 sends deterministic batches of at most 200 IDs (**VERIFY-004** exact limit/206 details) | hot | No completed-response cache; fetch only bounded finalists through the typed gateway. | No |
 | `/v2/items` (+ `/v2/items/{id}`, `?ids=`) | GET | English finalist display metadata: public item `id` and `name`. M9 supplies its normal stack cap as application policy; the response does not provide per-item `max_stack`. | None (public) | Yes, `ids`; M9 sends deterministic batches of at most 200 IDs (**VERIFY-004** exact limit/206 details) | slow | No completed-response cache; fetch only bounded finalists through the typed gateway. | No |
 | `/v2/account` | GET | Stable opaque account GUID used to scope local personal data; mutable name/access metadata is discarded by M13 | `account` | No | slow (account identity is stable) | No completed-response cache in M13; M14 persists scope with local data | Yes |
+| `/v2/account/wallet` | GET | Current account currencies for primary position sizing. M19 accepts exactly one valid currency-ID-1 Coin record and discards every other currency after structural validation; `value` is non-negative integer copper. | `account` + `wallet` | No (whole wallet in one response) | warm (changes with account currency activity) | No completed-response cache; read with `/v2/account` through one captured credential and the shared scheduler whenever recommendations are refreshed. | Yes |
 | `/v2/commerce/transactions/current/buys|sells`, `/v2/commerce/transactions/history/buys|sells` (paged) | GET | Pending and 90-day fulfilled TP transactions for M13+ personal synchronization/accounting. `price` is copper; `created` is ISO-8601 and `purchased` is present for history only. | `account` + `tradingpost` (wiki: results cached server-side ~5 min; VERIFY-008) | No (path navigation + zero-based `page`; do not send unverified `page_size`) | warm (server-cached ~5 min per wiki; history static, current changes with pending orders) | No completed-response cache in M13; the scheduler coalesces only identical in-flight reads. M14 owns durable sync, paging cursors, and any cache policy. | Yes |
 | `/v2/recipes` (+ `/v2/recipes/{id}`, `?ids=`) | GET | Recipe definitions: type, output item, time_to_craft_ms, disciplines, min_rating, flags, ingredients (2022-03 schema with `type`/`id`/`count`); crafting graph core for M21 | None (public) | Yes, `ids`; use safe batches of at most 200 until **VERIFY-004** confirms the exact recipe limit/206 behavior in TKT-M21-01 | slow (changes only with game content; schema `2022-03-09T02:00:00.000Z` was historically used to handle Currency ingredients) | Long TTL; keep the provisional `2022-03-09T02:00:00.000Z` pin until **VERIFY-005** confirms the latest relevant recipe schema in TKT-M21-01 | No |
 | `/v2/recipes/search?input={itemId}` / `?output={itemId}` | GET | Resolve recipe IDs for a given input ingredient or output item (M21 crafting graph search) | None (public) | No (single `input` or single `output`; mutually exclusive) | slow | Long TTL, keyed by parameter | No |
@@ -92,14 +99,14 @@ Notes:
   `v2/items` dependency for finalist display metadata; its contract evidence
   is retained under VERIFY-007.
 - `/v2/tokeninfo` is the active connection-validation endpoint. TKT-M13-02
-  revalidated its current contract, permission readiness, safe failure behavior,
-  and VERIFY-012; M13-03 owns the remaining authenticated endpoint work.
+  revalidated its current contract and safe failure behavior; M19 globally
+  requires the known `account`, `tradingpost`, and `wallet` permissions.
 
 ### `/v2/tokeninfo`
 
 | Endpoint | Method | Purpose | Required permission(s) | Batching | Freshness | Cache policy |
 |---|---|---|---|---|---|---|
-| `/v2/tokeninfo?v=2025-08-29T01:00:00.000Z` | GET | Validate the supplied API key and determine permission readiness for account features. The host uses only the known `permissions[]` values; it discards `id`, `name`, and all other token metadata before producing a browser-safe result. | Key itself acts as credential; `account` is mandatory for all keys and `tradingpost` is required for personal TP reads. | No | slow (changes only when the key is recreated) | Very short TTL (seconds/minutes) on validation; result drives feature availability, never cached as long-lived truth; M13-02 uses the verified global pin and VERIFY-005/M13-03 owns the endpoint-specific recheck. |
+| `/v2/tokeninfo?v=2025-08-29T01:00:00.000Z` | GET | Validate the supplied API key and determine permission readiness for account features. The host uses only the known `permissions[]` values; it discards `id`, `name`, and all other token metadata before producing a browser-safe result. | Key itself acts as credential; `account` is mandatory for all keys, `tradingpost` is required for personal TP reads, and `wallet` is required for the M19 Coin balance. | No | slow (changes only when the key is recreated) | Very short TTL (seconds/minutes) on validation; result drives feature availability, never cached as long-lived truth; the known global pin remains provisional under VERIFY-005. |
 
 Security notes (detailed in `docs/security/security.md`, ADR-006, TKT-M0-04):
 
@@ -113,6 +120,7 @@ Security notes (detailed in `docs/security/security.md`, ADR-006, TKT-M0-04):
 | Feature set | Permissions required on the user's API key |
 |---|---|
 | Market scan (no key) | None |
+| Primary recommendation workflow (M19) | `account` + `tradingpost` + `wallet` |
 | Account crafting + materials (M21) | `account` (mandatory for all keys) + `characters` + `inventories` + `unlocks`, subject to TKT-M21-01/VERIFY-008 |
 | Transaction history (M13) | additionally `tradingpost`, subject to TKT-M13-03 verification |
 
@@ -136,6 +144,9 @@ TKT-M9-02 additionally adds synthetic `commerce/price-item-ids.json` and
 `items/metadata.json` fixtures for whole-market discovery. They contain only
 the ID-index and `id`/`name` shapes consumed by their contract tests.
 
+TKT-M19-04 adds a synthetic `account/wallet.json` fixture containing only
+currency `id`/`value` records. It contains no account or credential data.
+
 ## References
 
 | Page | URL | Status on 2026-08-21 |
@@ -145,6 +156,8 @@ the ID-index and `id`/`name` shapes consumed by their contract tests.
 | API:2/commerce/listings | https://wiki.guildwars2.com/wiki/API:2/commerce/listings | fetched OK |
 | API:2/items | https://wiki.guildwars2.com/wiki/API:2/items | public contract rechecked 2026-08-31 |
 | API:2/commerce/transactions | https://wiki.guildwars2.com/wiki/API:2/commerce/transactions | fetched OK |
+| API:2/account/wallet | https://wiki.guildwars2.com/wiki/API:2/account/wallet | contract rechecked 2026-09-09; no keyed request |
+| API:2/currencies/1 | https://api.guildwars2.com/v2/currencies/1?v=latest | public Coin identity rechecked 2026-09-09 |
 | API:2/recipes | https://wiki.guildwars2.com/wiki/API:2/recipes | fetched OK |
 | API:2/recipes/search | https://wiki.guildwars2.com/wiki/API:2/recipes/search | fetched OK |
 | API:2/account/bank | https://wiki.guildwars2.com/wiki/API:2/account/bank | fetched OK |

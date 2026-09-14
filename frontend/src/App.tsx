@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import './App.css';
 import ScannerPanel from './ScannerPanel';
+import RecommendationPanel from './RecommendationPanel';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
 type AccountConnectionState =
@@ -194,7 +195,7 @@ export default function App() {
           return;
         }
         setSyncStatus('idle');
-        loadDashboard();
+        refreshLocalDataViews();
       })
       .catch(() => setSyncStatus('failed'));
   };
@@ -244,16 +245,17 @@ export default function App() {
         </header>
 
         <main id="main-content">
-          <section aria-labelledby="dashboard-title" className="transition-panel">
-            <p className="eyebrow">Personal dashboard</p>
-            <h1 id="dashboard-title">Understand your trading position.</h1>
-            <p className="page-introduction">Your personal data stays on this computer. Values shown here are calculated by the local host from retained Trading Post evidence.</p>
+          <section aria-labelledby="primary-title" className="transition-panel">
+            <p className="eyebrow">Daily decision workflow</p>
+            <h1 id="primary-title">What should I do?</h1>
+            <p className="page-introduction">Review explicit manual actions built locally from your cash, orders, inventory, current market depth, and retained history.</p>
             <p aria-live="polite" className={`host-status host-status--${hostStatus}`} role="status">
               <span aria-hidden="true" />
               {hostStatus === 'checking' && 'Checking the local host…'}
               {hostStatus === 'connected' && 'Local host connected'}
               {hostStatus === 'unavailable' && 'Local host unavailable'}
             </p>
+            <RecommendationPanel refreshGeneration={localDataRefreshGeneration} />
             <section aria-labelledby="account-connection-title" className="account-connection-panel">
               <p className="eyebrow">Account connection</p>
               <h2 id="account-connection-title">Keep your key on this computer</h2>
@@ -262,10 +264,10 @@ export default function App() {
                 {accountConnectionMessage(accountConnection.state, accountConnection.missingPermissions)}
               </p>
               {(accountConnection.state === 'not_configured' || accountConnection.state === 'unavailable') && (
-                <p>Store a dedicated read-only ArenaNet key in your operating system’s credential vault. Tyrian Ledger never asks the browser to store or send it.</p>
+                <p>Store a dedicated read-only ArenaNet key with account, trading-post, and wallet access in your operating system’s credential vault. Tyrian Ledger never asks the browser to store or send it.</p>
               )}
               {accountConnection.state === 'insufficient_permissions' && (
-                <p>Use a dedicated key with account and trading-post access for future personal Trading Post features.</p>
+                <p>Use a dedicated key with account, trading-post, and wallet access for read-only personal recommendations.</p>
               )}
               <button className="sync-button" disabled={syncStatus === 'syncing' || accountConnection.state !== 'valid'} onClick={synchronize} type="button">
                 {syncStatus === 'syncing' ? 'Synchronizing…' : 'Synchronize Trading Post data'}

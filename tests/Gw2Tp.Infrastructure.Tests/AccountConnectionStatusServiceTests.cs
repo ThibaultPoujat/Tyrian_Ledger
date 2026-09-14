@@ -31,7 +31,7 @@ public sealed class AccountConnectionStatusServiceTests
         var status = await service.GetStatusAsync();
 
         Assert.Equal(AccountConnectionState.Valid, status.State);
-        Assert.Equal(["account", "tradingpost"], status.GrantedPermissions);
+        Assert.Equal(["account", "tradingpost", "wallet"], status.GrantedPermissions);
         Assert.Empty(status.MissingRequiredPermissions);
         var request = Assert.Single(handler.Requests);
         Assert.Equal(HttpMethod.Get, request.Method);
@@ -55,7 +55,7 @@ public sealed class AccountConnectionStatusServiceTests
 
         Assert.Equal(AccountConnectionState.NotConfigured, status.State);
         Assert.Empty(handler.Requests);
-        Assert.Equal(["account", "tradingpost"], status.MissingRequiredPermissions);
+        Assert.Equal(["account", "tradingpost", "wallet"], status.MissingRequiredPermissions);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class AccountConnectionStatusServiceTests
 
         Assert.Equal(AccountConnectionState.InsufficientPermissions, status.State);
         Assert.Equal(["account"], status.GrantedPermissions);
-        Assert.Equal(["tradingpost"], status.MissingRequiredPermissions);
+        Assert.Equal(["tradingpost", "wallet"], status.MissingRequiredPermissions);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public sealed class AccountConnectionStatusServiceTests
     [Theory]
     [InlineData(HttpStatusCode.TooManyRequests, "{}")]
     [InlineData(HttpStatusCode.InternalServerError, "{}")]
-    [InlineData(HttpStatusCode.PartialContent, "{\"permissions\":[\"account\",\"tradingpost\"]}")]
+    [InlineData(HttpStatusCode.PartialContent, "{\"permissions\":[\"account\",\"tradingpost\",\"wallet\"]}")]
     [InlineData(HttpStatusCode.OK, "{")]
     public async Task Remote_failures_and_malformed_payloads_are_safe_unavailable_states(
         HttpStatusCode statusCode,

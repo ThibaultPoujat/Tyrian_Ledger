@@ -1,9 +1,12 @@
 using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Application.Accounting;
 using Gw2Tp.Application.Dashboard;
+using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.MarketScanning;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Application.PersonalTradingPost;
+using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Infrastructure.Persistence;
 using Gw2Tp.Web.Hosting;
@@ -56,6 +59,9 @@ public static class Program
         builder.Services.AddSingleton(CreateMarketHistoryCollectionSchedulerSettings(builder.Configuration));
         builder.Services.AddSingleton<IMarketHistoryCollector, MarketHistoryCollector>();
         builder.Services.AddSingleton<IHistoricalMarketAnalyticsService, HistoricalMarketAnalyticsService>();
+        builder.Services.AddSingleton<IOpportunityScoreService, OpportunityScoreService>();
+        builder.Services.AddSingleton<IPrimaryRecommendationPolicy, PrimaryRecommendationPolicy>();
+        builder.Services.AddSingleton<IPrimaryRecommendationService, PrimaryRecommendationService>();
         builder.Services.AddSingleton<IMarketHistoryCollectionDelay>(SystemMarketHistoryCollectionDelay.Instance);
         builder.Services.AddHostedService<MarketHistoryCollectorHostedService>();
         builder.Services.AddHostFiltering(options =>
@@ -155,6 +161,38 @@ public static class Program
 
                 await LiveMarketScannerResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
             });
+        app.MapGet(
+            "/api/recommendations",
+            async (
+                HttpContext context,
+                IPrimaryRecommendationService recommendationService,
+                CancellationToken cancellationToken) =>
+            {
+                PrimaryRecommendationResult result;
+                try
+                {
+                    result = await recommendationService.GetAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception exception) when (exception is not OutOfMemoryException)
+                {
+                    result = PrimaryRecommendationResult.Unavailable(
+                        PrimaryRecommendationState.EvidenceUnavailable,
+                        "recommendation_generation_failed",
+                        DefaultRecommendationPolicies());
+                }
+                if (result.State == PrimaryRecommendationState.EvidenceUnavailable ||
+                    result.State == PrimaryRecommendationState.AccountUnavailable && result.EvidenceError is
+                        "CredentialUnavailable" or "RateLimited" or "UpstreamUnavailable" or "TransportFailure" or
+                        "IncompleteData" or "InvalidPayload" or "UnexpectedResponse")
+                {
+                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                }
+                await PrimaryRecommendationResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
+            });
         app.MapLocalDataEndpoints();
         app.MapWatchlistEndpoints();
         app.MapMarketHistoryCollectorEndpoints();
@@ -164,6 +202,22 @@ public static class Program
         MapFrontend(app, builder.Configuration);
 
         return app;
+    }
+
+    private static PrimaryRecommendationPolicies DefaultRecommendationPolicies()
+    {
+        var sizing = PositionSizingPolicy.Default;
+        return new PrimaryRecommendationPolicies(
+            PrimaryRecommendationPolicy.Version,
+            OpportunityScorePolicy.CurrentVersion,
+            sizing.Version,
+            FifoAccountingPolicy.Version,
+            Gw2TradingPostFeePolicy.PolicyVersion,
+            checked((int)LiveMarketScannerSettings.Default.MinimumNetProfit.Copper),
+            LiveMarketScannerSettings.Default.MinimumRoiBasisPoints,
+            sizing.CashReserveBasisPoints,
+            PrimaryRecommendationService.Strategy,
+            PrimaryRecommendationService.Category);
     }
 
     private static void MapFrontend(WebApplication app, IConfiguration configuration)

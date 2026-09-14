@@ -72,7 +72,7 @@ public static class AccountConnectionServiceCollectionExtensions
         }).RemoveAllLoggers();
         services.Configure<HttpClientFactoryOptions>(PersonalTradingPostGateway.HttpClientName, options =>
             options.ShouldRedactHeaderValue = static _ => true);
-        services.AddSingleton<IPersonalTradingPostGateway>(serviceProvider => new PersonalTradingPostGateway(
+        services.AddSingleton<PersonalTradingPostGateway>(serviceProvider => new PersonalTradingPostGateway(
             serviceProvider.GetRequiredService<IGw2ApiKeySource>(),
             serviceProvider.GetRequiredService<IHttpClientFactory>()
                 .CreateClient(PersonalTradingPostGateway.HttpClientName),
@@ -81,6 +81,10 @@ public static class AccountConnectionServiceCollectionExtensions
                 .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
                 .Value
                 .RequestTimeoutMs)));
+        services.AddSingleton<IPersonalTradingPostGateway>(serviceProvider =>
+            serviceProvider.GetRequiredService<PersonalTradingPostGateway>());
+        services.AddSingleton<IAccountPortfolioGateway>(serviceProvider =>
+            serviceProvider.GetRequiredService<PersonalTradingPostGateway>());
         services.AddSingleton<IPersonalTradingPostSynchronizationService, PersonalTradingPostSynchronizationService>();
 
         return services;

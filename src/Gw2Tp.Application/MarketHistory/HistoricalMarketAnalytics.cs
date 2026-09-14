@@ -83,6 +83,11 @@ public sealed record HistoricalMarketAnalytics(
 public interface IHistoricalMarketAnalyticsService
 {
     Task<HistoricalMarketAnalytics> GetAsync(int itemId, CancellationToken cancellationToken = default);
+
+    Task<HistoricalMarketAnalytics> GetAtAsync(
+        int itemId,
+        DateTimeOffset asOfUtc,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -102,9 +107,16 @@ public sealed class HistoricalMarketAnalyticsService(
 
     public async Task<HistoricalMarketAnalytics> GetAsync(int itemId, CancellationToken cancellationToken = default)
     {
+        return await GetAtAsync(itemId, clock.UtcNow, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<HistoricalMarketAnalytics> GetAtAsync(
+        int itemId,
+        DateTimeOffset asOfUtc,
+        CancellationToken cancellationToken = default)
+    {
         if (itemId <= 0) throw new ArgumentOutOfRangeException(nameof(itemId));
         settings.Validate();
-        var asOfUtc = clock.UtcNow;
         if (asOfUtc.Offset != TimeSpan.Zero) throw new InvalidOperationException("The historical analytics clock must return UTC.");
         var longestWindow = settings.Windows.MaxBy(window => window.Duration)!;
         var allObservationsTask = repository.GetPriceObservationsAsync(

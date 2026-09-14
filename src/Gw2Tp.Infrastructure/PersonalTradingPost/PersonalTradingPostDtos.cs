@@ -8,6 +8,15 @@ internal sealed class AccountScopeDto
     public string? Id { get; init; }
 }
 
+internal sealed class AccountWalletCurrencyDto
+{
+    [JsonPropertyName("id")]
+    public int? Id { get; init; }
+
+    [JsonPropertyName("value")]
+    public long? Value { get; init; }
+}
+
 internal sealed class PersonalTradingPostTransactionDto
 {
     [JsonPropertyName("id")]

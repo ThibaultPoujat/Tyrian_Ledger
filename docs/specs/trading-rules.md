@@ -250,6 +250,55 @@ Capital per suggested unit uses the scanner's existing authoritative one-unit
 conservative for quantity scaling while VERIFY-013's fractional-copper fee
 rounding remains open; it is not a fill, profit, or execution guarantee.
 
+### Primary workflow action policy version 1
+
+The M19 primary workflow composes one read-only recommendation snapshot. Wallet
+Coin is available cash. Capital in current buy orders and every known open FIFO
+lot is current exposure; current sell listings are not added again because
+their FIFO basis is already held exposure. If sell quantity exceeds known FIFO
+quantity, basis remains unknown and all new-buy sizing becomes unavailable.
+Every M19 exposure and candidate discloses the conservative `FastFlip` strategy
+and `TradingPost` category. Scanner evidence with no liquidity flags is high
+liquidity, price-cliff-only evidence is medium, and any depth, fill, or
+participation flag is low.
+
+All candidates share one historical cutoff and are sized in score order. The
+existing scanner one-unit total cost remains the conservative sizing input,
+but each returned suggestion recalculates gross value, both independently
+rounded fees, profit, total cost, and ROI over the complete quantity. It never
+multiplies one-unit fee/profit results. Existing minimum profit, minimum ROI,
+and cash-reserve settings take precedence; absent settings use the scanner
+defaults and the 15% sizing reserve.
+
+The version-one graduated action rules are:
+
+- New opportunities are `BUY` only with non-zero size, strong history, high
+  liquidity, and no penalized anomalies. Partial history or non-critical
+  liquidity risk becomes `BUY SMALL`; insufficient history or known zero
+  capacity becomes `WAIT`; zero score or extreme-ROI, abrupt-price, or depth
+  anomalies becomes `SKIP`; missing or inconsistent evidence becomes `REVIEW`.
+- A buy order above maximum bid, or selected to restore a breached reserve, is
+  `CANCEL BID`. Reserve restoration counts existing invalid cancellations
+  first, then selects unscored and lowest-scored remaining bids until the
+  shortfall is covered. A competitive in-policy bid with at least partial
+  evidence is `KEEP BID`. An outbid order is `UPDATE BID` only when the
+  replacement is at or below maximum, the evidence meets full `BUY` quality,
+  and exact incremental capital is available. Otherwise it is `STOP BIDDING`,
+  or `REVIEW` when evidence is unavailable.
+- A competitive sell listing, including one undercut by exactly one copper, is
+  `LEAVE SELL LISTING`. A larger undercut, missing basis, or incomplete book
+  evidence is `REVIEW`; this policy adds no cancel/relist recommendation.
+- Unlisted known-basis FIFO inventory is `REDUCE` only when item exposure is
+  above its cap and safe current depth supports a bounded reduction. Otherwise
+  a fully supported positive immediate exit is `SELL`; a positive exit limited
+  by safe depth is `SELL PARTIAL`; a positive modeled listing when immediate
+  liquidation is not positive is `LIST`; complete strong evidence supporting
+  neither exit is `HOLD`. Missing basis, history, or book evidence is `REVIEW`.
+
+Every action carries backend-generated reason codes/messages and ends with an
+explicit reminder that execution is manual. Tyrian Ledger never places,
+updates, cancels, or relists a Trading Post order.
+
 ## 9. Buy-order actions
 
 Possible states include `KEEP BID`, `UPDATE BID`, `STOP BIDDING`, and
