@@ -2,7 +2,7 @@
 
 This document contains Git/GitHub delivery rules. The ticket and `AGENTS.md`
 define implementation scope and decision gates. `docs/workflow/model-effort-guide.md`
-is authoritative for the current quota-aware review model.
+is authoritative for the current quota-aware model effort, planning, and review policy.
 
 ## Branch
 
@@ -52,39 +52,47 @@ Before delivery, set the pull request's actual GitHub milestone to the same mile
 
 ### NORMAL
 
-All tickets not listed in the explicit Sol gate in `docs/workflow/model-effort-guide.md` use the normal Plus-constrained path:
+All tickets not listed in the explicit active Sol gate in `docs/workflow/model-effort-guide.md` use the normal Plus-constrained path:
 
-- Terra High planning/implementation;
-- independent Terra review subagent when the coding environment supports it;
+- risk-based Terra planning/implementation from the model-effort guide rather than High for every ticket;
+- independent Terra review subagent/check **inside the implementation run** when the coding environment supports it;
+- Medium review by default for R0/R1 and High for R2/R3, escalating when findings/uncertainty justify it;
 - all ticket-required tests/checks and CI;
 - PR may be opened Ready for Review;
-- no separate Sol review is a merge gate unless the implementation/reviewer reports unresolved high-consequence ambiguity or the owner explicitly escalates.
+- no second owner-triggered review session or separate Sol review is a merge gate unless the implementation/reviewer reports unresolved high-consequence ambiguity or the owner explicitly escalates.
 
 Do **not** write legacy statements such as `R3 requires fresh flagship XHigh review` in a NORMAL PR body. Risk class and review model are separate concepts.
 
 ### SOL-GATED
 
-Only the explicit ticket list in `docs/workflow/model-effort-guide.md` is Sol-gated.
+Only the explicit active ticket list in `docs/workflow/model-effort-guide.md` is Sol-gated.
 
 For a SOL-GATED ticket:
 
-1. Open the PR as **Draft**.
-2. State `Review path: SOL-GATED` in the PR body.
-3. Keep the PR Draft while implementation findings or review fixes remain.
-4. Run a fresh separate Sol XHigh review using `.codex/skills/tyrian-pr-review/SKILL.md`.
-5. If the review requests changes, use Terra High for fixes, revalidate, and keep the PR Draft.
-6. After a fresh/targeted Sol re-review returns APPROVE and required validation is green, mark the PR **Ready for Review**.
-7. The owner performs the final merge decision.
+1. Implement/fix with Terra High by default.
+2. Open the PR as **Draft** and state `Review path: SOL-GATED` in the PR body.
+3. Complete required local validation and push the implementation.
+4. Let required GitHub CI finish. If CI is red, fix with Terra High and revalidate before spending a Sol review session.
+5. With required validation/CI green, run a fresh separate Sol XHigh review using `.codex/skills/tyrian-pr-review/SKILL.md`.
+6. If the review requests changes, use Terra High for fixes, rerun affected validation/CI, and keep the PR Draft.
+7. Run a **targeted fresh Sol re-review** focused on prior findings, the changed diff, and regression risk. Require a full Sol re-review only if fixes materially broadened the reviewed authority/scope.
+8. After Sol returns APPROVE and required validation remains green, mark the PR **Ready for Review**.
+9. The owner performs the final merge decision.
 
-The Draft state is the merge blocker. Do not rely on the owner remembering a checklist or ticket number.
+The Draft state is the merge blocker. Do not rely on the owner remembering a checklist or ticket number. If quota is exhausted, preserve the Draft/handoff and resume later rather than bypassing the gate.
 
 ## Review handoff
 
-Normal tickets may complete their independent review with a Terra review subagent in the implementation run. A separate review session remains optional.
+NORMAL tickets should complete their independent review with a Terra review
+subagent/check in the implementation run when supported. A second separate
+review session remains optional and should not be started merely out of habit.
 
-Sol-gated tickets require the separate fresh Sol review described above. The Sol reviewer should report findings first and must not broaden ticket scope.
+SOL-GATED tickets require the separate fresh Sol review described above after
+required validation/CI is green. The Sol reviewer should report findings first
+and must not broaden ticket scope.
 
-If the owner requests fixes, keep them on the same ticket branch and do not add next-ticket features. Re-run affected validation and make the review status clear.
+If the owner requests fixes, keep them on the same ticket branch and do not add
+next-ticket features. Re-run affected validation and make the review status clear.
 
 ## Delivery checklist
 
@@ -98,8 +106,9 @@ If the owner requests fixes, keep them on the same ticket branch and do not add 
 - [ ] PR body contains `Closes #<issue-number>`.
 - [ ] PR GitHub milestone matches the implementation issue milestone, or the tooling limitation preventing assignment is reported explicitly.
 - [ ] PR body names the correct review path without obsolete blanket R3/XHigh language.
-- [ ] NORMAL: independent Terra review subagent/check completed and CI is green.
-- [ ] SOL-GATED: PR remains Draft until Sol XHigh APPROVE; only then is it marked Ready.
+- [ ] NORMAL: same-run independent Terra review subagent/check completed when supported and CI is green.
+- [ ] SOL-GATED: required validation/CI was green before Sol review; PR remains Draft until Sol XHigh APPROVE; only then is it marked Ready.
+- [ ] Any SOL-GATED fixes were revalidated before targeted fresh Sol re-review.
 - [ ] PR not merged by the coding/review agent.
 - [ ] VERIFY register current.
 - [ ] `CURRENT.md` updated by the implementation/delivery agent when the active handoff changes.
