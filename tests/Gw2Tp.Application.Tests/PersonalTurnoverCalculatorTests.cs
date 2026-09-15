@@ -70,6 +70,21 @@ public sealed class PersonalTurnoverCalculatorTests
     }
 
     [Fact]
+    public void Treats_a_disappearance_then_reappearance_under_one_identifier_as_unknown_without_bridging_reductions()
+    {
+        var created = AsOfUtc.AddDays(-10);
+        var result = calculator.Rebuild(Request([], [
+            Snapshot(-5, Order(101, PersonalTradingPostSide.Buy, 42, 100, 5, created)),
+            Snapshot(-4),
+            Snapshot(-3, Order(101, PersonalTradingPostSide.Buy, 42, 100, 2, created)),
+        ]));
+
+        Assert.Empty(result.ObservedQuantityReductions);
+        var unknown = Assert.Single(result.UnknownOrderTimings);
+        Assert.Contains("reappearing", unknown.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Restricts_confirmation_window_reductions_to_observations_before_confirmation()
     {
         var created = AsOfUtc.AddDays(-10);
@@ -218,6 +233,22 @@ public sealed class PersonalTurnoverCalculatorTests
         Assert.Equal(0, metrics.KnownBasisSampleCount);
         Assert.Equal(3, metrics.KnownBasisQuantity);
         Assert.NotEqual(Money.Zero, metrics.NetProfit);
+    }
+
+    [Fact]
+    public void Does_not_let_a_recent_partially_unknown_sale_make_stale_entirely_known_evidence_supported()
+    {
+        var result = calculator.Rebuild(Request(
+        [
+            Stored(Buy(101, 42, 100, 1, -200, -199)), Stored(Sell(102, 42, 200, 1, -199, -198)),
+            Stored(Buy(103, 42, 100, 1, -197, -196)), Stored(Sell(104, 42, 200, 1, -196, -195)),
+            Stored(Buy(105, 42, 100, 1, -194, -193)), Stored(Sell(106, 42, 200, 1, -193, -192)),
+            Stored(Buy(107, 42, 100, 1, -4, -3)), Stored(Sell(108, 42, 200, 2, -3, -2)),
+        ]));
+
+        Assert.Equal(PersonalTurnoverEvidenceStatus.Stale, result.Status);
+        Assert.Equal(AsOfUtc.AddDays(-2), result.Metrics!.MeasuredEndUtc);
+        Assert.Equal(AsOfUtc.AddDays(-192), Assert.Single(result.Items).LatestKnownBasisCompletionAtUtc);
     }
 
     [Fact]

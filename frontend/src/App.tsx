@@ -468,7 +468,7 @@ function isPersonalLearningItem(value: unknown): boolean {
   return isRecord(value)
     && isNonNegativeInteger(value.itemId)
     && typeof value.itemName === 'string'
-    && isOneOf(value.status, ['insufficientCoverage', 'insufficientSamples', 'stale', 'supported'])
+    && isOneOf(value.status, ['insufficientCoverage', 'insufficientSamples', 'insufficientMetrics', 'stale', 'supported'])
     && isNonNegativeInteger(value.exactSourceTimestampCount)
     && isNonNegativeInteger(value.intervalCensoredCompletionCount)
     && isNonNegativeInteger(value.unknownOrderTimingCount)

@@ -551,7 +551,7 @@ describe('M14 local data controls', () => {
           { side: 'buy', exactSourceTimestampCount: 3, averageSourceDuration: '01:00:00', intervalCensoredCompletionCount: 1, averageConfirmationWindow: '02:00:00' },
           { side: 'sell', exactSourceTimestampCount: 3, averageSourceDuration: '01:00:00', intervalCensoredCompletionCount: 1, averageConfirmationWindow: '02:00:00' },
         ],
-        items: [{ itemId: 42, itemName: 'Test item', status: 'supported', exactSourceTimestampCount: 3, intervalCensoredCompletionCount: 1, unknownOrderTimingCount: 0, observedQuantityReductionCount: 1, knownBasisSampleCount: 3, averageHoldingDuration: '01:00:00', realizedProfitPerDay: { numerator: '21000', denominator: '100' }, capitalTurns: { numerator: '150', denominator: '100' } }],
+        items: [{ itemId: 42, itemName: 'Test item', status: 'insufficientMetrics', exactSourceTimestampCount: 3, intervalCensoredCompletionCount: 1, unknownOrderTimingCount: 0, observedQuantityReductionCount: 1, knownBasisSampleCount: 3, averageHoldingDuration: '01:00:00', realizedProfitPerDay: { numerator: '21000', denominator: '100' }, capitalTurns: { numerator: '150', denominator: '100' } }],
         knownBasisSampleCount: 3, latestKnownBasisCompletionAtUtc: '2026-09-08T12:00:00Z', netProfit: { copper: '210' }, matchedAcquisitionBasis: { copper: '300' },
         averageHoldingDuration: '01:00:00', realizedProfitPerDay: { numerator: '21000', denominator: '100' }, capitalTurns: { numerator: '150', denominator: '100' },
       },
