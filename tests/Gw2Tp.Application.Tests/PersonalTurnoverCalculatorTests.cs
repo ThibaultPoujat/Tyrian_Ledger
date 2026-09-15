@@ -204,6 +204,39 @@ public sealed class PersonalTurnoverCalculatorTests
     }
 
     [Fact]
+    public void Excludes_partially_unknown_sales_from_evidence_strength_while_retaining_known_fragment_economics()
+    {
+        var result = calculator.Rebuild(Request(
+        [
+            Stored(Buy(101, 42, 100, 1, -20, -19)), Stored(Sell(102, 42, 200, 2, -18, -17)),
+            Stored(Buy(103, 42, 100, 1, -16, -15)), Stored(Sell(104, 42, 200, 2, -14, -13)),
+            Stored(Buy(105, 42, 100, 1, -12, -11)), Stored(Sell(106, 42, 200, 2, -10, -9)),
+        ]));
+
+        var metrics = result.Metrics!;
+        Assert.Equal(PersonalTurnoverEvidenceStatus.InsufficientSamples, result.Status);
+        Assert.Equal(0, metrics.KnownBasisSampleCount);
+        Assert.Equal(3, metrics.KnownBasisQuantity);
+        Assert.NotEqual(Money.Zero, metrics.NetProfit);
+    }
+
+    [Fact]
+    public void Labels_sufficient_sales_without_computable_turnover_rates_as_insufficient_metrics()
+    {
+        var result = calculator.Rebuild(Request(
+        [
+            Stored(Buy(101, 42, 100, 1, -10, -10)), Stored(Sell(102, 42, 200, 1, -10, -10)),
+            Stored(Buy(103, 42, 100, 1, -10, -10)), Stored(Sell(104, 42, 200, 1, -10, -10)),
+            Stored(Buy(105, 42, 100, 1, -10, -10)), Stored(Sell(106, 42, 200, 1, -10, -10)),
+        ]));
+
+        Assert.Equal(PersonalTurnoverEvidenceStatus.InsufficientMetrics, result.Status);
+        Assert.Equal(3, result.Metrics!.KnownBasisSampleCount);
+        Assert.Null(result.Metrics.RealizedProfitPerDay);
+        Assert.Null(result.Metrics.CapitalTurns);
+    }
+
+    [Fact]
     public void Calculates_exact_profit_per_day_and_time_weighted_capital_turns_for_unequal_basis_and_holding_intervals()
     {
         var result = calculator.Rebuild(Request(
@@ -220,6 +253,7 @@ public sealed class PersonalTurnoverCalculatorTests
         Assert.Equal(new System.Numerics.BigInteger(8L * TimeSpan.TicksPerDay), metrics.RealizedProfitPerDay.Denominator);
         Assert.Equal(new System.Numerics.BigInteger(600L * 8 * TimeSpan.TicksPerDay), metrics.CapitalTurns!.Numerator);
         Assert.Equal(new System.Numerics.BigInteger(1_100L * TimeSpan.TicksPerDay), metrics.CapitalTurns.Denominator);
+        Assert.Equal(TimeSpan.FromHours(44), metrics.AverageHoldingDuration);
     }
 
     [Fact]

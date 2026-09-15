@@ -33,7 +33,7 @@ public sealed class PersonalTurnoverCalculator
 
         if (request.HistoryCoverage.StartUtc is null || request.HistoryCoverage.EndUtc is null)
         {
-            var itemsWithoutCoverage = BuildItems(request, exactDurations, censored, unknown, reductions, []);
+            var itemsWithoutCoverage = BuildItems(request, exactDurations, censored, unknown, reductions, [], new HashSet<long>());
             return Result(PersonalTurnoverEvidenceStatus.InsufficientCoverage, null, exactDurations, censored, unknown, reductions, itemsWithoutCoverage);
         }
 
@@ -47,8 +47,12 @@ public sealed class PersonalTurnoverCalculator
             new PerformanceHistoryCoverage(request.HistoryCoverage.StartUtc.Value, request.HistoryCoverage.EndUtc.Value),
             coveredTransactions,
             []));
-        var metrics = BuildMetrics(performance.KnownBasisSaleAllocations);
-        var items = BuildItems(request, exactDurations, censored, unknown, reductions, performance.KnownBasisSaleAllocations);
+        var partiallyUnknownSaleIds = performance.UnknownBasisSaleAllocations
+            .Select(allocation => allocation.Sale.SellTransactionId)
+            .ToHashSet();
+        var metrics = BuildMetrics(performance.KnownBasisSaleAllocations, partiallyUnknownSaleIds);
+        var items = BuildItems(request, exactDurations, censored, unknown, reductions,
+            performance.KnownBasisSaleAllocations, partiallyUnknownSaleIds);
         return Result(PortfolioStatus(items), metrics, exactDurations, censored, unknown, reductions, items);
     }
 
@@ -96,7 +100,7 @@ public sealed class PersonalTurnoverCalculator
             if (!completedById.TryGetValue(orderId, out var completed) ||
                 !MatchesCompletedOrder(first.Order, completed.Transaction))
             {
-                if (WasObservedToDisappear(orderId, last.ObservedAtUtc, observations))
+                if (observations[^1].ObservedAtUtc > last.ObservedAtUtc)
                 {
                     unknown.Add(new UnknownOrderTiming(orderId, first.Order.Side, first.Order.ItemId, last.ObservedAtUtc,
                         "The order later disappeared from polling without a compatible completed-history event."));
@@ -162,13 +166,9 @@ public sealed class PersonalTurnoverCalculator
         order.UnitPriceInCopper == completed.UnitPriceInCopper &&
         order.CreatedAtUtc == completed.CreatedAtUtc;
 
-    private static bool WasObservedToDisappear(long orderId, DateTimeOffset lastObservedAtUtc,
-        IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot> observations) =>
-        observations.Any(snapshot => snapshot.ObservedAtUtc > lastObservedAtUtc &&
-                                     snapshot.Orders.All(order => order.ExternalOrderId != orderId));
-
     private static PersonalCapitalTurnoverMetrics? BuildMetrics(
-        IReadOnlyList<KnownBasisRealizedSaleAllocation> allocations)
+        IReadOnlyList<KnownBasisRealizedSaleAllocation> allocations,
+        IReadOnlySet<long> partiallyUnknownSaleIds)
     {
         if (allocations.Count == 0)
         {
@@ -188,10 +188,14 @@ public sealed class PersonalTurnoverCalculator
         var totalProfit = Sum(ordered.Select(value => value.NetProfit));
         var distinctCompletedSaleCount = ordered
             .Select(value => value.Match.SellTransactionId)
+            .Where(sellTransactionId => !partiallyUnknownSaleIds.Contains(sellTransactionId))
             .Distinct()
             .Count();
         var weightedCapitalTicks = ordered.Aggregate(BigInteger.Zero, (total, value) => total +
             new BigInteger(value.Match.AllocatedAcquisitionBasis.Copper) * (value.Match.SellCompletedAtUtc - value.Match.BuyCompletedAtUtc).Ticks);
+        var basisWeightedHoldingTicks = totalBasis.Copper == 0
+            ? 0L
+            : checked((long)(weightedCapitalTicks / totalBasis.Copper));
         var profitPerDay = measuredDuration.Ticks > 0
             ? new ExactPersonalRate(new BigInteger(totalProfit.Copper) * TimeSpan.TicksPerDay, measuredDuration.Ticks)
             : null;
@@ -208,7 +212,7 @@ public sealed class PersonalTurnoverCalculator
             measuredEnd,
             measuredDuration,
             TimeSpan.FromTicks(totalLockedTicks),
-            TimeSpan.FromTicks(totalLockedTicks / ordered.Length),
+            TimeSpan.FromTicks(basisWeightedHoldingTicks),
             profitPerDay,
             capitalTurns);
     }
@@ -219,7 +223,8 @@ public sealed class PersonalTurnoverCalculator
         IReadOnlyList<IntervalCensoredCompletion> censored,
         IReadOnlyList<UnknownOrderTiming> unknown,
         IReadOnlyList<ObservedOrderQuantityReduction> reductions,
-        IReadOnlyList<KnownBasisRealizedSaleAllocation> allocations)
+        IReadOnlyList<KnownBasisRealizedSaleAllocation> allocations,
+        IReadOnlySet<long> partiallyUnknownSaleIds)
     {
         var itemIds = exactDurations.Select(value => value.ItemId)
             .Concat(censored.Select(value => value.ItemId))
@@ -232,7 +237,7 @@ public sealed class PersonalTurnoverCalculator
         {
             var itemMetrics = request.HistoryCoverage.StartUtc is null
                 ? null
-                : BuildMetrics(allocations.Where(value => value.Match.ItemId == itemId).ToArray());
+                : BuildMetrics(allocations.Where(value => value.Match.ItemId == itemId).ToArray(), partiallyUnknownSaleIds);
             return new PersonalItemTurnoverIntelligence(
                 itemId,
                 ItemStatus(request, itemMetrics),
@@ -250,6 +255,8 @@ public sealed class PersonalTurnoverCalculator
             ? PersonalTurnoverEvidenceStatus.InsufficientCoverage
             : metrics is null || metrics.KnownBasisSampleCount < PersonalTurnoverPolicy.MinimumKnownBasisSamples
                 ? PersonalTurnoverEvidenceStatus.InsufficientSamples
+                : metrics.RealizedProfitPerDay is null || metrics.CapitalTurns is null
+                    ? PersonalTurnoverEvidenceStatus.InsufficientMetrics
                 : request.AsOfUtc - metrics.MeasuredEndUtc > PersonalTurnoverPolicy.MaximumEvidenceAge
                     ? PersonalTurnoverEvidenceStatus.Stale
                     : PersonalTurnoverEvidenceStatus.Supported;
@@ -261,6 +268,8 @@ public sealed class PersonalTurnoverCalculator
             ? PersonalTurnoverEvidenceStatus.Supported
             : items.Any(item => item.Status == PersonalTurnoverEvidenceStatus.Stale)
                 ? PersonalTurnoverEvidenceStatus.Stale
+                : items.Any(item => item.Status == PersonalTurnoverEvidenceStatus.InsufficientMetrics)
+                    ? PersonalTurnoverEvidenceStatus.InsufficientMetrics
                 : items.Any(item => item.Status == PersonalTurnoverEvidenceStatus.InsufficientSamples)
                     ? PersonalTurnoverEvidenceStatus.InsufficientSamples
                     : PersonalTurnoverEvidenceStatus.InsufficientCoverage;

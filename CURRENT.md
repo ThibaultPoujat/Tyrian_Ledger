@@ -159,6 +159,11 @@ retained data only. Per-item evidence labels insufficient coverage, low samples,
 and stale evidence explicitly, so unrelated one-off markets cannot combine into
 supported turnover evidence; confidence counts distinct completed sales rather
 than FIFO allocation fragments, and the aggregate is a portfolio summary only.
+Partially unknown-basis sales retain their known-fragment economics but cannot
+count toward strong evidence; non-computable profit/day or capital turns are
+explicit insufficient-metrics evidence. Average holding duration is weighted by
+allocated acquisition basis, and disappearance detection checks only the final
+retained observation rather than rescanning immutable history per order.
 Quantity reductions are retained as independent partial behavior even without
 completed history, while a censored-confirmation flag only reflects observations
 through the confirmation boundary. Historical observation-only items retain
@@ -178,14 +183,14 @@ Ranking.**
 TKT-M20-01 local validation on 2026-09-15 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused personal turnover and dashboard suites: 23 tests passed;
-- full .NET regression suite: 458 tests passed (4 Domain, 21 Analytics, 218
+- focused personal turnover and dashboard suites: 27 tests passed;
+- full .NET regression suite: 460 tests passed (4 Domain, 21 Analytics, 220
   Application, 172 Infrastructure, and 43 Web);
 - React: 24 component tests passed and the production build succeeded;
 - Playwright: 15 tests passed across Chromium, Firefox, and WebKit with no
   external request;
 - CI workflow contracts: 3 tests passed;
-- Gitleaks: 311 reachable commits scanned with no leaks.
+- Gitleaks: 312 reachable commits scanned with no leaks.
 
 PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/124 (NORMAL; CI green; separate owner-triggered review pending).
 

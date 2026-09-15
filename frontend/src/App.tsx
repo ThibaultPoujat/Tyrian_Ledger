@@ -53,7 +53,7 @@ type Dashboard = {
   bestRealizedItems: Array<{ itemId: number; itemName: string; quantity: number; netProfit: Money }>;
   worstRealizedItems: Array<{ itemId: number; itemName: string; quantity: number; netProfit: Money }>;
   personalLearning: {
-    status: 'insufficientCoverage' | 'insufficientSamples' | 'stale' | 'supported';
+    status: 'insufficientCoverage' | 'insufficientSamples' | 'insufficientMetrics' | 'stale' | 'supported';
     timestampLimitation: string;
     minimumKnownBasisSamples: number;
     exactSourceTimestampCount: number;
@@ -61,7 +61,7 @@ type Dashboard = {
     unknownOrderTimingCount: number;
     observedQuantityReductionCount: number;
     fillTiming: Array<{ side: 'buy' | 'sell'; exactSourceTimestampCount: number; averageSourceDuration: string | null; intervalCensoredCompletionCount: number; averageConfirmationWindow: string | null }>;
-    items: Array<{ itemId: number; itemName: string; status: 'insufficientCoverage' | 'insufficientSamples' | 'stale' | 'supported'; exactSourceTimestampCount: number; intervalCensoredCompletionCount: number; unknownOrderTimingCount: number; observedQuantityReductionCount: number; knownBasisSampleCount: number | null; averageHoldingDuration: string | null; realizedProfitPerDay: { numerator: string; denominator: string } | null; capitalTurns: { numerator: string; denominator: string } | null }>;
+    items: Array<{ itemId: number; itemName: string; status: 'insufficientCoverage' | 'insufficientSamples' | 'insufficientMetrics' | 'stale' | 'supported'; exactSourceTimestampCount: number; intervalCensoredCompletionCount: number; unknownOrderTimingCount: number; observedQuantityReductionCount: number; knownBasisSampleCount: number | null; averageHoldingDuration: string | null; realizedProfitPerDay: { numerator: string; denominator: string } | null; capitalTurns: { numerator: string; denominator: string } | null }>;
     knownBasisSampleCount: number | null;
     latestKnownBasisCompletionAtUtc: string | null;
     netProfit: Money | null;
@@ -437,7 +437,7 @@ function isExactRate(value: unknown): boolean {
 
 function isPersonalLearning(value: unknown): boolean {
   return isRecord(value)
-    && isOneOf(value.status, ['insufficientCoverage', 'insufficientSamples', 'stale', 'supported'])
+    && isOneOf(value.status, ['insufficientCoverage', 'insufficientSamples', 'insufficientMetrics', 'stale', 'supported'])
     && typeof value.timestampLimitation === 'string'
     && isNonNegativeInteger(value.minimumKnownBasisSamples)
     && isNonNegativeInteger(value.exactSourceTimestampCount)
@@ -493,6 +493,7 @@ function personalLearningStatus(status: NonNullable<Dashboard['personalLearning'
     case 'supported': return 'Sufficient recent known-basis evidence';
     case 'stale': return 'Evidence is stale; it is not strong current evidence';
     case 'insufficientSamples': return 'Too few known-basis outcomes for strong evidence';
+    case 'insufficientMetrics': return 'Turnover metrics cannot be calculated from the retained outcomes';
     case 'insufficientCoverage': return 'Continuous completed-history coverage is not available';
   }
 }
