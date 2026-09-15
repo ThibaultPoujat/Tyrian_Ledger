@@ -178,7 +178,8 @@ distinct, and no polling instant or disappearance is presented as an exact fill
 timestamp. No VERIFY entries changed.
 
 TKT-M20-02 / #90 is implemented and pending the required fresh Sol XHigh
-review in a Draft PR. It adds a version-two deterministic opportunity score
+review in Draft PR #125: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/125.
+It adds a version-two deterministic opportunity score
 with an item-scoped personal component bounded to plus or minus 15 points.
 Only sufficiently sampled, recent, fully known-basis realized sales contribute;
 no/weak/stale/insufficient evidence remains an explicit zero contribution.
