@@ -91,6 +91,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
                 .ToArray();
             metadata = await ReadMetadataAsync(marketItemIds
                 .Concat(transactions.Select(transaction => transaction.Transaction.ItemId))
+                .Concat(currentOrderObservations.SelectMany(snapshot => snapshot.Orders.Select(order => order.ItemId)))
                 .Distinct()
                 .ToArray(), cancellationToken).ConfigureAwait(false);
         }

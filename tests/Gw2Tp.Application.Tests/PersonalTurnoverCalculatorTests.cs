@@ -187,6 +187,23 @@ public sealed class PersonalTurnoverCalculatorTests
     }
 
     [Fact]
+    public void Counts_distinct_completed_sales_not_fifo_allocation_fragments_for_evidence_strength()
+    {
+        var result = calculator.Rebuild(Request(
+        [
+            Stored(Buy(101, 42, 100, 1, -14, -13)),
+            Stored(Buy(102, 42, 100, 1, -12, -11)),
+            Stored(Buy(103, 42, 100, 1, -10, -9)),
+            Stored(Sell(104, 42, 200, 3, -8, -7)),
+        ]));
+
+        var metrics = Assert.Single(result.Items).Metrics!;
+        Assert.Equal(PersonalTurnoverEvidenceStatus.InsufficientSamples, result.Status);
+        Assert.Equal(1, metrics.KnownBasisSampleCount);
+        Assert.Equal(3, metrics.KnownBasisQuantity);
+    }
+
+    [Fact]
     public void Calculates_exact_profit_per_day_and_time_weighted_capital_turns_for_unequal_basis_and_holding_intervals()
     {
         var result = calculator.Rebuild(Request(

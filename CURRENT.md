@@ -157,12 +157,16 @@ confirmation windows, unknown disappearances, observed quantity reductions,
 known-basis capital lock duration, realized profit/day, and capital turns from
 retained data only. Per-item evidence labels insufficient coverage, low samples,
 and stale evidence explicitly, so unrelated one-off markets cannot combine into
-supported turnover evidence; the aggregate is a portfolio summary only. Quantity
-reductions are retained as independent partial behavior even without completed
-history, while a censored-confirmation flag only reflects observations through
-the confirmation boundary. No recommendation score consumes this output. Source
-timestamps and polling observations remain distinct, and no polling instant or
-disappearance is presented as an exact fill timestamp. No VERIFY entries changed.
+supported turnover evidence; confidence counts distinct completed sales rather
+than FIFO allocation fragments, and the aggregate is a portfolio summary only.
+Quantity reductions are retained as independent partial behavior even without
+completed history, while a censored-confirmation flag only reflects observations
+through the confirmation boundary. Historical observation-only items retain
+stored metadata in the dashboard, which labels portfolio-wide summaries and
+independent quantity reductions without implying a fill. No recommendation score
+consumes this output. Source timestamps and polling observations remain
+distinct, and no polling instant or disappearance is presented as an exact fill
+timestamp. No VERIFY entries changed.
 
 After #89 delivery, the next valid implementation ticket is:
 
@@ -175,13 +179,13 @@ TKT-M20-01 local validation on 2026-09-15 reported:
 
 - Release solution build: zero warnings and zero errors;
 - focused personal turnover and dashboard suites: 23 tests passed;
-- full .NET regression suite: 456 tests passed (4 Domain, 21 Analytics, 216
+- full .NET regression suite: 458 tests passed (4 Domain, 21 Analytics, 218
   Application, 172 Infrastructure, and 43 Web);
 - React: 24 component tests passed and the production build succeeded;
 - Playwright: 15 tests passed across Chromium, Firefox, and WebKit with no
   external request;
 - CI workflow contracts: 3 tests passed;
-- Gitleaks: 310 reachable commits scanned with no leaks.
+- Gitleaks: 311 reachable commits scanned with no leaks.
 
 PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/124 (NORMAL; CI green; separate owner-triggered review pending).
 

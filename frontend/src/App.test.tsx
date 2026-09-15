@@ -574,7 +574,9 @@ describe('M14 local data controls', () => {
     expect(screen.getByText('Insufficient coverage')).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Fill time and capital turnover' })).toBeVisible();
     expect(screen.getByText('Polling supplies bounds only.')).toBeVisible();
+    expect(screen.getByText(/portfolio-wide known-basis completed outcomes retained/i)).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Buy timing' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Observed quantity reductions' })).toBeVisible();
     expect(screen.getAllByText('210.00 c/day')).toHaveLength(2);
     expect(screen.getByRole('columnheader', { name: 'Current market' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Synchronize Trading Post data' }));

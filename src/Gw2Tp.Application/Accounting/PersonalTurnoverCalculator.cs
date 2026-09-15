@@ -186,6 +186,10 @@ public sealed class PersonalTurnoverCalculator
         var totalLockedTicks = ordered.Aggregate(0L, (total, value) => checked(total + (value.Match.SellCompletedAtUtc - value.Match.BuyCompletedAtUtc).Ticks));
         var totalBasis = Sum(ordered.Select(value => value.Match.AllocatedAcquisitionBasis));
         var totalProfit = Sum(ordered.Select(value => value.NetProfit));
+        var distinctCompletedSaleCount = ordered
+            .Select(value => value.Match.SellTransactionId)
+            .Distinct()
+            .Count();
         var weightedCapitalTicks = ordered.Aggregate(BigInteger.Zero, (total, value) => total +
             new BigInteger(value.Match.AllocatedAcquisitionBasis.Copper) * (value.Match.SellCompletedAtUtc - value.Match.BuyCompletedAtUtc).Ticks);
         var profitPerDay = measuredDuration.Ticks > 0
@@ -196,7 +200,7 @@ public sealed class PersonalTurnoverCalculator
             : null;
 
         return new PersonalCapitalTurnoverMetrics(
-            ordered.Length,
+            distinctCompletedSaleCount,
             checked((int)ordered.Sum(value => (long)value.Match.MatchedQuantity)),
             totalBasis,
             totalProfit,

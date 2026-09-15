@@ -102,10 +102,12 @@ public sealed record ExactPersonalRate
 }
 
 /// <summary>
-/// Known-basis realized outcomes over one measured interval. Profit/day is
-/// net profit divided by elapsed measured days. Capital turns is total matched
-/// acquisition basis divided by the time-weighted average matched basis over
-/// that same interval. Both rates are exact fractions, not rounded money.
+/// Known-basis realized outcomes over one measured interval. Sample count is
+/// the number of distinct completed sell transactions, never FIFO allocation
+/// fragments. Profit/day is net profit divided by elapsed measured days.
+/// Capital turns is total matched acquisition basis divided by the
+/// time-weighted average matched basis over that same interval. Both rates are
+/// exact fractions, not rounded money.
 /// </summary>
 public sealed record PersonalCapitalTurnoverMetrics(
     int KnownBasisSampleCount,
