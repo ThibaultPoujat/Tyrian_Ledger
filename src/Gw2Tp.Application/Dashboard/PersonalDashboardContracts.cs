@@ -76,6 +76,46 @@ public sealed record DashboardRealizedItem(
     int Quantity,
     DashboardMoney NetProfit);
 
+public sealed record DashboardExactRate(string Numerator, string Denominator);
+
+public sealed record DashboardFillTiming(
+    PersonalTradingPostSide Side,
+    int ExactSourceTimestampCount,
+    string? AverageSourceDuration,
+    int IntervalCensoredCompletionCount,
+    string? AverageConfirmationWindow);
+
+public sealed record DashboardPersonalLearningItem(
+    int ItemId,
+    string ItemName,
+    PersonalTurnoverEvidenceStatus Status,
+    int ExactSourceTimestampCount,
+    int IntervalCensoredCompletionCount,
+    int UnknownOrderTimingCount,
+    int ObservedQuantityReductionCount,
+    int? KnownBasisSampleCount,
+    string? AverageHoldingDuration,
+    DashboardExactRate? RealizedProfitPerDay,
+    DashboardExactRate? CapitalTurns);
+
+public sealed record DashboardPersonalLearning(
+    PersonalTurnoverEvidenceStatus Status,
+    string TimestampLimitation,
+    int MinimumKnownBasisSamples,
+    int ExactSourceTimestampCount,
+    int IntervalCensoredCompletionCount,
+    int UnknownOrderTimingCount,
+    int ObservedQuantityReductionCount,
+    IReadOnlyList<DashboardFillTiming> FillTiming,
+    IReadOnlyList<DashboardPersonalLearningItem> Items,
+    int? KnownBasisSampleCount,
+    DateTimeOffset? LatestKnownBasisCompletionAtUtc,
+    DashboardMoney? NetProfit,
+    DashboardMoney? MatchedAcquisitionBasis,
+    string? AverageHoldingDuration,
+    DashboardExactRate? RealizedProfitPerDay,
+    DashboardExactRate? CapitalTurns);
+
 public sealed record PersonalDashboard(
     PersonalDashboardState State,
     Gw2ApiErrorCategory? AccountError,
@@ -96,7 +136,8 @@ public sealed record PersonalDashboard(
     IReadOnlyList<DashboardOrder> CurrentOrders,
     IReadOnlyList<DashboardRecentTrade> RecentTrades,
     IReadOnlyList<DashboardRealizedItem> BestRealizedItems,
-    IReadOnlyList<DashboardRealizedItem> WorstRealizedItems)
+    IReadOnlyList<DashboardRealizedItem> WorstRealizedItems,
+    DashboardPersonalLearning? PersonalLearning)
 {
     public static PersonalDashboard AccountUnavailable(Gw2ApiErrorCategory error) => new(
         PersonalDashboardState.AccountUnavailable,
@@ -106,7 +147,7 @@ public sealed record PersonalDashboard(
         false,
         [], null, null, null, null, [],
         new DashboardMoney("0"), new DashboardMoney("0"), new DashboardMoney("0"),
-        [], [], [], []);
+        [], [], [], [], null);
 
     public static PersonalDashboard NotSynchronized() => new(
         PersonalDashboardState.NotSynchronized,
@@ -116,7 +157,7 @@ public sealed record PersonalDashboard(
         false,
         [], null, null, null, null, [],
         new DashboardMoney("0"), new DashboardMoney("0"), new DashboardMoney("0"),
-        [], [], [], []);
+        [], [], [], [], null);
 }
 
 public interface IPersonalDashboardService

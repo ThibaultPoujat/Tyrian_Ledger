@@ -27,6 +27,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
     private readonly IClock clock;
     private readonly IPersonalDataOperationGate operationGate;
     private readonly PersonalPerformanceCalculator performanceCalculator = new();
+    private readonly PersonalTurnoverCalculator turnoverCalculator = new();
     private readonly FifoLotMatcher fifoLotMatcher = new();
     private readonly FlipProfitCalculator saleCalculator = new(Gw2TradingPostFeePolicy.Create());
 
@@ -58,6 +59,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
         PersonalTradingPostHistoryCoverage coverage;
         IReadOnlyList<StoredCompletedPersonalTradingPostTransaction> transactions;
         CurrentPersonalTradingPostOrderSnapshot? currentOrders;
+        IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot> currentOrderObservations;
         IReadOnlyList<AccountScopedCompletedTransaction> performanceTransactions;
         int[] marketItemIds;
         IReadOnlyDictionary<int, string> metadata;
@@ -73,6 +75,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
             coverage = await repository.GetHistoryCoverageAsync(profile, cancellationToken).ConfigureAwait(false);
             transactions = await repository.GetCompletedTransactionsAsync(profile, cancellationToken).ConfigureAwait(false);
             currentOrders = await repository.GetLatestCurrentOrderSnapshotAsync(profile, cancellationToken).ConfigureAwait(false);
+            currentOrderObservations = await repository.GetCurrentOrderObservationsAsync(profile, cancellationToken).ConfigureAwait(false);
             var scopedTransactions = transactions
                 .Select(transaction => new AccountScopedCompletedTransaction(profile.Id, transaction.Transaction))
                 .ToArray();
@@ -88,6 +91,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
                 .ToArray();
             metadata = await ReadMetadataAsync(marketItemIds
                 .Concat(transactions.Select(transaction => transaction.Transaction.ItemId))
+                .Concat(currentOrderObservations.SelectMany(snapshot => snapshot.Orders.Select(order => order.ItemId)))
                 .Distinct()
                 .ToArray(), cancellationToken).ConfigureAwait(false);
         }
@@ -103,9 +107,9 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
             : DashboardMarketState.Unavailable;
 
         PersonalPerformanceRebuild? performance = null;
+        var asOfUtc = RequireUtc(clock.UtcNow);
         if (coverage.StartUtc is not null && coverage.EndUtc is not null)
         {
-            var asOfUtc = RequireUtc(clock.UtcNow);
             performance = performanceCalculator.Rebuild(new PersonalPerformanceRequest(
                 asOfUtc,
                 new PerformanceHistoryCoverage(coverage.StartUtc.Value, coverage.EndUtc.Value),
@@ -113,6 +117,12 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
                 listings.Select(listing => new CurrentMarketLiquidationEvidence(profile.Id, listing, asOfUtc)).ToArray(),
                 coverage.EndUtc));
         }
+        var learning = turnoverCalculator.Rebuild(new PersonalTurnoverRequest(
+            asOfUtc,
+            profile.Id,
+            coverage,
+            transactions,
+            currentOrderObservations));
 
         var orders = currentOrders?.Orders ?? [];
         var currentBuyCapital = Sum(orders.Where(order => order.Side == PersonalTradingPostSide.Buy)
@@ -153,7 +163,8 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
                     ToDashboardMoney(new Money(transaction.Transaction.UnitPriceInCopper)),
                     transaction.Transaction.CompletedAtUtc)).ToArray(),
             performance is null ? [] : MapRealizedItems(performance, metadata, descending: true),
-            performance is null ? [] : MapRealizedItems(performance, metadata, descending: false));
+            performance is null ? [] : MapRealizedItems(performance, metadata, descending: false),
+            MapLearning(learning, metadata));
     }
 
     private async Task<IReadOnlyDictionary<int, string>> ReadMetadataAsync(
@@ -233,6 +244,62 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
                 ToDashboardMoney(item.NetProfit)))
             .ToArray();
     }
+
+    private static DashboardPersonalLearning MapLearning(
+        PersonalTurnoverIntelligence learning,
+        IReadOnlyDictionary<int, string> metadata) => new(
+        learning.Status,
+        learning.TimestampLimitation,
+        learning.MinimumKnownBasisSamples,
+        learning.ExactFillDurations.Count,
+        learning.IntervalCensoredCompletions.Count,
+        learning.UnknownOrderTimings.Count,
+        learning.ObservedQuantityReductions.Count,
+        MapFillTiming(learning),
+        learning.Items.Select(item => new DashboardPersonalLearningItem(
+            item.ItemId,
+            NameFor(item.ItemId, metadata),
+            item.Status,
+            item.ExactFillDurations.Count,
+            item.IntervalCensoredCompletions.Count,
+            item.UnknownOrderTimings.Count,
+            item.ObservedQuantityReductions.Count,
+            item.Metrics?.KnownBasisSampleCount,
+            item.Metrics?.AverageHoldingDuration.ToString("c", CultureInfo.InvariantCulture),
+            ToDashboardRate(item.Metrics?.RealizedProfitPerDay),
+            ToDashboardRate(item.Metrics?.CapitalTurns))).ToArray(),
+        learning.Metrics?.KnownBasisSampleCount,
+        learning.LatestKnownBasisCompletionAtUtc,
+        ToDashboardMoney(learning.Metrics?.NetProfit),
+        ToDashboardMoney(learning.Metrics?.MatchedAcquisitionBasis),
+        learning.Metrics?.AverageHoldingDuration.ToString("c", CultureInfo.InvariantCulture),
+        ToDashboardRate(learning.Metrics?.RealizedProfitPerDay),
+        ToDashboardRate(learning.Metrics?.CapitalTurns));
+
+    private static IReadOnlyList<DashboardFillTiming> MapFillTiming(PersonalTurnoverIntelligence learning) =>
+        new[] { PersonalTradingPostSide.Buy, PersonalTradingPostSide.Sell }
+            .Select(side =>
+            {
+                var exact = learning.ExactFillDurations.Where(value => value.Side == side).Select(value => value.Duration).ToArray();
+                var censored = learning.IntervalCensoredCompletions.Where(value => value.Side == side)
+                    .Select(value => value.FirstConfirmedAtUtc - value.LastObservedOpenAtUtc).ToArray();
+                return new DashboardFillTiming(
+                    side,
+                    exact.Length,
+                    AverageDuration(exact),
+                    censored.Length,
+                    AverageDuration(censored));
+            })
+            .ToArray();
+
+    private static string? AverageDuration(IReadOnlyList<TimeSpan> durations) => durations.Count == 0
+        ? null
+        : TimeSpan.FromTicks(durations.Aggregate(0L, (total, value) => checked(total + value.Ticks)) / durations.Count)
+            .ToString("c", CultureInfo.InvariantCulture);
+
+    private static DashboardExactRate? ToDashboardRate(ExactPersonalRate? rate) => rate is { } value
+        ? new DashboardExactRate(value.Numerator.ToString(CultureInfo.InvariantCulture), value.Denominator.ToString(CultureInfo.InvariantCulture))
+        : null;
 
     private static string NameFor(int itemId, IReadOnlyDictionary<int, string> metadata) =>
         metadata.TryGetValue(itemId, out var name) ? name : $"Item #{itemId}";

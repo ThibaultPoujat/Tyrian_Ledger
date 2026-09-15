@@ -131,8 +131,8 @@ depth, reserve breach/shortfall is explicit result-level evidence, and every
 binding cap remains structured for M19-04 orchestration. No VERIFY entries
 changed.
 
-TKT-M19-04 / #88 is implemented in Draft PR #123. The primary “What should I
-do?” workflow now combines authenticated Coin, synchronized orders and FIFO
+TKT-M19-04 / #88 merged in PR #123 after the required SOL-GATED review. The
+primary “What should I do?” workflow combines authenticated Coin, synchronized orders and FIFO
 inventory, live depth, retained history, opportunity score, and conservative
 position sizing into explicit attention-first manual actions. Its protected
 read-only API returns exact full-quantity modeled economics, max-bid and
@@ -149,32 +149,54 @@ consumed, preserve version-one conservative one-unit `TotalCost` sizing while
 reconciling displayed remaining cash to exact returned full-quantity economics,
 fail closed when an exposure reduction has no safe depth, and cover the composed
 recommendation paths including the 201st affordable candidate.
-VERIFY-005 and VERIFY-013 remain OPEN. The PR remains SOL-GATED and Draft pending
-the owner-triggered targeted fresh Sol XHigh re-review.
+VERIFY-005 and VERIFY-013 remain OPEN.
 
-After the #88 SOL-GATED review/merge handoff, the next valid implementation
-ticket is:
+TKT-M20-01 / #89 is implemented in PR #124. It derives
+reproducible personal source-timestamp order durations, strictly bounded local
+confirmation windows, unknown disappearances, observed quantity reductions,
+known-basis capital lock duration, realized profit/day, and capital turns from
+retained data only. Per-item evidence labels insufficient coverage, low samples,
+and stale evidence explicitly, so unrelated one-off markets cannot combine into
+supported turnover evidence; confidence counts distinct completed sales rather
+than FIFO allocation fragments, and the aggregate is a portfolio summary only.
+Partially unknown-basis sales retain their known-fragment economics but cannot
+count toward strong evidence; non-computable profit/day or capital turns are
+explicit insufficient-metrics evidence. Average holding duration is weighted by
+allocated acquisition basis, and disappearance detection checks only the final
+retained observation rather than rescanning immutable history per order.
+An order identifier that disappears from a complete snapshot and later
+reappears is explicit unknown evidence rather than bridged partial behavior,
+while quantity reductions observed within each contiguous snapshot run remain
+independent partial evidence.
+Quantity reductions are retained as independent partial behavior even without
+completed history, while a censored-confirmation flag only reflects observations
+through the confirmation boundary. Historical observation-only items retain
+stored metadata in the dashboard, which labels portfolio-wide summaries and
+independent quantity reductions without implying a fill. No recommendation score
+consumes this output. Source timestamps and polling observations remain
+distinct, and no polling instant or disappearance is presented as an exact fill
+timestamp. No VERIFY entries changed.
 
-**TKT-M20-01 / #89 - Derive personal fill-time and capital-turnover
-intelligence.**
+After #89 delivery, the next valid implementation ticket is:
+
+**TKT-M20-02 / #90 - Integrate Personal Realized Performance into Market
+Ranking.**
 
 ## Known-good baseline
 
-TKT-M19-04 local validation on 2026-09-15 reported:
+TKT-M20-01 local validation on 2026-09-15 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused scanner/sizing/recommendation suite: 82 tests passed; focused
-  wallet/readiness and protected API suites passed;
-- full .NET regression suite: 441 tests passed (4 Domain, 21 Analytics, 201
+- focused personal turnover and dashboard suites: 30 tests passed;
+- full .NET regression suite: 463 tests passed (4 Domain, 21 Analytics, 223
   Application, 172 Infrastructure, and 43 Web);
 - React: 24 component tests passed and the production build succeeded;
-- Playwright: 15 tests passed across Chromium, Firefox, and WebKit, including
-  the mocked two-minute primary review journey with no external request;
+- Playwright: 15 tests passed across Chromium, Firefox, and WebKit with no
+  external request;
 - CI workflow contracts: 3 tests passed;
-- retired-runtime audit: only expected negative assertions matched;
-- Gitleaks: 307 reachable commits scanned with no leaks.
+- Gitleaks: 314 reachable commits scanned with no leaks.
 
-PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/123 (Draft; pending owner-triggered targeted fresh Sol XHigh re-review)
+PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/124 (NORMAL; CI green; separate owner-triggered review pending).
 
 ## Important transition warning
 

@@ -89,6 +89,11 @@ public sealed class PersonalDashboardServiceTests
         Assert.Equal("250", result.CurrentOrders.Single(order => order.Side == PersonalTradingPostSide.Sell).CurrentMarketUnitPrice!.Copper);
         Assert.All(result.RecentTrades, trade => Assert.Equal("Test item", trade.ItemName));
         Assert.Equal("70", Assert.Single(result.BestRealizedItems).NetProfit.Copper);
+        Assert.NotNull(result.PersonalLearning);
+        Assert.Equal(PersonalTurnoverEvidenceStatus.InsufficientSamples, result.PersonalLearning!.Status);
+        Assert.Contains("polling", result.PersonalLearning.TimestampLimitation, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("00:00:00", result.PersonalLearning.FillTiming.Single(value => value.Side == PersonalTradingPostSide.Buy).AverageSourceDuration);
+        Assert.Equal("00:00:00", result.PersonalLearning.FillTiming.Single(value => value.Side == PersonalTradingPostSide.Sell).AverageSourceDuration);
     }
 
     [Fact]
@@ -131,6 +136,24 @@ public sealed class PersonalDashboardServiceTests
 
         Assert.Equal(RealizedPerformanceWindowStatus.Supported,
             Assert.Single(result.RealizedWindows, window => window.Days == 7).Status);
+    }
+
+    [Fact]
+    public async Task Resolves_retained_metadata_for_learning_items_seen_only_in_historical_order_observations()
+    {
+        var repository = new FakeRepository
+        {
+            Observations =
+            [
+                new CurrentPersonalTradingPostOrderSnapshot(AsOfUtc.AddDays(-2),
+                    [new CurrentPersonalTradingPostOrder(201, PersonalTradingPostSide.Buy, 99, 100, 1, AsOfUtc.AddDays(-3))]),
+                new CurrentPersonalTradingPostOrderSnapshot(AsOfUtc.AddDays(-1), []),
+            ],
+        };
+
+        var result = await Service(repository).GetAsync();
+
+        Assert.Equal("Test item", Assert.Single(result.PersonalLearning!.Items).ItemName);
     }
 
     [Fact]
@@ -211,6 +234,7 @@ public sealed class PersonalDashboardServiceTests
         public PersonalTradingPostHistoryCoverage Coverage { get; init; } = new(AsOfUtc.AddDays(-100), AsOfUtc);
         public IReadOnlyList<StoredCompletedPersonalTradingPostTransaction> Transactions { get; init; } = [];
         public CurrentPersonalTradingPostOrderSnapshot? Snapshot { get; init; }
+        public IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot> Observations { get; init; } = [];
         public Task<AccountProfile?> FindAccountProfileAsync(string accountScopeId, CancellationToken cancellationToken = default) => Task.FromResult(Profile);
         public Task<AccountProfile> GetOrCreateAccountProfileAsync(string accountScopeId, DateTimeOffset observedAtUtc, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task RecordSuccessfulSyncAsync(AccountProfile accountProfile, DateTimeOffset completedAtUtc, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -220,7 +244,7 @@ public sealed class PersonalDashboardServiceTests
         public Task ReplaceCurrentOrderSnapshotAsync(AccountProfile accountProfile, CurrentPersonalTradingPostOrderSnapshot snapshot, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<CurrentPersonalTradingPostOrder>> GetCurrentOrdersAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<CurrentPersonalTradingPostOrder>>([]);
         public Task<CurrentPersonalTradingPostOrderSnapshot?> GetLatestCurrentOrderSnapshotAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => Task.FromResult(Snapshot);
-        public Task<IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot>> GetCurrentOrderObservationsAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot>>([]);
+        public Task<IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot>> GetCurrentOrderObservationsAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => Task.FromResult(Observations);
     }
 
     private sealed class FakeMetadataRepository : IItemMetadataRepository

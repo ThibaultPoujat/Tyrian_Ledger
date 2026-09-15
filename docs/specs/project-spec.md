@@ -167,6 +167,16 @@ fill/holding durations, realized ROI distribution, realized profit per day,
 capital turns, and completion rates. API observation limitations must be
 explicit; polling intervals must not be presented as exact fill timestamps.
 
+M20 distinguishes evidence quality: source-provided completed-history
+`created`/`purchased` timestamps may support an exact source-timestamp duration;
+local current-order snapshots support only an interval-censored confirmation
+window from the last observed open order to first local confirmation. A missing
+order in a later snapshot is unknown, not a completed fill. Observed quantity
+reductions are partial-order behavior, not a point fill time. Personal
+profit/day and capital-turn figures are reproducible exact ratios from known
+FIFO basis and are shown as weak or stale evidence until the configured sample
+and recency thresholds are met.
+
 Personal evidence affects ranking only above configured sufficiency thresholds.
 Weak samples do not override generic market evidence.
 
