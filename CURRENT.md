@@ -19,7 +19,7 @@ architecture to extend.
 
 ## Active milestone
 
-**M19 - Core Recommendation Product**
+**M20 - Personal Learning and Investments**
 
 M13 is complete through the local host, secure API-key validation, and typed
 personal Trading Post gateway work merged in PRs #102-#105. M14 is complete
@@ -177,10 +177,28 @@ consumes this output. Source timestamps and polling observations remain
 distinct, and no polling instant or disappearance is presented as an exact fill
 timestamp. No VERIFY entries changed.
 
-After #89 delivery, the next valid implementation ticket is:
+TKT-M20-02 / #90 has its requested Sol review corrections implemented and is
+pending the required targeted fresh Sol XHigh re-review in Draft PR #125:
+https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/125.
+It adds a version-two deterministic opportunity score
+with an item-scoped personal component bounded to plus or minus 15 points.
+Only sufficiently sampled, recent, fully known-basis realized sales contribute;
+no/weak/stale/insufficient evidence remains an explicit zero contribution.
+The score policy now evaluates complete raw evidence against its own configured
+sample/recency gates, so deliberate policy changes can relax either default
+turnover label without admitting incomplete-cost evidence.
+The component exposes its realized ROI min/median/max distribution, exact
+profit/day and capital-turns/day rates, typical holding duration, sample count,
+and recency. It deliberately does not fabricate a completion rate because
+retained observations do not provide a trustworthy cancelled/failed-order
+denominator. Poor turnover can lower an otherwise attractive market, while
+strong repeatable personal results can outweigh a modest snapshot-ROI advantage
+within the fixed policy bound; no weights or rules self-modify. Partially
+unknown-basis sales remain visible in learning output but cannot affect ranking.
 
-**TKT-M20-02 / #90 - Integrate Personal Realized Performance into Market
-Ranking.**
+After #90 review/delivery, the next valid implementation ticket is:
+
+**TKT-M20-03 / #91 - Track Investments and Staged Exit Targets.**
 
 ## Known-good baseline
 

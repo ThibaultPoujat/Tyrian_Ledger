@@ -13,7 +13,20 @@ type RecommendationRecord = {
   orderId: string | null; itemId: number; itemName: string; quantity: number; capital: Money;
   prices: { currentOrderUnitPrice: Money | null; bestBuy: Money | null; lowestSell: Money | null; plannedBid: Money | null; plannedListPrice: Money | null; maximumBid: Money | null };
   economics: { acquisitionCost: Money; grossSaleValue: Money; listingFee: Money; exchangeFee: Money; netSaleProceeds: Money; netProfit: Money; totalCost: Money; roiDisplayPercent: string } | null;
-  score: { rank: number; totalPoints: number; basePoints: number; appliedPenaltyPoints: number; components: unknown[]; anomalies: unknown[] } | null;
+  score: {
+    rank: number; totalPoints: number; basePoints: number; appliedPenaltyPoints: number;
+    components: Array<{ name: string; state: string; normalizedPercent: number; maximumPoints: number; awardedPoints: number }>;
+    anomalies: unknown[];
+    personalEvidence: {
+      state: 'noHistory' | 'insufficientCoverage' | 'insufficientSamples' | 'insufficientMetrics' | 'stale' | 'supported';
+      knownBasisSampleCount: number | null; latestKnownBasisCompletionAtUtc: string | null;
+      realizedRoiSaleCount: number | null; minimumRealizedRoiBasisPoints: number | null;
+      medianRealizedRoiBasisPoints: number | null; maximumRealizedRoiBasisPoints: number | null;
+      realizedProfitPerDayNumerator: string | null; realizedProfitPerDayDenominator: string | null;
+      capitalTurnsPerDayNumerator: string | null; capitalTurnsPerDayDenominator: string | null;
+      typicalHoldingDuration: string | null; completionRateLimitation: string;
+    } | null;
+  } | null;
   history: { confidence: 'insufficient' | 'partial' | 'strong'; commonCutoffUtc: string; windows: Array<{ durationDays: number; isAvailable: boolean; rawObservationCount: number; eligibleObservationCount: number; observedSpanPercent: number }> } | null;
   liquidity: { classification: 'high' | 'medium' | 'low'; totalBuyQuantity: number; totalSellQuantity: number; nearBestBuyQuantity: number; nearBestSellQuantity: number; participationCapQuantity: number; safeLiquidationQuantity: number; reasons: string[] } | null;
   portfolioConstraints: Array<{ name: string; capitalCapacity: Money; quantityCapacity: number; isBinding: boolean }>;
@@ -151,13 +164,27 @@ function RecommendationCard({ record }: { record: RecommendationRecord }) {
           <div className="recommendation-evidence">
             <section><h4>Current evidence</h4><p>Best buy {record.prices.bestBuy ? copper(record.prices.bestBuy) : 'unavailable'} · Lowest sell {record.prices.lowestSell ? copper(record.prices.lowestSell) : 'unavailable'} · Order {humanize(record.orderState)}</p><p>{record.liquidity ? `${record.liquidity.totalBuyQuantity} buy / ${record.liquidity.totalSellQuantity} sell quantity visible; participation cap ${record.liquidity.participationCapQuantity}.` : 'Depth unavailable.'}</p></section>
             <section><h4>Retained history</h4>{record.history ? record.history.windows.map(window => <p key={window.durationDays}>{window.durationDays} days: {window.eligibleObservationCount}/{window.rawObservationCount} eligible, {window.observedSpanPercent}% span, {window.isAvailable ? 'available' : 'insufficient'}.</p>) : <p>History unavailable.</p>}</section>
-            <section><h4>Score and constraints</h4><p>{record.score ? `Rank ${record.score.rank}, ${record.score.totalPoints.toFixed(2)} points after ${record.score.appliedPenaltyPoints.toFixed(2)} penalty.` : 'Score unavailable.'}</p><p>{binding.length > 0 ? binding.map(value => `${humanize(value.name)}: ${value.quantityCapacity} units`).join(' · ') : 'No binding position-size constraint.'}</p></section>
+            <section><h4>Score and constraints</h4><p>{record.score ? `Rank ${record.score.rank}, ${record.score.totalPoints.toFixed(2)} points after ${record.score.appliedPenaltyPoints.toFixed(2)} penalty.` : 'Score unavailable.'}</p>{record.score && <p>{record.score.components.map(component => `${humanize(component.name)}: ${component.awardedPoints.toFixed(2)} / ${component.name === 'personalEvidence' ? '±' : ''}${component.maximumPoints.toFixed(2)} (${humanize(component.state)})`).join(' · ')}</p>}{record.score?.personalEvidence && <PersonalEvidence evidence={record.score.personalEvidence} />}<p>{binding.length > 0 ? binding.map(value => `${humanize(value.name)}: ${value.quantityCapacity} units`).join(' · ') : 'No binding position-size constraint.'}</p></section>
             <section><h4>All reasons</h4><ul>{record.reasons.map(reason => <li key={reason.code}>{reason.message}</li>)}</ul></section>
           </div>
         </details>
       </article>
     </li>
   );
+}
+
+function PersonalEvidence({ evidence }: { evidence: NonNullable<NonNullable<RecommendationRecord['score']>['personalEvidence']> }) {
+  const basisPoints = (value: number | null) => value === null ? 'unavailable' : `${(value / 100).toFixed(2)}%`;
+  const fraction = (numerator: string | null, denominator: string | null, unit: string) =>
+    numerator === null || denominator === null ? 'unavailable' : `${numerator} / ${denominator} ${unit}`;
+  return <div className="personal-evidence">
+    <p>Personal evidence <strong>{humanize(evidence.state)}</strong>
+      {' · '}{evidence.knownBasisSampleCount ?? 0} known-basis sales
+      {' · '}latest known-basis completion {evidence.latestKnownBasisCompletionAtUtc ?? 'unavailable'}.</p>
+    <p>Realized ROI: minimum {basisPoints(evidence.minimumRealizedRoiBasisPoints)} · median {basisPoints(evidence.medianRealizedRoiBasisPoints)} · maximum {basisPoints(evidence.maximumRealizedRoiBasisPoints)}.</p>
+    <p>Realized profit/day: {fraction(evidence.realizedProfitPerDayNumerator, evidence.realizedProfitPerDayDenominator, 'copper/day')} · capital turns/day: {fraction(evidence.capitalTurnsPerDayNumerator, evidence.capitalTurnsPerDayDenominator, 'turns/day')} · typical hold {evidence.typicalHoldingDuration ?? 'unavailable'}.</p>
+    <p>{evidence.completionRateLimitation}</p>
+  </div>;
 }
 
 function isRecommendationResponse(value: unknown): value is RecommendationResponse {
@@ -200,7 +227,19 @@ function isEconomics(value: unknown): boolean {
 function isScore(value: unknown): boolean {
   return isRecord(value) && isNonNegativeInteger(value.rank)
     && ['totalPoints', 'basePoints', 'appliedPenaltyPoints'].every(key => typeof value[key] === 'number' && Number.isFinite(value[key]))
-    && Array.isArray(value.components) && Array.isArray(value.anomalies);
+    && Array.isArray(value.components) && value.components.every(component => isRecord(component)
+      && typeof component.name === 'string' && typeof component.state === 'string'
+      && ['normalizedPercent', 'maximumPoints', 'awardedPoints'].every(key => typeof component[key] === 'number' && Number.isFinite(component[key])))
+    && Array.isArray(value.anomalies)
+    && (value.personalEvidence === undefined || value.personalEvidence === null || isPersonalEvidence(value.personalEvidence));
+}
+function isPersonalEvidence(value: unknown): boolean {
+  return isRecord(value) && ['noHistory', 'insufficientCoverage', 'insufficientSamples', 'insufficientMetrics', 'stale', 'supported'].includes(value.state as string)
+    && isNullableNonNegativeInteger(value.knownBasisSampleCount) && (value.latestKnownBasisCompletionAtUtc === null || typeof value.latestKnownBasisCompletionAtUtc === 'string')
+    && isNullableNonNegativeInteger(value.realizedRoiSaleCount)
+    && ['minimumRealizedRoiBasisPoints', 'medianRealizedRoiBasisPoints', 'maximumRealizedRoiBasisPoints'].every(key => value[key] === null || (typeof value[key] === 'number' && Number.isFinite(value[key])))
+    && ['realizedProfitPerDayNumerator', 'realizedProfitPerDayDenominator', 'capitalTurnsPerDayNumerator', 'capitalTurnsPerDayDenominator', 'typicalHoldingDuration'].every(key => value[key] === null || typeof value[key] === 'string')
+    && typeof value.completionRateLimitation === 'string';
 }
 function isHistory(value: unknown): boolean {
   return isRecord(value) && ['insufficient', 'partial', 'strong'].includes(value.confidence as string)
@@ -223,6 +262,7 @@ function isRecord(value: unknown): value is Record<string, unknown> { return typ
 function isMoney(value: unknown): value is Money { return isRecord(value) && typeof value.copper === 'string' && /^-?\d+$/.test(value.copper); }
 function isNullableMoney(value: unknown): value is Money | null { return value === null || isMoney(value); }
 function isNonNegativeInteger(value: unknown): boolean { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0; }
+function isNullableNonNegativeInteger(value: unknown): boolean { return value === null || isNonNegativeInteger(value); }
 function copper(money: Money): string {
   const value = BigInt(money.copper); const sign = value < 0n ? '−' : ''; const absolute = value < 0n ? -value : value;
   return `${sign}${absolute / 10000n}g ${(absolute % 10000n) / 100n}s ${absolute % 100n}c`;

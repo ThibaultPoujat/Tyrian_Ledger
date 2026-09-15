@@ -156,9 +156,9 @@ near-zero depth.
 
 No runtime LLM or opaque ML model may own this score.
 
-### Opportunity-score policy version 1
+### Opportunity-score policy version 2
 
-The first opportunity-score policy is a deterministic application-layer
+The version-two opportunity-score policy is a deterministic application-layer
 comparison of already-calculated current scanner evidence and historical
 analytics. It does not fetch data, size a position, choose an action, or predict
 a future price or fill. Results expose the policy version, rank, base points,
@@ -166,7 +166,7 @@ applied penalty, final points, historical-confidence state, every named
 component, and every anomaly flag. Scores are comparative decision-support
 evidence, not probabilities.
 
-The base score is bounded to 100 points:
+The generic base score is bounded to 100 points:
 
 - expected economics contributes at most 25 points. Sixty percent of that
   component is current exact net ROI normalized linearly to a 30% ceiling; forty
@@ -184,9 +184,41 @@ The base score is bounded to 100 points:
   population coefficients of variation. Each measure falls linearly from full
   quality at zero to no quality at a coefficient of variation of 0.5;
 - historical confidence contributes at most 15 points: five for an available
-  7-day window and ten for an independently available 30-day window;
-- personal fill/turnover evidence is explicitly `NotYetAvailable` and has zero
-  weight until a later ticket supplies sufficiently sampled evidence.
+  7-day window and ten for an independently available 30-day window.
+
+Item-scoped personal realized-performance evidence is a separately disclosed,
+signed component. It is available only when the fully-known-basis evidence has
+at least three samples and its latest completion is no more than 90 days old.
+Those gates are explicit versioned `OpportunityScorePolicy` settings: a policy
+configuration may deliberately use a lower sample gate or longer age, and must
+evaluate the complete raw evidence rather than inheriting the default status
+label from turnover analytics. Incomplete-cost fragments never contribute to
+this component.
+
+The personal component is normalized from four retained, item-scoped inputs:
+
+- median realized ROI, normalized to a 30% ceiling, weighted 40%;
+- realized net profit per day, signed and normalized to plus or minus
+  1,000 copper per day, weighted 25%;
+- capital turns per day, normalized to one turn per day, weighted 25%;
+- average holding duration, inversely normalized from zero to 30 days, weighted
+  10%.
+
+The weighted result is centered at 50. It awards from minus 15 to plus 15
+points using `15 * (normalized - 50) / 50`; it can therefore reduce a strong
+current snapshot when retained personal performance is poor. The generic base
+and this signed component form the disclosed base points, then the existing
+penalties apply and final points are clamped to 0-100. The UI must show the
+state, known-basis sample count, latest completion, realized ROI range and
+median, exact profit-per-day and capital-turns-per-day fractions, holding
+duration, and the completion-rate limitation. It must not infer a completion
+rate from the retained data.
+
+No score policy automatically changes its own gates, weights, or normalization
+ceilings from observed results. A candidate without sufficient personal
+evidence receives zero personal points and exposes an explicit state such as
+`NoHistory`, `InsufficientCoverage`, `InsufficientSamples`,
+`InsufficientMetrics`, or `Stale`.
 
 The available 30-day window is the comparison baseline; the available 7-day
 window is used only when 30-day evidence is insufficient. With neither window,
@@ -195,7 +227,7 @@ Exactly one available window is `Partial`; both are `Strong`. Missing coverage
 is flagged but receives no additional penalty because its effect is already
 represented by the unavailable components and lower confidence.
 
-Version one flags current ROI that is both at least 20 percentage points and at
+Version two flags current ROI that is both at least 20 percentage points and at
 least twice the non-negative historical median; near-best quantity below the
 intended quantity or fewer than three near-best listings; an existing current
 price cliff; current buy or sell prices more than 20% outside their historical

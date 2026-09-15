@@ -1,5 +1,6 @@
 using Gw2Tp.Analytics.MarketHistory;
 using Gw2Tp.Analytics.OrderBooks;
+using Gw2Tp.Application.Accounting;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.MarketScanning;
 
@@ -43,7 +44,13 @@ public enum OpportunityAnomalyFlag
 
 public enum OpportunityPersonalEvidenceState
 {
-    NotYetAvailable = 1,
+    NoHistory = 1,
+    NotYetAvailable = NoHistory,
+    InsufficientCoverage = 2,
+    InsufficientSamples = 3,
+    InsufficientMetrics = 4,
+    Stale = 5,
+    Supported = 6,
 }
 
 /// <summary>
@@ -71,9 +78,16 @@ public sealed record OpportunityScorePolicy(
     decimal CurrentPriceCliffPenaltyPoints,
     decimal HistoricalPriceDeviationPenaltyPoints,
     decimal HistoricalDepthDeviationPenaltyPoints,
-    decimal ExcessivePositionPenaltyPoints)
+    decimal ExcessivePositionPenaltyPoints,
+    decimal PersonalEvidenceMaximumAbsolutePoints,
+    int PersonalMinimumKnownBasisSamples,
+    TimeSpan PersonalMaximumEvidenceAge,
+    decimal PersonalRoiNormalizationCeilingBasisPoints,
+    decimal PersonalProfitPerDayNormalizationCeilingCopper,
+    decimal PersonalCapitalTurnsPerDayNormalizationCeiling,
+    TimeSpan PersonalHoldingDurationCeiling)
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
     public const decimal MaximumTotalPoints = 100m;
 
     public static OpportunityScorePolicy Default { get; } = new(
@@ -97,7 +111,14 @@ public sealed record OpportunityScorePolicy(
         CurrentPriceCliffPenaltyPoints: 5m,
         HistoricalPriceDeviationPenaltyPoints: 5m,
         HistoricalDepthDeviationPenaltyPoints: 5m,
-        ExcessivePositionPenaltyPoints: 15m);
+        ExcessivePositionPenaltyPoints: 15m,
+        PersonalEvidenceMaximumAbsolutePoints: 15m,
+        PersonalMinimumKnownBasisSamples: PersonalTurnoverPolicy.MinimumKnownBasisSamples,
+        PersonalMaximumEvidenceAge: PersonalTurnoverPolicy.MaximumEvidenceAge,
+        PersonalRoiNormalizationCeilingBasisPoints: 3_000m,
+        PersonalProfitPerDayNormalizationCeilingCopper: 1_000m,
+        PersonalCapitalTurnsPerDayNormalizationCeiling: 1m,
+        PersonalHoldingDurationCeiling: TimeSpan.FromDays(30));
 
     public void Validate()
     {
@@ -122,6 +143,10 @@ public sealed record OpportunityScorePolicy(
             componentMaximums.Sum() != MaximumTotalPoints ||
             penalties.Any(value => value is < 0m or > MaximumTotalPoints) ||
             MaximumAppliedPenaltyPoints is < 0m or > MaximumTotalPoints ||
+            PersonalEvidenceMaximumAbsolutePoints is < 0m or > MaximumTotalPoints ||
+            PersonalMinimumKnownBasisSamples <= 0 || PersonalMaximumEvidenceAge <= TimeSpan.Zero ||
+            PersonalRoiNormalizationCeilingBasisPoints <= 0m || PersonalProfitPerDayNormalizationCeilingCopper <= 0m ||
+            PersonalCapitalTurnsPerDayNormalizationCeiling <= 0m || PersonalHoldingDurationCeiling <= TimeSpan.Zero ||
             RoiNormalizationCeilingBasisPoints <= 0 || ProfitNormalizationCeilingCopper <= 0 ||
             VolatilityZeroQualityThreshold <= 0m ||
             HistoricalPriceDeviationBasisPoints is <= 0 or >= 10_000 ||
@@ -136,7 +161,23 @@ public sealed record OpportunityScorePolicy(
 
 public sealed record OpportunityScoreCandidate(
     LiveMarketScannerCandidate Current,
-    HistoricalMarketAnalytics History);
+    HistoricalMarketAnalytics History,
+    PersonalItemTurnoverIntelligence? PersonalEvidence = null);
+
+/// <summary>
+/// Item-scoped personal evidence attached to a score explanation. A completion
+/// rate is intentionally absent: retained local data has no trustworthy
+/// denominator for cancelled or failed orders.
+/// </summary>
+public sealed record OpportunityPersonalEvidence(
+    OpportunityPersonalEvidenceState State,
+    int? KnownBasisSampleCount,
+    DateTimeOffset? LatestKnownBasisCompletionAtUtc,
+    PersonalRealizedRoiDistribution? RealizedRoiDistribution,
+    ExactPersonalRate? RealizedProfitPerDay,
+    ExactPersonalRate? CapitalTurnsPerDay,
+    TimeSpan? TypicalHoldingDuration,
+    string CompletionRateLimitation);
 
 public sealed record OpportunityScoreComponent(
     OpportunityScoreComponentName Name,
@@ -159,7 +200,8 @@ public sealed record OpportunityScore(
     OpportunityHistoricalConfidence HistoricalConfidence,
     OpportunityPersonalEvidenceState PersonalEvidenceState,
     IReadOnlyList<OpportunityScoreComponent> Components,
-    IReadOnlyList<OpportunityScoreAnomaly> Anomalies);
+    IReadOnlyList<OpportunityScoreAnomaly> Anomalies,
+    OpportunityPersonalEvidence? PersonalEvidence = null);
 
 public interface IOpportunityScoreService
 {
@@ -224,6 +266,7 @@ public sealed class OpportunityScoreService : IOpportunityScoreService
         var thirtyDay = FindWindow(input.History, ThirtyDays);
         var baseline = AvailableSummary(thirtyDay) ?? AvailableSummary(sevenDay);
         var confidence = CalculateConfidence(sevenDay, thirtyDay);
+        var personal = Personal(input.PersonalEvidence, input.History.AsOfUtc);
         var components = new[]
         {
             Economics(candidate),
@@ -231,12 +274,7 @@ public sealed class OpportunityScoreService : IOpportunityScoreService
             Persistence(baseline),
             Stability(baseline),
             Confidence(sevenDay, thirtyDay),
-            new OpportunityScoreComponent(
-                OpportunityScoreComponentName.PersonalEvidence,
-                OpportunityScoreComponentState.NotYetSupported,
-                0m,
-                0m,
-                0m),
+            personal.Component,
         };
         var anomalies = FindAnomalies(candidate, sevenDay, thirtyDay, baseline);
         var basePoints = Round(components.Sum(component => component.AwardedPoints));
@@ -252,11 +290,110 @@ public sealed class OpportunityScoreService : IOpportunityScoreService
                 basePoints,
                 appliedPenalty,
                 confidence,
-                OpportunityPersonalEvidenceState.NotYetAvailable,
+                personal.Evidence.State,
                 components,
-                anomalies),
+                anomalies,
+                personal.Evidence),
             candidate.ProfitScenario.NetProfit.Copper);
     }
+
+    private PersonalScoreContribution Personal(
+        PersonalItemTurnoverIntelligence? personal,
+        DateTimeOffset asOfUtc)
+    {
+        const string CompletionRateLimitation =
+            "Retained data has no trustworthy cancellation or failed-order denominator, so no completion rate is inferred.";
+        if (personal is null)
+        {
+            return NoPersonal(OpportunityPersonalEvidenceState.NoHistory, null, null, null, null, null,
+                CompletionRateLimitation);
+        }
+
+        var metrics = personal.FullyKnownMetrics;
+        if (personal.Status == PersonalTurnoverEvidenceStatus.InsufficientCoverage)
+        {
+            return NoPersonal(OpportunityPersonalEvidenceState.InsufficientCoverage, metrics, personal.LatestKnownBasisCompletionAtUtc,
+                personal.RealizedRoiDistribution, null, null, CompletionRateLimitation);
+        }
+        // The turnover projection labels evidence using its own default policy. The score policy owns
+        // its minimum-sample and maximum-age gates, so configured score-policy changes can evaluate
+        // complete raw evidence rather than being locked out by those default labels.
+        if (metrics is null || personal.RealizedRoiDistribution is null ||
+            metrics.RealizedProfitPerDay is null || metrics.CapitalTurns is null ||
+            personal.LatestKnownBasisCompletionAtUtc is null)
+        {
+            var insufficientState = personal.Status == PersonalTurnoverEvidenceStatus.InsufficientSamples
+                ? OpportunityPersonalEvidenceState.InsufficientSamples
+                : OpportunityPersonalEvidenceState.InsufficientMetrics;
+            return NoPersonal(insufficientState, metrics, personal.LatestKnownBasisCompletionAtUtc,
+                personal.RealizedRoiDistribution, null, null, CompletionRateLimitation);
+        }
+        if (metrics.KnownBasisSampleCount < policy.PersonalMinimumKnownBasisSamples)
+        {
+            return NoPersonal(OpportunityPersonalEvidenceState.InsufficientSamples, metrics, personal.LatestKnownBasisCompletionAtUtc,
+                personal.RealizedRoiDistribution, metrics.RealizedProfitPerDay, null, CompletionRateLimitation);
+        }
+        if (asOfUtc - personal.LatestKnownBasisCompletionAtUtc.Value > policy.PersonalMaximumEvidenceAge)
+        {
+            return NoPersonal(OpportunityPersonalEvidenceState.Stale, metrics, personal.LatestKnownBasisCompletionAtUtc,
+                personal.RealizedRoiDistribution, metrics.RealizedProfitPerDay, null, CompletionRateLimitation);
+        }
+        if (!TryRate(metrics.RealizedProfitPerDay, out var profitPerDay) ||
+            !TryTurnsPerDay(metrics.CapitalTurns, metrics.MeasuredDuration, out var capitalTurnsPerDay))
+        {
+            return NoPersonal(OpportunityPersonalEvidenceState.InsufficientMetrics,
+                metrics, personal.LatestKnownBasisCompletionAtUtc, personal.RealizedRoiDistribution,
+                metrics.RealizedProfitPerDay, null, CompletionRateLimitation);
+        }
+
+        var roi = Normalize(personal.RealizedRoiDistribution.MedianBasisPoints, policy.PersonalRoiNormalizationCeilingBasisPoints);
+        var profit = NormalizeSigned(profitPerDay, policy.PersonalProfitPerDayNormalizationCeilingCopper);
+        var turns = Normalize(capitalTurnsPerDay, policy.PersonalCapitalTurnsPerDayNormalizationCeiling);
+        var holding = 100m - Normalize(metrics.AverageHoldingDuration.Ticks, policy.PersonalHoldingDurationCeiling.Ticks);
+        var normalized = Round((roi * 0.4m) + (profit * 0.25m) + (turns * 0.25m) + (holding * 0.1m));
+        var awarded = Round(policy.PersonalEvidenceMaximumAbsolutePoints * (normalized - 50m) / 50m);
+        var component = new OpportunityScoreComponent(
+            OpportunityScoreComponentName.PersonalEvidence,
+            OpportunityScoreComponentState.Available,
+            normalized,
+            policy.PersonalEvidenceMaximumAbsolutePoints,
+            awarded);
+        return new PersonalScoreContribution(component, new OpportunityPersonalEvidence(
+            OpportunityPersonalEvidenceState.Supported,
+            metrics.KnownBasisSampleCount,
+            personal.LatestKnownBasisCompletionAtUtc,
+            personal.RealizedRoiDistribution,
+            metrics.RealizedProfitPerDay,
+            new ExactPersonalRate(
+                metrics.CapitalTurns.Numerator * TimeSpan.TicksPerDay,
+                metrics.CapitalTurns.Denominator * metrics.MeasuredDuration.Ticks),
+            metrics.AverageHoldingDuration,
+            CompletionRateLimitation));
+    }
+
+    private PersonalScoreContribution NoPersonal(
+        OpportunityPersonalEvidenceState state,
+        PersonalCapitalTurnoverMetrics? metrics,
+        DateTimeOffset? latestCompletionAtUtc,
+        PersonalRealizedRoiDistribution? roiDistribution,
+        ExactPersonalRate? profitPerDay,
+        ExactPersonalRate? capitalTurnsPerDay,
+        string completionRateLimitation) => new(
+        new OpportunityScoreComponent(
+            OpportunityScoreComponentName.PersonalEvidence,
+            OpportunityScoreComponentState.InsufficientData,
+            50m,
+            policy.PersonalEvidenceMaximumAbsolutePoints,
+            0m),
+        new OpportunityPersonalEvidence(
+            state,
+            metrics?.KnownBasisSampleCount,
+            latestCompletionAtUtc,
+            roiDistribution,
+            profitPerDay,
+            capitalTurnsPerDay,
+            metrics?.AverageHoldingDuration,
+            completionRateLimitation));
 
     private OpportunityScoreComponent Economics(LiveMarketScannerCandidate candidate)
     {
@@ -471,8 +608,44 @@ public sealed class OpportunityScoreService : IOpportunityScoreService
     }
 
     private static decimal Normalize(decimal value, decimal ceiling) => ClampPercent(value * 100m / ceiling);
+    private static decimal Normalize(long value, long ceiling) => Normalize((decimal)value, ceiling);
+    private static decimal NormalizeSigned(decimal value, decimal absoluteCeiling) =>
+        ClampPercent(50m + (Math.Clamp(value, -absoluteCeiling, absoluteCeiling) * 50m / absoluteCeiling));
     private static decimal ClampPercent(decimal value) => Math.Clamp(value, 0m, 100m);
     private static decimal Round(decimal value) => decimal.Round(value, 4, MidpointRounding.AwayFromZero);
+
+    private static bool TryRate(ExactPersonalRate rate, out decimal value)
+    {
+        try
+        {
+            value = (decimal)rate.Numerator / (decimal)rate.Denominator;
+            return true;
+        }
+        catch (OverflowException)
+        {
+            value = 0m;
+            return false;
+        }
+    }
+
+    private static bool TryTurnsPerDay(ExactPersonalRate capitalTurns, TimeSpan measuredDuration, out decimal value)
+    {
+        if (measuredDuration <= TimeSpan.Zero || !TryRate(capitalTurns, out var turns))
+        {
+            value = 0m;
+            return false;
+        }
+        try
+        {
+            value = turns * TimeSpan.TicksPerDay / measuredDuration.Ticks;
+            return true;
+        }
+        catch (OverflowException)
+        {
+            value = 0m;
+            return false;
+        }
+    }
 
     private static void Validate(OpportunityScoreCandidate input)
     {
@@ -513,6 +686,18 @@ public sealed class OpportunityScoreService : IOpportunityScoreService
         {
             throw new ArgumentException("Opportunity evidence is inconsistent or outside supported bounds.", nameof(input));
         }
+
+        if (input.PersonalEvidence is { } personal &&
+            (personal.ItemId != current.Item.ItemId ||
+             personal.LatestKnownBasisCompletionAtUtc is { } latest &&
+             (latest.Offset != TimeSpan.Zero || latest > input.History.AsOfUtc) ||
+             !HasValidMetrics(personal.Metrics) || !HasValidMetrics(personal.FullyKnownMetrics) ||
+             personal.RealizedRoiDistribution is { } distribution &&
+             (distribution.CompletedSaleCount <= 0 || distribution.MinimumBasisPoints > distribution.MedianBasisPoints ||
+              distribution.MedianBasisPoints > distribution.MaximumBasisPoints)))
+        {
+            throw new ArgumentException("Personal opportunity evidence is inconsistent or outside supported bounds.", nameof(input));
+        }
     }
 
     private static bool IsConsistentExecution(OrderBookExecutionScenario scenario, long visibleSideQuantity) =>
@@ -522,5 +707,10 @@ public sealed class OpportunityScoreService : IOpportunityScoreService
         scenario.RemainingQuantity == scenario.RequestedQuantity - scenario.FilledQuantity &&
         scenario.IsFullyFilled == (scenario.RemainingQuantity == 0);
 
+    private static bool HasValidMetrics(PersonalCapitalTurnoverMetrics? metrics) => metrics is null ||
+        (metrics.KnownBasisSampleCount >= 0 && metrics.MeasuredDuration >= TimeSpan.Zero &&
+         metrics.AverageHoldingDuration >= TimeSpan.Zero);
+
     private sealed record CalculatedOpportunity(OpportunityScore Score, long ModeledProfitCopper);
+    private sealed record PersonalScoreContribution(OpportunityScoreComponent Component, OpportunityPersonalEvidence Evidence);
 }

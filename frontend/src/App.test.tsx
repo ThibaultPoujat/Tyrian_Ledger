@@ -18,7 +18,17 @@ function recommendationAction(itemId: number, itemName: string, action = 'BUY', 
     itemId, itemName, quantity: 3, capital: { copper: '315' },
     prices: { currentOrderUnitPrice: source === 'buyOrder' ? { copper: '125' } : null, bestBuy: { copper: '99' }, lowestSell: { copper: '151' }, plannedBid: { copper: '100' }, plannedListPrice: { copper: '150' }, maximumBid: { copper: '110' } },
     economics: { acquisitionCost: { copper: '300' }, grossSaleValue: { copper: '450' }, listingFee: { copper: '23' }, exchangeFee: { copper: '45' }, netSaleProceeds: { copper: '382' }, netProfit: { copper: '82' }, totalCost: { copper: '323' }, roiDisplayPercent: '25.39%' },
-    score: { rank: itemId, totalPoints: 82, basePoints: 85, appliedPenaltyPoints: 3, components: [], anomalies: [] },
+    score: {
+      rank: itemId, totalPoints: 82, basePoints: 85, appliedPenaltyPoints: 3,
+      components: [{ name: 'personalEvidence', state: 'available', normalizedPercent: 80, maximumPoints: 15, awardedPoints: 9 }],
+      anomalies: [],
+      personalEvidence: {
+        state: 'supported', knownBasisSampleCount: 3, latestKnownBasisCompletionAtUtc: '2026-09-09T12:00:00Z',
+        realizedRoiSaleCount: 3, minimumRealizedRoiBasisPoints: 1200, medianRealizedRoiBasisPoints: 1800, maximumRealizedRoiBasisPoints: 2200,
+        realizedProfitPerDayNumerator: '9', realizedProfitPerDayDenominator: '1', capitalTurnsPerDayNumerator: '1', capitalTurnsPerDayDenominator: '2',
+        typicalHoldingDuration: '1.00:00:00', completionRateLimitation: 'No cancellation denominator is retained.',
+      },
+    },
     history: { confidence: 'strong', commonCutoffUtc: '2026-09-09T12:00:00Z', windows: [
       { durationDays: 7, isAvailable: true, rawObservationCount: 24, eligibleObservationCount: 22, observedSpanPercent: 91 },
       { durationDays: 30, isAvailable: true, rawObservationCount: 80, eligibleObservationCount: 75, observedSpanPercent: 88 },
@@ -694,6 +704,11 @@ describe('M14 local data controls', () => {
     fireEvent.click(within(primaryCard!).getByText('Review depth, history, score, and reasons'));
     expect(within(primaryCard!).getByRole('heading', { name: 'Retained history' })).toBeVisible();
     expect(within(primaryCard!).getByText(/7 days: 22\/24 eligible/)).toBeVisible();
+    expect(within(primaryCard!).getByText(/Personal evidence/)).toBeVisible();
+    expect(within(primaryCard!).getByText(/3 known-basis sales/)).toBeVisible();
+    expect(within(primaryCard!).getByText(/latest known-basis completion 2026-09-09T12:00:00Z/)).toBeVisible();
+    expect(within(primaryCard!).getByText(/Realized profit\/day: 9 \/ 1 copper\/day/)).toBeVisible();
+    expect(within(primaryCard!).getByText(/capital turns\/day: 1 \/ 2 turns\/day/)).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Show 1 more new opportunities' }));
     expect(screen.getByText('Sixth opportunity')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh actions' }));

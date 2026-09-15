@@ -37,6 +37,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
     private readonly FifoLotMatcher fifoLotMatcher = new();
     private readonly PrimaryRecommendationEconomicsCalculator economicsCalculator = new();
     private readonly OrderBookExecutionSimulator executionSimulator = new();
+    private readonly PersonalTurnoverCalculator turnoverCalculator = new();
 
     public PrimaryRecommendationService(
         IAccountPortfolioGateway accountPortfolioGateway,
@@ -92,6 +93,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             var coverage = await repository.GetHistoryCoverageAsync(profile, cancellationToken).ConfigureAwait(false);
             var storedTransactions = await repository.GetCompletedTransactionsAsync(profile, cancellationToken).ConfigureAwait(false);
             var currentOrders = await repository.GetLatestCurrentOrderSnapshotAsync(profile, cancellationToken).ConfigureAwait(false);
+            var currentOrderObservations = await repository.GetCurrentOrderObservationsAsync(profile, cancellationToken).ConfigureAwait(false);
             if (currentOrders is null)
             {
                 return PrimaryRecommendationResult.Unavailable(PrimaryRecommendationState.NotSynchronized, null, policies);
@@ -109,7 +111,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             local = new LocalSnapshot(
                 profile, currentOrders, fifo,
                 metadata.ToDictionary(value => value.ItemId, value => value.Name),
-                settings, sizingPolicy, policies);
+                settings, sizingPolicy, policies, coverage, storedTransactions, currentOrderObservations);
         }
 
         var sellQuantityByItem = local.CurrentOrders.Orders
@@ -150,6 +152,19 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         }
 
         var asOfUtc = RequireUtc(clock.UtcNow);
+        IReadOnlyDictionary<int, PersonalItemTurnoverIntelligence> personalByItem;
+        try
+        {
+            personalByItem = turnoverCalculator.Rebuild(new PersonalTurnoverRequest(
+                    asOfUtc, local.Profile.Id, local.HistoryCoverage, local.CompletedTransactions,
+                    local.CurrentOrderObservations))
+                .Items.ToDictionary(item => item.ItemId);
+        }
+        catch (Exception exception) when (exception is ArgumentException or OverflowException)
+        {
+            return PrimaryRecommendationResult.Unavailable(
+                PrimaryRecommendationState.EvidenceUnavailable, "inconsistent_personal_evidence", local.Policies);
+        }
         var allItemIds = scan.Candidates.Select(candidate => candidate.Item.ItemId)
             .Concat(local.CurrentOrders.Orders.Select(order => order.ItemId))
             .Concat(local.Fifo.OpenLots.Select(lot => lot.ItemId))
@@ -191,7 +206,8 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         try
         {
             scores = scoreService.Calculate(scan.Candidates.Select(candidate =>
-                new OpportunityScoreCandidate(candidate, historyByItem[candidate.Item.ItemId])).ToArray());
+                new OpportunityScoreCandidate(candidate, historyByItem[candidate.Item.ItemId],
+                    personalByItem.GetValueOrDefault(candidate.Item.ItemId))).ToArray());
         }
         catch (Exception exception) when (exception is ArgumentException or OverflowException)
         {
@@ -649,7 +665,22 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         currentOrder, new Money(candidate.BestBuy.UnitPriceInCopper), new Money(candidate.LowestSell.UnitPriceInCopper),
         candidate.PlannedBid, candidate.PlannedListPrice, candidate.MaximumBid);
     private static PrimaryRecommendationScore Score(OpportunityScore score) => new(
-        score.Rank, score.TotalPoints, score.BasePoints, score.AppliedPenaltyPoints, score.Components, score.Anomalies);
+        score.Rank, score.TotalPoints, score.BasePoints, score.AppliedPenaltyPoints, score.Components, score.Anomalies,
+        score.PersonalEvidence is null ? null : Personal(score.PersonalEvidence));
+    private static PrimaryRecommendationPersonalEvidence Personal(OpportunityPersonalEvidence evidence) => new(
+        evidence.State,
+        evidence.KnownBasisSampleCount,
+        evidence.LatestKnownBasisCompletionAtUtc,
+        evidence.RealizedRoiDistribution?.CompletedSaleCount,
+        evidence.RealizedRoiDistribution?.MinimumBasisPoints,
+        evidence.RealizedRoiDistribution?.MedianBasisPoints,
+        evidence.RealizedRoiDistribution?.MaximumBasisPoints,
+        evidence.RealizedProfitPerDay?.Numerator.ToString(CultureInfo.InvariantCulture),
+        evidence.RealizedProfitPerDay?.Denominator.ToString(CultureInfo.InvariantCulture),
+        evidence.CapitalTurnsPerDay?.Numerator.ToString(CultureInfo.InvariantCulture),
+        evidence.CapitalTurnsPerDay?.Denominator.ToString(CultureInfo.InvariantCulture),
+        evidence.TypicalHoldingDuration?.ToString("c", CultureInfo.InvariantCulture),
+        evidence.CompletionRateLimitation);
     private static PrimaryRecommendationHistory History(HistoricalMarketAnalytics history) => new(
         Confidence(history), history.AsOfUtc,
         history.Windows.Select(window => new PrimaryRecommendationHistoryWindow(
@@ -798,7 +829,10 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
     private sealed record LocalSnapshot(
         AccountProfile Profile, CurrentPersonalTradingPostOrderSnapshot CurrentOrders,
         FifoAccountingRebuild Fifo, IReadOnlyDictionary<int, string> Metadata,
-        UserSettings? Settings, PositionSizingPolicy SizingPolicy, PrimaryRecommendationPolicies Policies);
+        UserSettings? Settings, PositionSizingPolicy SizingPolicy, PrimaryRecommendationPolicies Policies,
+        PersonalTradingPostHistoryCoverage HistoryCoverage,
+        IReadOnlyList<StoredCompletedPersonalTradingPostTransaction> CompletedTransactions,
+        IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot> CurrentOrderObservations);
     private sealed record MarketModel(Money PlannedBid, Money PlannedList, Money MaximumBid);
     private sealed record LotSlice(Money UnitPrice, int Quantity);
 }
