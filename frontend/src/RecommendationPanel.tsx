@@ -174,14 +174,17 @@ function RecommendationCard({ record }: { record: RecommendationRecord }) {
 }
 
 function PersonalEvidence({ evidence }: { evidence: NonNullable<NonNullable<RecommendationRecord['score']>['personalEvidence']> }) {
-  const roi = evidence.medianRealizedRoiBasisPoints === null
-    ? 'unavailable'
-    : `${(evidence.medianRealizedRoiBasisPoints / 100).toFixed(2)}% median realized ROI`;
-  return <p>Personal evidence <strong>{humanize(evidence.state)}</strong>
-    {' · '}{evidence.knownBasisSampleCount ?? 0} known-basis sales
-    {' · '}{roi}
-    {' · '}typical hold {evidence.typicalHoldingDuration ?? 'unavailable'}.
-    {' '}{evidence.completionRateLimitation}</p>;
+  const basisPoints = (value: number | null) => value === null ? 'unavailable' : `${(value / 100).toFixed(2)}%`;
+  const fraction = (numerator: string | null, denominator: string | null, unit: string) =>
+    numerator === null || denominator === null ? 'unavailable' : `${numerator} / ${denominator} ${unit}`;
+  return <div className="personal-evidence">
+    <p>Personal evidence <strong>{humanize(evidence.state)}</strong>
+      {' · '}{evidence.knownBasisSampleCount ?? 0} known-basis sales
+      {' · '}latest known-basis completion {evidence.latestKnownBasisCompletionAtUtc ?? 'unavailable'}.</p>
+    <p>Realized ROI: minimum {basisPoints(evidence.minimumRealizedRoiBasisPoints)} · median {basisPoints(evidence.medianRealizedRoiBasisPoints)} · maximum {basisPoints(evidence.maximumRealizedRoiBasisPoints)}.</p>
+    <p>Realized profit/day: {fraction(evidence.realizedProfitPerDayNumerator, evidence.realizedProfitPerDayDenominator, 'copper/day')} · capital turns/day: {fraction(evidence.capitalTurnsPerDayNumerator, evidence.capitalTurnsPerDayDenominator, 'turns/day')} · typical hold {evidence.typicalHoldingDuration ?? 'unavailable'}.</p>
+    <p>{evidence.completionRateLimitation}</p>
+  </div>;
 }
 
 function isRecommendationResponse(value: unknown): value is RecommendationResponse {

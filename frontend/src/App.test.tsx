@@ -706,6 +706,9 @@ describe('M14 local data controls', () => {
     expect(within(primaryCard!).getByText(/7 days: 22\/24 eligible/)).toBeVisible();
     expect(within(primaryCard!).getByText(/Personal evidence/)).toBeVisible();
     expect(within(primaryCard!).getByText(/3 known-basis sales/)).toBeVisible();
+    expect(within(primaryCard!).getByText(/latest known-basis completion 2026-09-09T12:00:00Z/)).toBeVisible();
+    expect(within(primaryCard!).getByText(/Realized profit\/day: 9 \/ 1 copper\/day/)).toBeVisible();
+    expect(within(primaryCard!).getByText(/capital turns\/day: 1 \/ 2 turns\/day/)).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Show 1 more new opportunities' }));
     expect(screen.getByText('Sixth opportunity')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh actions' }));

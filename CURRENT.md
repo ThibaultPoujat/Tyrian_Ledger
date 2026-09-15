@@ -177,12 +177,16 @@ consumes this output. Source timestamps and polling observations remain
 distinct, and no polling instant or disappearance is presented as an exact fill
 timestamp. No VERIFY entries changed.
 
-TKT-M20-02 / #90 is implemented and pending the required fresh Sol XHigh
-review in Draft PR #125: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/125.
+TKT-M20-02 / #90 has its requested Sol review corrections implemented and is
+pending the required targeted fresh Sol XHigh re-review in Draft PR #125:
+https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/125.
 It adds a version-two deterministic opportunity score
 with an item-scoped personal component bounded to plus or minus 15 points.
 Only sufficiently sampled, recent, fully known-basis realized sales contribute;
 no/weak/stale/insufficient evidence remains an explicit zero contribution.
+The score policy now evaluates complete raw evidence against its own configured
+sample/recency gates, so deliberate policy changes can relax either default
+turnover label without admitting incomplete-cost evidence.
 The component exposes its realized ROI min/median/max distribution, exact
 profit/day and capital-turns/day rates, typical holding duration, sample count,
 and recency. It deliberately does not fabricate a completion rate because

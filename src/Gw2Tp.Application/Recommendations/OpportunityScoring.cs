@@ -310,30 +310,22 @@ public sealed class OpportunityScoreService : IOpportunityScoreService
         }
 
         var metrics = personal.FullyKnownMetrics;
-        var state = personal.Status switch
+        if (personal.Status == PersonalTurnoverEvidenceStatus.InsufficientCoverage)
         {
-            PersonalTurnoverEvidenceStatus.InsufficientCoverage => OpportunityPersonalEvidenceState.InsufficientCoverage,
-            PersonalTurnoverEvidenceStatus.InsufficientSamples => OpportunityPersonalEvidenceState.InsufficientSamples,
-            PersonalTurnoverEvidenceStatus.InsufficientMetrics => OpportunityPersonalEvidenceState.InsufficientMetrics,
-            PersonalTurnoverEvidenceStatus.Stale => OpportunityPersonalEvidenceState.Stale,
-            PersonalTurnoverEvidenceStatus.Supported => OpportunityPersonalEvidenceState.Supported,
-            _ => throw new ArgumentOutOfRangeException(nameof(personal)),
-        };
-        if (state == OpportunityPersonalEvidenceState.InsufficientCoverage)
-        {
-            return NoPersonal(state, metrics, personal.LatestKnownBasisCompletionAtUtc,
+            return NoPersonal(OpportunityPersonalEvidenceState.InsufficientCoverage, metrics, personal.LatestKnownBasisCompletionAtUtc,
                 personal.RealizedRoiDistribution, null, null, CompletionRateLimitation);
         }
-        if (state == OpportunityPersonalEvidenceState.InsufficientSamples)
-        {
-            return NoPersonal(state, metrics, personal.LatestKnownBasisCompletionAtUtc,
-                personal.RealizedRoiDistribution, metrics?.RealizedProfitPerDay, null, CompletionRateLimitation);
-        }
-        if (state == OpportunityPersonalEvidenceState.InsufficientMetrics || metrics is null || personal.RealizedRoiDistribution is null ||
+        // The turnover projection labels evidence using its own default policy. The score policy owns
+        // its minimum-sample and maximum-age gates, so configured score-policy changes can evaluate
+        // complete raw evidence rather than being locked out by those default labels.
+        if (metrics is null || personal.RealizedRoiDistribution is null ||
             metrics.RealizedProfitPerDay is null || metrics.CapitalTurns is null ||
             personal.LatestKnownBasisCompletionAtUtc is null)
         {
-            return NoPersonal(OpportunityPersonalEvidenceState.InsufficientMetrics, metrics, personal.LatestKnownBasisCompletionAtUtc,
+            var insufficientState = personal.Status == PersonalTurnoverEvidenceStatus.InsufficientSamples
+                ? OpportunityPersonalEvidenceState.InsufficientSamples
+                : OpportunityPersonalEvidenceState.InsufficientMetrics;
+            return NoPersonal(insufficientState, metrics, personal.LatestKnownBasisCompletionAtUtc,
                 personal.RealizedRoiDistribution, null, null, CompletionRateLimitation);
         }
         if (metrics.KnownBasisSampleCount < policy.PersonalMinimumKnownBasisSamples)
@@ -341,18 +333,15 @@ public sealed class OpportunityScoreService : IOpportunityScoreService
             return NoPersonal(OpportunityPersonalEvidenceState.InsufficientSamples, metrics, personal.LatestKnownBasisCompletionAtUtc,
                 personal.RealizedRoiDistribution, metrics.RealizedProfitPerDay, null, CompletionRateLimitation);
         }
-        if (asOfUtc - personal.LatestKnownBasisCompletionAtUtc.Value > policy.PersonalMaximumEvidenceAge ||
-            state == OpportunityPersonalEvidenceState.Stale)
+        if (asOfUtc - personal.LatestKnownBasisCompletionAtUtc.Value > policy.PersonalMaximumEvidenceAge)
         {
             return NoPersonal(OpportunityPersonalEvidenceState.Stale, metrics, personal.LatestKnownBasisCompletionAtUtc,
                 personal.RealizedRoiDistribution, metrics.RealizedProfitPerDay, null, CompletionRateLimitation);
         }
-        if (state != OpportunityPersonalEvidenceState.Supported ||
-            !TryRate(metrics.RealizedProfitPerDay, out var profitPerDay) ||
+        if (!TryRate(metrics.RealizedProfitPerDay, out var profitPerDay) ||
             !TryTurnsPerDay(metrics.CapitalTurns, metrics.MeasuredDuration, out var capitalTurnsPerDay))
         {
-            return NoPersonal(state == OpportunityPersonalEvidenceState.Supported
-                    ? OpportunityPersonalEvidenceState.InsufficientMetrics : state,
+            return NoPersonal(OpportunityPersonalEvidenceState.InsufficientMetrics,
                 metrics, personal.LatestKnownBasisCompletionAtUtc, personal.RealizedRoiDistribution,
                 metrics.RealizedProfitPerDay, null, CompletionRateLimitation);
         }

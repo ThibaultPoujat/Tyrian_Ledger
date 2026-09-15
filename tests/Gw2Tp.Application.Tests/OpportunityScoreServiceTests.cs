@@ -353,14 +353,20 @@ public sealed class OpportunityScoreServiceTests
     [Fact]
     public void Strong_repeatable_personal_market_can_outrank_higher_snapshot_roi_slower_market()
     {
-        var higherSnapshotRoi = Input(1, 100, 200, 100, 20, 5, 5, 10, History(1, true, true, StableSummary()));
+        var higherSnapshotRoi = Input(1, 100, 200, 100, 20, 5, 5, 10, History(1, true, true, StableSummary()),
+            personal: Personal(1, PersonalTurnoverEvidenceStatus.Supported, 5, AsOf, -2_000m, -500, 0, TimeSpan.FromDays(30)));
         var repeatable = Input(2, 100, 150, 100, 20, 5, 5, 10, History(2, true, true, StableSummary()),
             personal: Personal(2, PersonalTurnoverEvidenceStatus.Supported, 5, AsOf, 3_000m, 1_000, 1, TimeSpan.FromDays(1)));
 
         var scores = new OpportunityScoreService().Calculate([higherSnapshotRoi, repeatable]);
 
         Assert.Equal([2, 1], scores.Select(score => score.ItemId));
+        Assert.True(higherSnapshotRoi.Current.ModeledRoi.CompareTo(repeatable.Current.ModeledRoi) > 0);
+        Assert.Equal(OpportunityPersonalEvidenceState.Supported, scores.Single(score => score.ItemId == 1).PersonalEvidenceState);
+        Assert.Equal(OpportunityPersonalEvidenceState.Supported, scores.Single(score => score.ItemId == 2).PersonalEvidenceState);
         Assert.True(Component(scores[0], OpportunityScoreComponentName.PersonalEvidence).AwardedPoints > 0m);
+        Assert.True(Component(scores.Single(score => score.ItemId == 2), OpportunityScoreComponentName.PersonalEvidence).AwardedPoints >
+            Component(scores.Single(score => score.ItemId == 1), OpportunityScoreComponentName.PersonalEvidence).AwardedPoints);
         Assert.InRange(Component(scores[0], OpportunityScoreComponentName.PersonalEvidence).AwardedPoints,
             -OpportunityScorePolicy.Default.PersonalEvidenceMaximumAbsolutePoints,
             OpportunityScorePolicy.Default.PersonalEvidenceMaximumAbsolutePoints);
@@ -380,6 +386,27 @@ public sealed class OpportunityScoreServiceTests
         Assert.Equal(OpportunityPersonalEvidenceState.InsufficientSamples, belowThreshold.PersonalEvidenceState);
         Assert.Equal(0m, Component(belowThreshold, OpportunityScoreComponentName.PersonalEvidence).AwardedPoints);
         Assert.InRange(Component(bounded, OpportunityScoreComponentName.PersonalEvidence).AwardedPoints, -5m, 5m);
+    }
+
+    [Fact]
+    public void Score_policy_can_relax_default_sample_and_recency_labels_when_raw_evidence_is_complete()
+    {
+        var defaultInsufficientSamples = Input(1, 100, 150, 100, 20, 5, 5, 10, History(1, true, true, StableSummary()),
+            personal: Personal(1, PersonalTurnoverEvidenceStatus.InsufficientSamples, 2, AsOf, 3_000m, 1_000, 1, TimeSpan.FromDays(1)));
+        var defaultStale = Input(2, 100, 150, 100, 20, 5, 5, 10, History(2, true, true, StableSummary()),
+            personal: Personal(2, PersonalTurnoverEvidenceStatus.Stale, 3, AsOf.AddDays(-91), 3_000m, 1_000, 1, TimeSpan.FromDays(1)));
+        var policy = OpportunityScorePolicy.Default with
+        {
+            PersonalMinimumKnownBasisSamples = 2,
+            PersonalMaximumEvidenceAge = TimeSpan.FromDays(120),
+        };
+
+        var scores = new OpportunityScoreService(policy).Calculate([defaultInsufficientSamples, defaultStale]).ToDictionary(score => score.ItemId);
+
+        Assert.Equal(OpportunityPersonalEvidenceState.Supported, scores[1].PersonalEvidenceState);
+        Assert.Equal(OpportunityPersonalEvidenceState.Supported, scores[2].PersonalEvidenceState);
+        Assert.NotEqual(0m, Component(scores[1], OpportunityScoreComponentName.PersonalEvidence).AwardedPoints);
+        Assert.NotEqual(0m, Component(scores[2], OpportunityScoreComponentName.PersonalEvidence).AwardedPoints);
     }
 
     [Fact]
