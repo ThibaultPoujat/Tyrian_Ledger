@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import './App.css';
 import ScannerPanel from './ScannerPanel';
 import RecommendationPanel from './RecommendationPanel';
+import InvestmentPanel from './InvestmentPanel';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
 type AccountConnectionState =
@@ -293,6 +294,7 @@ export default function App() {
               {syncStatus === 'failed' && <p role="alert">Synchronization could not be confirmed. Your existing local data was kept.</p>}
             </section>
             <DashboardPanel dashboard={dashboard} status={dashboardStatus} />
+            <InvestmentPanel refreshGeneration={localDataRefreshGeneration} />
             <ScannerPanel watchlistRefreshGeneration={localDataRefreshGeneration} />
             <LocalDataPanel onPersonalDataChanged={refreshLocalDataViews} />
           </section>

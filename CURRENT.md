@@ -196,9 +196,22 @@ strong repeatable personal results can outweigh a modest snapshot-ROI advantage
 within the fixed policy bound; no weights or rules self-modify. Partially
 unknown-basis sales remain visible in learning output but cannot affect ranking.
 
-After #90 review/delivery, the next valid implementation ticket is:
+TKT-M20-03 / #91 is implemented in PR #126:
+https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/126. It adds
+account-scoped durable investment positions with explicit known or unknown
+basis, staged target levels, immutable partial-exit history, and retained
+closed-position history separate from imported realized flip accounting. The
+local investment screen reports current full-depth gross/net liquidation,
+known-basis unrealized P&L, opportunity-cost context, retained historical
+price/supply evidence, and deterministic `HOLD`, `SELL PARTIAL`, or `SELL`
+target evidence without claiming appreciation or execution. Open positions are
+registered at the highest collection priority; a close removes only that source
+reason, leaving any watchlist or current-order reason intact. No VERIFY entries
+changed.
 
-**TKT-M20-03 / #91 - Track Investments and Staged Exit Targets.**
+The next valid implementation ticket is:
+
+**TKT-M21-01 / #92 - Add Account Inventory, Material, and Crafting-Capability Ingestion.**
 
 ## Known-good baseline
 

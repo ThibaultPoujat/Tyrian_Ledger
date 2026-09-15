@@ -29,7 +29,7 @@ public sealed class MarketHistoryPersistenceTests
         await database.Migrator.MigrateAsync();
         await database.Migrator.MigrateAsync();
 
-        Assert.Equal([1, 2, 3, 4, 5, 6], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
         Assert.Equal(
         [
             "market_order_book_levels",
