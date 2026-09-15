@@ -22,7 +22,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Migrator.MigrateAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3, 4, 5, 6], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
         Assert.Equal(
             [
                 "account_profiles",
@@ -30,6 +30,9 @@ public sealed class SqlitePersistenceIntegrationTests
                 "current_order_sync_batches",
                 "current_tp_order_observations",
                 "current_tp_orders",
+                "investment_position_exits",
+                "investment_position_targets",
+                "investment_positions",
                 "item_metadata",
                 "market_order_book_levels",
                 "market_order_book_snapshots",
@@ -52,7 +55,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await database.Migrator.MigrateAsync();
 
-        Assert.Equal([1, 2, 3, 4, 5, 6], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
         var stored = Assert.Single(await database.PersonalTradingPost.GetCompletedTransactionsAsync(account));
         Assert.Equal(transaction, stored.Transaction);
         Assert.Contains("last_sync_outcome", await database.GetAccountProfileColumnNamesAsync());
@@ -72,6 +75,33 @@ public sealed class SqlitePersistenceIntegrationTests
 
         var restarted = new SqliteWatchlistRepository(database.Factory, database.Gate);
         Assert.Equal([84], (await restarted.GetAllAsync()).Select(entry => entry.ItemId));
+    }
+
+    [Fact]
+    public async Task Investment_positions_preserve_partial_exit_history_unknown_basis_and_targets_across_restart()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", FirstObservedAtUtc);
+        var created = await database.Investments.CreateAsync(account, new CreateInvestmentPosition(
+            42, 10, 1_000, "Seasonal", "Festival", FirstObservedAtUtc, "Supply may change; this is not a guarantee.", null,
+            [new InvestmentTarget(0, 200, 4), new InvestmentTarget(1, 250, 6)]), FirstObservedAtUtc);
+
+        var partial = await database.Investments.RecordExitAsync(account, created.Id, 4, SecondObservedAtUtc, "First stage");
+        var unknown = await database.Investments.CreateAsync(account, new CreateInvestmentPosition(
+            84, 2, null, "Speculative", "Other", FirstObservedAtUtc, "Unknown basis stays explicit.", null, []), FirstObservedAtUtc);
+        var restarted = new SqliteInvestmentPositionRepository(database.Factory, database.Gate);
+
+        Assert.NotNull(partial);
+        Assert.Equal(6, partial.RemainingQuantity);
+        Assert.Equal(400, Assert.Single(partial.Exits).AllocatedBasisInCopper);
+        Assert.False(partial.IsClosed);
+        Assert.Equal([200, 250], partial.Targets.Select(target => target.UnitPriceInCopper));
+        Assert.Null((await restarted.GetAsync(account, unknown.Id))!.AcquisitionBasisInCopper);
+        var closed = await restarted.RecordExitAsync(account, created.Id, 6, SecondObservedAtUtc.AddMinutes(1), null);
+        Assert.True(closed!.IsClosed);
+        Assert.Equal(0, closed.RemainingQuantity);
+        Assert.Equal(2, closed.Exits.Count);
+        await database.Migrator.MigrateAndValidatePersistedDataAsync();
     }
 
     [Fact]
@@ -1095,7 +1125,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await using var backup = File.OpenRead(olderBackupPath);
         Assert.Equal(LocalDataRestoreOutcome.Restored, (await database.Recovery.RestoreAsync(backup)).Outcome);
-        Assert.Equal([1, 2, 3, 4, 5, 6], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
     }
 
     [Fact]
@@ -1146,7 +1176,7 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(1, await database.GetTableCountAsync("market_order_book_snapshots"));
         Assert.Equal(1, await database.GetTableCountAsync("market_order_book_levels"));
         Assert.Equal([84], (await database.Watchlist.GetAllAsync()).Select(entry => entry.ItemId));
-        Assert.Equal([1, 2, 3, 4, 5, 6], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
         Assert.True(File.Exists(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)));
         Assert.False(File.Exists(staleIncomingPath));
         Assert.False(File.Exists(staleDatabasePath));
@@ -1163,7 +1193,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Recovery.CleanupStaleRestoreArtifactsAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3, 4, 5, 6], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
     }
 
     private static CompletedPersonalTradingPostTransaction CompletedTransaction(
@@ -1274,6 +1304,7 @@ public sealed class SqlitePersistenceIntegrationTests
             ItemMetadata = new SqliteItemMetadataRepository(factory, Gate);
             UserSettings = new SqliteUserSettingsRepository(factory, Gate);
             Watchlist = new SqliteWatchlistRepository(factory, Gate);
+            Investments = new SqliteInvestmentPositionRepository(factory, Gate);
             History = new SqliteMarketHistoryRepository(factory, Gate);
             Recovery = new SqliteLocalDataRecoveryService(factory, Gate, OperationGate);
         }
@@ -1295,6 +1326,8 @@ public sealed class SqlitePersistenceIntegrationTests
         public SqliteUserSettingsRepository UserSettings { get; }
 
         public SqliteWatchlistRepository Watchlist { get; }
+
+        public SqliteInvestmentPositionRepository Investments { get; }
 
         public SqliteMarketHistoryRepository History { get; }
 

@@ -5,7 +5,7 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFactory)
 {
-    private const int LatestVersion = 6;
+    private const int LatestVersion = 7;
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> LatestSchemaColumns =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
@@ -66,6 +66,18 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             {
                 "id", "snapshot_id", "side", "level_ordinal", "unit_price_in_copper", "quantity", "listings",
             },
+            ["investment_positions"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "id", "account_profile_id", "item_id", "original_quantity", "acquisition_basis_in_copper", "strategy", "category", "opened_at_utc", "thesis", "notes", "is_closed", "created_at_utc", "updated_at_utc", "closed_at_utc",
+            },
+            ["investment_position_exits"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "id", "position_id", "quantity", "allocated_basis_in_copper", "exited_at_utc", "notes",
+            },
+            ["investment_position_targets"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "position_id", "ordinal", "unit_price_in_copper", "quantity",
+            },
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, SqliteColumnDefinition>> LatestColumnDefinitions =
@@ -83,6 +95,9 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["market_price_observations"] = Columns(("id", "INTEGER", false, 1), ("observed_at_utc", "TEXT", true, 0), ("item_id", "INTEGER", true, 0), ("highest_buy_price_in_copper", "INTEGER", true, 0), ("lowest_sell_price_in_copper", "INTEGER", true, 0), ("aggregate_buy_quantity", "INTEGER", true, 0), ("aggregate_sell_quantity", "INTEGER", true, 0), ("source_status", "INTEGER", true, 0), ("sampling_tier", "INTEGER", true, 0), ("sampling_policy_version", "INTEGER", true, 0)),
             ["market_order_book_snapshots"] = Columns(("id", "INTEGER", false, 1), ("observed_at_utc", "TEXT", true, 0), ("item_id", "INTEGER", true, 0), ("source_status", "INTEGER", true, 0), ("sampling_tier", "INTEGER", true, 0), ("sampling_policy_version", "INTEGER", true, 0)),
             ["market_order_book_levels"] = Columns(("id", "INTEGER", false, 1), ("snapshot_id", "INTEGER", true, 0), ("side", "INTEGER", true, 0), ("level_ordinal", "INTEGER", true, 0), ("unit_price_in_copper", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0), ("listings", "INTEGER", true, 0)),
+            ["investment_positions"] = Columns(("id", "INTEGER", false, 1), ("account_profile_id", "INTEGER", true, 0), ("item_id", "INTEGER", true, 0), ("original_quantity", "INTEGER", true, 0), ("acquisition_basis_in_copper", "INTEGER", false, 0), ("strategy", "TEXT", true, 0), ("category", "TEXT", true, 0), ("opened_at_utc", "TEXT", true, 0), ("thesis", "TEXT", true, 0), ("notes", "TEXT", false, 0), ("is_closed", "INTEGER", true, 0), ("created_at_utc", "TEXT", true, 0), ("updated_at_utc", "TEXT", true, 0), ("closed_at_utc", "TEXT", false, 0)),
+            ["investment_position_exits"] = Columns(("id", "INTEGER", false, 1), ("position_id", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0), ("allocated_basis_in_copper", "INTEGER", false, 0), ("exited_at_utc", "TEXT", true, 0), ("notes", "TEXT", false, 0)),
+            ["investment_position_targets"] = Columns(("position_id", "INTEGER", true, 1), ("ordinal", "INTEGER", true, 2), ("unit_price_in_copper", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0)),
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<SqliteIndexDefinition>> RequiredIndexes =
@@ -95,6 +110,8 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["market_price_observations"] = [new(null, true, ["item_id", "observed_at_utc"])],
             ["market_order_book_snapshots"] = [new(null, true, ["item_id", "observed_at_utc"])],
             ["market_order_book_levels"] = [new(null, true, ["snapshot_id", "side", "level_ordinal"])],
+            ["investment_positions"] = [new("ix_investment_positions_account_opened", false, ["account_profile_id", "is_closed", "opened_at_utc"])],
+            ["investment_position_targets"] = [new(null, true, ["position_id", "ordinal"])],
         };
 
     private static readonly IReadOnlyList<SqliteForeignKeyDefinition> RequiredForeignKeys =
@@ -106,6 +123,9 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         new("current_tp_order_observations", "account_profile_id", "account_profiles", "id"),
         new("current_tp_order_observations", "sync_batch_id", "current_order_sync_batches", "id"),
         new("market_order_book_levels", "snapshot_id", "market_order_book_snapshots", "id"),
+        new("investment_positions", "account_profile_id", "account_profiles", "id"),
+        new("investment_position_exits", "position_id", "investment_positions", "id"),
+        new("investment_position_targets", "position_id", "investment_positions", "id"),
     ];
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> RequiredCheckConstraints =
@@ -121,6 +141,9 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["market_price_observations"] = Checks("item_id>0", "highest_buy_price_in_copper>=0", "lowest_sell_price_in_copper>=0", "aggregate_buy_quantity>=0", "aggregate_sell_quantity>=0", "source_status=1", "sampling_tierbetween1and3", "sampling_policy_version>0"),
             ["market_order_book_snapshots"] = Checks("item_id>0", "source_status=1", "sampling_tierbetween1and3", "sampling_policy_version>0"),
             ["market_order_book_levels"] = Checks("snapshot_id>0", "sidein(1,2)", "level_ordinal>=0", "unit_price_in_copper>=0", "quantity>0", "listings>0"),
+            ["investment_positions"] = Checks("item_id>0", "original_quantity>0", "acquisition_basis_in_copper>=0", "length(strategy)>0", "length(category)>0", "length(thesis)>0", "is_closedin(0,1)"),
+            ["investment_position_exits"] = Checks("position_id>0", "quantity>0", "allocated_basis_in_copper>=0"),
+            ["investment_position_targets"] = Checks("position_id>0", "ordinal>=0", "unit_price_in_copper>0", "quantity>0"),
         };
 
     // Version 6 was briefly published with this stricter equivalent constraint.
@@ -309,6 +332,52 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             DROP INDEX IF EXISTS ix_market_price_observations_item_observed_at;
             DROP INDEX IF EXISTS ix_market_order_book_snapshots_item_observed_at;
             DROP INDEX IF EXISTS ix_market_order_book_levels_snapshot;
+            """),
+        new(
+            7,
+            "investment_position_tracking_schema",
+            """
+            CREATE TABLE investment_positions (
+                id INTEGER PRIMARY KEY,
+                account_profile_id INTEGER NOT NULL,
+                item_id INTEGER NOT NULL CHECK (item_id > 0),
+                original_quantity INTEGER NOT NULL CHECK (original_quantity > 0),
+                acquisition_basis_in_copper INTEGER NULL CHECK (acquisition_basis_in_copper >= 0),
+                strategy TEXT NOT NULL CHECK (length(strategy) > 0),
+                category TEXT NOT NULL CHECK (length(category) > 0),
+                opened_at_utc TEXT NOT NULL,
+                thesis TEXT NOT NULL CHECK (length(thesis) > 0),
+                notes TEXT NULL,
+                is_closed INTEGER NOT NULL CHECK (is_closed IN (0, 1)),
+                created_at_utc TEXT NOT NULL,
+                updated_at_utc TEXT NOT NULL,
+                closed_at_utc TEXT NULL,
+                CONSTRAINT fk_investment_positions_account FOREIGN KEY (account_profile_id)
+                    REFERENCES account_profiles(id) ON DELETE RESTRICT
+            );
+            CREATE INDEX ix_investment_positions_account_opened
+                ON investment_positions (account_profile_id, is_closed, opened_at_utc);
+
+            CREATE TABLE investment_position_exits (
+                id INTEGER PRIMARY KEY,
+                position_id INTEGER NOT NULL CHECK (position_id > 0),
+                quantity INTEGER NOT NULL CHECK (quantity > 0),
+                allocated_basis_in_copper INTEGER NULL CHECK (allocated_basis_in_copper >= 0),
+                exited_at_utc TEXT NOT NULL,
+                notes TEXT NULL,
+                CONSTRAINT fk_investment_position_exits_position FOREIGN KEY (position_id)
+                    REFERENCES investment_positions(id) ON DELETE RESTRICT
+            );
+
+            CREATE TABLE investment_position_targets (
+                position_id INTEGER NOT NULL CHECK (position_id > 0),
+                ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                unit_price_in_copper INTEGER NOT NULL CHECK (unit_price_in_copper > 0),
+                quantity INTEGER NOT NULL CHECK (quantity > 0),
+                CONSTRAINT fk_investment_position_targets_position FOREIGN KEY (position_id)
+                    REFERENCES investment_positions(id) ON DELETE RESTRICT,
+                PRIMARY KEY (position_id, ordinal)
+            );
             """),
     ];
 
@@ -725,6 +794,9 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["market_price_observations"] = $"id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR highest_buy_price_in_copper < 0 OR highest_buy_price_in_copper > {Int32Maximum} OR lowest_sell_price_in_copper < 0 OR lowest_sell_price_in_copper > {Int32Maximum} OR aggregate_buy_quantity < 0 OR aggregate_buy_quantity > {Int32Maximum} OR aggregate_sell_quantity < 0 OR aggregate_sell_quantity > {Int32Maximum} OR source_status <> 1 OR sampling_tier NOT BETWEEN 1 AND 3 OR sampling_policy_version <= 0 OR sampling_policy_version > {Int32Maximum}",
             ["market_order_book_snapshots"] = $"id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR source_status <> 1 OR sampling_tier NOT BETWEEN 1 AND 3 OR sampling_policy_version <= 0 OR sampling_policy_version > {Int32Maximum}",
             ["market_order_book_levels"] = $"id <= 0 OR snapshot_id <= 0 OR side NOT IN (1, 2) OR level_ordinal < 0 OR level_ordinal > {Int32Maximum} OR unit_price_in_copper < 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum} OR listings <= 0 OR listings > {Int32Maximum}",
+            ["investment_positions"] = $"id <= 0 OR account_profile_id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR original_quantity <= 0 OR original_quantity > {Int32Maximum} OR (acquisition_basis_in_copper IS NOT NULL AND (acquisition_basis_in_copper < 0 OR acquisition_basis_in_copper > {Int32Maximum})) OR trim(strategy) = '' OR trim(category) = '' OR trim(thesis) = '' OR is_closed NOT IN (0, 1) OR (is_closed = 0 AND closed_at_utc IS NOT NULL) OR (is_closed = 1 AND closed_at_utc IS NULL)",
+            ["investment_position_exits"] = $"id <= 0 OR position_id <= 0 OR quantity <= 0 OR quantity > {Int32Maximum} OR (allocated_basis_in_copper IS NOT NULL AND (allocated_basis_in_copper < 0 OR allocated_basis_in_copper > {Int32Maximum}))",
+            ["investment_position_targets"] = $"position_id <= 0 OR ordinal < 0 OR ordinal > {Int32Maximum} OR unit_price_in_copper <= 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum}",
             ["schema_migrations"] = "version <= 0 OR trim(name) = ''",
             ["user_settings"] = $"singleton_id <> 1 OR settings_version <= 0 OR settings_version > {Int32Maximum} OR (minimum_profit_in_copper IS NOT NULL AND (minimum_profit_in_copper < 0 OR minimum_profit_in_copper > {Int32Maximum})) OR (minimum_roi_basis_points IS NOT NULL AND (minimum_roi_basis_points < 0 OR minimum_roi_basis_points > 10000)) OR (cash_reserve_basis_points IS NOT NULL AND (cash_reserve_basis_points < 0 OR cash_reserve_basis_points > 10000))",
         };
