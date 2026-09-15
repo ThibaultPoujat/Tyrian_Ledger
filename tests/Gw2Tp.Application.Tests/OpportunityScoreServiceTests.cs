@@ -1,12 +1,14 @@
 using Gw2Tp.Analytics.Finance;
 using Gw2Tp.Analytics.MarketHistory;
 using Gw2Tp.Analytics.OrderBooks;
+using Gw2Tp.Application.Accounting;
 using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.MarketScanning;
 using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Domain.Finance;
+using System.Numerics;
 using Xunit;
 
 namespace Gw2Tp.Application.Tests;
@@ -73,7 +75,7 @@ public sealed class OpportunityScoreServiceTests
     }
 
     [Fact]
-    public void Score_exposes_named_bounded_components_policy_and_personal_placeholder()
+    public void Score_exposes_named_bounded_components_policy_and_no_history_personal_evidence()
     {
         var score = Assert.Single(new OpportunityScoreService().Calculate([
             Input(1, 1_000, 1_500, 100, 20, 5, 5, 10, History(1, true, true, StableSummary())),
@@ -82,14 +84,20 @@ public sealed class OpportunityScoreServiceTests
         Assert.Equal(OpportunityScorePolicy.CurrentVersion, score.PolicyVersion);
         Assert.Equal(Enum.GetValues<OpportunityScoreComponentName>(), score.Components.Select(component => component.Name));
         Assert.All(score.Components, component => Assert.InRange(component.NormalizedPercent, 0m, 100m));
-        Assert.All(score.Components, component => Assert.InRange(component.AwardedPoints, 0m, component.MaximumPoints));
+        Assert.All(score.Components.Where(component => component.Name != OpportunityScoreComponentName.PersonalEvidence),
+            component => Assert.InRange(component.AwardedPoints, 0m, component.MaximumPoints));
+        var personal = Assert.Single(score.Components, component => component.Name == OpportunityScoreComponentName.PersonalEvidence);
+        Assert.InRange(personal.AwardedPoints, -personal.MaximumPoints, personal.MaximumPoints);
         Assert.Equal(score.BasePoints, score.Components.Sum(component => component.AwardedPoints));
         Assert.InRange(score.TotalPoints, 0m, 100m);
         Assert.Equal(OpportunityHistoricalConfidence.Strong, score.HistoricalConfidence);
-        Assert.Equal(OpportunityPersonalEvidenceState.NotYetAvailable, score.PersonalEvidenceState);
-        var personal = Assert.Single(score.Components, component => component.Name == OpportunityScoreComponentName.PersonalEvidence);
-        Assert.Equal(OpportunityScoreComponentState.NotYetSupported, personal.State);
-        Assert.Equal(0m, personal.MaximumPoints);
+        Assert.Equal(OpportunityPersonalEvidenceState.NoHistory, score.PersonalEvidenceState);
+        Assert.Equal(OpportunityScoreComponentState.InsufficientData, personal.State);
+        Assert.Equal(15m, personal.MaximumPoints);
+        Assert.Equal(0m, personal.AwardedPoints);
+        Assert.NotNull(score.PersonalEvidence);
+        Assert.Equal("Retained data has no trustworthy cancellation or failed-order denominator, so no completion rate is inferred.",
+            score.PersonalEvidence!.CompletionRateLimitation);
     }
 
     [Fact]
@@ -307,6 +315,85 @@ public sealed class OpportunityScoreServiceTests
         Assert.Throws<ArgumentException>(() => new OpportunityScoreService().Calculate([falseFullFill]));
     }
 
+    [Fact]
+    public void Weak_and_stale_personal_evidence_have_zero_influence_with_explicit_states()
+    {
+        var weak = Input(1, 100, 150, 100, 20, 5, 5, 10, History(1, true, true, StableSummary()),
+            personal: Personal(1, PersonalTurnoverEvidenceStatus.InsufficientSamples, 2, AsOf, 3_000m, 1_000, 1, TimeSpan.FromDays(1)));
+        var stale = Input(2, 100, 150, 100, 20, 5, 5, 10, History(2, true, true, StableSummary()),
+            personal: Personal(2, PersonalTurnoverEvidenceStatus.Stale, 4, AsOf.AddDays(-91), 3_000m, 1_000, 1, TimeSpan.FromDays(1)));
+
+        var scores = new OpportunityScoreService().Calculate([weak, stale]).ToDictionary(score => score.ItemId);
+
+        Assert.Equal(OpportunityPersonalEvidenceState.InsufficientSamples, scores[1].PersonalEvidenceState);
+        Assert.Equal(OpportunityPersonalEvidenceState.Stale, scores[2].PersonalEvidenceState);
+        Assert.Equal(0m, Component(scores[1], OpportunityScoreComponentName.PersonalEvidence).AwardedPoints);
+        Assert.Equal(0m, Component(scores[2], OpportunityScoreComponentName.PersonalEvidence).AwardedPoints);
+    }
+
+    [Fact]
+    public void Supported_personal_evidence_is_bounded_decomposed_and_can_penalize_poor_turnover()
+    {
+        var poor = Input(1, 100, 150, 100, 20, 5, 5, 10, History(1, true, true, StableSummary()),
+            personal: Personal(1, PersonalTurnoverEvidenceStatus.Supported, 4, AsOf, -2_000m, -500, 0, TimeSpan.FromDays(30)));
+        var neutral = Input(2, 100, 150, 100, 20, 5, 5, 10, History(2, true, true, StableSummary()));
+
+        var scores = new OpportunityScoreService().Calculate([poor, neutral]).ToDictionary(score => score.ItemId);
+        var personal = Component(scores[1], OpportunityScoreComponentName.PersonalEvidence);
+
+        Assert.Equal(OpportunityPersonalEvidenceState.Supported, scores[1].PersonalEvidenceState);
+        Assert.Equal(OpportunityScoreComponentState.Available, personal.State);
+        Assert.InRange(personal.AwardedPoints, -OpportunityScorePolicy.Default.PersonalEvidenceMaximumAbsolutePoints, 0m);
+        Assert.True(scores[1].TotalPoints < scores[2].TotalPoints);
+        var evidence = Assert.IsType<OpportunityPersonalEvidence>(scores[1].PersonalEvidence);
+        Assert.Equal(4, Assert.IsType<PersonalRealizedRoiDistribution>(evidence.RealizedRoiDistribution).CompletedSaleCount);
+        Assert.NotNull(evidence.CapitalTurnsPerDay);
+    }
+
+    [Fact]
+    public void Strong_repeatable_personal_market_can_outrank_higher_snapshot_roi_slower_market()
+    {
+        var higherSnapshotRoi = Input(1, 100, 200, 100, 20, 5, 5, 10, History(1, true, true, StableSummary()));
+        var repeatable = Input(2, 100, 150, 100, 20, 5, 5, 10, History(2, true, true, StableSummary()),
+            personal: Personal(2, PersonalTurnoverEvidenceStatus.Supported, 5, AsOf, 3_000m, 1_000, 1, TimeSpan.FromDays(1)));
+
+        var scores = new OpportunityScoreService().Calculate([higherSnapshotRoi, repeatable]);
+
+        Assert.Equal([2, 1], scores.Select(score => score.ItemId));
+        Assert.True(Component(scores[0], OpportunityScoreComponentName.PersonalEvidence).AwardedPoints > 0m);
+        Assert.InRange(Component(scores[0], OpportunityScoreComponentName.PersonalEvidence).AwardedPoints,
+            -OpportunityScorePolicy.Default.PersonalEvidenceMaximumAbsolutePoints,
+            OpportunityScorePolicy.Default.PersonalEvidenceMaximumAbsolutePoints);
+    }
+
+    [Fact]
+    public void Personal_policy_threshold_and_absolute_weight_bound_are_enforced()
+    {
+        var candidate = Input(1, 100, 150, 100, 20, 5, 5, 10, History(1, true, true, StableSummary()),
+            personal: Personal(1, PersonalTurnoverEvidenceStatus.Supported, 3, AsOf, 3_000m, 1_000, 1, TimeSpan.FromDays(1)));
+        var thresholdPolicy = OpportunityScorePolicy.Default with { PersonalMinimumKnownBasisSamples = 4 };
+        var boundedPolicy = OpportunityScorePolicy.Default with { PersonalEvidenceMaximumAbsolutePoints = 5m };
+
+        var belowThreshold = Assert.Single(new OpportunityScoreService(thresholdPolicy).Calculate([candidate]));
+        var bounded = Assert.Single(new OpportunityScoreService(boundedPolicy).Calculate([candidate]));
+
+        Assert.Equal(OpportunityPersonalEvidenceState.InsufficientSamples, belowThreshold.PersonalEvidenceState);
+        Assert.Equal(0m, Component(belowThreshold, OpportunityScoreComponentName.PersonalEvidence).AwardedPoints);
+        Assert.InRange(Component(bounded, OpportunityScoreComponentName.PersonalEvidence).AwardedPoints, -5m, 5m);
+    }
+
+    [Fact]
+    public void Personal_contributions_are_deterministic_when_candidates_are_reordered()
+    {
+        var first = Input(1, 100, 150, 100, 20, 5, 5, 10, History(1, true, true, StableSummary()),
+            personal: Personal(1, PersonalTurnoverEvidenceStatus.Supported, 4, AsOf, 2_000m, 500, 1, TimeSpan.FromDays(2)));
+        var second = Input(2, 100, 160, 100, 20, 5, 5, 10, History(2, true, true, StableSummary()),
+            personal: Personal(2, PersonalTurnoverEvidenceStatus.Supported, 4, AsOf, 2_500m, 750, 1, TimeSpan.FromDays(1)));
+        var service = new OpportunityScoreService();
+
+        AssertScoresEqual(service.Calculate([first, second]), service.Calculate([second, first]));
+    }
+
     private static OpportunityScoreCandidate Input(
         int itemId,
         long plannedBid,
@@ -317,7 +404,8 @@ public sealed class OpportunityScoreServiceTests
         int intendedQuantity,
         int participationCap,
         HistoricalMarketAnalytics history,
-        bool hasPriceCliff = false)
+        bool hasPriceCliff = false,
+        PersonalItemTurnoverIntelligence? personal = null)
     {
         if (plannedBid is <= 1 or > int.MaxValue || plannedListPrice is <= 0 or >= int.MaxValue)
         {
@@ -367,7 +455,40 @@ public sealed class OpportunityScoreServiceTests
             new Money(bestBuyPrice),
             [],
             liquidity);
-        return new OpportunityScoreCandidate(current, history);
+        return new OpportunityScoreCandidate(current, history, personal);
+    }
+
+    private static PersonalItemTurnoverIntelligence Personal(
+        int itemId,
+        PersonalTurnoverEvidenceStatus status,
+        int samples,
+        DateTimeOffset latestCompletionAtUtc,
+        decimal medianRoiBasisPoints,
+        long profitPerDayCopper,
+        long capitalTurnsPerDay,
+        TimeSpan averageHoldingDuration)
+    {
+        const int measuredDays = 10;
+        var metrics = new PersonalCapitalTurnoverMetrics(
+            samples,
+            samples,
+            new Money(1_000),
+            new Money(profitPerDayCopper * measuredDays),
+            latestCompletionAtUtc.AddDays(-measuredDays),
+            latestCompletionAtUtc,
+            TimeSpan.FromDays(measuredDays),
+            averageHoldingDuration,
+            averageHoldingDuration,
+            new ExactPersonalRate(new BigInteger(profitPerDayCopper), BigInteger.One),
+            new ExactPersonalRate(new BigInteger(capitalTurnsPerDay * measuredDays), BigInteger.One));
+        return new PersonalItemTurnoverIntelligence(
+            itemId,
+            status,
+            latestCompletionAtUtc,
+            [], [], [], [],
+            metrics,
+            new PersonalRealizedRoiDistribution(samples, medianRoiBasisPoints, medianRoiBasisPoints, medianRoiBasisPoints),
+            metrics);
     }
 
     private static IReadOnlyList<MarketOrderLevel> OrderLevels(

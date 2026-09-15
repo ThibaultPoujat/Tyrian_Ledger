@@ -125,6 +125,18 @@ public sealed record PersonalCapitalTurnoverMetrics(
     ExactPersonalRate? CapitalTurns);
 
 /// <summary>
+/// Distribution of whole, entirely known-basis completed sales for one item.
+/// Values are basis points of net realized ROI using acquisition basis plus the
+/// allocated listing fee as the cost denominator. Partial-unknown sales and
+/// zero-cost sales are excluded rather than made artificially favorable.
+/// </summary>
+public sealed record PersonalRealizedRoiDistribution(
+    int CompletedSaleCount,
+    decimal MinimumBasisPoints,
+    decimal MedianBasisPoints,
+    decimal MaximumBasisPoints);
+
+/// <summary>
 /// Evidence for one market. M20-02 must consume this item-scoped result rather
 /// than a portfolio aggregate so unrelated one-off markets cannot manufacture
 /// sufficient personal evidence.
@@ -137,7 +149,9 @@ public sealed record PersonalItemTurnoverIntelligence(
     IReadOnlyList<IntervalCensoredCompletion> IntervalCensoredCompletions,
     IReadOnlyList<UnknownOrderTiming> UnknownOrderTimings,
     IReadOnlyList<ObservedOrderQuantityReduction> ObservedQuantityReductions,
-    PersonalCapitalTurnoverMetrics? Metrics);
+    PersonalCapitalTurnoverMetrics? Metrics,
+    PersonalRealizedRoiDistribution? RealizedRoiDistribution = null,
+    PersonalCapitalTurnoverMetrics? FullyKnownMetrics = null);
 
 public sealed record PersonalTurnoverRequest(
     DateTimeOffset AsOfUtc,

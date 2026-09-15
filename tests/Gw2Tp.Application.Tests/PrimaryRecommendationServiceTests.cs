@@ -404,6 +404,31 @@ public sealed class PrimaryRecommendationServiceTests
         Assert.Equal(0, repository.MutationCount);
     }
 
+    [Fact]
+    public async Task Recommendation_score_uses_item_scoped_supported_personal_realized_evidence()
+    {
+        var repository = SupportedPersonalEvidenceRepository(itemId: 42);
+        var candidate = Candidate(42);
+        var service = CreateService(
+            SuccessfulPortfolio(100_000),
+            repository,
+            scanner: new StaticScanner([candidate]),
+            marketClient: new ScenarioMarketClient(listings: new Dictionary<int, MarketListing> { [42] = Listing(42, 100) }),
+            historyService: new FakeHistoryService(new Dictionary<int, HistoricalMarketAnalytics> { [42] = History(42, true, true) }));
+
+        var result = await service.GetAsync();
+
+        var score = Assert.Single(result.Actions, action => action.Source == PrimaryRecommendationSource.NewOpportunity).Score;
+        var personal = Assert.IsType<PrimaryRecommendationPersonalEvidence>(score!.PersonalEvidence);
+        Assert.Equal(OpportunityPersonalEvidenceState.Supported, personal.State);
+        Assert.Equal(3, personal.KnownBasisSampleCount);
+        Assert.Equal(3, personal.RealizedRoiSaleCount);
+        Assert.NotNull(personal.MedianRealizedRoiBasisPoints);
+        Assert.NotNull(personal.RealizedProfitPerDayNumerator);
+        Assert.NotNull(personal.CapitalTurnsPerDayNumerator);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
     private static PrimaryRecommendationService CreateService(
         IAccountPortfolioGateway portfolioGateway,
         FakeRepository repository,
@@ -458,6 +483,29 @@ public sealed class PrimaryRecommendationServiceTests
             Profile = Profile,
             Coverage = new PersonalTradingPostHistoryCoverage(Now.AddDays(-30), Now),
             Completed = [new StoredCompletedPersonalTradingPostTransaction(buy, Now.AddDays(-2), Now.AddDays(-2))],
+            CurrentOrders = new CurrentPersonalTradingPostOrderSnapshot(Now.AddMinutes(-1), []),
+        };
+    }
+
+    private static FakeRepository SupportedPersonalEvidenceRepository(int itemId)
+    {
+        var completed = new List<StoredCompletedPersonalTradingPostTransaction>();
+        for (var index = 0; index < 3; index++)
+        {
+            var buyCompletedAtUtc = Now.AddDays(-9 + (index * 2));
+            var sellCompletedAtUtc = buyCompletedAtUtc.AddDays(1);
+            var buy = new CompletedPersonalTradingPostTransaction(
+                100 + (index * 2), PersonalTradingPostSide.Buy, itemId, 100, 1, buyCompletedAtUtc, buyCompletedAtUtc);
+            var sell = new CompletedPersonalTradingPostTransaction(
+                101 + (index * 2), PersonalTradingPostSide.Sell, itemId, 200, 1, buyCompletedAtUtc, sellCompletedAtUtc);
+            completed.Add(new StoredCompletedPersonalTradingPostTransaction(buy, buyCompletedAtUtc, buyCompletedAtUtc));
+            completed.Add(new StoredCompletedPersonalTradingPostTransaction(sell, sellCompletedAtUtc, sellCompletedAtUtc));
+        }
+        return new FakeRepository
+        {
+            Profile = Profile,
+            Coverage = new PersonalTradingPostHistoryCoverage(Now.AddDays(-30), Now),
+            Completed = completed,
             CurrentOrders = new CurrentPersonalTradingPostOrderSnapshot(Now.AddMinutes(-1), []),
         };
     }

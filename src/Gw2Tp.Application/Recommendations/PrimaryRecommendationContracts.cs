@@ -45,7 +45,22 @@ public sealed record PrimaryRecommendationPriceState(
     Money? PlannedBid, Money? PlannedListPrice, Money? MaximumBid);
 public sealed record PrimaryRecommendationScore(
     int Rank, decimal TotalPoints, decimal BasePoints, decimal AppliedPenaltyPoints,
-    IReadOnlyList<OpportunityScoreComponent> Components, IReadOnlyList<OpportunityScoreAnomaly> Anomalies);
+    IReadOnlyList<OpportunityScoreComponent> Components, IReadOnlyList<OpportunityScoreAnomaly> Anomalies,
+    PrimaryRecommendationPersonalEvidence? PersonalEvidence = null);
+public sealed record PrimaryRecommendationPersonalEvidence(
+    OpportunityPersonalEvidenceState State,
+    int? KnownBasisSampleCount,
+    DateTimeOffset? LatestKnownBasisCompletionAtUtc,
+    int? RealizedRoiSaleCount,
+    decimal? MinimumRealizedRoiBasisPoints,
+    decimal? MedianRealizedRoiBasisPoints,
+    decimal? MaximumRealizedRoiBasisPoints,
+    string? RealizedProfitPerDayNumerator,
+    string? RealizedProfitPerDayDenominator,
+    string? CapitalTurnsPerDayNumerator,
+    string? CapitalTurnsPerDayDenominator,
+    string? TypicalHoldingDuration,
+    string CompletionRateLimitation);
 
 public sealed record PrimaryRecommendationRecord(
     PrimaryRecommendationAction Action, PrimaryRecommendationSource Source,

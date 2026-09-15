@@ -197,7 +197,13 @@ public sealed class PersonalTurnoverCalculatorTests
         Assert.Equal(new Money(300), result.Metrics.MatchedAcquisitionBasis);
         Assert.NotNull(result.Metrics.RealizedProfitPerDay);
         Assert.NotNull(result.Metrics.CapitalTurns);
-        Assert.Equal(PersonalTurnoverEvidenceStatus.Supported, Assert.Single(result.Items).Status);
+        var item = Assert.Single(result.Items);
+        Assert.Equal(PersonalTurnoverEvidenceStatus.Supported, item.Status);
+        var distribution = Assert.IsType<PersonalRealizedRoiDistribution>(item.RealizedRoiDistribution);
+        Assert.Equal(3, distribution.CompletedSaleCount);
+        Assert.Equal(distribution.MinimumBasisPoints, distribution.MedianBasisPoints);
+        Assert.Equal(distribution.MedianBasisPoints, distribution.MaximumBasisPoints);
+        Assert.Equal(item.Metrics!.KnownBasisSampleCount, item.FullyKnownMetrics!.KnownBasisSampleCount);
     }
 
     [Fact]

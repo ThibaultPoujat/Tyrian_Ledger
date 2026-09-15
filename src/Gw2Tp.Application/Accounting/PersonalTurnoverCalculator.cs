@@ -287,6 +287,7 @@ public sealed class PersonalTurnoverCalculator
             var itemEvidenceMetrics = request.HistoryCoverage.StartUtc is null
                 ? null
                 : BuildMetrics(entirelyKnownItemAllocations, new HashSet<long>());
+            var roiDistribution = BuildRoiDistribution(entirelyKnownItemAllocations);
             return new PersonalItemTurnoverIntelligence(
                 itemId,
                 ItemStatus(request, itemEvidenceMetrics),
@@ -295,8 +296,41 @@ public sealed class PersonalTurnoverCalculator
                 censored.Where(value => value.ItemId == itemId).ToArray(),
                 unknown.Where(value => value.ItemId == itemId).ToArray(),
                 reductions.Where(value => value.ItemId == itemId).ToArray(),
-                itemMetrics);
+                itemMetrics,
+                roiDistribution,
+                itemEvidenceMetrics);
         }).ToArray();
+    }
+
+    private static PersonalRealizedRoiDistribution? BuildRoiDistribution(
+        IReadOnlyList<KnownBasisRealizedSaleAllocation> allocations)
+    {
+        var values = allocations
+            .GroupBy(value => value.Match.SellTransactionId)
+            .Select(group =>
+            {
+                var acquisitionBasis = Sum(group.Select(value => value.Match.AllocatedAcquisitionBasis));
+                var listingFees = Sum(group.Select(value => value.ListingFee));
+                var totalCost = acquisitionBasis + listingFees;
+                var profit = Sum(group.Select(value => value.NetProfit));
+                return totalCost.Copper <= 0
+                    ? (decimal?)null
+                    : decimal.Round(profit.Copper * 10_000m / totalCost.Copper, 4, MidpointRounding.AwayFromZero);
+            })
+            .Where(value => value is not null)
+            .Select(value => value!.Value)
+            .OrderBy(value => value)
+            .ToArray();
+        if (values.Length == 0 || values.Length != allocations.Select(value => value.Match.SellTransactionId).Distinct().Count())
+        {
+            return null;
+        }
+
+        var middle = values.Length / 2;
+        var median = values.Length % 2 == 0
+            ? decimal.Round((values[middle - 1] + values[middle]) / 2m, 4, MidpointRounding.AwayFromZero)
+            : values[middle];
+        return new PersonalRealizedRoiDistribution(values.Length, values[0], median, values[^1]);
     }
 
     private static PersonalTurnoverEvidenceStatus ItemStatus(PersonalTurnoverRequest request, PersonalCapitalTurnoverMetrics? metrics) =>
