@@ -165,7 +165,9 @@ explicit insufficient-metrics evidence. Average holding duration is weighted by
 allocated acquisition basis, and disappearance detection checks only the final
 retained observation rather than rescanning immutable history per order.
 An order identifier that disappears from a complete snapshot and later
-reappears is explicit unknown evidence rather than bridged partial behavior.
+reappears is explicit unknown evidence rather than bridged partial behavior,
+while quantity reductions observed within each contiguous snapshot run remain
+independent partial evidence.
 Quantity reductions are retained as independent partial behavior even without
 completed history, while a censored-confirmation flag only reflects observations
 through the confirmation boundary. Historical observation-only items retain
@@ -185,14 +187,14 @@ Ranking.**
 TKT-M20-01 local validation on 2026-09-15 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused personal turnover and dashboard suites: 29 tests passed;
-- full .NET regression suite: 462 tests passed (4 Domain, 21 Analytics, 222
+- focused personal turnover and dashboard suites: 30 tests passed;
+- full .NET regression suite: 463 tests passed (4 Domain, 21 Analytics, 223
   Application, 172 Infrastructure, and 43 Web);
 - React: 24 component tests passed and the production build succeeded;
 - Playwright: 15 tests passed across Chromium, Firefox, and WebKit with no
   external request;
 - CI workflow contracts: 3 tests passed;
-- Gitleaks: 313 reachable commits scanned with no leaks.
+- Gitleaks: 314 reachable commits scanned with no leaks.
 
 PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/124 (NORMAL; CI green; separate owner-triggered review pending).
 

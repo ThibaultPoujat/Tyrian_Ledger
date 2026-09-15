@@ -85,6 +85,23 @@ public sealed class PersonalTurnoverCalculatorTests
     }
 
     [Fact]
+    public void Preserves_consecutive_reductions_before_a_snapshot_gap_without_creating_a_cross_gap_reduction()
+    {
+        var created = AsOfUtc.AddDays(-10);
+        var result = calculator.Rebuild(Request([], [
+            Snapshot(-6, Order(101, PersonalTradingPostSide.Buy, 42, 100, 5, created)),
+            Snapshot(-5, Order(101, PersonalTradingPostSide.Buy, 42, 100, 3, created)),
+            Snapshot(-4),
+            Snapshot(-3, Order(101, PersonalTradingPostSide.Buy, 42, 100, 2, created)),
+        ]));
+
+        var reduction = Assert.Single(result.ObservedQuantityReductions);
+        Assert.Equal(5, reduction.EarlierQuantity);
+        Assert.Equal(3, reduction.LaterQuantity);
+        Assert.Single(result.UnknownOrderTimings);
+    }
+
+    [Fact]
     public void Restricts_confirmation_window_reductions_to_observations_before_confirmation()
     {
         var created = AsOfUtc.AddDays(-10);

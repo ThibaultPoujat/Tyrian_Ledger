@@ -101,16 +101,24 @@ public sealed class PersonalTurnoverCalculator
 
         foreach (var (orderId, orderSnapshots) in snapshotsByOrder.OrderBy(value => value.Key))
         {
-            var first = orderSnapshots[0];
-            var last = orderSnapshots[^1];
-            if (HasObservationGap(orderSnapshots))
+            var contiguousRuns = SplitContiguousRuns(orderSnapshots);
+            foreach (var run in contiguousRuns)
             {
-                unknown.Add(new UnknownOrderTiming(orderId, first.Order.Side, first.Order.ItemId, last.ObservedAtUtc,
+                reductions.AddRange(BuildQuantityReductions(orderId, run));
+            }
+
+            if (contiguousRuns.Count > 1)
+            {
+                var discontinuityFirst = orderSnapshots[0];
+                var discontinuityLast = orderSnapshots[^1];
+                unknown.Add(new UnknownOrderTiming(orderId, discontinuityFirst.Order.Side, discontinuityFirst.Order.ItemId, discontinuityLast.ObservedAtUtc,
                     "The order disappeared from a complete snapshot before later reappearing under the same identifier."));
                 continue;
             }
 
-            reductions.AddRange(BuildQuantityReductions(orderId, orderSnapshots));
+            var contiguousSnapshots = contiguousRuns[0];
+            var first = contiguousSnapshots[0];
+            var last = contiguousSnapshots[^1];
             if (!completedById.TryGetValue(orderId, out var completed) ||
                 !MatchesCompletedOrder(first.Order, completed.Transaction))
             {
@@ -123,20 +131,20 @@ public sealed class PersonalTurnoverCalculator
                 continue;
             }
 
-            if (orderSnapshots.Any(value => !MatchesCompletedOrder(value.Order, completed.Transaction)))
+            if (contiguousSnapshots.Any(value => !MatchesCompletedOrder(value.Order, completed.Transaction)))
             {
                 unknown.Add(new UnknownOrderTiming(orderId, first.Order.Side, first.Order.ItemId, last.ObservedAtUtc,
                     "The same observed identifier has incompatible immutable order fields."));
                 continue;
             }
 
-            var lastBeforeConfirmation = orderSnapshots.LastOrDefault(value => value.ObservedAtUtc <= completed.FirstImportedAtUtc);
+            var lastBeforeConfirmation = contiguousSnapshots.LastOrDefault(value => value.ObservedAtUtc <= completed.FirstImportedAtUtc);
             if (lastBeforeConfirmation is null || lastBeforeConfirmation.ObservedAtUtc >= completed.FirstImportedAtUtc)
             {
                 continue;
             }
 
-            var observationsThroughConfirmation = orderSnapshots
+            var observationsThroughConfirmation = contiguousSnapshots
                 .Where(value => value.ObservedAtUtc <= completed.FirstImportedAtUtc)
                 .ToArray();
             censored.Add(new IntervalCensoredCompletion(
@@ -174,9 +182,25 @@ public sealed class PersonalTurnoverCalculator
         earlier.Side == later.Side && earlier.ItemId == later.ItemId &&
         earlier.UnitPriceInCopper == later.UnitPriceInCopper && earlier.CreatedAtUtc == later.CreatedAtUtc;
 
-    private static bool HasObservationGap(IReadOnlyList<ObservedOrder> observations) => observations
-        .Zip(observations.Skip(1), (earlier, later) => later.SnapshotIndex != earlier.SnapshotIndex + 1)
-        .Any(hasGap => hasGap);
+    private static IReadOnlyList<IReadOnlyList<ObservedOrder>> SplitContiguousRuns(
+        IReadOnlyList<ObservedOrder> observations)
+    {
+        var runs = new List<IReadOnlyList<ObservedOrder>>();
+        var currentRun = new List<ObservedOrder>();
+        foreach (var observation in observations)
+        {
+            if (currentRun.Count > 0 && observation.SnapshotIndex != currentRun[^1].SnapshotIndex + 1)
+            {
+                runs.Add(currentRun);
+                currentRun = [];
+            }
+
+            currentRun.Add(observation);
+        }
+
+        runs.Add(currentRun);
+        return runs;
+    }
 
     private static bool MatchesCompletedOrder(CurrentPersonalTradingPostOrder order, CompletedPersonalTradingPostTransaction completed) =>
         order.Side == completed.Side &&
