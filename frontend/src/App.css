@@ -109,6 +109,9 @@ p { color: var(--muted); line-height: 1.58; }
 .sync-button { margin-top: 1rem; min-height: 2.5rem; padding: 0.55rem 0.8rem; color: var(--ink); border: 1px solid var(--accent); border-radius: 0.35rem; background: var(--accent); font: inherit; font-weight: 800; cursor: pointer; }
 .sync-button:disabled { cursor: not-allowed; opacity: 0.55; }
 .dashboard-panel { display: grid; gap: 1.25rem; margin-top: 1.5rem; padding: 1.25rem; border: 1px solid rgb(147 229 215 / 30%); border-radius: 0.75rem; background: rgb(8 21 18 / 38%); }
+.dashboard-learning { display: grid; gap: 0.8rem; padding: 1rem; border: 1px solid rgb(244 204 120 / 34%); border-radius: 0.55rem; background: rgb(8 21 18 / 28%); }
+.dashboard-learning > div:first-child h3 { margin: 0.35rem 0 0; color: #fffdf6; }
+.dashboard-learning > p { margin: 0; }
 .recommendation-panel { display: grid; gap: 1rem; margin-top: 1.5rem; padding: 1.25rem; border: 1px solid rgb(244 204 120 / 52%); border-radius: 0.75rem; background: rgb(8 21 18 / 58%); }
 .recommendation-toolbar { display: flex; align-items: end; justify-content: space-between; gap: 1rem; }
 .recommendation-toolbar h2 { margin-top: 0.35rem; }

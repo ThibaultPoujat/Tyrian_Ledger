@@ -8,7 +8,7 @@ const notSynchronizedDashboard = {
   realizedWindows: [], openAcquisitionBasis: null, netLiquidationValue: null, unrealizedProfit: null,
   isOpenInventoryFullyValued: null, openInventory: [], currentBuyCapital: { copper: '0' },
   currentSellGrossValue: { copper: '0' }, currentSellNetValue: { copper: '0' }, currentOrders: [],
-  recentTrades: [], bestRealizedItems: [], worstRealizedItems: [],
+  recentTrades: [], bestRealizedItems: [], worstRealizedItems: [], personalLearning: null,
 };
 
 function recommendationAction(itemId: number, itemName: string, action = 'BUY', source = 'newOpportunity') {
@@ -544,6 +544,16 @@ describe('M14 local data controls', () => {
       currentOrders: [{ orderId: '1', side: 'buy', itemId: 42, itemName: 'Test item', quantity: 2, unitPrice: { copper: '50' }, marketComparisonStatus: 'available', currentMarketUnitPrice: { copper: '60' } }],
       recentTrades: [{ transactionId: '2', side: 'sell', itemName: 'Test item', quantity: 1, unitPrice: { copper: '200' }, completedAtUtc: '2026-09-08T12:00:00Z' }],
       bestRealizedItems: [{ itemId: 42, itemName: 'Test item', quantity: 1, netProfit: { copper: '70' } }], worstRealizedItems: [],
+      personalLearning: {
+        status: 'supported', timestampLimitation: 'Polling supplies bounds only.', minimumKnownBasisSamples: 3,
+        exactSourceTimestampCount: 6, intervalCensoredCompletionCount: 2, unknownOrderTimingCount: 1, observedQuantityReductionCount: 1,
+        fillTiming: [
+          { side: 'buy', exactSourceTimestampCount: 3, averageSourceDuration: '01:00:00', intervalCensoredCompletionCount: 1, averageConfirmationWindow: '02:00:00' },
+          { side: 'sell', exactSourceTimestampCount: 3, averageSourceDuration: '01:00:00', intervalCensoredCompletionCount: 1, averageConfirmationWindow: '02:00:00' },
+        ],
+        knownBasisSampleCount: 3, latestKnownBasisCompletionAtUtc: '2026-09-08T12:00:00Z', netProfit: { copper: '210' }, matchedAcquisitionBasis: { copper: '300' },
+        averageHoldingDuration: '01:00:00', realizedProfitPerDay: { numerator: '21000', denominator: '100' }, capitalTurns: { numerator: '150', denominator: '100' },
+      },
     };
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
@@ -561,6 +571,10 @@ describe('M14 local data controls', () => {
     expect(screen.getAllByText('70c', { exact: false })).not.toHaveLength(0);
     expect(screen.getByText('2 sold without known basis, excluded.')).toBeVisible();
     expect(screen.getByText('Insufficient coverage')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Fill time and capital turnover' })).toBeVisible();
+    expect(screen.getByText('Polling supplies bounds only.')).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Buy timing' })).toBeVisible();
+    expect(screen.getByText('210.00 c/day')).toBeVisible();
     expect(screen.getByRole('columnheader', { name: 'Current market' })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Synchronize Trading Post data' }));
     expect(await screen.findByRole('heading', { name: 'Performance and current orders' })).toBeVisible();

@@ -89,6 +89,11 @@ public sealed class PersonalDashboardServiceTests
         Assert.Equal("250", result.CurrentOrders.Single(order => order.Side == PersonalTradingPostSide.Sell).CurrentMarketUnitPrice!.Copper);
         Assert.All(result.RecentTrades, trade => Assert.Equal("Test item", trade.ItemName));
         Assert.Equal("70", Assert.Single(result.BestRealizedItems).NetProfit.Copper);
+        Assert.NotNull(result.PersonalLearning);
+        Assert.Equal(PersonalTurnoverEvidenceStatus.InsufficientSamples, result.PersonalLearning!.Status);
+        Assert.Contains("polling", result.PersonalLearning.TimestampLimitation, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("00:00:00", result.PersonalLearning.FillTiming.Single(value => value.Side == PersonalTradingPostSide.Buy).AverageSourceDuration);
+        Assert.Equal("00:00:00", result.PersonalLearning.FillTiming.Single(value => value.Side == PersonalTradingPostSide.Sell).AverageSourceDuration);
     }
 
     [Fact]

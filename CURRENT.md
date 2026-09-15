@@ -131,8 +131,8 @@ depth, reserve breach/shortfall is explicit result-level evidence, and every
 binding cap remains structured for M19-04 orchestration. No VERIFY entries
 changed.
 
-TKT-M19-04 / #88 is implemented in Draft PR #123. The primary “What should I
-do?” workflow now combines authenticated Coin, synchronized orders and FIFO
+TKT-M19-04 / #88 merged in PR #123 after the required SOL-GATED review. The
+primary “What should I do?” workflow combines authenticated Coin, synchronized orders and FIFO
 inventory, live depth, retained history, opportunity score, and conservative
 position sizing into explicit attention-first manual actions. Its protected
 read-only API returns exact full-quantity modeled economics, max-bid and
@@ -149,32 +149,39 @@ consumed, preserve version-one conservative one-unit `TotalCost` sizing while
 reconciling displayed remaining cash to exact returned full-quantity economics,
 fail closed when an exposure reduction has no safe depth, and cover the composed
 recommendation paths including the 201st affordable candidate.
-VERIFY-005 and VERIFY-013 remain OPEN. The PR remains SOL-GATED and Draft pending
-the owner-triggered targeted fresh Sol XHigh re-review.
+VERIFY-005 and VERIFY-013 remain OPEN.
 
-After the #88 SOL-GATED review/merge handoff, the next valid implementation
-ticket is:
+TKT-M20-01 / #89 is implemented locally and awaiting delivery. It derives
+reproducible personal source-timestamp order durations, strictly bounded local
+confirmation windows, unknown disappearances, observed quantity reductions,
+known-basis capital lock duration, realized profit/day, and capital turns from
+retained data only. The dashboard labels insufficient coverage, low samples,
+and stale evidence explicitly; no recommendation score consumes this output.
+Source timestamps and polling observations remain distinct, and no polling
+instant or disappearance is presented as an exact fill timestamp. No VERIFY
+entries changed.
 
-**TKT-M20-01 / #89 - Derive personal fill-time and capital-turnover
-intelligence.**
+After #89 delivery, the next valid implementation ticket is:
+
+**TKT-M20-02 / #90 - Integrate Personal Realized Performance into Market
+Ranking.**
 
 ## Known-good baseline
 
-TKT-M19-04 local validation on 2026-09-15 reported:
+TKT-M20-01 local validation on 2026-09-15 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused scanner/sizing/recommendation suite: 82 tests passed; focused
-  wallet/readiness and protected API suites passed;
-- full .NET regression suite: 441 tests passed (4 Domain, 21 Analytics, 201
+- focused personal turnover, dashboard, and protected API suites: 254 tests
+  passed (211 Application and 43 Web);
+- full .NET regression suite: 451 tests passed (4 Domain, 21 Analytics, 211
   Application, 172 Infrastructure, and 43 Web);
 - React: 24 component tests passed and the production build succeeded;
-- Playwright: 15 tests passed across Chromium, Firefox, and WebKit, including
-  the mocked two-minute primary review journey with no external request;
+- Playwright: 15 tests passed across Chromium, Firefox, and WebKit with no
+  external request;
 - CI workflow contracts: 3 tests passed;
-- retired-runtime audit: only expected negative assertions matched;
 - Gitleaks: 307 reachable commits scanned with no leaks.
 
-PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/123 (Draft; pending owner-triggered targeted fresh Sol XHigh re-review)
+PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/123 (merged); #89 delivery PR pending.
 
 ## Important transition warning
 

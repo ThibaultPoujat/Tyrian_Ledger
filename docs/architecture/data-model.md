@@ -101,6 +101,13 @@ Conceptual fields:
 Current state may be materialized separately, but observation history becomes
 useful for later fill-time estimation.
 
+M20 derives no new durable timing state from these rows. Its deterministic
+rebuild retains source timestamp durations separately from local
+interval-censored confirmation windows: the latter run from the last snapshot
+that contained a strictly compatible order to the completed event's first local
+import. A later snapshot that omits an order remains unknown unless compatible
+completed-history evidence confirms it; it is never converted into a fill.
+
 ### ItemMetadata
 
 Normalized public metadata needed for names/display/tradability decisions.
