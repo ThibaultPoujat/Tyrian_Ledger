@@ -29,11 +29,12 @@ public sealed class PersonalTurnoverCalculator
                 value.Transaction.CompletedAtUtc,
                 value.Transaction.CompletedAtUtc - value.Transaction.CreatedAtUtc))
             .ToArray();
-        var (censored, unknown) = BuildObservationEvidence(request);
+        var (censored, unknown, reductions) = BuildObservationEvidence(request);
 
         if (request.HistoryCoverage.StartUtc is null || request.HistoryCoverage.EndUtc is null)
         {
-            return Result(PersonalTurnoverEvidenceStatus.InsufficientCoverage, null, exactDurations, censored, unknown);
+            var itemsWithoutCoverage = BuildItems(request, exactDurations, censored, unknown, reductions, []);
+            return Result(PersonalTurnoverEvidenceStatus.InsufficientCoverage, null, exactDurations, censored, unknown, reductions, itemsWithoutCoverage);
         }
 
         var coveredTransactions = request.CompletedTransactions
@@ -47,17 +48,8 @@ public sealed class PersonalTurnoverCalculator
             coveredTransactions,
             []));
         var metrics = BuildMetrics(performance.KnownBasisSaleAllocations);
-        if (metrics is null)
-        {
-            return Result(PersonalTurnoverEvidenceStatus.InsufficientSamples, null, exactDurations, censored, unknown);
-        }
-
-        var status = metrics.KnownBasisSampleCount < PersonalTurnoverPolicy.MinimumKnownBasisSamples
-            ? PersonalTurnoverEvidenceStatus.InsufficientSamples
-            : request.AsOfUtc - metrics.MeasuredEndUtc > PersonalTurnoverPolicy.MaximumEvidenceAge
-                ? PersonalTurnoverEvidenceStatus.Stale
-                : PersonalTurnoverEvidenceStatus.Supported;
-        return Result(status, metrics, exactDurations, censored, unknown);
+        var items = BuildItems(request, exactDurations, censored, unknown, reductions, performance.KnownBasisSaleAllocations);
+        return Result(PortfolioStatus(items), metrics, exactDurations, censored, unknown, reductions, items);
     }
 
     private static PersonalTurnoverIntelligence Result(
@@ -65,7 +57,9 @@ public sealed class PersonalTurnoverCalculator
         PersonalCapitalTurnoverMetrics? metrics,
         IReadOnlyList<SourceTimestampFillDuration> exactDurations,
         IReadOnlyList<IntervalCensoredCompletion> censored,
-        IReadOnlyList<UnknownOrderTiming> unknown) => new(
+        IReadOnlyList<UnknownOrderTiming> unknown,
+        IReadOnlyList<ObservedOrderQuantityReduction> reductions,
+        IReadOnlyList<PersonalItemTurnoverIntelligence> items) => new(
             PersonalTurnoverPolicy.Version,
             status,
             PersonalTurnoverPolicy.TimestampLimitation,
@@ -74,9 +68,12 @@ public sealed class PersonalTurnoverCalculator
             exactDurations,
             censored,
             unknown,
+            reductions,
+            items,
             metrics);
 
-    private static (IReadOnlyList<IntervalCensoredCompletion> Censored, IReadOnlyList<UnknownOrderTiming> Unknown)
+    private static (IReadOnlyList<IntervalCensoredCompletion> Censored, IReadOnlyList<UnknownOrderTiming> Unknown,
+        IReadOnlyList<ObservedOrderQuantityReduction> Reductions)
         BuildObservationEvidence(PersonalTurnoverRequest request)
     {
         var observations = request.CurrentOrderObservations
@@ -89,11 +86,13 @@ public sealed class PersonalTurnoverCalculator
             .ToDictionary(group => group.Key, group => group.OrderBy(value => value.ObservedAtUtc).ToArray());
         var censored = new List<IntervalCensoredCompletion>();
         var unknown = new List<UnknownOrderTiming>();
+        var reductions = new List<ObservedOrderQuantityReduction>();
 
         foreach (var (orderId, orderSnapshots) in snapshotsByOrder.OrderBy(value => value.Key))
         {
             var first = orderSnapshots[0];
             var last = orderSnapshots[^1];
+            reductions.AddRange(BuildQuantityReductions(orderId, orderSnapshots));
             if (!completedById.TryGetValue(orderId, out var completed) ||
                 !MatchesCompletedOrder(first.Order, completed.Transaction))
             {
@@ -119,6 +118,9 @@ public sealed class PersonalTurnoverCalculator
                 continue;
             }
 
+            var observationsThroughConfirmation = orderSnapshots
+                .Where(value => value.ObservedAtUtc <= completed.FirstImportedAtUtc)
+                .ToArray();
             censored.Add(new IntervalCensoredCompletion(
                 orderId,
                 first.Order.Side,
@@ -128,11 +130,31 @@ public sealed class PersonalTurnoverCalculator
                 completed.FirstImportedAtUtc,
                 first.Order.Quantity,
                 lastBeforeConfirmation.Order.Quantity,
-                orderSnapshots.Zip(orderSnapshots.Skip(1), (previous, next) => next.Order.Quantity < previous.Order.Quantity).Any(value => value)));
+                BuildQuantityReductions(orderId, observationsThroughConfirmation).Count > 0));
         }
 
-        return (censored.AsReadOnly(), unknown.AsReadOnly());
+        return (censored.AsReadOnly(), unknown.AsReadOnly(), reductions.AsReadOnly());
     }
+
+    private static IReadOnlyList<ObservedOrderQuantityReduction> BuildQuantityReductions(
+        long orderId,
+        IReadOnlyList<ObservedOrder> observations) => observations
+            .Zip(observations.Skip(1), (earlier, later) => (Earlier: earlier, Later: later))
+            .Where(pair => HasSameObservedOrderIdentity(pair.Earlier.Order, pair.Later.Order) &&
+                           pair.Later.Order.Quantity < pair.Earlier.Order.Quantity)
+            .Select(pair => new ObservedOrderQuantityReduction(
+                orderId,
+                pair.Earlier.Order.Side,
+                pair.Earlier.Order.ItemId,
+                pair.Earlier.ObservedAtUtc,
+                pair.Later.ObservedAtUtc,
+                pair.Earlier.Order.Quantity,
+                pair.Later.Order.Quantity))
+            .ToArray();
+
+    private static bool HasSameObservedOrderIdentity(CurrentPersonalTradingPostOrder earlier, CurrentPersonalTradingPostOrder later) =>
+        earlier.Side == later.Side && earlier.ItemId == later.ItemId &&
+        earlier.UnitPriceInCopper == later.UnitPriceInCopper && earlier.CreatedAtUtc == later.CreatedAtUtc;
 
     private static bool MatchesCompletedOrder(CurrentPersonalTradingPostOrder order, CompletedPersonalTradingPostTransaction completed) =>
         order.Side == completed.Side &&
@@ -186,6 +208,58 @@ public sealed class PersonalTurnoverCalculator
             profitPerDay,
             capitalTurns);
     }
+
+    private static IReadOnlyList<PersonalItemTurnoverIntelligence> BuildItems(
+        PersonalTurnoverRequest request,
+        IReadOnlyList<SourceTimestampFillDuration> exactDurations,
+        IReadOnlyList<IntervalCensoredCompletion> censored,
+        IReadOnlyList<UnknownOrderTiming> unknown,
+        IReadOnlyList<ObservedOrderQuantityReduction> reductions,
+        IReadOnlyList<KnownBasisRealizedSaleAllocation> allocations)
+    {
+        var itemIds = exactDurations.Select(value => value.ItemId)
+            .Concat(censored.Select(value => value.ItemId))
+            .Concat(unknown.Select(value => value.ItemId))
+            .Concat(reductions.Select(value => value.ItemId))
+            .Concat(allocations.Select(value => value.Match.ItemId))
+            .Distinct()
+            .OrderBy(itemId => itemId);
+        return itemIds.Select(itemId =>
+        {
+            var itemMetrics = request.HistoryCoverage.StartUtc is null
+                ? null
+                : BuildMetrics(allocations.Where(value => value.Match.ItemId == itemId).ToArray());
+            return new PersonalItemTurnoverIntelligence(
+                itemId,
+                ItemStatus(request, itemMetrics),
+                itemMetrics?.MeasuredEndUtc,
+                exactDurations.Where(value => value.ItemId == itemId).ToArray(),
+                censored.Where(value => value.ItemId == itemId).ToArray(),
+                unknown.Where(value => value.ItemId == itemId).ToArray(),
+                reductions.Where(value => value.ItemId == itemId).ToArray(),
+                itemMetrics);
+        }).ToArray();
+    }
+
+    private static PersonalTurnoverEvidenceStatus ItemStatus(PersonalTurnoverRequest request, PersonalCapitalTurnoverMetrics? metrics) =>
+        request.HistoryCoverage.StartUtc is null || request.HistoryCoverage.EndUtc is null
+            ? PersonalTurnoverEvidenceStatus.InsufficientCoverage
+            : metrics is null || metrics.KnownBasisSampleCount < PersonalTurnoverPolicy.MinimumKnownBasisSamples
+                ? PersonalTurnoverEvidenceStatus.InsufficientSamples
+                : request.AsOfUtc - metrics.MeasuredEndUtc > PersonalTurnoverPolicy.MaximumEvidenceAge
+                    ? PersonalTurnoverEvidenceStatus.Stale
+                    : PersonalTurnoverEvidenceStatus.Supported;
+
+    private static PersonalTurnoverEvidenceStatus PortfolioStatus(IReadOnlyList<PersonalItemTurnoverIntelligence> items) =>
+        items.Count == 0
+            ? PersonalTurnoverEvidenceStatus.InsufficientSamples
+            : items.Any(item => item.Status == PersonalTurnoverEvidenceStatus.Supported)
+            ? PersonalTurnoverEvidenceStatus.Supported
+            : items.Any(item => item.Status == PersonalTurnoverEvidenceStatus.Stale)
+                ? PersonalTurnoverEvidenceStatus.Stale
+                : items.Any(item => item.Status == PersonalTurnoverEvidenceStatus.InsufficientSamples)
+                    ? PersonalTurnoverEvidenceStatus.InsufficientSamples
+                    : PersonalTurnoverEvidenceStatus.InsufficientCoverage;
 
     private static Money Sum(IEnumerable<Money> values)
     {

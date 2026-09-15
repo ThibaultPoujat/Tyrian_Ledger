@@ -67,6 +67,20 @@ public sealed record UnknownOrderTiming(
     string Reason);
 
 /// <summary>
+/// A reduction observed between two retained open-order snapshots. It is kept
+/// independently of completed-history correlation, so an active partial order
+/// remains evidence without claiming a fill timestamp or completed quantity.
+/// </summary>
+public sealed record ObservedOrderQuantityReduction(
+    long OrderId,
+    PersonalTradingPostSide Side,
+    int ItemId,
+    DateTimeOffset EarlierObservedAtUtc,
+    DateTimeOffset LaterObservedAtUtc,
+    int EarlierQuantity,
+    int LaterQuantity);
+
+/// <summary>
 /// An exact rational rate. Numerator and denominator are intentionally kept as
 /// integers so no floating-point financial value crosses the application boundary.
 /// </summary>
@@ -106,6 +120,21 @@ public sealed record PersonalCapitalTurnoverMetrics(
     ExactPersonalRate? RealizedProfitPerDay,
     ExactPersonalRate? CapitalTurns);
 
+/// <summary>
+/// Evidence for one market. M20-02 must consume this item-scoped result rather
+/// than a portfolio aggregate so unrelated one-off markets cannot manufacture
+/// sufficient personal evidence.
+/// </summary>
+public sealed record PersonalItemTurnoverIntelligence(
+    int ItemId,
+    PersonalTurnoverEvidenceStatus Status,
+    DateTimeOffset? LatestKnownBasisCompletionAtUtc,
+    IReadOnlyList<SourceTimestampFillDuration> ExactFillDurations,
+    IReadOnlyList<IntervalCensoredCompletion> IntervalCensoredCompletions,
+    IReadOnlyList<UnknownOrderTiming> UnknownOrderTimings,
+    IReadOnlyList<ObservedOrderQuantityReduction> ObservedQuantityReductions,
+    PersonalCapitalTurnoverMetrics? Metrics);
+
 public sealed record PersonalTurnoverRequest(
     DateTimeOffset AsOfUtc,
     long AccountProfileId,
@@ -127,4 +156,6 @@ public sealed record PersonalTurnoverIntelligence(
     IReadOnlyList<SourceTimestampFillDuration> ExactFillDurations,
     IReadOnlyList<IntervalCensoredCompletion> IntervalCensoredCompletions,
     IReadOnlyList<UnknownOrderTiming> UnknownOrderTimings,
+    IReadOnlyList<ObservedOrderQuantityReduction> ObservedQuantityReductions,
+    IReadOnlyList<PersonalItemTurnoverIntelligence> Items,
     PersonalCapitalTurnoverMetrics? Metrics);

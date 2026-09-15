@@ -163,7 +163,7 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
                     transaction.Transaction.CompletedAtUtc)).ToArray(),
             performance is null ? [] : MapRealizedItems(performance, metadata, descending: true),
             performance is null ? [] : MapRealizedItems(performance, metadata, descending: false),
-            MapLearning(learning));
+            MapLearning(learning, metadata));
     }
 
     private async Task<IReadOnlyDictionary<int, string>> ReadMetadataAsync(
@@ -244,15 +244,29 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
             .ToArray();
     }
 
-    private static DashboardPersonalLearning MapLearning(PersonalTurnoverIntelligence learning) => new(
+    private static DashboardPersonalLearning MapLearning(
+        PersonalTurnoverIntelligence learning,
+        IReadOnlyDictionary<int, string> metadata) => new(
         learning.Status,
         learning.TimestampLimitation,
         learning.MinimumKnownBasisSamples,
         learning.ExactFillDurations.Count,
         learning.IntervalCensoredCompletions.Count,
         learning.UnknownOrderTimings.Count,
-        learning.IntervalCensoredCompletions.Count(value => value.HasObservedQuantityReduction),
+        learning.ObservedQuantityReductions.Count,
         MapFillTiming(learning),
+        learning.Items.Select(item => new DashboardPersonalLearningItem(
+            item.ItemId,
+            NameFor(item.ItemId, metadata),
+            item.Status,
+            item.ExactFillDurations.Count,
+            item.IntervalCensoredCompletions.Count,
+            item.UnknownOrderTimings.Count,
+            item.ObservedQuantityReductions.Count,
+            item.Metrics?.KnownBasisSampleCount,
+            item.Metrics?.AverageHoldingDuration.ToString("c", CultureInfo.InvariantCulture),
+            ToDashboardRate(item.Metrics?.RealizedProfitPerDay),
+            ToDashboardRate(item.Metrics?.CapitalTurns))).ToArray(),
         learning.Metrics?.KnownBasisSampleCount,
         learning.LatestKnownBasisCompletionAtUtc,
         ToDashboardMoney(learning.Metrics?.NetProfit),

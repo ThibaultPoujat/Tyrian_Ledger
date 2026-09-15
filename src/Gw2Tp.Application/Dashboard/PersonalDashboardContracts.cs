@@ -85,6 +85,19 @@ public sealed record DashboardFillTiming(
     int IntervalCensoredCompletionCount,
     string? AverageConfirmationWindow);
 
+public sealed record DashboardPersonalLearningItem(
+    int ItemId,
+    string ItemName,
+    PersonalTurnoverEvidenceStatus Status,
+    int ExactSourceTimestampCount,
+    int IntervalCensoredCompletionCount,
+    int UnknownOrderTimingCount,
+    int ObservedQuantityReductionCount,
+    int? KnownBasisSampleCount,
+    string? AverageHoldingDuration,
+    DashboardExactRate? RealizedProfitPerDay,
+    DashboardExactRate? CapitalTurns);
+
 public sealed record DashboardPersonalLearning(
     PersonalTurnoverEvidenceStatus Status,
     string TimestampLimitation,
@@ -94,6 +107,7 @@ public sealed record DashboardPersonalLearning(
     int UnknownOrderTimingCount,
     int ObservedQuantityReductionCount,
     IReadOnlyList<DashboardFillTiming> FillTiming,
+    IReadOnlyList<DashboardPersonalLearningItem> Items,
     int? KnownBasisSampleCount,
     DateTimeOffset? LatestKnownBasisCompletionAtUtc,
     DashboardMoney? NetProfit,

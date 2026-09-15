@@ -61,6 +61,7 @@ type Dashboard = {
     unknownOrderTimingCount: number;
     observedQuantityReductionCount: number;
     fillTiming: Array<{ side: 'buy' | 'sell'; exactSourceTimestampCount: number; averageSourceDuration: string | null; intervalCensoredCompletionCount: number; averageConfirmationWindow: string | null }>;
+    items: Array<{ itemId: number; itemName: string; status: 'insufficientCoverage' | 'insufficientSamples' | 'stale' | 'supported'; exactSourceTimestampCount: number; intervalCensoredCompletionCount: number; unknownOrderTimingCount: number; observedQuantityReductionCount: number; knownBasisSampleCount: number | null; averageHoldingDuration: string | null; realizedProfitPerDay: { numerator: string; denominator: string } | null; capitalTurns: { numerator: string; denominator: string } | null }>;
     knownBasisSampleCount: number | null;
     latestKnownBasisCompletionAtUtc: string | null;
     netProfit: Money | null;
@@ -444,6 +445,7 @@ function isPersonalLearning(value: unknown): boolean {
     && isNonNegativeInteger(value.unknownOrderTimingCount)
     && isNonNegativeInteger(value.observedQuantityReductionCount)
     && isArrayOf(value.fillTiming, isFillTiming)
+    && isArrayOf(value.items, isPersonalLearningItem)
     && (value.knownBasisSampleCount === null || isNonNegativeInteger(value.knownBasisSampleCount))
     && isNullableString(value.latestKnownBasisCompletionAtUtc)
     && isNullableMoney(value.netProfit)
@@ -460,6 +462,21 @@ function isFillTiming(value: unknown): boolean {
     && isNullableString(value.averageSourceDuration)
     && isNonNegativeInteger(value.intervalCensoredCompletionCount)
     && isNullableString(value.averageConfirmationWindow);
+}
+
+function isPersonalLearningItem(value: unknown): boolean {
+  return isRecord(value)
+    && isNonNegativeInteger(value.itemId)
+    && typeof value.itemName === 'string'
+    && isOneOf(value.status, ['insufficientCoverage', 'insufficientSamples', 'stale', 'supported'])
+    && isNonNegativeInteger(value.exactSourceTimestampCount)
+    && isNonNegativeInteger(value.intervalCensoredCompletionCount)
+    && isNonNegativeInteger(value.unknownOrderTimingCount)
+    && isNonNegativeInteger(value.observedQuantityReductionCount)
+    && (value.knownBasisSampleCount === null || isNonNegativeInteger(value.knownBasisSampleCount))
+    && isNullableString(value.averageHoldingDuration)
+    && (value.realizedProfitPerDay === null || isExactRate(value.realizedProfitPerDay))
+    && (value.capitalTurns === null || isExactRate(value.capitalTurns));
 }
 
 function exactRate(value: { numerator: string; denominator: string } | null, suffix: string): string {
@@ -514,6 +531,9 @@ function DashboardPanel({ dashboard, status }: { dashboard: Dashboard | null; st
         <section><h3>Realized profit/day</h3><strong>{exactRate(dashboard.personalLearning.realizedProfitPerDay, 'c/day')}</strong><p>Exact retained-evidence ratio, displayed to two truncated decimals.</p></section>
         <section><h3>Capital turns</h3><strong>{exactRate(dashboard.personalLearning.capitalTurns, 'turns')}</strong><p>Time-weighted matched capital over the measured interval.</p></section>
       </div>
+      <DashboardTable title="Personal market evidence" columns={['Item', 'Evidence strength', 'Known-basis outcomes', 'Average capital lock', 'Profit/day', 'Capital turns', 'Observed timing']}>
+        {dashboard.personalLearning.items.length === 0 ? <tr><td colSpan={7}>No item-level personal evidence is retained yet.</td></tr> : dashboard.personalLearning.items.map((item) => <tr key={item.itemId}><td>{item.itemName}</td><td>{personalLearningStatus(item.status)}</td><td>{item.knownBasisSampleCount ?? 0}</td><td>{item.averageHoldingDuration ?? 'Unavailable'}</td><td>{exactRate(item.realizedProfitPerDay, 'c/day')}</td><td>{exactRate(item.capitalTurns, 'turns')}</td><td>{item.exactSourceTimestampCount} source / {item.intervalCensoredCompletionCount} bounded / {item.observedQuantityReductionCount} reductions / {item.unknownOrderTimingCount} unknown</td></tr>)}
+      </DashboardTable>
     </section>}
     <DashboardTable title="Current orders" columns={['Side', 'Item', 'Quantity', 'Your price', 'Current market']}>
       {dashboard.currentOrders.length === 0 ? <tr><td colSpan={5}>No current orders in the latest sync.</td></tr> : dashboard.currentOrders.map((order) => <tr key={order.orderId}><td>{order.side}</td><td>{order.itemName}</td><td>{order.quantity}</td><td>{copper(order.unitPrice)}</td><td>{order.marketComparisonStatus === 'available' ? copper(order.currentMarketUnitPrice) : order.marketComparisonStatus === 'missingSide' ? 'No comparable orders' : 'Market unavailable'}</td></tr>)}
