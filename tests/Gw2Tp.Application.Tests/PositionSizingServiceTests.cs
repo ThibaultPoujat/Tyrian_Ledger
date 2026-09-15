@@ -156,20 +156,29 @@ public sealed class PositionSizingServiceTests
     }
 
     [Fact]
-    public void Sequential_capital_uses_exact_full_quantity_fee_rounding()
+    public void Sequential_capital_preserves_conservative_one_unit_total_cost_scaling()
     {
         var candidate = WithPrices(
             Candidate(1, 1, PositionSizingLiquidity.High, participationCap: 1_000),
             plannedBid: 1,
             plannedList: 22);
 
-        var result = new PositionSizingService().Size(Snapshot(100_000), [candidate]);
+        var result = new PositionSizingService().Size(Snapshot(20_000), [candidate]);
         var allocation = Assert.Single(result.Allocations);
+        var exactBatchCapital = new PrimaryRecommendationEconomicsCalculator()
+            .CalculateUnitPrices(candidate.Market.PlannedBid, candidate.Market.PlannedListPrice, allocation.SuggestedQuantity)
+            .TotalCost;
 
-        Assert.Equal(1_000, allocation.SuggestedQuantity);
-        Assert.Equal(2_100, allocation.SuggestedCapital.Copper);
-        Assert.Equal(97_900, result.RemainingCashAfterSizing!.Value.Copper);
-        Assert.NotEqual(candidate.Market.TotalCost.Copper * allocation.SuggestedQuantity, allocation.SuggestedCapital.Copper);
+        Assert.Equal(333, allocation.SuggestedQuantity);
+        Assert.Equal(999, allocation.SuggestedCapital.Copper);
+        Assert.Equal(candidate.Market.TotalCost.Copper * allocation.SuggestedQuantity, allocation.SuggestedCapital.Copper);
+        Assert.Equal(19_001, result.RemainingCashAfterSizing!.Value.Copper);
+        Assert.Equal(700, exactBatchCapital.Copper);
+        var itemConstraint = Assert.Single(allocation.Constraints, constraint =>
+            constraint.Name == PositionSizingConstraintName.ItemExposure);
+        Assert.True(itemConstraint.IsBinding);
+        Assert.Equal(1_000, itemConstraint.CapitalCapacity.Copper);
+        Assert.Equal(333, itemConstraint.QuantityCapacity);
     }
 
     [Theory]
@@ -222,19 +231,17 @@ public sealed class PositionSizingServiceTests
     }
 
     [Fact]
-    public void Inconsistent_one_unit_capital_fails_safe_instead_of_bypassing_exact_sizing()
+    public void Extreme_visible_depth_cannot_overflow_a_constraint_or_allocate_past_financial_caps()
     {
         var candidate = Candidate(1, 1, PositionSizingLiquidity.High, participationCap: 1_000) with
         {
             Market = Candidate(1, 1, PositionSizingLiquidity.High, participationCap: 1_000).Market with { TotalCost = new Money(long.MaxValue) },
         };
 
-        var result = new PositionSizingService().Size(Snapshot(long.MaxValue), [candidate]);
-        var allocation = Assert.Single(result.Allocations);
+        var allocation = Assert.Single(new PositionSizingService().Size(Snapshot(long.MaxValue), [candidate]).Allocations);
 
-        Assert.Equal(PositionSizingResultState.Unavailable, result.State);
-        Assert.Equal(PositionSizingAllocationState.Unavailable, allocation.State);
         Assert.Equal(0, allocation.SuggestedQuantity);
+        Assert.Equal(long.MaxValue, allocation.Constraints.Single(constraint => constraint.Name == PositionSizingConstraintName.LiquidityParticipation).CapitalCapacity.Copper);
     }
 
     private static PortfolioSizingSnapshot Snapshot(long availableCash, IReadOnlyList<PortfolioExposure>? exposures = null) => new(

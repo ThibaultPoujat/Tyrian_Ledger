@@ -179,7 +179,7 @@ public sealed class PrimaryRecommendationServiceTests
     public async Task Composed_buy_small_reduction_releases_shared_headroom_for_later_ranked_candidates()
     {
         var itemIds = Enumerable.Range(1, 19).ToArray();
-        var candidates = itemIds.Select(Candidate).ToArray();
+        var candidates = itemIds.Select(itemId => Candidate(itemId)).ToArray();
         var histories = itemIds.ToDictionary(itemId => itemId, itemId => History(itemId, true, false));
         var listings = itemIds.ToDictionary(itemId => itemId, itemId => Listing(itemId, 100));
         var repository = SynchronizedRepository();
@@ -204,6 +204,37 @@ public sealed class PrimaryRecommendationServiceTests
         Assert.Equal(
             result.Portfolio!.AvailableCash.Copper - purchases.Sum(action => action.Capital.Copper),
             result.Portfolio.RemainingCashAfterSizing.Copper);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
+    [Fact]
+    public async Task Primary_portfolio_uses_exact_returned_capital_without_relaxing_conservative_sizing()
+    {
+        var candidate = Candidate(1, marketQuantity: 10_000);
+        var repository = SynchronizedRepository();
+        var service = CreateService(
+            SuccessfulPortfolio(100_000),
+            repository,
+            scanner: new StaticScanner([candidate]),
+            marketClient: new ScenarioMarketClient(
+                listings: new Dictionary<int, MarketListing> { [1] = Listing(1, 10_000) }),
+            historyService: new FakeHistoryService(
+                new Dictionary<int, HistoricalMarketAnalytics> { [1] = History(1, true, true) }));
+
+        var result = await service.GetAsync();
+
+        var purchase = Assert.Single(result.Actions, action =>
+            action.Source == PrimaryRecommendationSource.NewOpportunity);
+        Assert.Equal(PrimaryRecommendationAction.Buy, purchase.Action);
+        Assert.Equal(45, purchase.Quantity);
+        Assert.Equal(4_993, purchase.Capital.Copper);
+        Assert.Equal(4_993, purchase.Economics!.TotalCost.Copper);
+        Assert.Equal(95_007, result.Portfolio!.RemainingCashAfterSizing.Copper);
+        var itemConstraint = Assert.Single(purchase.PortfolioConstraints, constraint =>
+            constraint.Name == PositionSizingConstraintName.ItemExposure);
+        Assert.True(itemConstraint.IsBinding);
+        Assert.Equal(5_000, itemConstraint.CapitalCapacity.Copper);
+        Assert.Equal(45, itemConstraint.QuantityCapacity);
         Assert.Equal(0, repository.MutationCount);
     }
 
@@ -436,20 +467,20 @@ public sealed class PrimaryRecommendationServiceTests
         [new MarketOrderLevel(3, 100, 100)],
         [new MarketOrderLevel(3, 100, 200)]);
 
-    private static LiveMarketScannerCandidate Candidate(int itemId)
+    private static LiveMarketScannerCandidate Candidate(int itemId, int marketQuantity = 100)
     {
         var plannedBid = new Money(101);
         var plannedList = new Money(199);
         var profit = new FlipProfitCalculator(Gw2TradingPostFeePolicy.Create()).Calculate(plannedBid, plannedList);
         var totalCost = Gw2TradingPostFeePolicy.CalculateFullUpFrontCost(plannedBid, profit.ListingFee);
-        var buys = new[] { new MarketOrderLevel(3, 100, 100) };
-        var sells = new[] { new MarketOrderLevel(3, 100, 200) };
+        var buys = new[] { new MarketOrderLevel(3, marketQuantity, 100) };
+        var sells = new[] { new MarketOrderLevel(3, marketQuantity, 200) };
         var simulator = new OrderBookExecutionSimulator();
         var liquidity = new LiveMarketScannerLiquidityEvidence(
-            100, 100, 100, 100, 3, 3, null, null, false, false,
-            simulator.SimulateAcquisition([new OrderBookLevel(100, new Money(200))], 1),
-            simulator.SimulateLiquidation([new OrderBookLevel(100, new Money(100))], 1),
-            10, [], buys, sells);
+            marketQuantity, marketQuantity, marketQuantity, marketQuantity, 3, 3, null, null, false, false,
+            simulator.SimulateAcquisition([new OrderBookLevel(marketQuantity, new Money(200))], 1),
+            simulator.SimulateLiquidation([new OrderBookLevel(marketQuantity, new Money(100))], 1),
+            marketQuantity / 10, [], buys, sells);
         return new LiveMarketScannerCandidate(
             new MarketItemMetadata(itemId, $"Item {itemId}", MarketItemStackPolicy.NormalStackLimit),
             new MarketOrderSummary(100, 100), new MarketOrderSummary(100, 200),

@@ -228,10 +228,10 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         var actions = actionPolicy.Evaluate(evidence);
         var portfolio = sizing.State == PositionSizingResultState.Sized &&
             sizing.TotalBankroll is { } bankroll && sizing.CashReserve is { } reserve &&
-            sizing.CashReserveStatus is { } reserveStatus && sizing.CashReserveShortfall is { } shortfall &&
-            sizing.RemainingCashAfterSizing is { } remaining
+            sizing.CashReserveStatus is { } reserveStatus && sizing.CashReserveShortfall is { } shortfall
             ? new PrimaryRecommendationPortfolio(
-                portfolioResult.Value.AvailableCash, bankroll, reserve, reserveStatus, shortfall, remaining)
+                portfolioResult.Value.AvailableCash, bankroll, reserve, reserveStatus, shortfall,
+                RemainingCashAfterRecommendations(portfolioResult.Value.AvailableCash, actions))
             : null;
 
         return new PrimaryRecommendationResult(
@@ -239,6 +239,16 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             sizing.State == PositionSizingResultState.Unavailable ? "buy_sizing_unavailable" : null,
             asOfUtc, local.Profile.LastSuccessfulSyncAtUtc, local.CurrentOrders.ObservedAtUtc,
             scan.ObservedAtUtc, local.Policies, portfolio, actions);
+    }
+
+    private static Money RemainingCashAfterRecommendations(
+        Money availableCash,
+        IReadOnlyCollection<PrimaryRecommendationRecord> actions)
+    {
+        var suggestedPurchaseCapital = actions
+            .Where(action => action.Source == PrimaryRecommendationSource.NewOpportunity)
+            .Sum(action => action.Capital.Copper);
+        return new Money(checked(availableCash.Copper - suggestedPurchaseCapital));
     }
 
     private IReadOnlyList<PrimaryRecommendationEvidence> BuildNewOpportunityEvidence(
