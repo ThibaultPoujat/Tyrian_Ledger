@@ -126,7 +126,8 @@ public sealed record PositionSizingCandidate(
     LiveMarketScannerCandidate Market,
     PositionSizingLiquidity Liquidity,
     string Strategy,
-    string Category);
+    string Category,
+    int AllocationBasisPoints = PositionSizingPolicy.BasisPointsPerWhole);
 
 public sealed record PositionSizingConstraint(
     PositionSizingConstraintName Name,
@@ -167,6 +168,7 @@ public interface IPositionSizingService
 public sealed class PositionSizingService : IPositionSizingService
 {
     private readonly PositionSizingPolicy policy;
+    private readonly PrimaryRecommendationEconomicsCalculator economicsCalculator = new();
 
     public PositionSizingService(PositionSizingPolicy? policy = null)
     {
@@ -242,23 +244,27 @@ public sealed class PositionSizingService : IPositionSizingService
             var itemId = candidate.Market.Item.ItemId;
             var strategy = NormalizeGroup(candidate.Strategy);
             var category = NormalizeGroup(candidate.Category);
-            var unitCost = candidate.Market.TotalCost;
+            var maximumQuantity = candidate.Market.Liquidity.ParticipationCapQuantity;
             var itemCap = PercentageRoundDown(totalBankroll, ItemCap(candidate.Liquidity));
             var strategyCap = PercentageRoundDown(totalBankroll, policy.StrategyCapBasisPoints);
             var categoryCap = PercentageRoundDown(totalBankroll, policy.CategoryCapBasisPoints);
             var capacities = new[]
             {
-                (PositionSizingConstraintName.CashAfterReserve, new Money(remainingDeployableCash), QuantityFor(new Money(remainingDeployableCash), unitCost)),
-                (PositionSizingConstraintName.ItemExposure, Remaining(itemCap, itemExposure.GetValueOrDefault(itemId)), QuantityFor(Remaining(itemCap, itemExposure.GetValueOrDefault(itemId)), unitCost)),
-                (PositionSizingConstraintName.LiquidityParticipation, CapitalForQuantity(unitCost, candidate.Market.Liquidity.ParticipationCapQuantity), candidate.Market.Liquidity.ParticipationCapQuantity),
-                (PositionSizingConstraintName.StrategyConcentration, Remaining(strategyCap, strategyExposure.GetValueOrDefault(strategy)), QuantityFor(Remaining(strategyCap, strategyExposure.GetValueOrDefault(strategy)), unitCost)),
-                (PositionSizingConstraintName.CategoryConcentration, Remaining(categoryCap, categoryExposure.GetValueOrDefault(category)), QuantityFor(Remaining(categoryCap, categoryExposure.GetValueOrDefault(category)), unitCost)),
+                (PositionSizingConstraintName.CashAfterReserve, new Money(remainingDeployableCash), QuantityFor(new Money(remainingDeployableCash), candidate, maximumQuantity)),
+                (PositionSizingConstraintName.ItemExposure, Remaining(itemCap, itemExposure.GetValueOrDefault(itemId)), QuantityFor(Remaining(itemCap, itemExposure.GetValueOrDefault(itemId)), candidate, maximumQuantity)),
+                (PositionSizingConstraintName.LiquidityParticipation, CapitalForQuantityOrMaximum(candidate, maximumQuantity), maximumQuantity),
+                (PositionSizingConstraintName.StrategyConcentration, Remaining(strategyCap, strategyExposure.GetValueOrDefault(strategy)), QuantityFor(Remaining(strategyCap, strategyExposure.GetValueOrDefault(strategy)), candidate, maximumQuantity)),
+                (PositionSizingConstraintName.CategoryConcentration, Remaining(categoryCap, categoryExposure.GetValueOrDefault(category)), QuantityFor(Remaining(categoryCap, categoryExposure.GetValueOrDefault(category)), candidate, maximumQuantity)),
             };
-            var quantity = capacities.Min(capacity => capacity.Item3);
+            var unconstrainedQuantity = capacities.Min(capacity => capacity.Item3);
+            var quantity = ScaleQuantity(unconstrainedQuantity, candidate.AllocationBasisPoints);
             var constraints = capacities
                 .Select(capacity => new PositionSizingConstraint(capacity.Item1, capacity.Item2, capacity.Item3, capacity.Item3 == quantity))
                 .ToArray();
-            var capital = CapitalForQuantity(unitCost, quantity);
+            if (!TryCapitalForQuantity(candidate, quantity, out var capital))
+            {
+                return Unavailable(PositionSizingUnavailableReason.InvalidPortfolioSnapshot, candidates);
+            }
             allocations.Add(new PositionSizingAllocation(
                 itemId,
                 candidate.Score.Rank,
@@ -306,7 +312,7 @@ public sealed class PositionSizingService : IPositionSizingService
             new Money(0),
             [])).ToArray());
 
-    private static bool TryValidate(
+    private bool TryValidate(
         PortfolioSizingSnapshot snapshot,
         IReadOnlyCollection<PositionSizingCandidate> candidates,
         out Money availableCash,
@@ -373,14 +379,16 @@ public sealed class PositionSizingService : IPositionSizingService
         !string.IsNullOrWhiteSpace(exposure.Strategy) && !string.IsNullOrWhiteSpace(exposure.Category) &&
         exposure.CapitalAtRisk.Copper >= 0;
 
-    private static bool IsValid(PositionSizingCandidate? candidate) => candidate?.Score is not null && candidate.Market?.Item is not null &&
+    private bool IsValid(PositionSizingCandidate? candidate) => candidate?.Score is not null && candidate.Market?.Item is not null &&
         candidate.Score.Rank > 0 && candidate.Score.ItemId == candidate.Market.Item.ItemId && candidate.Market.Item.ItemId > 0 &&
         candidate.Market.TotalCost.Copper > 0 && candidate.Market.Liquidity is not null &&
+        candidate.AllocationBasisPoints is >= 0 and <= PositionSizingPolicy.BasisPointsPerWhole &&
         candidate.Market.Liquidity.TotalBuyQuantity >= 0 && candidate.Market.Liquidity.TotalSellQuantity >= 0 &&
         candidate.Market.Liquidity.ParticipationCapQuantity >= 0 &&
         candidate.Market.Liquidity.ParticipationCapQuantity <= Math.Min(candidate.Market.Liquidity.TotalBuyQuantity, candidate.Market.Liquidity.TotalSellQuantity) / 10 &&
         Enum.IsDefined(candidate.Liquidity) &&
-        !string.IsNullOrWhiteSpace(candidate.Strategy) && !string.IsNullOrWhiteSpace(candidate.Category);
+        !string.IsNullOrWhiteSpace(candidate.Strategy) && !string.IsNullOrWhiteSpace(candidate.Category) &&
+        TryCapitalForQuantity(candidate, 1, out var oneUnitCapital) && oneUnitCapital == candidate.Market.TotalCost;
 
     private int ItemCap(PositionSizingLiquidity liquidity) => liquidity switch
     {
@@ -392,24 +400,48 @@ public sealed class PositionSizingService : IPositionSizingService
 
     private static Money Remaining(Money cap, long exposure) => new(Math.Max(0L, cap.Copper - exposure));
 
-    private static int QuantityFor(Money capital, Money unitCost)
+    private int QuantityFor(Money capital, PositionSizingCandidate candidate, int maximumQuantity)
     {
-        var quantity = capital.Copper / unitCost.Copper;
-        return quantity > int.MaxValue ? int.MaxValue : (int)quantity;
+        var low = 0;
+        var high = maximumQuantity;
+        while (low < high)
+        {
+            var midpoint = low + ((high - low + 1) / 2);
+            if (TryCapitalForQuantity(candidate, midpoint, out var required) && required.Copper <= capital.Copper)
+                low = midpoint;
+            else
+                high = midpoint - 1;
+        }
+        return low;
     }
 
-    private static Money CapitalForQuantity(Money unitCost, int quantity)
+    private Money CapitalForQuantityOrMaximum(PositionSizingCandidate candidate, int quantity) =>
+        TryCapitalForQuantity(candidate, quantity, out var capital) ? capital : new Money(long.MaxValue);
+
+    private bool TryCapitalForQuantity(PositionSizingCandidate candidate, int quantity, out Money capital)
     {
+        capital = Money.Zero;
         try
         {
-            return new Money(checked(unitCost.Copper * quantity));
+            capital = quantity == 0
+                ? Money.Zero
+                : economicsCalculator.CalculateUnitPrices(
+                    candidate.Market.PlannedBid,
+                    candidate.Market.PlannedListPrice,
+                    quantity).TotalCost;
+            return true;
         }
-        catch (OverflowException)
+        catch (Exception exception) when (exception is OverflowException or ArgumentOutOfRangeException)
         {
-            // A displayed liquidity capacity may exceed representable money;
-            // saturating it leaves the independently smaller financial caps in control.
-            return new Money(long.MaxValue);
+            return false;
         }
+    }
+
+    private static int ScaleQuantity(int quantity, int allocationBasisPoints)
+    {
+        if (quantity == 0 || allocationBasisPoints == 0) return 0;
+        var scaled = (long)quantity * allocationBasisPoints / PositionSizingPolicy.BasisPointsPerWhole;
+        return (int)Math.Max(1L, scaled);
     }
 
     private static Money PercentageRoundDown(Money total, int basisPoints) => new(checked((total.Copper / PositionSizingPolicy.BasisPointsPerWhole) * basisPoints +

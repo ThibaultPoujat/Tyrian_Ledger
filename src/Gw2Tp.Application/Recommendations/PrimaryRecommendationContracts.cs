@@ -86,5 +86,6 @@ public sealed record PrimaryRecommendationEvidence(
 
 public interface IPrimaryRecommendationPolicy
 {
+    int AllocationBasisPoints(OpportunityScore score, PositionSizingLiquidity liquidity);
     IReadOnlyList<PrimaryRecommendationRecord> Evaluate(IReadOnlyCollection<PrimaryRecommendationEvidence> evidence);
 }

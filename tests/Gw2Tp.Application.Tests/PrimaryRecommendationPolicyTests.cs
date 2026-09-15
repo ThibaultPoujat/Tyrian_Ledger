@@ -90,17 +90,25 @@ public sealed class PrimaryRecommendationPolicyTests
     }
 
     [Fact]
-    public void Buy_small_halves_the_full_buy_quantity_and_recalculates_exact_total_economics()
+    public void Buy_small_preserves_the_pre_sized_reduced_quantity_and_exact_total_economics()
     {
         var fullEconomics = new PrimaryRecommendationEconomicsCalculator().CalculateUnitPrices(
             new Money(110), new Money(199), 10);
+        var smallEconomics = new PrimaryRecommendationEconomicsCalculator().CalculateUnitPrices(
+            new Money(110), new Money(199), 5);
         var fullEvidence = NewOpportunity() with
         {
             SuggestedQuantity = 10,
             SuggestedCapital = fullEconomics.TotalCost,
             Economics = fullEconomics,
         };
-        var smallEvidence = fullEvidence with { History = History(OpportunityHistoricalConfidence.Partial) };
+        var smallEvidence = fullEvidence with
+        {
+            History = History(OpportunityHistoricalConfidence.Partial),
+            SuggestedQuantity = 5,
+            SuggestedCapital = smallEconomics.TotalCost,
+            Economics = smallEconomics,
+        };
         var policy = new PrimaryRecommendationPolicy();
 
         var full = Assert.Single(policy.Evaluate([fullEvidence]));

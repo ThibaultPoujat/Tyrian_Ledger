@@ -1,13 +1,10 @@
-using Gw2Tp.Domain.Finance;
-
 namespace Gw2Tp.Application.Recommendations;
 
 /// <summary>Pure, deterministic version-one graduated action policy.</summary>
 public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
 {
     public const int Version = 1;
-    private const int BuySmallQuantityDivisor = 2;
-    private readonly PrimaryRecommendationEconomicsCalculator economicsCalculator = new();
+    internal const int BuySmallAllocationBasisPoints = PositionSizingPolicy.BasisPointsPerWhole / 2;
 
     private static readonly HashSet<OpportunityAnomalyFlag> HardAnomalies =
     [
@@ -34,7 +31,7 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
             .ToArray();
     }
 
-    private PrimaryRecommendationRecord EvaluateOne(PrimaryRecommendationEvidence item)
+    private static PrimaryRecommendationRecord EvaluateOne(PrimaryRecommendationEvidence item)
     {
         var (action, reasons) = item.Source switch
         {
@@ -44,35 +41,24 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
             PrimaryRecommendationSource.Inventory => Inventory(item),
             _ => Review(PrimaryRecommendationReasonCode.EvidenceMissing),
         };
-        var quantity = item.SuggestedQuantity;
-        var capital = item.SuggestedCapital;
-        var economics = item.Economics;
-        var portfolioConstraints = item.PortfolioConstraints;
-        if (action == PrimaryRecommendationAction.BuySmall)
-        {
-            if (item.Prices.PlannedBid is not { } plannedBid || item.Prices.PlannedListPrice is not { } plannedList)
-            {
-                action = PrimaryRecommendationAction.Review;
-                reasons = [Reason(PrimaryRecommendationReasonCode.EvidenceMissing)];
-                quantity = 0;
-                capital = Money.Zero;
-                economics = null;
-            }
-            else
-            {
-                quantity = Math.Max(1, quantity / BuySmallQuantityDivisor);
-                economics = economicsCalculator.CalculateUnitPrices(plannedBid, plannedList, quantity);
-                capital = economics.TotalCost;
-                portfolioConstraints = item.PortfolioConstraints
-                    .Select(constraint => constraint with { IsBinding = constraint.QuantityCapacity == quantity })
-                    .ToArray();
-            }
-        }
         reasons.Add(Reason(PrimaryRecommendationReasonCode.ReadOnlyManualAction));
         return new PrimaryRecommendationRecord(
             action, item.Source, item.OrderState, item.OrderId, item.ItemId, item.ItemName,
-            quantity, capital, item.Prices, economics,
-            item.Score, item.History, item.Liquidity, portfolioConstraints, reasons);
+            item.SuggestedQuantity, item.SuggestedCapital, item.Prices, item.Economics,
+            item.Score, item.History, item.Liquidity, item.PortfolioConstraints, reasons);
+    }
+
+    public int AllocationBasisPoints(OpportunityScore score, PositionSizingLiquidity liquidity)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        if (score.TotalPoints <= 0m || score.HistoricalConfidence == OpportunityHistoricalConfidence.Insufficient ||
+            HasHardAnomaly(score.Anomalies))
+        {
+            return 0;
+        }
+        return QualifiesForFullBuy(score.HistoricalConfidence, liquidity, score.Anomalies)
+            ? PositionSizingPolicy.BasisPointsPerWhole
+            : BuySmallAllocationBasisPoints;
     }
 
     private static (PrimaryRecommendationAction, List<PrimaryRecommendationReason>) NewOpportunity(PrimaryRecommendationEvidence item)
@@ -80,14 +66,13 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
         if (!item.IsEvidenceComplete || item.Score is null || item.History is null || item.Liquidity is null)
             return Review(PrimaryRecommendationReasonCode.EvidenceMissing);
         if (item.Score.TotalPoints <= 0m) return With(PrimaryRecommendationAction.Skip, PrimaryRecommendationReasonCode.ZeroScore);
-        if (item.Score.Anomalies.Any(anomaly => HardAnomalies.Contains(anomaly.Flag)))
+        if (HasHardAnomaly(item.Score.Anomalies))
             return With(PrimaryRecommendationAction.Skip, PrimaryRecommendationReasonCode.HardAnomaly);
         if (item.History.Confidence == OpportunityHistoricalConfidence.Insufficient)
             return With(PrimaryRecommendationAction.Wait, PrimaryRecommendationReasonCode.InsufficientHistory);
         if (!item.IsSizingAvailable || item.SuggestedQuantity == 0)
             return With(PrimaryRecommendationAction.Wait, PrimaryRecommendationReasonCode.NoSizingCapacity);
-        if (item.History.Confidence == OpportunityHistoricalConfidence.Strong &&
-            item.Liquidity.Classification == PositionSizingLiquidity.High && item.Score.Anomalies.Count == 0)
+        if (QualifiesForFullBuy(item.History.Confidence, item.Liquidity.Classification, item.Score.Anomalies))
         {
             return With(PrimaryRecommendationAction.Buy,
                 PrimaryRecommendationReasonCode.StrongEvidence, PrimaryRecommendationReasonCode.HighLiquidity);
@@ -120,9 +105,8 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
         {
             if (item.Score is null || item.Liquidity is null)
                 return Review(PrimaryRecommendationReasonCode.EvidenceMissing);
-            var qualifies = item.History.Confidence == OpportunityHistoricalConfidence.Strong &&
-                item.Liquidity.Classification == PositionSizingLiquidity.High &&
-                item.Score.Anomalies.Count == 0 && item.Score.TotalPoints > 0m;
+            var qualifies = item.Score.TotalPoints > 0m &&
+                QualifiesForFullBuy(item.History.Confidence, item.Liquidity.Classification, item.Score.Anomalies);
             var withinMaximum = item.Prices.PlannedBid is { } planned && planned.Copper <= item.Prices.MaximumBid.Value.Copper;
             var hasCapital = item.IncrementalCapitalRequired.Copper > 0 &&
                 item.IncrementalCapitalCapacity.Copper >= item.IncrementalCapitalRequired.Copper;
@@ -192,6 +176,17 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
             .Select(Reason)
             .ToList();
     }
+
+    private static bool HasHardAnomaly(IEnumerable<OpportunityScoreAnomaly> anomalies) =>
+        anomalies.Any(anomaly => HardAnomalies.Contains(anomaly.Flag));
+
+    private static bool QualifiesForFullBuy(
+        OpportunityHistoricalConfidence confidence,
+        PositionSizingLiquidity liquidity,
+        IReadOnlyCollection<OpportunityScoreAnomaly> anomalies) =>
+        confidence == OpportunityHistoricalConfidence.Strong &&
+        liquidity == PositionSizingLiquidity.High &&
+        anomalies.Count == 0;
 
     private static (PrimaryRecommendationAction, List<PrimaryRecommendationReason>) With(
         PrimaryRecommendationAction action, params PrimaryRecommendationReasonCode[] reasons) =>

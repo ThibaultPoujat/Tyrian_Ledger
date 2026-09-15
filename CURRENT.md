@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 ## Active direction
 
@@ -143,9 +143,11 @@ high-absolute-profit markets cannot crowd out an eligible affordable candidate.
 React renders the backend contract, initially limits new opportunities to five,
 and provides accessible evidence expansion without recommendation formulas or
 browser storage. Review corrections now prevent competitive bids from bypassing
-item/strategy/category caps, halve `BUY SMALL` quantities with exact recalculated
-economics, fail closed when an exposure reduction has no safe depth, and cover
-the composed recommendation paths including the 201st affordable candidate.
+item/strategy/category caps, rebuild current-order liquidity for the order's
+actual quantity, apply the `BUY SMALL` half-size before sequential headroom is
+consumed, keep returned capital/remaining cash aligned with exact full-quantity
+fees, fail closed when an exposure reduction has no safe depth, and cover the
+composed recommendation paths including the 201st affordable candidate.
 VERIFY-005 and VERIFY-013 remain OPEN. The PR remains SOL-GATED and Draft pending
 the owner-triggered targeted fresh Sol XHigh re-review.
 
@@ -157,19 +159,19 @@ intelligence.**
 
 ## Known-good baseline
 
-TKT-M19-04 local validation on 2026-09-14 reported:
+TKT-M19-04 local validation on 2026-09-15 reported:
 
 - Release solution build: zero warnings and zero errors;
-- focused scanner/sizing/recommendation suite: 77 tests passed; focused
+- focused scanner/sizing/recommendation suite: 81 tests passed; focused
   wallet/readiness and protected API suites passed;
-- full .NET regression suite: 436 tests passed (4 Domain, 21 Analytics, 196
+- full .NET regression suite: 440 tests passed (4 Domain, 21 Analytics, 200
   Application, 172 Infrastructure, and 43 Web);
 - React: 24 component tests passed and the production build succeeded;
 - Playwright: 15 tests passed across Chromium, Firefox, and WebKit, including
   the mocked two-minute primary review journey with no external request;
 - CI workflow contracts: 3 tests passed;
 - retired-runtime audit: only expected negative assertions matched;
-- Gitleaks: 304 reachable commits scanned with no leaks.
+- Gitleaks: 306 reachable commits scanned with no leaks.
 
 PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/123 (Draft; pending owner-triggered targeted fresh Sol XHigh re-review)
 

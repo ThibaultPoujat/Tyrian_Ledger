@@ -169,6 +169,41 @@ public sealed class PrimaryRecommendationServiceTests
         Assert.Equal(50, buySmall.Economics.ListingFee.Copper);
         Assert.Equal(100, buySmall.Economics.ExchangeFee.Copper);
         Assert.DoesNotContain(buySmall.PortfolioConstraints, constraint => constraint.IsBinding);
+        Assert.Equal(
+            result.Portfolio!.AvailableCash.Copper - new[] { buy, buySmall }.Sum(action => action.Capital.Copper),
+            result.Portfolio.RemainingCashAfterSizing.Copper);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
+    [Fact]
+    public async Task Composed_buy_small_reduction_releases_shared_headroom_for_later_ranked_candidates()
+    {
+        var itemIds = Enumerable.Range(1, 19).ToArray();
+        var candidates = itemIds.Select(Candidate).ToArray();
+        var histories = itemIds.ToDictionary(itemId => itemId, itemId => History(itemId, true, false));
+        var listings = itemIds.ToDictionary(itemId => itemId, itemId => Listing(itemId, 100));
+        var repository = SynchronizedRepository();
+        var service = CreateService(
+            SuccessfulPortfolio(100_000),
+            repository,
+            scanner: new StaticScanner(candidates),
+            marketClient: new ScenarioMarketClient(listings: listings),
+            historyService: new FakeHistoryService(histories));
+
+        var result = await service.GetAsync();
+
+        var purchases = result.Actions.Where(action => action.Source == PrimaryRecommendationSource.NewOpportunity).ToArray();
+        Assert.Equal(19, purchases.Length);
+        Assert.All(purchases, action =>
+        {
+            Assert.Equal(PrimaryRecommendationAction.BuySmall, action.Action);
+            Assert.Equal(5, action.Quantity);
+            Assert.Equal(555, action.Capital.Copper);
+        });
+        Assert.Equal(5, purchases.Single(action => action.Score!.Rank == 19).Quantity);
+        Assert.Equal(
+            result.Portfolio!.AvailableCash.Copper - purchases.Sum(action => action.Capital.Copper),
+            result.Portfolio.RemainingCashAfterSizing.Copper);
         Assert.Equal(0, repository.MutationCount);
     }
 
@@ -216,10 +251,40 @@ public sealed class PrimaryRecommendationServiceTests
         Assert.Equal(
             [PositionSizingConstraintName.ItemExposure, PositionSizingConstraintName.StrategyConcentration, PositionSizingConstraintName.CategoryConcentration],
             order.PortfolioConstraints.Where(constraint => constraint.IsBinding).Select(constraint => constraint.Name));
-        Assert.Equal([5_000L, 20_000L, 25_000L], order.PortfolioConstraints.Select(constraint => constraint.CapitalCapacity.Copper));
+        Assert.Equal(PositionSizingLiquidity.Low, order.Liquidity!.Classification);
+        Assert.Equal([1_500L, 20_000L, 25_000L], order.PortfolioConstraints.Select(constraint => constraint.CapitalCapacity.Copper));
         Assert.Contains(order.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.ItemExposureExceeded);
         Assert.Contains(order.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.StrategyExposureExceeded);
         Assert.Contains(order.Reasons, reason => reason.Code == PrimaryRecommendationReasonCode.CategoryExposureExceeded);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
+    [Fact]
+    public async Task Candidate_present_buy_order_rebuilds_liquidity_for_current_quantity_before_applying_item_cap()
+    {
+        var repository = SynchronizedRepository([
+            new CurrentPersonalTradingPostOrder(78, PersonalTradingPostSide.Buy, 42, 100, 30, Now.AddHours(-1)),
+        ]);
+        var candidate = Candidate(42);
+        var service = CreateService(
+            SuccessfulPortfolio(97_000),
+            repository,
+            scanner: new StaticScanner([candidate]),
+            marketClient: new ScenarioMarketClient(listings: new Dictionary<int, MarketListing> { [42] = Listing(42, 100) }),
+            historyService: new FakeHistoryService(new Dictionary<int, HistoricalMarketAnalytics> { [42] = History(42, true, true) }));
+
+        var result = await service.GetAsync();
+
+        var order = Assert.Single(result.Actions, action => action.Source == PrimaryRecommendationSource.BuyOrder);
+        Assert.Equal(PrimaryRecommendationAction.Review, order.Action);
+        Assert.Equal(PositionSizingLiquidity.Low, order.Liquidity!.Classification);
+        var itemConstraint = Assert.Single(order.PortfolioConstraints, constraint =>
+            constraint.Name == PositionSizingConstraintName.ItemExposure);
+        Assert.True(itemConstraint.IsBinding);
+        Assert.Equal(1_500, itemConstraint.CapitalCapacity.Copper);
+        Assert.Equal(15, itemConstraint.QuantityCapacity);
+        Assert.Contains(order.Liquidity.Reasons, reason =>
+            reason == LiveMarketScannerLiquidityReason.ParticipationCapBelowIntendedQuantity);
         Assert.Equal(0, repository.MutationCount);
     }
 

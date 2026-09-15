@@ -128,6 +128,50 @@ public sealed class PositionSizingServiceTests
         Assert.Contains(categoryResult.Allocations.Last().Constraints, constraint => constraint.Name == PositionSizingConstraintName.CategoryConcentration && constraint.IsBinding);
     }
 
+    [Fact]
+    public void Evidence_adjustment_is_applied_before_later_candidates_consume_shared_headroom()
+    {
+        var reducedCandidates = Enumerable.Range(1, 5)
+            .Select(itemId => Candidate(
+                itemId,
+                itemId,
+                PositionSizingLiquidity.High,
+                allocationBasisPoints: PrimaryRecommendationPolicy.BuySmallAllocationBasisPoints))
+            .ToArray();
+        var fullCandidates = reducedCandidates
+            .Select(candidate => candidate with { AllocationBasisPoints = PositionSizingPolicy.BasisPointsPerWhole })
+            .ToArray();
+        var service = new PositionSizingService();
+
+        var reduced = service.Size(Snapshot(100_000), reducedCandidates);
+        var full = service.Size(Snapshot(100_000), fullCandidates);
+
+        Assert.All(reduced.Allocations, allocation => Assert.Equal(22, allocation.SuggestedQuantity));
+        Assert.Equal(2_420, reduced.Allocations[^1].SuggestedCapital.Copper);
+        Assert.Equal(1, full.Allocations[^1].SuggestedQuantity);
+        Assert.True(reduced.Allocations[^1].SuggestedQuantity > full.Allocations[^1].SuggestedQuantity);
+        Assert.Equal(
+            100_000 - reduced.Allocations.Sum(allocation => allocation.SuggestedCapital.Copper),
+            reduced.RemainingCashAfterSizing!.Value.Copper);
+    }
+
+    [Fact]
+    public void Sequential_capital_uses_exact_full_quantity_fee_rounding()
+    {
+        var candidate = WithPrices(
+            Candidate(1, 1, PositionSizingLiquidity.High, participationCap: 1_000),
+            plannedBid: 1,
+            plannedList: 22);
+
+        var result = new PositionSizingService().Size(Snapshot(100_000), [candidate]);
+        var allocation = Assert.Single(result.Allocations);
+
+        Assert.Equal(1_000, allocation.SuggestedQuantity);
+        Assert.Equal(2_100, allocation.SuggestedCapital.Copper);
+        Assert.Equal(97_900, result.RemainingCashAfterSizing!.Value.Copper);
+        Assert.NotEqual(candidate.Market.TotalCost.Copper * allocation.SuggestedQuantity, allocation.SuggestedCapital.Copper);
+    }
+
     [Theory]
     [MemberData(nameof(UnavailableSnapshots))]
     public void Unknown_negative_or_incomplete_portfolio_state_returns_no_allocation(PortfolioSizingSnapshot snapshot)
@@ -178,17 +222,19 @@ public sealed class PositionSizingServiceTests
     }
 
     [Fact]
-    public void Extreme_visible_depth_cannot_overflow_a_constraint_or_allocate_past_financial_caps()
+    public void Inconsistent_one_unit_capital_fails_safe_instead_of_bypassing_exact_sizing()
     {
         var candidate = Candidate(1, 1, PositionSizingLiquidity.High, participationCap: 1_000) with
         {
             Market = Candidate(1, 1, PositionSizingLiquidity.High, participationCap: 1_000).Market with { TotalCost = new Money(long.MaxValue) },
         };
 
-        var allocation = Assert.Single(new PositionSizingService().Size(Snapshot(long.MaxValue), [candidate]).Allocations);
+        var result = new PositionSizingService().Size(Snapshot(long.MaxValue), [candidate]);
+        var allocation = Assert.Single(result.Allocations);
 
+        Assert.Equal(PositionSizingResultState.Unavailable, result.State);
+        Assert.Equal(PositionSizingAllocationState.Unavailable, allocation.State);
         Assert.Equal(0, allocation.SuggestedQuantity);
-        Assert.Equal(long.MaxValue, allocation.Constraints.Single(constraint => constraint.Name == PositionSizingConstraintName.LiquidityParticipation).CapitalCapacity.Copper);
     }
 
     private static PortfolioSizingSnapshot Snapshot(long availableCash, IReadOnlyList<PortfolioExposure>? exposures = null) => new(
@@ -205,7 +251,8 @@ public sealed class PositionSizingServiceTests
         PositionSizingLiquidity liquidity,
         int participationCap = 1_000,
         string strategy = "Flip",
-        string category = "Materials")
+        string category = "Materials",
+        int allocationBasisPoints = PositionSizingPolicy.BasisPointsPerWhole)
     {
         const int bid = 100;
         const int list = 200;
@@ -227,7 +274,31 @@ public sealed class PositionSizingServiceTests
             new Money(bid),
             [],
             new LiveMarketScannerLiquidityEvidence(10_000, 10_000, 10_000, 10_000, 5, 5, null, null, false, false, acquisition, liquidation, participationCap, [], levels, levels));
-        return new PositionSizingCandidate(new OpportunityScore(rank, itemId, 1, 0m, 0m, 0m, OpportunityHistoricalConfidence.Insufficient, OpportunityPersonalEvidenceState.NotYetAvailable, [], []), market, liquidity, strategy, category);
+        return new PositionSizingCandidate(
+            new OpportunityScore(rank, itemId, 1, 0m, 0m, 0m, OpportunityHistoricalConfidence.Insufficient, OpportunityPersonalEvidenceState.NotYetAvailable, [], []),
+            market, liquidity, strategy, category, allocationBasisPoints);
+    }
+
+    private static PositionSizingCandidate WithPrices(
+        PositionSizingCandidate candidate,
+        int plannedBid,
+        int plannedList)
+    {
+        var profit = new FlipProfitCalculator(Gw2TradingPostFeePolicy.Create()).Calculate(
+            new Money(plannedBid), new Money(plannedList));
+        var totalCost = Gw2TradingPostFeePolicy.CalculateFullUpFrontCost(
+            new Money(plannedBid), profit.ListingFee);
+        return candidate with
+        {
+            Market = candidate.Market with
+            {
+                PlannedBid = new Money(plannedBid),
+                PlannedListPrice = new Money(plannedList),
+                ProfitScenario = profit,
+                TotalCost = totalCost,
+                ModeledRoi = new ExactRoi(profit.NetProfit, totalCost),
+            },
+        };
     }
 
     private static long PercentageRoundDown(long value, int basisPoints) => value / 10_000 * basisPoints + value % 10_000 * basisPoints / 10_000;

@@ -201,9 +201,14 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
 
         var scoresByItem = scores.ToDictionary(value => value.ItemId);
         var candidatesByItem = scan.Candidates.ToDictionary(value => value.Item.ItemId);
-        var sizingCandidates = scan.Candidates.Select(candidate => new PositionSizingCandidate(
-            scoresByItem[candidate.Item.ItemId], candidate,
-            ClassifyLiquidity(candidate.Liquidity.Reasons), Strategy, Category)).ToArray();
+        var sizingCandidates = scan.Candidates.Select(candidate =>
+        {
+            var score = scoresByItem[candidate.Item.ItemId];
+            var liquidity = ClassifyLiquidity(candidate.Liquidity.Reasons);
+            return new PositionSizingCandidate(
+                score, candidate, liquidity, Strategy, Category,
+                actionPolicy.AllocationBasisPoints(score, liquidity));
+        }).ToArray();
         var sizing = sizingService.Size(sizingSnapshot, sizingCandidates);
         var allocationsByItem = sizing.Allocations.ToDictionary(value => value.ItemId);
         var reserveCancellations = SelectReserveCancellations(
@@ -282,7 +287,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             var plannedBid = candidate?.PlannedBid ?? model?.PlannedBid;
             var plannedList = candidate?.PlannedListPrice ?? model?.PlannedList;
             var maximumBid = candidate?.MaximumBid ?? model?.MaximumBid;
-            var liquidity = candidate?.Liquidity ?? (listing is not null ? BuildLiquidity(listing, Math.Max(1, order.Quantity)) : null);
+            var liquidity = listing is not null ? BuildLiquidity(listing, Math.Max(1, order.Quantity)) : null;
             var classification = liquidity is null ? (PositionSizingLiquidity?)null : ClassifyLiquidity(liquidity.Reasons);
             var capital = Multiply(order.UnitPriceInCopper, order.Quantity);
             var incremental = order.Side == PersonalTradingPostSide.Buy && plannedBid is { } replacement

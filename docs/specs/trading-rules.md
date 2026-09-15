@@ -262,13 +262,16 @@ and `TradingPost` category. Scanner evidence with no liquidity flags is high
 liquidity, price-cliff-only evidence is medium, and any depth, fill, or
 participation flag is low.
 
-All candidates share one historical cutoff and are sized in score order. The
-existing scanner one-unit total cost remains the conservative sizing input,
-but each returned suggestion recalculates gross value, both independently
-rounded fees, profit, total cost, and ROI over the complete quantity. It never
-multiplies one-unit fee/profit results. Existing minimum profit, minimum ROI,
-and cash-reserve settings take precedence; absent settings use the scanner
-defaults and the 15% sizing reserve.
+All candidates share one historical cutoff and are sized in score order. Each
+candidate quantity and the capital charged against cash/item/strategy/category
+headroom use the canonical full-quantity acquisition plus independently rounded
+listing fee rather than multiplying one-unit fee results. Candidates that do
+not qualify for a purchase consume no sequential headroom; `BUY SMALL` receives
+50% of the otherwise available whole-unit quantity, with a one-unit floor, before
+later candidates are sized. Returned gross value, fees, profit, total cost, ROI,
+and remaining cash therefore describe the same quantities. Existing minimum
+profit, minimum ROI, and cash-reserve settings take precedence; absent settings
+use the scanner defaults and the 15% sizing reserve.
 
 Before the scanner applies its bounded candidate shortlist, primary
 orchestration supplies an optimistic one-unit discovery ceiling derived from
