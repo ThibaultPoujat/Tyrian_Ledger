@@ -151,7 +151,7 @@ fail closed when an exposure reduction has no safe depth, and cover the composed
 recommendation paths including the 201st affordable candidate.
 VERIFY-005 and VERIFY-013 remain OPEN.
 
-TKT-M20-01 / #89 is implemented locally and awaiting delivery. It derives
+TKT-M20-01 / #89 is implemented in PR #124. It derives
 reproducible personal source-timestamp order durations, strictly bounded local
 confirmation windows, unknown disappearances, observed quantity reductions,
 known-basis capital lock duration, realized profit/day, and capital turns from
@@ -181,7 +181,7 @@ TKT-M20-01 local validation on 2026-09-15 reported:
 - CI workflow contracts: 3 tests passed;
 - Gitleaks: 307 reachable commits scanned with no leaks.
 
-PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/123 (merged); #89 delivery PR pending.
+PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/124 (NORMAL; CI green; separate owner-triggered review pending).
 
 ## Important transition warning
 
