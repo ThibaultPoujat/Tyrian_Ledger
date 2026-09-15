@@ -84,6 +84,99 @@ public sealed class PersonalTradingPostGatewayTests
         Assert.Equal("personal/account/credential-scope-1", Assert.Single(scheduler.RequestKeys).Value);
     }
 
+    [Fact]
+    public async Task Portfolio_snapshot_uses_one_captured_credential_and_maps_only_opaque_scope_and_coin()
+    {
+        var handler = new RecordingHandler(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/v2/account" => CreateJsonResponse(HttpStatusCode.OK, LoadFixture("gw2/account/scope.json")),
+            "/v2/account/wallet" => CreateJsonResponse(HttpStatusCode.OK, LoadFixture("gw2/account/wallet.json")),
+            _ => throw new InvalidOperationException("Unexpected endpoint."),
+        });
+        using var httpClient = CreateHttpClient(handler);
+        var scheduler = new ImmediateRequestScheduler();
+        var keySource = new CountingKeySource(SyntheticKey);
+        var gateway = new PersonalTradingPostGateway(keySource, httpClient, scheduler);
+
+        var result = await gateway.GetSnapshotAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("synthetic-account-guid-900001", result.Value?.AccountScope.AccountId);
+        Assert.Equal(9_007_199_254_740_993L, result.Value?.AvailableCash.Copper);
+        Assert.Equal(["/v2/account", "/v2/account/wallet"], handler.Requests.Select(request => request.Uri.AbsolutePath).Order());
+        Assert.All(handler.Requests, request =>
+        {
+            Assert.Equal("Bearer", request.AuthorizationScheme);
+            Assert.Equal(SyntheticKey, request.AuthorizationParameter);
+            Assert.Equal(PersonalTradingPostGateway.SchemaVersion, GetQueryParameters(request.Uri)["v"]);
+        });
+        Assert.Equal(
+            ["personal/portfolio/account/credential-scope-1", "personal/portfolio/wallet/credential-scope-1"],
+            scheduler.RequestKeys.Select(key => key.Value).Order());
+        Assert.Equal(1, keySource.ReadCount);
+        Assert.DoesNotContain(SyntheticKey, result.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("[{\"id\":2,\"value\":7}]")]
+    [InlineData("[{\"id\":1,\"value\":7},{\"id\":1,\"value\":8}]")]
+    [InlineData("[{\"id\":2,\"value\":7},{\"id\":2,\"value\":8},{\"id\":1,\"value\":9}]")]
+    [InlineData("[{\"id\":1,\"value\":-1}]")]
+    [InlineData("[{\"id\":1}]")]
+    [InlineData("[{\"value\":1}]")]
+    [InlineData("{\"id\":1,\"value\":1}")]
+    public async Task Portfolio_snapshot_rejects_missing_duplicate_negative_and_malformed_wallet_values(string walletPayload)
+    {
+        var handler = new RecordingHandler(request => request.RequestUri!.AbsolutePath == "/v2/account"
+            ? CreateJsonResponse(HttpStatusCode.OK, LoadFixture("gw2/account/scope.json"))
+            : CreateJsonResponse(HttpStatusCode.OK, walletPayload));
+        using var httpClient = CreateHttpClient(handler);
+        var gateway = new PersonalTradingPostGateway(new FixedKeySource(SyntheticKey), httpClient, new ImmediateRequestScheduler());
+
+        var result = await gateway.GetSnapshotAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, result.ErrorCategory);
+        Assert.Null(result.Value);
+    }
+
+    [Theory]
+    [InlineData("account")]
+    [InlineData("wallet")]
+    public async Task Portfolio_snapshot_rejects_partial_account_or_wallet_responses(string partialEndpoint)
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            var isAccount = request.RequestUri!.AbsolutePath == "/v2/account";
+            var isPartial = partialEndpoint == (isAccount ? "account" : "wallet");
+            return CreateJsonResponse(
+                isPartial ? HttpStatusCode.PartialContent : HttpStatusCode.OK,
+                isAccount ? LoadFixture("gw2/account/scope.json") : LoadFixture("gw2/account/wallet.json"));
+        });
+        using var httpClient = CreateHttpClient(handler);
+        var gateway = new PersonalTradingPostGateway(new FixedKeySource(SyntheticKey), httpClient, new ImmediateRequestScheduler());
+
+        var result = await gateway.GetSnapshotAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(Gw2ApiErrorCategory.IncompleteData, result.ErrorCategory);
+        Assert.Null(result.Value);
+    }
+
+    [Fact]
+    public void Registered_portfolio_and_trading_post_boundaries_share_the_same_gateway_instance()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddTyrianLedgerAccountConnection(new TestingHostEnvironment(), new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Same(
+            provider.GetRequiredService<IPersonalTradingPostGateway>(),
+            provider.GetRequiredService<IAccountPortfolioGateway>());
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.Unauthorized, Gw2ApiErrorCategory.Unauthorized)]
     [InlineData(HttpStatusCode.Forbidden, Gw2ApiErrorCategory.Forbidden)]
@@ -344,6 +437,17 @@ public sealed class PersonalTradingPostGatewayTests
     {
         public ValueTask<Gw2ApiKeyReadResult> ReadAsync(CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(Gw2ApiKeyReadResult.FromValue(value));
+    }
+
+    private sealed class CountingKeySource(string value) : IGw2ApiKeySource
+    {
+        public int ReadCount { get; private set; }
+
+        public ValueTask<Gw2ApiKeyReadResult> ReadAsync(CancellationToken cancellationToken = default)
+        {
+            ReadCount++;
+            return ValueTask.FromResult(Gw2ApiKeyReadResult.FromValue(value));
+        }
     }
 
     private sealed class UnavailableKeySource : IGw2ApiKeySource

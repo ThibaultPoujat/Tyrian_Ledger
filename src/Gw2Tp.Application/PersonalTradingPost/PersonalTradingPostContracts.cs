@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Domain.Finance;
 
 namespace Gw2Tp.Application.PersonalTradingPost;
 
@@ -27,6 +28,22 @@ public interface IPersonalTradingPostGateway
         int page,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Read-only access to authenticated account identity and spendable Coin.
+/// Implementations must obtain both values with one captured credential.
+/// </summary>
+public interface IAccountPortfolioGateway
+{
+    Task<Gw2ApiResult<AccountPortfolioSnapshot>> GetSnapshotAsync(
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Normalized portfolio identity and Coin balance. The account identifier is an
+/// opaque local scoping value and must never be returned to the browser.
+/// </summary>
+public sealed record AccountPortfolioSnapshot(AccountScope AccountScope, Money AvailableCash);
 
 /// <summary>
 /// Stable opaque identity used to scope local personal data. Account names and

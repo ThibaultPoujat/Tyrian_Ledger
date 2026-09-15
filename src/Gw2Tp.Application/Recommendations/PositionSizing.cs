@@ -126,7 +126,8 @@ public sealed record PositionSizingCandidate(
     LiveMarketScannerCandidate Market,
     PositionSizingLiquidity Liquidity,
     string Strategy,
-    string Category);
+    string Category,
+    int AllocationBasisPoints = PositionSizingPolicy.BasisPointsPerWhole);
 
 public sealed record PositionSizingConstraint(
     PositionSizingConstraintName Name,
@@ -174,6 +175,46 @@ public sealed class PositionSizingService : IPositionSizingService
         this.policy.Validate();
     }
 
+    /// <summary>
+    /// Returns the largest one-unit total cost that could fit the current cash,
+    /// high-liquidity item, strategy, and category caps. This is an optimistic
+    /// discovery ceiling: final candidate-specific liquidity and exposure still
+    /// flow through <see cref="Size"/>.
+    /// </summary>
+    public Money? CalculateDiscoveryCapitalLimit(
+        PortfolioSizingSnapshot snapshot,
+        string strategy,
+        string category)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (string.IsNullOrWhiteSpace(strategy) || string.IsNullOrWhiteSpace(category) ||
+            !TryValidatePortfolioSnapshot(snapshot, out var availableCash, out var exposures, out var totalBankroll))
+        {
+            return null;
+        }
+
+        var cashAfterReserve = Remaining(
+            availableCash,
+            PercentageRoundUp(totalBankroll, policy.CashReserveBasisPoints).Copper);
+        var itemCapacity = PercentageRoundDown(totalBankroll, policy.HighLiquidityItemCapBasisPoints);
+        var normalizedStrategy = NormalizeGroup(strategy);
+        var normalizedCategory = NormalizeGroup(category);
+        var strategyCapacity = Remaining(
+            PercentageRoundDown(totalBankroll, policy.StrategyCapBasisPoints),
+            Sum(exposures.Where(exposure => string.Equals(
+                NormalizeGroup(exposure.Strategy), normalizedStrategy, StringComparison.OrdinalIgnoreCase))
+                .Select(exposure => exposure.CapitalAtRisk.Copper)));
+        var categoryCapacity = Remaining(
+            PercentageRoundDown(totalBankroll, policy.CategoryCapBasisPoints),
+            Sum(exposures.Where(exposure => string.Equals(
+                NormalizeGroup(exposure.Category), normalizedCategory, StringComparison.OrdinalIgnoreCase))
+                .Select(exposure => exposure.CapitalAtRisk.Copper)));
+        var ceiling = Math.Min(
+            Math.Min(cashAfterReserve.Copper, itemCapacity.Copper),
+            Math.Min(strategyCapacity.Copper, categoryCapacity.Copper));
+        return ceiling > 0 ? new Money(ceiling) : null;
+    }
+
     public PositionSizingResult Size(PortfolioSizingSnapshot snapshot, IReadOnlyCollection<PositionSizingCandidate> candidates)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -214,7 +255,8 @@ public sealed class PositionSizingService : IPositionSizingService
                 (PositionSizingConstraintName.StrategyConcentration, Remaining(strategyCap, strategyExposure.GetValueOrDefault(strategy)), QuantityFor(Remaining(strategyCap, strategyExposure.GetValueOrDefault(strategy)), unitCost)),
                 (PositionSizingConstraintName.CategoryConcentration, Remaining(categoryCap, categoryExposure.GetValueOrDefault(category)), QuantityFor(Remaining(categoryCap, categoryExposure.GetValueOrDefault(category)), unitCost)),
             };
-            var quantity = capacities.Min(capacity => capacity.Item3);
+            var unconstrainedQuantity = capacities.Min(capacity => capacity.Item3);
+            var quantity = ScaleQuantity(unconstrainedQuantity, candidate.AllocationBasisPoints);
             var constraints = capacities
                 .Select(capacity => new PositionSizingConstraint(capacity.Item1, capacity.Item2, capacity.Item3, capacity.Item3 == quantity))
                 .ToArray();
@@ -276,18 +318,41 @@ public sealed class PositionSizingService : IPositionSizingService
         availableCash = new Money(0);
         exposures = [];
         totalBankroll = new Money(0);
-        if (snapshot.State != PortfolioSizingSnapshotState.Available || snapshot.AvailableCash is not { } suppliedCash || snapshot.ExistingExposures is not { } suppliedExposures ||
-            suppliedCash.Copper < 0 || suppliedExposures.Any(exposure => !IsValid(exposure)) ||
+        if (!TryValidatePortfolioSnapshot(snapshot, out availableCash, out exposures, out totalBankroll) ||
             candidates.Any(candidate => !IsValid(candidate)))
+        {
+            return false;
+        }
+
+        if (candidates.Select(candidate => candidate.Market.Item.ItemId).Distinct().Count() != candidates.Count ||
+            candidates.Select(candidate => candidate.Score.Rank).Distinct().Count() != candidates.Count)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryValidatePortfolioSnapshot(
+        PortfolioSizingSnapshot snapshot,
+        out Money availableCash,
+        out IReadOnlyList<PortfolioExposure> exposures,
+        out Money totalBankroll)
+    {
+        availableCash = new Money(0);
+        exposures = [];
+        totalBankroll = new Money(0);
+        if (snapshot.State != PortfolioSizingSnapshotState.Available ||
+            snapshot.AvailableCash is not { } suppliedCash ||
+            snapshot.ExistingExposures is not { } suppliedExposures ||
+            suppliedCash.Copper < 0 || suppliedExposures.Any(exposure => !IsValid(exposure)))
         {
             return false;
         }
 
         var exposureIds = suppliedExposures.Select(exposure => NormalizeGroup(exposure.ExposureId)).ToArray();
         if (exposureIds.Distinct(StringComparer.OrdinalIgnoreCase).Count() != exposureIds.Length ||
-            suppliedExposures.Any(exposure => !Enum.IsDefined(exposure.Kind)) ||
-            candidates.Select(candidate => candidate.Market.Item.ItemId).Distinct().Count() != candidates.Count ||
-            candidates.Select(candidate => candidate.Score.Rank).Distinct().Count() != candidates.Count)
+            suppliedExposures.Any(exposure => !Enum.IsDefined(exposure.Kind)))
         {
             return false;
         }
@@ -313,6 +378,7 @@ public sealed class PositionSizingService : IPositionSizingService
     private static bool IsValid(PositionSizingCandidate? candidate) => candidate?.Score is not null && candidate.Market?.Item is not null &&
         candidate.Score.Rank > 0 && candidate.Score.ItemId == candidate.Market.Item.ItemId && candidate.Market.Item.ItemId > 0 &&
         candidate.Market.TotalCost.Copper > 0 && candidate.Market.Liquidity is not null &&
+        candidate.AllocationBasisPoints is >= 0 and <= PositionSizingPolicy.BasisPointsPerWhole &&
         candidate.Market.Liquidity.TotalBuyQuantity >= 0 && candidate.Market.Liquidity.TotalSellQuantity >= 0 &&
         candidate.Market.Liquidity.ParticipationCapQuantity >= 0 &&
         candidate.Market.Liquidity.ParticipationCapQuantity <= Math.Min(candidate.Market.Liquidity.TotalBuyQuantity, candidate.Market.Liquidity.TotalSellQuantity) / 10 &&
@@ -347,6 +413,13 @@ public sealed class PositionSizingService : IPositionSizingService
             // saturating it leaves the independently smaller financial caps in control.
             return new Money(long.MaxValue);
         }
+    }
+
+    private static int ScaleQuantity(int quantity, int allocationBasisPoints)
+    {
+        if (quantity == 0 || allocationBasisPoints == 0) return 0;
+        var scaled = (long)quantity * allocationBasisPoints / PositionSizingPolicy.BasisPointsPerWhole;
+        return (int)Math.Max(1L, scaled);
     }
 
     private static Money PercentageRoundDown(Money total, int basisPoints) => new(checked((total.Copper / PositionSizingPolicy.BasisPointsPerWhole) * basisPoints +

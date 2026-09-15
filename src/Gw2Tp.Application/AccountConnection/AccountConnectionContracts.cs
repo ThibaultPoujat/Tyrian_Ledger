@@ -31,8 +31,9 @@ public static class AccountConnectionPermissions
 {
     public const string Account = "account";
     public const string TradingPost = "tradingpost";
+    public const string Wallet = "wallet";
 
-    public static IReadOnlyList<string> Required { get; } = [Account, TradingPost];
+    public static IReadOnlyList<string> Required { get; } = [Account, TradingPost, Wallet];
 
-    public static IReadOnlyList<string> Known { get; } = [Account, TradingPost];
+    public static IReadOnlyList<string> Known { get; } = [Account, TradingPost, Wallet];
 }

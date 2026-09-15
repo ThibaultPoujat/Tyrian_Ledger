@@ -11,6 +11,7 @@ namespace Gw2Tp.Application.Finance;
 /// </summary>
 public static class Gw2TradingPostFeePolicy
 {
+    public const int PolicyVersion = 1;
     public const int ListingFeeBasisPoints = 500;
     public const int ExchangeFeeBasisPoints = 1_000;
     public const long MinimumPositiveFeeCopper = 1;

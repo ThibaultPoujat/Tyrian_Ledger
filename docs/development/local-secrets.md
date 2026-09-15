@@ -6,8 +6,10 @@ never accepts, stores, or sends the key.
 
 Create a dedicated, read-only key at
 <https://account.arena.net/applications>. Personal Trading Post readiness
-requires the mandatory `account` permission and `tradingpost`. A key can be
-revoked at any time through the same ArenaNet page.
+requires the mandatory `account` permission plus `tradingpost` and `wallet`.
+The wallet permission supplies read-only Coin balance evidence used for
+position sizing. A key can be revoked at any time through the same ArenaNet
+page.
 
 ## Persistent local storage
 

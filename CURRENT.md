@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: 2026-09-14
+Last updated: 2026-09-15
 
 ## Active direction
 
@@ -131,26 +131,50 @@ depth, reserve breach/shortfall is explicit result-level evidence, and every
 binding cap remains structured for M19-04 orchestration. No VERIFY entries
 changed.
 
-The next valid implementation ticket is:
+TKT-M19-04 / #88 is implemented in Draft PR #123. The primary “What should I
+do?” workflow now combines authenticated Coin, synchronized orders and FIFO
+inventory, live depth, retained history, opportunity score, and conservative
+position sizing into explicit attention-first manual actions. Its protected
+read-only API returns exact full-quantity modeled economics, max-bid and
+portfolio constraints, confidence/liquidity evidence, and backend-generated
+reasons without returning credentials or account identity. Portfolio-fit
+capital is applied before bounded scanner truncation so unaffordable
+high-absolute-profit markets cannot crowd out an eligible affordable candidate.
+React renders the backend contract, initially limits new opportunities to five,
+and provides accessible evidence expansion without recommendation formulas or
+browser storage. Review corrections now prevent competitive bids from bypassing
+item/strategy/category caps, rebuild current-order liquidity for the order's
+actual quantity, apply the `BUY SMALL` half-size before sequential headroom is
+consumed, preserve version-one conservative one-unit `TotalCost` sizing while
+reconciling displayed remaining cash to exact returned full-quantity economics,
+fail closed when an exposure reduction has no safe depth, and cover the composed
+recommendation paths including the 201st affordable candidate.
+VERIFY-005 and VERIFY-013 remain OPEN. The PR remains SOL-GATED and Draft pending
+the owner-triggered targeted fresh Sol XHigh re-review.
 
-**TKT-M19-04 / #88 - Build the Primary `What Should I Do?` Recommendation
-Screen.**
+After the #88 SOL-GATED review/merge handoff, the next valid implementation
+ticket is:
+
+**TKT-M20-01 / #89 - Derive personal fill-time and capital-turnover
+intelligence.**
 
 ## Known-good baseline
 
-TKT-M19-03 final validation/review on 2026-09-09 reported:
+TKT-M19-04 local validation on 2026-09-15 reported:
 
-- focused position-sizing suite: 14/14 passed;
-- Application prerequisite suites: 80/80 passed;
-- Analytics fee/order-book prerequisites: 15/15 passed;
-- full Release .NET regression suite: 376/376 passed;
-- Release build: zero warnings/errors and diff check clean;
-- React: 21 component tests and production build passed;
-- Playwright: 12 tests passed across Chromium, Firefox, and WebKit;
-- GitHub CI was green for secret scan, backend, frontend, browser, and workflow contracts;
-- targeted fresh Sol XHigh re-review returned APPROVE with no remaining Blocker, Important, or Minor findings.
+- Release solution build: zero warnings and zero errors;
+- focused scanner/sizing/recommendation suite: 82 tests passed; focused
+  wallet/readiness and protected API suites passed;
+- full .NET regression suite: 441 tests passed (4 Domain, 21 Analytics, 201
+  Application, 172 Infrastructure, and 43 Web);
+- React: 24 component tests passed and the production build succeeded;
+- Playwright: 15 tests passed across Chromium, Firefox, and WebKit, including
+  the mocked two-minute primary review journey with no external request;
+- CI workflow contracts: 3 tests passed;
+- retired-runtime audit: only expected negative assertions matched;
+- Gitleaks: 307 reachable commits scanned with no leaks.
 
-PR #122 merged into `develop` on 2026-09-09.
+PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/123 (Draft; pending owner-triggered targeted fresh Sol XHigh re-review)
 
 ## Important transition warning
 

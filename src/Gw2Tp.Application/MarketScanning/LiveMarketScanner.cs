@@ -185,6 +185,12 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
                 return CandidateEvaluation.Excluded(LiveMarketScannerExclusionReason.MinimumRoiNotMet);
             }
 
+            if (settings.MaximumCandidateTotalCost is { } capitalLimit &&
+                metrics.TotalCost.Copper > capitalLimit.Copper)
+            {
+                return CandidateEvaluation.Excluded(LiveMarketScannerExclusionReason.CandidateCapitalLimitExceeded);
+            }
+
             return CandidateEvaluation.Included(new CalculatedCandidate(
                 price.ItemId,
                 price.Buys,

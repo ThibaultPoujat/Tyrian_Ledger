@@ -10,6 +10,7 @@ using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.Time;
 using Gw2Tp.Application.MarketScanning;
 using Gw2Tp.Application.PersonalTradingPost;
+using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Domain.Finance;
 using Gw2Tp.Web.Hosting;
 using Microsoft.Data.Sqlite;
@@ -94,7 +95,7 @@ public sealed class LocalHostIntegrationTests
                 services.AddSingleton<IAccountConnectionStatusService>(new FixedAccountConnectionStatusService(
                     new AccountConnectionStatus(
                         AccountConnectionState.Valid,
-                        ["account", "tradingpost"],
+                        ["account", "tradingpost", "wallet"],
                         [])));
             });
         using var client = app.GetTestClient();
@@ -109,7 +110,7 @@ public sealed class LocalHostIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
         Assert.Contains("\"state\":\"valid\"", body, StringComparison.Ordinal);
-        Assert.Contains("\"grantedPermissions\":[\"account\",\"tradingpost\"]", body, StringComparison.Ordinal);
+        Assert.Contains("\"grantedPermissions\":[\"account\",\"tradingpost\",\"wallet\"]", body, StringComparison.Ordinal);
         Assert.DoesNotContain(syntheticKey, body, StringComparison.Ordinal);
         Assert.DoesNotContain(maliciousMetadata, body, StringComparison.Ordinal);
         Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
@@ -231,6 +232,108 @@ public sealed class LocalHostIntegrationTests
         Assert.Equal("no-store", invalid.Headers.CacheControl?.ToString());
         Assert.Equal(1, scanner.CallCount);
         Assert.Contains("invalid_scanner_settings", await invalid.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Recommendation_endpoint_is_protected_read_only_no_store_and_serializes_money_as_strings()
+    {
+        var service = new FixedPrimaryRecommendationService(ReadyRecommendations());
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IPrimaryRecommendationService>();
+                services.AddSingleton<IPrimaryRecommendationService>(service);
+            });
+        using var client = app.GetTestClient();
+
+        using var missingHeader = await client.GetAsync("/api/recommendations");
+        Assert.Equal(HttpStatusCode.Forbidden, missingHeader.StatusCode);
+        Assert.Equal(0, service.CallCount);
+
+        using var untrustedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/recommendations");
+        untrustedRequest.Headers.Add("Origin", "https://attacker.example");
+        untrustedRequest.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var untrusted = await client.SendAsync(untrustedRequest);
+        Assert.Equal(HttpStatusCode.Forbidden, untrusted.StatusCode);
+        Assert.Equal(0, service.CallCount);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/recommendations");
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Equal(1, service.CallCount);
+        Assert.Contains("\"state\":\"ready\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"action\":\"CANCEL BID\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"availableCash\":{\"copper\":\"9007199254740993\"}", body, StringComparison.Ordinal);
+        Assert.Contains("\"minimumProfit\":{\"copper\":\"1\"}", body, StringComparison.Ordinal);
+        Assert.Contains("\"netProfit\":{\"copper\":\"211\"}", body, StringComparison.Ordinal);
+        Assert.Contains("\"roiDisplayPercent\":\"63.75%\"", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("opaque-account", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
+
+        using var mutationRequest = new HttpRequestMessage(HttpMethod.Post, "/api/recommendations");
+        mutationRequest.Headers.Add("Origin", "http://localhost");
+        mutationRequest.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var mutationResponse = await client.SendAsync(mutationRequest);
+        Assert.Equal(HttpStatusCode.NotFound, mutationResponse.StatusCode);
+        Assert.Equal(1, service.CallCount);
+    }
+
+    [Fact]
+    public async Task Transient_recommendation_failure_returns_structured_no_store_503()
+    {
+        var service = new FixedPrimaryRecommendationService(PrimaryRecommendationResult.Unavailable(
+            PrimaryRecommendationState.EvidenceUnavailable,
+            "history_or_market_read_failed",
+            RecommendationPolicies()));
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IPrimaryRecommendationService>();
+                services.AddSingleton<IPrimaryRecommendationService>(service);
+            });
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/recommendations");
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Contains("\"state\":\"evidenceUnavailable\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"evidenceError\":\"history_or_market_read_failed\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"actions\":[]", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Unexpected_recommendation_read_failure_is_safely_normalized_to_structured_503()
+    {
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IPrimaryRecommendationService>();
+                services.AddSingleton<IPrimaryRecommendationService>(new ThrowingPrimaryRecommendationService());
+            });
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/recommendations");
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Contains("\"state\":\"evidenceUnavailable\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"evidenceError\":\"recommendation_generation_failed\"", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("synthetic internal detail", body, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1308,6 +1411,77 @@ public sealed class LocalHostIntegrationTests
             CallCount++;
             return Task.FromResult(result with { Settings = settings });
         }
+    }
+
+    private static PrimaryRecommendationPolicies RecommendationPolicies() => new(
+        ActionPolicyVersion: 1,
+        ScorePolicyVersion: 1,
+        PositionSizingPolicyVersion: 1,
+        FifoPolicyVersion: 1,
+        FeePolicyVersion: 1,
+        MinimumProfitInCopper: 1,
+        MinimumRoiBasisPoints: 0,
+        CashReserveBasisPoints: 1_500,
+        Strategy: "FastFlip",
+        Category: "TradingPost");
+
+    private static PrimaryRecommendationResult ReadyRecommendations()
+    {
+        var now = new DateTimeOffset(2026, 9, 9, 10, 0, 0, TimeSpan.Zero);
+        return new PrimaryRecommendationResult(
+            PrimaryRecommendationState.Ready,
+            null,
+            now,
+            now.AddMinutes(-5),
+            now.AddMinutes(-4),
+            now.AddMinutes(-1),
+            RecommendationPolicies(),
+            new PrimaryRecommendationPortfolio(
+                new Money(9_007_199_254_740_993),
+                new Money(9_007_199_254_741_293),
+                new Money(1_351_079_888_211_193),
+                CashReserveStatus.Satisfied,
+                Money.Zero,
+                new Money(7_656_119_366_529_800)),
+            [new PrimaryRecommendationRecord(
+                PrimaryRecommendationAction.CancelBid,
+                PrimaryRecommendationSource.BuyOrder,
+                PrimaryRecommendationOrderState.AboveMaximumBid,
+                "99",
+                42,
+                "Synthetic item",
+                3,
+                new Money(300),
+                new PrimaryRecommendationPriceState(
+                    new Money(100), new Money(99), new Money(200), new Money(100), new Money(199), new Money(90)),
+                new PrimaryRecommendationEconomics(
+                    new Money(300), new Money(603), new Money(31), new Money(61),
+                    new Money(511), new Money(211), new Money(331), "63.75%"),
+                new PrimaryRecommendationScore(1, 80m, 80m, 0m, [], []),
+                new PrimaryRecommendationHistory(OpportunityHistoricalConfidence.Strong, now, []),
+                new PrimaryRecommendationLiquidity(PositionSizingLiquidity.High, 100, 100, 50, 50, 10, 10, []),
+                [new PositionSizingConstraint(PositionSizingConstraintName.ItemExposure, new Money(500), 5, true)],
+                [
+                    new PrimaryRecommendationReason(PrimaryRecommendationReasonCode.BidAboveMaximum, "Current bid exceeds the modeled maximum."),
+                    new PrimaryRecommendationReason(PrimaryRecommendationReasonCode.ReadOnlyManualAction, "Tyrian Ledger never changes Trading Post orders."),
+                ])]);
+    }
+
+    private sealed class FixedPrimaryRecommendationService(PrimaryRecommendationResult result) : IPrimaryRecommendationService
+    {
+        public int CallCount { get; private set; }
+
+        public Task<PrimaryRecommendationResult> GetAsync(CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class ThrowingPrimaryRecommendationService : IPrimaryRecommendationService
+    {
+        public Task<PrimaryRecommendationResult> GetAsync(CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("synthetic internal detail");
     }
 
     private static Task<HttpResponseMessage> SendWithOriginAsync(

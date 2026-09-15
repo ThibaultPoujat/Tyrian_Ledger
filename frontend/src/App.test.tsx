@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
@@ -9,6 +9,37 @@ const notSynchronizedDashboard = {
   isOpenInventoryFullyValued: null, openInventory: [], currentBuyCapital: { copper: '0' },
   currentSellGrossValue: { copper: '0' }, currentSellNetValue: { copper: '0' }, currentOrders: [],
   recentTrades: [], bestRealizedItems: [], worstRealizedItems: [],
+};
+
+function recommendationAction(itemId: number, itemName: string, action = 'BUY', source = 'newOpportunity') {
+  return {
+    action, source, orderState: source === 'buyOrder' ? 'aboveMaximumBid' : 'notApplicable',
+    orderId: source === 'buyOrder' ? String(9000 + itemId) : null,
+    itemId, itemName, quantity: 3, capital: { copper: '315' },
+    prices: { currentOrderUnitPrice: source === 'buyOrder' ? { copper: '125' } : null, bestBuy: { copper: '99' }, lowestSell: { copper: '151' }, plannedBid: { copper: '100' }, plannedListPrice: { copper: '150' }, maximumBid: { copper: '110' } },
+    economics: { acquisitionCost: { copper: '300' }, grossSaleValue: { copper: '450' }, listingFee: { copper: '23' }, exchangeFee: { copper: '45' }, netSaleProceeds: { copper: '382' }, netProfit: { copper: '82' }, totalCost: { copper: '323' }, roiDisplayPercent: '25.39%' },
+    score: { rank: itemId, totalPoints: 82, basePoints: 85, appliedPenaltyPoints: 3, components: [], anomalies: [] },
+    history: { confidence: 'strong', commonCutoffUtc: '2026-09-09T12:00:00Z', windows: [
+      { durationDays: 7, isAvailable: true, rawObservationCount: 24, eligibleObservationCount: 22, observedSpanPercent: 91 },
+      { durationDays: 30, isAvailable: true, rawObservationCount: 80, eligibleObservationCount: 75, observedSpanPercent: 88 },
+    ] },
+    liquidity: { classification: 'high', totalBuyQuantity: 100, totalSellQuantity: 120, nearBestBuyQuantity: 30, nearBestSellQuantity: 40, participationCapQuantity: 10, safeLiquidationQuantity: 10, reasons: [] },
+    portfolioConstraints: [{ name: 'itemExposure', capitalCapacity: { copper: '500' }, quantityCapacity: 5, isBinding: true }],
+    reasons: [{ code: action === 'CANCEL BID' ? 'bidAboveMaximum' : 'strongEvidence', message: action === 'CANCEL BID' ? 'The current bid is above the maximum allowed bid.' : 'Both retained-history windows support this opportunity.' }],
+  };
+}
+
+const readyRecommendations = {
+  state: 'ready', evidenceError: null, generatedAtUtc: '2026-09-09T12:00:00Z',
+  lastSuccessfulSyncAtUtc: '2026-09-09T11:59:00Z', currentOrdersObservedAtUtc: '2026-09-09T11:58:00Z', scannerObservedAtUtc: '2026-09-09T11:57:00Z',
+  policies: { actionPolicyVersion: 1, scorePolicyVersion: 1, positionSizingPolicyVersion: 1, fifoPolicyVersion: 1, feePolicyVersion: 1, minimumProfit: { copper: '1' }, minimumRoiBasisPoints: 0, cashReserveBasisPoints: 1500, strategy: 'FastFlip', category: 'TradingPost' },
+  portfolio: { availableCash: { copper: '9007199254740993' }, totalBankroll: { copper: '9007199254741993' }, cashReserve: { copper: '1500' }, reserveStatus: 'satisfied', cashReserveShortfall: { copper: '0' }, remainingCashAfterSizing: { copper: '9007199254740678' } },
+  actions: [
+    recommendationAction(90, 'Overpriced bid', 'CANCEL BID', 'buyOrder'),
+    recommendationAction(1, 'Top opportunity'), recommendationAction(2, 'Second opportunity'),
+    recommendationAction(3, 'Third opportunity'), recommendationAction(4, 'Fourth opportunity'),
+    recommendationAction(5, 'Fifth opportunity'), recommendationAction(6, 'Sixth opportunity'),
+  ],
 };
 
 beforeEach(() => {
@@ -37,12 +68,23 @@ beforeEach(() => {
       });
     }
 
+    if (input === '/api/recommendations') {
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          state: 'notSynchronized', evidenceError: null, generatedAtUtc: null,
+          lastSuccessfulSyncAtUtc: null, currentOrdersObservedAtUtc: null, scannerObservedAtUtc: null,
+          policies: { ...readyRecommendations.policies }, portfolio: null, actions: [],
+        }),
+      });
+    }
+
     return Promise.resolve({
       ok: true,
       json: vi.fn().mockResolvedValue({
         state: 'not_configured',
         grantedPermissions: [],
-        missingRequiredPermissions: ['account', 'tradingpost'],
+        missingRequiredPermissions: ['account', 'tradingpost', 'wallet'],
       }),
     });
   }));
@@ -147,7 +189,7 @@ describe('M14 local data controls', () => {
   it('shows the local foundation, safe no-key status, and guarded recovery controls', async () => {
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: 'Understand your trading position.' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'What should I do?' })).toBeVisible();
     expect(await screen.findByText('Local host connected')).toBeVisible();
     expect(await screen.findByText('No ArenaNet key configured')).toBeVisible();
     expect(await screen.findByRole('heading', { name: 'No personal data yet' })).toBeVisible();
@@ -210,7 +252,7 @@ describe('M14 local data controls', () => {
         json: vi.fn().mockResolvedValue({
           state: 'not_configured',
           grantedPermissions: [],
-          missingRequiredPermissions: ['account', 'tradingpost'],
+          missingRequiredPermissions: ['account', 'tradingpost', 'wallet'],
         }),
       } as unknown as Response);
     });
@@ -235,7 +277,7 @@ describe('M14 local data controls', () => {
         json: vi.fn().mockResolvedValue({
           state: 'unavailable',
           grantedPermissions: [],
-          missingRequiredPermissions: ['account', 'tradingpost'],
+          missingRequiredPermissions: ['account', 'tradingpost', 'wallet'],
         }),
       } as unknown as Response);
     });
@@ -505,7 +547,7 @@ describe('M14 local data controls', () => {
     };
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/account-connection') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: ['account', 'tradingpost'], missingRequiredPermissions: [] }) } as unknown as Response);
+      if (input === '/api/account-connection') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: ['account', 'tradingpost', 'wallet'], missingRequiredPermissions: [] }) } as unknown as Response);
       if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
       if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(dashboard) } as unknown as Response);
       if (input === '/api/personal-trading-post/sync') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'succeeded' }) } as unknown as Response);
@@ -614,5 +656,77 @@ describe('M14 local data controls', () => {
     fireEvent.change(screen.getByLabelText('Type CLEAR PERSONAL DATA to continue'), { target: { value: 'CLEAR PERSONAL DATA' } });
     fireEvent.click(screen.getByRole('button', { name: 'Clear personal account data' }));
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/personal-dashboard')).toHaveLength(3));
+  });
+
+  it('renders the backend action order, initially limits new opportunities, and expands evidence', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/recommendations') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(readyRecommendations) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: ['account', 'tradingpost', 'wallet'], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('7 manual actions ready to review.')).toBeVisible();
+    const primaryCard = document.querySelector<HTMLElement>('.recommendation-card');
+    expect(primaryCard?.querySelector('.action-badge')?.textContent).toBe('CANCEL BID');
+    expect(screen.getByText('900719925474g 9s 93c')).toBeVisible();
+    expect(screen.queryByText('Sixth opportunity')).not.toBeInTheDocument();
+    fireEvent.click(within(primaryCard!).getByText('Review depth, history, score, and reasons'));
+    expect(within(primaryCard!).getByRole('heading', { name: 'Retained history' })).toBeVisible();
+    expect(within(primaryCard!).getByText(/7 days: 22\/24 eligible/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Show 1 more new opportunities' }));
+    expect(screen.getByText('Sixth opportunity')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh actions' }));
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/recommendations')).toHaveLength(2));
+    expect(Storage.prototype.getItem).not.toHaveBeenCalled();
+    expect(Storage.prototype.setItem).not.toHaveBeenCalled();
+  });
+
+  it('renders degraded recommendation states and rejects malformed money safely', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/recommendations') return Promise.resolve({ ok: false, json: vi.fn().mockResolvedValue({ ...readyRecommendations, state: 'evidenceUnavailable', portfolio: null, actions: [] }) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: ['account', 'tradingpost', 'wallet'] }) } as unknown as Response);
+    });
+    render(<App />);
+    expect(await screen.findByText(/Current market or history evidence is temporarily unavailable/)).toBeVisible();
+
+    cleanup();
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/recommendations') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ ...readyRecommendations, portfolio: { ...readyRecommendations.portfolio, availableCash: { copper: 42 } } }) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: ['account', 'tradingpost', 'wallet'] }) } as unknown as Response);
+    });
+    render(<App />);
+    expect(await screen.findByText('Recommendations could not be read from the local host.')).toBeVisible();
+  });
+
+  it('accepts and displays every backend recommendation action state', async () => {
+    const actionStates = [
+      'BUY', 'BUY SMALL', 'WAIT', 'KEEP BID', 'UPDATE BID', 'STOP BIDDING', 'CANCEL BID',
+      'LIST', 'LEAVE SELL LISTING', 'HOLD', 'REDUCE', 'SELL PARTIAL', 'SELL', 'SKIP', 'REVIEW',
+    ];
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (input === '/api/recommendations') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({
+        ...readyRecommendations,
+        actions: actionStates.map((action, index) => recommendationAction(100 + index, `Action ${index + 1}`, action, 'inventory')),
+      }) } as unknown as Response);
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: ['account', 'tradingpost', 'wallet'], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText('15 manual actions ready to review.')).toBeVisible();
+    expect(Array.from(document.querySelectorAll('.action-badge'), badge => badge.textContent)).toEqual(actionStates);
   });
 });

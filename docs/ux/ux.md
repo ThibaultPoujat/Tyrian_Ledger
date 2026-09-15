@@ -37,6 +37,15 @@ Each card/row should make the action, item, quantity/capital, important
 price/max-bid value, modeled result, key risk/confidence reason, and why-now
 logic scannable. Detailed depth/history/score components may expand on demand.
 
+The action workflow is the first content section beneath the page heading. It
+keeps current-order and risk-attention actions ahead of new opportunities,
+shows only the first five new opportunities initially, and provides an explicit
+control to reveal the remainder. Refresh/status controls announce loading and
+degraded states without erasing the distinction between unavailable evidence,
+an unready account, and unsynchronized personal data. React formats and renders
+the backend contract; it does not calculate actions, fees, ROI, max bids, or
+position size and stores no recommendation result in browser storage.
+
 ### Personal dashboard
 
 Show:
