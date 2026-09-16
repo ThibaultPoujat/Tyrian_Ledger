@@ -158,10 +158,10 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         new("investment_position_exits", "position_id", "investment_positions", "id"),
         new("investment_position_targets", "position_id", "investment_positions", "id"),
         new("account_crafting_snapshots", "account_profile_id", "account_profiles", "id"),
-        new("account_crafting_bank_entries", "account_profile_id", "account_profiles", "id"),
-        new("account_crafting_material_entries", "account_profile_id", "account_profiles", "id"),
-        new("account_crafting_recipe_unlocks", "account_profile_id", "account_profiles", "id"),
-        new("account_crafting_disciplines", "account_profile_id", "account_profiles", "id"),
+        new("account_crafting_bank_entries", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
+        new("account_crafting_material_entries", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
+        new("account_crafting_recipe_unlocks", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
+        new("account_crafting_disciplines", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
     ];
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> RequiredCheckConstraints =
@@ -443,8 +443,8 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 item_id INTEGER NOT NULL CHECK (item_id > 0),
                 binding INTEGER NOT NULL CHECK (binding BETWEEN 0 AND 3),
                 quantity INTEGER NOT NULL CHECK (quantity > 0),
-                CONSTRAINT fk_account_crafting_bank_entries_account FOREIGN KEY (account_profile_id)
-                    REFERENCES account_profiles(id) ON DELETE RESTRICT,
+                CONSTRAINT fk_account_crafting_bank_entries_snapshot FOREIGN KEY (account_profile_id)
+                    REFERENCES account_crafting_snapshots(account_profile_id) ON DELETE RESTRICT,
                 PRIMARY KEY (account_profile_id, item_id, binding)
             );
             CREATE TABLE account_crafting_material_entries (
@@ -453,15 +453,15 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 category_id INTEGER NOT NULL CHECK (category_id > 0),
                 binding INTEGER NOT NULL CHECK (binding BETWEEN 0 AND 3),
                 quantity INTEGER NOT NULL CHECK (quantity >= 0),
-                CONSTRAINT fk_account_crafting_material_entries_account FOREIGN KEY (account_profile_id)
-                    REFERENCES account_profiles(id) ON DELETE RESTRICT,
+                CONSTRAINT fk_account_crafting_material_entries_snapshot FOREIGN KEY (account_profile_id)
+                    REFERENCES account_crafting_snapshots(account_profile_id) ON DELETE RESTRICT,
                 PRIMARY KEY (account_profile_id, item_id)
             );
             CREATE TABLE account_crafting_recipe_unlocks (
                 account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
                 recipe_id INTEGER NOT NULL CHECK (recipe_id > 0),
-                CONSTRAINT fk_account_crafting_recipe_unlocks_account FOREIGN KEY (account_profile_id)
-                    REFERENCES account_profiles(id) ON DELETE RESTRICT,
+                CONSTRAINT fk_account_crafting_recipe_unlocks_snapshot FOREIGN KEY (account_profile_id)
+                    REFERENCES account_crafting_snapshots(account_profile_id) ON DELETE RESTRICT,
                 PRIMARY KEY (account_profile_id, recipe_id)
             );
             CREATE TABLE account_crafting_disciplines (
@@ -469,8 +469,8 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 discipline TEXT NOT NULL COLLATE BINARY CHECK (length(discipline) > 0),
                 rating INTEGER NOT NULL CHECK (rating >= 0),
                 is_active INTEGER NOT NULL CHECK (is_active IN (0, 1)),
-                CONSTRAINT fk_account_crafting_disciplines_account FOREIGN KEY (account_profile_id)
-                    REFERENCES account_profiles(id) ON DELETE RESTRICT,
+                CONSTRAINT fk_account_crafting_disciplines_snapshot FOREIGN KEY (account_profile_id)
+                    REFERENCES account_crafting_snapshots(account_profile_id) ON DELETE RESTRICT,
                 PRIMARY KEY (account_profile_id, discipline)
             );
             """),

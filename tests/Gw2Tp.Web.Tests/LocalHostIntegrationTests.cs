@@ -950,6 +950,7 @@ public sealed class LocalHostIntegrationTests
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TyrianLedger:Host:Port"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["TyrianLedger:Database:Path"] = Path.Combine(Path.GetTempPath(), "TyrianLedger.Web.Tests", Guid.NewGuid().ToString("N"), "tyrian-ledger.db"),
             });
         });
         await app.StartAsync();
@@ -1079,6 +1080,7 @@ public sealed class LocalHostIntegrationTests
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["TyrianLedger:Host:Port"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["TyrianLedger:Database:Path"] = Path.Combine(Path.GetTempPath(), "TyrianLedger.Web.Tests", Guid.NewGuid().ToString("N"), "tyrian-ledger.db"),
             });
         });
         await app.StartAsync();

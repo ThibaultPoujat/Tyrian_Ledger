@@ -160,6 +160,41 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Restore_rejects_crafting_rows_orphaned_from_their_snapshot_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        await database.Crafting.ReplaceAsync(new AccountCraftingSnapshot(
+            new AccountScope("opaque-account-crafting-a"), FirstObservedAtUtc,
+            CraftingFeatureResult<IReadOnlyList<AccountInventoryEntry>>.Available([new(42, 3, AccountItemBinding.AccountBound)]),
+            CraftingFeatureResult<IReadOnlyList<AccountMaterialEntry>>.Available([]),
+            CraftingFeatureResult<IReadOnlyList<int>>.Available([]),
+            CraftingFeatureResult<IReadOnlyList<CraftingDisciplineCapability>>.Available([])));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "orphaned-crafting-entry.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), incompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA foreign_keys = OFF; DELETE FROM account_crafting_snapshots;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
+    }
+
+    [Fact]
     public async Task Successful_sync_commits_history_current_orders_metadata_and_status_together()
     {
         await using var database = await TestDatabase.CreateAsync();
