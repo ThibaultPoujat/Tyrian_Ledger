@@ -13,6 +13,7 @@ using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Application.Investments;
+using Gw2Tp.Application.Crafting;
 using Gw2Tp.Domain.Finance;
 using Gw2Tp.Web.Hosting;
 using Microsoft.Data.Sqlite;
@@ -70,7 +71,7 @@ public sealed class LocalHostIntegrationTests
                 await connection.OpenAsync();
                 await using var command = connection.CreateCommand();
                 command.CommandText = "SELECT COUNT(*) FROM schema_migrations;";
-                Assert.Equal(7L, await command.ExecuteScalarAsync());
+                Assert.Equal(8L, await command.ExecuteScalarAsync());
             }
 
         }
@@ -153,6 +154,47 @@ public sealed class LocalHostIntegrationTests
         Assert.DoesNotContain("opaque-account", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Account_crafting_refresh_is_origin_protected_and_returns_only_safe_feature_summary()
+    {
+        var service = new FixedAccountCraftingSnapshotService(Gw2ApiResult<AccountCraftingSnapshot>.Success(new AccountCraftingSnapshot(
+            new AccountScope("opaque-account-must-not-reach-browser"),
+            new DateTimeOffset(2026, 9, 16, 12, 0, 0, TimeSpan.Zero),
+            CraftingFeatureResult<IReadOnlyList<AccountInventoryEntry>>.Available([new(42, 3, AccountItemBinding.AccountBound)]),
+            CraftingFeatureResult<IReadOnlyList<AccountMaterialEntry>>.FromFailure(Gw2ApiErrorCategory.Forbidden),
+            CraftingFeatureResult<IReadOnlyList<int>>.Available([9001, 9002]),
+            CraftingFeatureResult<IReadOnlyList<CraftingDisciplineCapability>>.Available([new("Synthetic Crafter", 500, true)]))));
+        await using var app = await StartApplicationAsync("Production", configureServices: services =>
+        {
+            services.RemoveAll<IAccountCraftingSnapshotService>();
+            services.AddSingleton<IAccountCraftingSnapshotService>(service);
+        });
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/account-crafting/refresh");
+        request.Headers.Add("Origin", "http://localhost");
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.Equal(1, service.RefreshCount);
+        Assert.Contains("\"availability\":\"Available\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"count\":1", body, StringComparison.Ordinal);
+        Assert.Contains("\"availability\":\"MissingPermission\"", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("opaque-account", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Synthetic Crafter", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"itemId\"", body, StringComparison.OrdinalIgnoreCase);
+
+        using var attacker = new HttpRequestMessage(HttpMethod.Post, "/api/account-crafting/refresh");
+        attacker.Headers.Add("Origin", "https://attacker.example");
+        attacker.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var forbidden = await client.SendAsync(attacker);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        Assert.Equal(1, service.RefreshCount);
     }
 
     [Fact]
@@ -1266,6 +1308,21 @@ public sealed class LocalHostIntegrationTests
             CallCount++;
             return Task.FromResult(result);
         }
+    }
+
+    private sealed class FixedAccountCraftingSnapshotService(Gw2ApiResult<AccountCraftingSnapshot> refreshResult)
+        : IAccountCraftingSnapshotService
+    {
+        public int RefreshCount { get; private set; }
+
+        public Task<Gw2ApiResult<AccountCraftingSnapshot>> RefreshAsync(CancellationToken cancellationToken = default)
+        {
+            RefreshCount++;
+            return Task.FromResult(refreshResult);
+        }
+
+        public Task<AccountCraftingSnapshot?> GetLatestAsync(AccountScope accountScope, CancellationToken cancellationToken = default) =>
+            Task.FromResult<AccountCraftingSnapshot?>(null);
     }
 
     private sealed class FixedMarketHistoryCollector : IMarketHistoryCollector

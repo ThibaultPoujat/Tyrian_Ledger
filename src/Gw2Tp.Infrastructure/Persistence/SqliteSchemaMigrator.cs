@@ -5,7 +5,7 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFactory)
 {
-    private const int LatestVersion = 7;
+    private const int LatestVersion = 8;
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> LatestSchemaColumns =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
@@ -78,6 +78,28 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             {
                 "position_id", "ordinal", "unit_price_in_copper", "quantity",
             },
+            ["account_crafting_snapshots"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "account_profile_id", "captured_at_utc", "bank_availability", "bank_error_category",
+                "materials_availability", "materials_error_category", "recipes_availability", "recipes_error_category",
+                "crafting_availability", "crafting_error_category",
+            },
+            ["account_crafting_bank_entries"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "account_profile_id", "item_id", "binding", "quantity",
+            },
+            ["account_crafting_material_entries"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "account_profile_id", "item_id", "category_id", "binding", "quantity",
+            },
+            ["account_crafting_recipe_unlocks"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "account_profile_id", "recipe_id",
+            },
+            ["account_crafting_disciplines"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "account_profile_id", "discipline", "rating", "is_active",
+            },
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, SqliteColumnDefinition>> LatestColumnDefinitions =
@@ -98,6 +120,11 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["investment_positions"] = Columns(("id", "INTEGER", false, 1), ("account_profile_id", "INTEGER", true, 0), ("item_id", "INTEGER", true, 0), ("original_quantity", "INTEGER", true, 0), ("acquisition_basis_in_copper", "INTEGER", false, 0), ("strategy", "TEXT", true, 0), ("category", "TEXT", true, 0), ("opened_at_utc", "TEXT", true, 0), ("thesis", "TEXT", true, 0), ("notes", "TEXT", false, 0), ("is_closed", "INTEGER", true, 0), ("created_at_utc", "TEXT", true, 0), ("updated_at_utc", "TEXT", true, 0), ("closed_at_utc", "TEXT", false, 0)),
             ["investment_position_exits"] = Columns(("id", "INTEGER", false, 1), ("position_id", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0), ("allocated_basis_in_copper", "INTEGER", false, 0), ("exited_at_utc", "TEXT", true, 0), ("notes", "TEXT", false, 0)),
             ["investment_position_targets"] = Columns(("position_id", "INTEGER", true, 1), ("ordinal", "INTEGER", true, 2), ("unit_price_in_copper", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0)),
+            ["account_crafting_snapshots"] = Columns(("account_profile_id", "INTEGER", false, 1), ("captured_at_utc", "TEXT", true, 0), ("bank_availability", "INTEGER", true, 0), ("bank_error_category", "INTEGER", false, 0), ("materials_availability", "INTEGER", true, 0), ("materials_error_category", "INTEGER", false, 0), ("recipes_availability", "INTEGER", true, 0), ("recipes_error_category", "INTEGER", false, 0), ("crafting_availability", "INTEGER", true, 0), ("crafting_error_category", "INTEGER", false, 0)),
+            ["account_crafting_bank_entries"] = Columns(("account_profile_id", "INTEGER", true, 1), ("item_id", "INTEGER", true, 2), ("binding", "INTEGER", true, 3), ("quantity", "INTEGER", true, 0)),
+            ["account_crafting_material_entries"] = Columns(("account_profile_id", "INTEGER", true, 1), ("item_id", "INTEGER", true, 2), ("category_id", "INTEGER", true, 0), ("binding", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0)),
+            ["account_crafting_recipe_unlocks"] = Columns(("account_profile_id", "INTEGER", true, 1), ("recipe_id", "INTEGER", true, 2)),
+            ["account_crafting_disciplines"] = Columns(("account_profile_id", "INTEGER", true, 1), ("discipline", "TEXT", true, 2), ("rating", "INTEGER", true, 0), ("is_active", "INTEGER", true, 0)),
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<SqliteIndexDefinition>> RequiredIndexes =
@@ -112,6 +139,10 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["market_order_book_levels"] = [new(null, true, ["snapshot_id", "side", "level_ordinal"])],
             ["investment_positions"] = [new("ix_investment_positions_account_opened", false, ["account_profile_id", "is_closed", "opened_at_utc"])],
             ["investment_position_targets"] = [new(null, true, ["position_id", "ordinal"])],
+            ["account_crafting_bank_entries"] = [new(null, true, ["account_profile_id", "item_id", "binding"])],
+            ["account_crafting_material_entries"] = [new(null, true, ["account_profile_id", "item_id"])],
+            ["account_crafting_recipe_unlocks"] = [new(null, true, ["account_profile_id", "recipe_id"])],
+            ["account_crafting_disciplines"] = [new(null, true, ["account_profile_id", "discipline"], "BINARY")],
         };
 
     private static readonly IReadOnlyList<SqliteForeignKeyDefinition> RequiredForeignKeys =
@@ -126,6 +157,11 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         new("investment_positions", "account_profile_id", "account_profiles", "id"),
         new("investment_position_exits", "position_id", "investment_positions", "id"),
         new("investment_position_targets", "position_id", "investment_positions", "id"),
+        new("account_crafting_snapshots", "account_profile_id", "account_profiles", "id"),
+        new("account_crafting_bank_entries", "account_profile_id", "account_profiles", "id"),
+        new("account_crafting_material_entries", "account_profile_id", "account_profiles", "id"),
+        new("account_crafting_recipe_unlocks", "account_profile_id", "account_profiles", "id"),
+        new("account_crafting_disciplines", "account_profile_id", "account_profiles", "id"),
     ];
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> RequiredCheckConstraints =
@@ -144,6 +180,11 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["investment_positions"] = Checks("item_id>0", "original_quantity>0", "acquisition_basis_in_copper>=0", "length(strategy)>0", "length(category)>0", "length(thesis)>0", "is_closedin(0,1)"),
             ["investment_position_exits"] = Checks("position_id>0", "quantity>0", "allocated_basis_in_copper>=0"),
             ["investment_position_targets"] = Checks("position_id>0", "ordinal>=0", "unit_price_in_copper>0", "quantity>0"),
+            ["account_crafting_snapshots"] = Checks("bank_availabilitybetween1and3", "materials_availabilitybetween1and3", "recipes_availabilitybetween1and3", "crafting_availabilitybetween1and3", "bank_error_categorybetween0and11", "materials_error_categorybetween0and11", "recipes_error_categorybetween0and11", "crafting_error_categorybetween0and11"),
+            ["account_crafting_bank_entries"] = Checks("account_profile_id>0", "item_id>0", "bindingbetween0and3", "quantity>0"),
+            ["account_crafting_material_entries"] = Checks("account_profile_id>0", "item_id>0", "category_id>0", "bindingbetween0and3", "quantity>=0"),
+            ["account_crafting_recipe_unlocks"] = Checks("account_profile_id>0", "recipe_id>0"),
+            ["account_crafting_disciplines"] = Checks("account_profile_id>0", "length(discipline)>0", "rating>=0", "is_activein(0,1)"),
         };
 
     // Version 6 was briefly published with this stricter equivalent constraint.
@@ -377,6 +418,60 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 CONSTRAINT fk_investment_position_targets_position FOREIGN KEY (position_id)
                     REFERENCES investment_positions(id) ON DELETE RESTRICT,
                 PRIMARY KEY (position_id, ordinal)
+            );
+            """),
+        new(
+            8,
+            "account_crafting_snapshot_schema",
+            """
+            CREATE TABLE account_crafting_snapshots (
+                account_profile_id INTEGER PRIMARY KEY,
+                captured_at_utc TEXT NOT NULL,
+                bank_availability INTEGER NOT NULL CHECK (bank_availability BETWEEN 1 AND 3),
+                bank_error_category INTEGER NULL CHECK (bank_error_category BETWEEN 0 AND 11),
+                materials_availability INTEGER NOT NULL CHECK (materials_availability BETWEEN 1 AND 3),
+                materials_error_category INTEGER NULL CHECK (materials_error_category BETWEEN 0 AND 11),
+                recipes_availability INTEGER NOT NULL CHECK (recipes_availability BETWEEN 1 AND 3),
+                recipes_error_category INTEGER NULL CHECK (recipes_error_category BETWEEN 0 AND 11),
+                crafting_availability INTEGER NOT NULL CHECK (crafting_availability BETWEEN 1 AND 3),
+                crafting_error_category INTEGER NULL CHECK (crafting_error_category BETWEEN 0 AND 11),
+                CONSTRAINT fk_account_crafting_snapshots_account FOREIGN KEY (account_profile_id)
+                    REFERENCES account_profiles(id) ON DELETE RESTRICT
+            );
+            CREATE TABLE account_crafting_bank_entries (
+                account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
+                item_id INTEGER NOT NULL CHECK (item_id > 0),
+                binding INTEGER NOT NULL CHECK (binding BETWEEN 0 AND 3),
+                quantity INTEGER NOT NULL CHECK (quantity > 0),
+                CONSTRAINT fk_account_crafting_bank_entries_account FOREIGN KEY (account_profile_id)
+                    REFERENCES account_profiles(id) ON DELETE RESTRICT,
+                PRIMARY KEY (account_profile_id, item_id, binding)
+            );
+            CREATE TABLE account_crafting_material_entries (
+                account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
+                item_id INTEGER NOT NULL CHECK (item_id > 0),
+                category_id INTEGER NOT NULL CHECK (category_id > 0),
+                binding INTEGER NOT NULL CHECK (binding BETWEEN 0 AND 3),
+                quantity INTEGER NOT NULL CHECK (quantity >= 0),
+                CONSTRAINT fk_account_crafting_material_entries_account FOREIGN KEY (account_profile_id)
+                    REFERENCES account_profiles(id) ON DELETE RESTRICT,
+                PRIMARY KEY (account_profile_id, item_id)
+            );
+            CREATE TABLE account_crafting_recipe_unlocks (
+                account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
+                recipe_id INTEGER NOT NULL CHECK (recipe_id > 0),
+                CONSTRAINT fk_account_crafting_recipe_unlocks_account FOREIGN KEY (account_profile_id)
+                    REFERENCES account_profiles(id) ON DELETE RESTRICT,
+                PRIMARY KEY (account_profile_id, recipe_id)
+            );
+            CREATE TABLE account_crafting_disciplines (
+                account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
+                discipline TEXT NOT NULL COLLATE BINARY CHECK (length(discipline) > 0),
+                rating INTEGER NOT NULL CHECK (rating >= 0),
+                is_active INTEGER NOT NULL CHECK (is_active IN (0, 1)),
+                CONSTRAINT fk_account_crafting_disciplines_account FOREIGN KEY (account_profile_id)
+                    REFERENCES account_profiles(id) ON DELETE RESTRICT,
+                PRIMARY KEY (account_profile_id, discipline)
             );
             """),
     ];
@@ -797,6 +892,11 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["investment_positions"] = $"id <= 0 OR account_profile_id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR original_quantity <= 0 OR original_quantity > {Int32Maximum} OR (acquisition_basis_in_copper IS NOT NULL AND (acquisition_basis_in_copper < 0 OR acquisition_basis_in_copper > {Int32Maximum})) OR trim(strategy) = '' OR trim(category) = '' OR trim(thesis) = '' OR is_closed NOT IN (0, 1) OR (is_closed = 0 AND closed_at_utc IS NOT NULL) OR (is_closed = 1 AND closed_at_utc IS NULL)",
             ["investment_position_exits"] = $"id <= 0 OR position_id <= 0 OR quantity <= 0 OR quantity > {Int32Maximum} OR (allocated_basis_in_copper IS NOT NULL AND (allocated_basis_in_copper < 0 OR allocated_basis_in_copper > {Int32Maximum}))",
             ["investment_position_targets"] = $"position_id <= 0 OR ordinal < 0 OR ordinal > {Int32Maximum} OR unit_price_in_copper <= 0 OR unit_price_in_copper > {Int32Maximum} OR quantity <= 0 OR quantity > {Int32Maximum}",
+            ["account_crafting_snapshots"] = "account_profile_id <= 0 OR bank_availability NOT BETWEEN 1 AND 3 OR materials_availability NOT BETWEEN 1 AND 3 OR recipes_availability NOT BETWEEN 1 AND 3 OR crafting_availability NOT BETWEEN 1 AND 3 OR (bank_availability = 1 AND bank_error_category IS NOT NULL) OR (materials_availability = 1 AND materials_error_category IS NOT NULL) OR (recipes_availability = 1 AND recipes_error_category IS NOT NULL) OR (crafting_availability = 1 AND crafting_error_category IS NOT NULL)",
+            ["account_crafting_bank_entries"] = $"account_profile_id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR binding NOT BETWEEN 0 AND 3 OR quantity <= 0 OR quantity > {Int32Maximum}",
+            ["account_crafting_material_entries"] = $"account_profile_id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR category_id <= 0 OR category_id > {Int32Maximum} OR binding NOT BETWEEN 0 AND 3 OR quantity < 0 OR quantity > {Int32Maximum}",
+            ["account_crafting_recipe_unlocks"] = $"account_profile_id <= 0 OR recipe_id <= 0 OR recipe_id > {Int32Maximum}",
+            ["account_crafting_disciplines"] = $"account_profile_id <= 0 OR trim(discipline) = '' OR rating < 0 OR rating > {Int32Maximum} OR is_active NOT IN (0, 1)",
             ["schema_migrations"] = "version <= 0 OR trim(name) = ''",
             ["user_settings"] = $"singleton_id <> 1 OR settings_version <= 0 OR settings_version > {Int32Maximum} OR (minimum_profit_in_copper IS NOT NULL AND (minimum_profit_in_copper < 0 OR minimum_profit_in_copper > {Int32Maximum})) OR (minimum_roi_basis_points IS NOT NULL AND (minimum_roi_basis_points < 0 OR minimum_roi_basis_points > 10000)) OR (cash_reserve_basis_points IS NOT NULL AND (cash_reserve_basis_points < 0 OR cash_reserve_basis_points > 10000))",
         };

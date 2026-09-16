@@ -8,6 +8,8 @@ using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Application.Investments;
+using Gw2Tp.Application.Crafting;
+using Gw2Tp.Application.MarketData;
 using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Infrastructure.Persistence;
 using Gw2Tp.Web.Hosting;
@@ -65,6 +67,7 @@ public static class Program
         builder.Services.AddSingleton<IPrimaryRecommendationPolicy, PrimaryRecommendationPolicy>();
         builder.Services.AddSingleton<IPrimaryRecommendationService, PrimaryRecommendationService>();
         builder.Services.AddSingleton<IInvestmentPortfolioService, InvestmentPortfolioService>();
+        builder.Services.AddSingleton<IAccountCraftingSnapshotService, AccountCraftingSnapshotService>();
         builder.Services.AddSingleton<IMarketHistoryCollectionDelay>(SystemMarketHistoryCollectionDelay.Instance);
         builder.Services.AddHostedService<MarketHistoryCollectorHostedService>();
         builder.Services.AddHostFiltering(options =>
@@ -131,6 +134,27 @@ public static class Program
             {
                 var result = await synchronizationService.SynchronizeAsync(cancellationToken).ConfigureAwait(false);
                 await PersonalTradingPostSynchronizationResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
+            });
+        app.MapPost(
+            "/api/account-crafting/refresh",
+            async (
+                HttpContext context,
+                IAccountCraftingSnapshotService accountCraftingSnapshotService,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await accountCraftingSnapshotService.RefreshAsync(cancellationToken).ConfigureAwait(false);
+                if (!result.IsSuccess && result.ErrorCategory is
+                    Gw2ApiErrorCategory.CredentialUnavailable or
+                    Gw2ApiErrorCategory.RateLimited or
+                    Gw2ApiErrorCategory.UpstreamUnavailable or
+                    Gw2ApiErrorCategory.TransportFailure or
+                    Gw2ApiErrorCategory.IncompleteData or
+                    Gw2ApiErrorCategory.InvalidPayload or
+                    Gw2ApiErrorCategory.UnexpectedResponse)
+                {
+                    context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                }
+                await AccountCraftingResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
             });
         app.MapGet(
             "/api/personal-dashboard",
