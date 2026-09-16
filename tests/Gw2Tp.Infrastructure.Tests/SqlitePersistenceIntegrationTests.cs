@@ -1,6 +1,9 @@
 using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.Persistence;
+using Gw2Tp.Application.Crafting;
+using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -22,9 +25,14 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Migrator.MigrateAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], await database.GetMigrationVersionsAsync());
         Assert.Equal(
             [
+                "account_crafting_bank_entries",
+                "account_crafting_disciplines",
+                "account_crafting_material_entries",
+                "account_crafting_recipe_unlocks",
+                "account_crafting_snapshots",
                 "account_profiles",
                 "completed_tp_transactions",
                 "current_order_sync_batches",
@@ -55,7 +63,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await database.Migrator.MigrateAsync();
 
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], await database.GetMigrationVersionsAsync());
         var stored = Assert.Single(await database.PersonalTradingPost.GetCompletedTransactionsAsync(account));
         Assert.Equal(transaction, stored.Transaction);
         Assert.Contains("last_sync_outcome", await database.GetAccountProfileColumnNamesAsync());
@@ -107,6 +115,83 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Empty(closed.Targets);
         Assert.Equal(3, closed.Exits.Count);
         await database.Migrator.MigrateAndValidatePersistedDataAsync();
+    }
+
+    [Fact]
+    public async Task Crafting_snapshots_are_account_scoped_replace_superseded_values_and_retain_no_raw_character_or_credential_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var accountA = new AccountScope("opaque-account-crafting-a");
+        var accountB = new AccountScope("opaque-account-crafting-b");
+        var first = new AccountCraftingSnapshot(
+            accountA, FirstObservedAtUtc,
+            CraftingFeatureResult<IReadOnlyList<AccountInventoryEntry>>.Available([new(42, 3, AccountItemBinding.AccountBound)]),
+            CraftingFeatureResult<IReadOnlyList<AccountMaterialEntry>>.Available([new(84, 5, 250, AccountItemBinding.AccountBound)]),
+            CraftingFeatureResult<IReadOnlyList<int>>.Available([9001]),
+            CraftingFeatureResult<IReadOnlyList<CraftingDisciplineCapability>>.Available([new("Artificer", 500, true)]));
+        await database.Crafting.ReplaceAsync(first);
+        await database.Crafting.ReplaceAsync(new AccountCraftingSnapshot(
+            accountA, SecondObservedAtUtc,
+            CraftingFeatureResult<IReadOnlyList<AccountInventoryEntry>>.FromFailure(Gw2ApiErrorCategory.Forbidden),
+            CraftingFeatureResult<IReadOnlyList<AccountMaterialEntry>>.Available([]),
+            CraftingFeatureResult<IReadOnlyList<int>>.Available([9002]),
+            CraftingFeatureResult<IReadOnlyList<CraftingDisciplineCapability>>.FromFailure(Gw2ApiErrorCategory.TransportFailure)));
+        await database.Crafting.ReplaceAsync(new AccountCraftingSnapshot(
+            accountB, SecondObservedAtUtc,
+            CraftingFeatureResult<IReadOnlyList<AccountInventoryEntry>>.Available([new(42, 1, AccountItemBinding.Unspecified)]),
+            CraftingFeatureResult<IReadOnlyList<AccountMaterialEntry>>.Available([]),
+            CraftingFeatureResult<IReadOnlyList<int>>.Available([]),
+            CraftingFeatureResult<IReadOnlyList<CraftingDisciplineCapability>>.Available([])));
+
+        var stored = Assert.IsType<AccountCraftingSnapshot>(await database.Crafting.GetLatestAsync(accountA));
+        Assert.Equal(SecondObservedAtUtc, stored.CapturedAtUtc);
+        Assert.Equal(CraftingFeatureAvailability.MissingPermission, stored.BankInventory.Availability);
+        Assert.Null(stored.BankInventory.Value);
+        Assert.Empty(stored.MaterialStorage.Value!);
+        Assert.Equal([9002], stored.RecipeUnlocks.Value);
+        Assert.Equal(CraftingFeatureAvailability.Unavailable, stored.CharacterCrafting.Availability);
+        Assert.Single((await database.Crafting.GetLatestAsync(accountB))!.BankInventory.Value!);
+        await database.Migrator.MigrateAndValidatePersistedDataAsync();
+
+        var bytes = await File.ReadAllBytesAsync(database.Path);
+        var databaseText = System.Text.Encoding.UTF8.GetString(bytes);
+        Assert.DoesNotContain("synthetic-crafting-key", databaseText, StringComparison.Ordinal);
+        Assert.DoesNotContain("Synthetic Crafter", databaseText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Restore_rejects_crafting_rows_orphaned_from_their_snapshot_without_changing_live_data()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var original = CompletedTransaction(1001, PersonalTradingPostSide.Buy, 42, 123, 2);
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            "opaque-account-a", [original], new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc, []), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        await database.Crafting.ReplaceAsync(new AccountCraftingSnapshot(
+            new AccountScope("opaque-account-crafting-a"), FirstObservedAtUtc,
+            CraftingFeatureResult<IReadOnlyList<AccountInventoryEntry>>.Available([new(42, 3, AccountItemBinding.AccountBound)]),
+            CraftingFeatureResult<IReadOnlyList<AccountMaterialEntry>>.Available([]),
+            CraftingFeatureResult<IReadOnlyList<int>>.Available([]),
+            CraftingFeatureResult<IReadOnlyList<CraftingDisciplineCapability>>.Available([])));
+        var backup = await database.Recovery.CreateBackupAsync();
+        var incompatiblePath = Path.Combine(Path.GetDirectoryName(database.Path)!, "orphaned-crafting-entry.db");
+        File.Copy(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName), incompatiblePath);
+
+        await using (var connection = new SqliteConnection($"Data Source={incompatiblePath}"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA foreign_keys = OFF; DELETE FROM account_crafting_snapshots;";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using (var incompatible = File.OpenRead(incompatiblePath))
+        {
+            Assert.Equal(LocalDataRestoreOutcome.InvalidBackup, (await database.Recovery.RestoreAsync(incompatible)).Outcome);
+        }
+
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("opaque-account-a", SecondObservedAtUtc);
+        Assert.Equal([original], (await database.PersonalTradingPost.GetCompletedTransactionsAsync(account)).Select(item => item.Transaction));
     }
 
     [Fact]
@@ -1130,7 +1215,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await using var backup = File.OpenRead(olderBackupPath);
         Assert.Equal(LocalDataRestoreOutcome.Restored, (await database.Recovery.RestoreAsync(backup)).Outcome);
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], await database.GetMigrationVersionsAsync());
     }
 
     [Fact]
@@ -1181,7 +1266,7 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(1, await database.GetTableCountAsync("market_order_book_snapshots"));
         Assert.Equal(1, await database.GetTableCountAsync("market_order_book_levels"));
         Assert.Equal([84], (await database.Watchlist.GetAllAsync()).Select(entry => entry.ItemId));
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], await database.GetMigrationVersionsAsync());
         Assert.True(File.Exists(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)));
         Assert.False(File.Exists(staleIncomingPath));
         Assert.False(File.Exists(staleDatabasePath));
@@ -1198,7 +1283,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Recovery.CleanupStaleRestoreArtifactsAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], await database.GetMigrationVersionsAsync());
     }
 
     private static CompletedPersonalTradingPostTransaction CompletedTransaction(
@@ -1310,6 +1395,7 @@ public sealed class SqlitePersistenceIntegrationTests
             UserSettings = new SqliteUserSettingsRepository(factory, Gate);
             Watchlist = new SqliteWatchlistRepository(factory, Gate);
             Investments = new SqliteInvestmentPositionRepository(factory, Gate);
+            Crafting = new SqliteAccountCraftingSnapshotRepository(factory, Gate);
             History = new SqliteMarketHistoryRepository(factory, Gate);
             Recovery = new SqliteLocalDataRecoveryService(factory, Gate, OperationGate);
         }
@@ -1333,6 +1419,8 @@ public sealed class SqlitePersistenceIntegrationTests
         public SqliteWatchlistRepository Watchlist { get; }
 
         public SqliteInvestmentPositionRepository Investments { get; }
+
+        public SqliteAccountCraftingSnapshotRepository Crafting { get; }
 
         public SqliteMarketHistoryRepository History { get; }
 

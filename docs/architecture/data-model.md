@@ -164,6 +164,17 @@ coverage to `account_profiles`.
   category and attempt time after the opaque scope is known; it never deletes
   completed history, current orders, metadata, or prior successful coverage.
 
+### M21 account-crafting snapshots
+
+Migration 8 adds the account-profile-scoped, current-only
+`account_crafting_snapshots`, `account_crafting_bank_entries`,
+`account_crafting_material_entries`, `account_crafting_recipe_unlocks`, and
+`account_crafting_disciplines` tables. They store normalized quantities,
+binding evidence, unlock IDs, and aggregated discipline capability only; raw
+responses, character names, and credentials are never retained. Replacing a
+snapshot deletes its prior child rows transactionally, so the database does
+not accumulate a private account-inventory history.
+
 No migration in M14 creates a credential, API-key, authorization,
 token, raw-upstream-payload, accounting, market-history, position, or
 recommendation table.

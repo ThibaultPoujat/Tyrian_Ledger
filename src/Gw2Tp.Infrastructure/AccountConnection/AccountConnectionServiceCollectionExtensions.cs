@@ -3,6 +3,8 @@ using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Secrets;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.PersonalTradingPost;
+using Gw2Tp.Infrastructure.Crafting;
+using Gw2Tp.Application.Crafting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -85,6 +87,28 @@ public static class AccountConnectionServiceCollectionExtensions
             serviceProvider.GetRequiredService<PersonalTradingPostGateway>());
         services.AddSingleton<IAccountPortfolioGateway>(serviceProvider =>
             serviceProvider.GetRequiredService<PersonalTradingPostGateway>());
+        services.AddHttpClient(AccountCraftingGateway.HttpClientName, (serviceProvider, httpClient) =>
+        {
+            httpClient.BaseAddress = Gw2ApiBaseAddress;
+            httpClient.Timeout = TimeSpan.FromMilliseconds(serviceProvider
+                .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>().Value.RequestTimeoutMs);
+        }).RemoveAllLoggers();
+        services.Configure<HttpClientFactoryOptions>(AccountCraftingGateway.HttpClientName, options =>
+            options.ShouldRedactHeaderValue = static _ => true);
+        services.AddSingleton<IAccountCraftingGateway>(serviceProvider => new AccountCraftingGateway(
+            serviceProvider.GetRequiredService<IGw2ApiKeySource>(),
+            serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient(AccountCraftingGateway.HttpClientName),
+            serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
+            TimeSpan.FromMilliseconds(serviceProvider.GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>().Value.RequestTimeoutMs)));
+        services.AddHttpClient(CraftingReferenceGateway.HttpClientName, (serviceProvider, httpClient) =>
+        {
+            httpClient.BaseAddress = Gw2ApiBaseAddress;
+            httpClient.Timeout = TimeSpan.FromMilliseconds(serviceProvider
+                .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>().Value.RequestTimeoutMs);
+        }).RemoveAllLoggers();
+        services.AddSingleton<ICraftingReferenceGateway>(serviceProvider => new CraftingReferenceGateway(
+            serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient(CraftingReferenceGateway.HttpClientName),
+            serviceProvider.GetRequiredService<IGw2RequestScheduler>()));
         services.AddSingleton<IPersonalTradingPostSynchronizationService, PersonalTradingPostSynchronizationService>();
 
         return services;
