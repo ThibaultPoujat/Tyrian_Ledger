@@ -762,3 +762,30 @@ describe('M14 local data controls', () => {
     expect(Array.from(document.querySelectorAll('.action-badge'), badge => badge.textContent)).toEqual(actionStates);
   });
 });
+
+describe('M20 investment tracking', () => {
+  it('renders explicit unknown-basis investment guidance and records a staged position locally', async () => {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (input === '/api/investments') {
+        if (init?.method === 'POST') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ position: {} }) } as unknown as Response);
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'ready', positions: [{ position: { id: '1', itemId: 42, originalQuantity: 5, remainingQuantity: 5, acquisitionBasisInCopper: null, strategy: 'Seasonal', category: 'Festival', openedAtUtc: '2026-09-15T12:00:00Z', thesis: 'Supply can change.', notes: null, isClosed: false, targets: [{ ordinal: 0, unitPriceInCopper: 250, quantity: 2 }], exits: [] }, itemName: 'Tracked item', valuation: { state: 'available', grossLiquidationValue: { copper: '1000' }, netLiquidationValue: { copper: '850' }, unrealizedProfit: null, unliquidatedQuantity: 0 }, historicalEvidence: { availableWindowCount: 1, totalWindowCount: 2, latestEligibleObservationCount: 20, minimumBuyPriceInCopper: 100, maximumSellPriceInCopper: 300, medianAggregateBuyQuantity: 15, medianAggregateSellQuantity: 20 }, opportunityCost: { copper: '850' }, action: { action: 'SELL PARTIAL', suggestedQuantity: 2, reason: 'A staged target is reached.' } }] }) } as unknown as Response);
+      }
+      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
+      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
+      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
+      if (input === '/api/recommendations') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'notSynchronized', evidenceError: null, generatedAtUtc: null, lastSuccessfulSyncAtUtc: null, currentOrdersObservedAtUtc: null, scannerObservedAtUtc: null, policies: readyRecommendations.policies, portfolio: null, actions: [] }) } as unknown as Response);
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+    });
+
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Investments and staged exits' })).toBeVisible();
+    expect(screen.getByText('Unknown basis')).toBeVisible();
+    expect(screen.getByText(/not a forecast/i)).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Item ID'), { target: { value: '99' } });
+    fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Thesis'), { target: { value: 'Manual staged exit.' } });
+    fireEvent.change(screen.getByLabelText('Staged targets (price:quantity, comma-separated)'), { target: { value: '200:2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record position' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/investments', expect.objectContaining({ method: 'POST' })));
+  });
+});

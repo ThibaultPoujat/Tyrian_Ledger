@@ -183,6 +183,9 @@ internal sealed class SqliteLocalDataRecoveryService(
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         foreach (var tableName in new[]
                  {
+                     "investment_position_exits",
+                     "investment_position_targets",
+                     "investment_positions",
                      "current_tp_orders",
                      "current_tp_order_observations",
                      "current_order_sync_batches",

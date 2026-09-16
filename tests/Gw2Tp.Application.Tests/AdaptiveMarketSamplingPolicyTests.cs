@@ -96,6 +96,25 @@ public sealed class AdaptiveMarketSamplingPolicyTests
         Assert.All(targets, target => Assert.False(target.IncludeOrderBook));
     }
 
+    [Fact]
+    public async Task Open_investment_positions_keep_high_priority_until_closed_without_erasing_another_source()
+    {
+        var profile = new AccountProfile(1, "opaque-account", ObservedAtUtc, null);
+        var source = new OpenInvestmentPositionMarketSamplingSource(
+            new StubGateway(Gw2ApiResult<AccountScope>.Success(new AccountScope("opaque-account"))),
+            new StubPersonalRepository(profile, null),
+            new StubInvestmentRepository([Position(42, remaining: 2), Position(84, remaining: 0, closed: true)]));
+        var policy = new AdaptiveMarketSamplingPolicy([source, new StaticSource("watchlist", [new MarketSamplingCandidate(42, MarketSamplingTier.Watchlist, false), new MarketSamplingCandidate(84, MarketSamplingTier.Watchlist, false)])]);
+
+        var targets = await policy.BuildPlanAsync();
+
+        Assert.Equal([42, 84], targets.Targets.Select(target => target.ItemId));
+        Assert.Equal(MarketSamplingTier.CurrentPersonalOrder, targets.Targets[0].Tier);
+        Assert.Equal(["open-investment-positions"], targets.Targets[0].SourceNames);
+        Assert.Equal(MarketSamplingTier.Watchlist, targets.Targets[1].Tier);
+        Assert.Equal(["watchlist"], targets.Targets[1].SourceNames);
+    }
+
     private sealed class StaticSource(string name, IReadOnlyList<MarketSamplingCandidate> candidates) : IMarketSamplingSource
     {
         public string Name => name;
@@ -131,4 +150,15 @@ public sealed class AdaptiveMarketSamplingPolicyTests
         public Task AddAsync(WatchlistEntry entry, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task RemoveAsync(int itemId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
+
+    private sealed class StubInvestmentRepository(IReadOnlyList<InvestmentPosition> positions) : IInvestmentPositionRepository
+    {
+        public Task<IReadOnlyList<InvestmentPosition>> GetAllAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => Task.FromResult(positions);
+        public Task<InvestmentPosition?> GetAsync(AccountProfile accountProfile, long positionId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<InvestmentPosition> CreateAsync(AccountProfile accountProfile, CreateInvestmentPosition position, DateTimeOffset createdAtUtc, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<InvestmentPosition?> UpdateAsync(AccountProfile accountProfile, long positionId, UpdateInvestmentPosition position, DateTimeOffset updatedAtUtc, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<InvestmentPosition?> RecordExitAsync(AccountProfile accountProfile, long positionId, int quantity, DateTimeOffset exitedAtUtc, string? notes, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private static InvestmentPosition Position(int itemId, int remaining, bool closed = false) => new(1, 1, itemId, 2, remaining, null, "Investment", "Test", ObservedAtUtc, "Thesis", null, closed, ObservedAtUtc, ObservedAtUtc, closed ? ObservedAtUtc : null, [], []);
 }

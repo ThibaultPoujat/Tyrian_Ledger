@@ -189,6 +189,73 @@ public interface IWatchlistRepository
 }
 
 /// <summary>
+/// A user-entered medium/long-term holding. Positions are deliberately kept
+/// separate from imported Trading Post transactions and FIFO flip accounting.
+/// A null acquisition basis is an explicit unknown, never a zero-cost basis.
+/// </summary>
+public sealed record InvestmentPosition(
+    long Id,
+    long AccountProfileId,
+    int ItemId,
+    int OriginalQuantity,
+    int RemainingQuantity,
+    int? AcquisitionBasisInCopper,
+    string Strategy,
+    string Category,
+    DateTimeOffset OpenedAtUtc,
+    string Thesis,
+    string? Notes,
+    bool IsClosed,
+    DateTimeOffset CreatedAtUtc,
+    DateTimeOffset UpdatedAtUtc,
+    DateTimeOffset? ClosedAtUtc,
+    IReadOnlyList<InvestmentExit> Exits,
+    IReadOnlyList<InvestmentTarget> Targets);
+
+/// <summary>
+/// Immutable manual exit history. Known-basis allocations are recorded at the
+/// time of an exit so partial exits never rewrite earlier position history.
+/// </summary>
+public sealed record InvestmentExit(
+    long Id,
+    int Quantity,
+    int? AllocatedBasisInCopper,
+    DateTimeOffset ExitedAtUtc,
+    string? Notes);
+
+public sealed record InvestmentTarget(int Ordinal, int UnitPriceInCopper, int Quantity);
+
+public sealed record CreateInvestmentPosition(
+    int ItemId,
+    int Quantity,
+    int? AcquisitionBasisInCopper,
+    string Strategy,
+    string Category,
+    DateTimeOffset OpenedAtUtc,
+    string Thesis,
+    string? Notes,
+    IReadOnlyList<InvestmentTarget> Targets);
+
+public sealed record UpdateInvestmentPosition(
+    int Quantity,
+    int? AcquisitionBasisInCopper,
+    string Strategy,
+    string Category,
+    DateTimeOffset OpenedAtUtc,
+    string Thesis,
+    string? Notes,
+    IReadOnlyList<InvestmentTarget> Targets);
+
+public interface IInvestmentPositionRepository
+{
+    Task<IReadOnlyList<InvestmentPosition>> GetAllAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default);
+    Task<InvestmentPosition?> GetAsync(AccountProfile accountProfile, long positionId, CancellationToken cancellationToken = default);
+    Task<InvestmentPosition> CreateAsync(AccountProfile accountProfile, CreateInvestmentPosition position, DateTimeOffset createdAtUtc, CancellationToken cancellationToken = default);
+    Task<InvestmentPosition?> UpdateAsync(AccountProfile accountProfile, long positionId, UpdateInvestmentPosition position, DateTimeOffset updatedAtUtc, CancellationToken cancellationToken = default);
+    Task<InvestmentPosition?> RecordExitAsync(AccountProfile accountProfile, long positionId, int quantity, DateTimeOffset exitedAtUtc, string? notes, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// One fully read, locally durable personal Trading Post synchronization. The
 /// persistence implementation must apply this as one transaction.
 /// </summary>

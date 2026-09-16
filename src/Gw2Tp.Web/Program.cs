@@ -7,6 +7,7 @@ using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.MarketSnapshots;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Recommendations;
+using Gw2Tp.Application.Investments;
 using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Infrastructure.Persistence;
 using Gw2Tp.Web.Hosting;
@@ -55,6 +56,7 @@ public static class Program
         builder.Services.AddSingleton(CreateMarketSamplingSettings(builder.Configuration));
         builder.Services.AddSingleton<IMarketSamplingSource, CurrentPersonalOrderMarketSamplingSource>();
         builder.Services.AddSingleton<IMarketSamplingSource, WatchlistMarketSamplingSource>();
+        builder.Services.AddSingleton<IMarketSamplingSource, OpenInvestmentPositionMarketSamplingSource>();
         builder.Services.AddSingleton<IAdaptiveMarketSamplingPolicy, AdaptiveMarketSamplingPolicy>();
         builder.Services.AddSingleton(CreateMarketHistoryCollectionSchedulerSettings(builder.Configuration));
         builder.Services.AddSingleton<IMarketHistoryCollector, MarketHistoryCollector>();
@@ -62,6 +64,7 @@ public static class Program
         builder.Services.AddSingleton<IOpportunityScoreService, OpportunityScoreService>();
         builder.Services.AddSingleton<IPrimaryRecommendationPolicy, PrimaryRecommendationPolicy>();
         builder.Services.AddSingleton<IPrimaryRecommendationService, PrimaryRecommendationService>();
+        builder.Services.AddSingleton<IInvestmentPortfolioService, InvestmentPortfolioService>();
         builder.Services.AddSingleton<IMarketHistoryCollectionDelay>(SystemMarketHistoryCollectionDelay.Instance);
         builder.Services.AddHostedService<MarketHistoryCollectorHostedService>();
         builder.Services.AddHostFiltering(options =>
@@ -195,6 +198,7 @@ public static class Program
             });
         app.MapLocalDataEndpoints();
         app.MapWatchlistEndpoints();
+        app.MapInvestmentEndpoints();
         app.MapMarketHistoryCollectorEndpoints();
         app.MapHistoricalMarketAnalyticsEndpoint();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));

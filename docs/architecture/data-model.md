@@ -275,6 +275,13 @@ Tracks medium/long-term or explicitly classified holdings.
 Partial exits are represented rather than rewriting the original position
 history.
 
+The SQLite implementation stores the position header in
+`investment_positions`, immutable manual exit rows in
+`investment_position_exits`, and staged levels in
+`investment_position_targets`. These tables are account-profile scoped through
+the position header; they contain no credentials and are cleared with other
+personal account data while backups retain them for recovery.
+
 ## 7. Recommendation/evaluation entities
 
 ### RecommendationSnapshot
