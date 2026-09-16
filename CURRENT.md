@@ -209,8 +209,8 @@ registered at the highest collection priority; a close removes only that source
 reason, leaving any watchlist or current-order reason intact. No VERIFY entries
 changed.
 
-TKT-M21-01 / #92 is implemented in the current branch and pending its NORMAL
-review/PR handoff. It adds a typed, authenticated, read-only crafting account
+TKT-M21-01 / #92 is implemented in PR #127 and pending its owner-triggered NORMAL
+re-review. It adds a typed, authenticated, read-only crafting account
 gateway for bank, material storage, recipe unlocks, and per-character crafting
 capability. Each optional source fails independently, so missing `inventories`,
 `unlocks`, or `characters` permission disables only the corresponding crafting
@@ -226,7 +226,11 @@ route returns only feature availability and counts—never account identifiers,
 item details, character names, raw payloads, or API credentials. Fixture,
 malformed/partial/permission, scope, retention, response-redaction, and schema
 integrity coverage was added. VERIFY-004, VERIFY-005, and VERIFY-008 remain
-open with refreshed public-documentation evidence dated 2026-09-16.
+open with refreshed public-documentation evidence dated 2026-09-16. The review
+finding that crafting child rows could outlive their snapshot was fixed: all
+four child tables now reference the normalized snapshot row, and restore
+validation rejects orphaned crafting data. The refreshed local regression suite
+(481 tests) and all five GitHub checks passed on 2026-09-16.
 
 The next valid implementation ticket is:
 
