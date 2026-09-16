@@ -95,12 +95,17 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(6, partial.RemainingQuantity);
         Assert.Equal(400, Assert.Single(partial.Exits).AllocatedBasisInCopper);
         Assert.False(partial.IsClosed);
-        Assert.Equal([200, 250], partial.Targets.Select(target => target.UnitPriceInCopper));
+        Assert.Equal([250], partial.Targets.Select(target => target.UnitPriceInCopper));
+        Assert.Equal(6, Assert.Single(partial.Targets).Quantity);
+        var repeated = await database.Investments.RecordExitAsync(account, created.Id, 1, SecondObservedAtUtc.AddSeconds(1), "Second stage");
+        Assert.Equal(5, repeated!.RemainingQuantity);
+        Assert.Equal(5, Assert.Single(repeated.Targets).Quantity);
         Assert.Null((await restarted.GetAsync(account, unknown.Id))!.AcquisitionBasisInCopper);
-        var closed = await restarted.RecordExitAsync(account, created.Id, 6, SecondObservedAtUtc.AddMinutes(1), null);
+        var closed = await restarted.RecordExitAsync(account, created.Id, 5, SecondObservedAtUtc.AddMinutes(1), null);
         Assert.True(closed!.IsClosed);
         Assert.Equal(0, closed.RemainingQuantity);
-        Assert.Equal(2, closed.Exits.Count);
+        Assert.Empty(closed.Targets);
+        Assert.Equal(3, closed.Exits.Count);
         await database.Migrator.MigrateAndValidatePersistedDataAsync();
     }
 

@@ -10,7 +10,9 @@ using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.Time;
 using Gw2Tp.Application.MarketScanning;
 using Gw2Tp.Application.PersonalTradingPost;
+using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.Recommendations;
+using Gw2Tp.Application.Investments;
 using Gw2Tp.Domain.Finance;
 using Gw2Tp.Web.Hosting;
 using Microsoft.Data.Sqlite;
@@ -283,6 +285,39 @@ public sealed class LocalHostIntegrationTests
         using var mutationResponse = await client.SendAsync(mutationRequest);
         Assert.Equal(HttpStatusCode.NotFound, mutationResponse.StatusCode);
         Assert.Equal(1, service.CallCount);
+    }
+
+    [Fact]
+    public async Task Investment_endpoint_is_a_protected_non_cacheable_account_scoped_read()
+    {
+        var service = new FixedInvestmentPortfolioService();
+        await using var app = await StartApplicationAsync(
+            "Production",
+            configureServices: services =>
+            {
+                services.RemoveAll<IInvestmentPortfolioService>();
+                services.AddSingleton<IInvestmentPortfolioService>(service);
+            });
+        using var client = app.GetTestClient();
+
+        using var missingHeader = await client.GetAsync("/api/investments");
+        Assert.Equal(HttpStatusCode.Forbidden, missingHeader.StatusCode);
+        Assert.Equal(0, service.GetCount);
+
+        using var attackerRequest = new HttpRequestMessage(HttpMethod.Get, "/api/investments");
+        attackerRequest.Headers.Add("Origin", "https://attacker.example");
+        attackerRequest.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var attacker = await client.SendAsync(attackerRequest);
+        Assert.Equal(HttpStatusCode.Forbidden, attacker.StatusCode);
+        Assert.Equal(0, service.GetCount);
+
+        using var trustedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/investments");
+        trustedRequest.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var trusted = await client.SendAsync(trustedRequest);
+        Assert.Equal(HttpStatusCode.OK, trusted.StatusCode);
+        Assert.Equal("no-store", trusted.Headers.CacheControl?.ToString());
+        Assert.Equal(1, service.GetCount);
+        Assert.Contains("\"state\":\"ready\"", await trusted.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1328,6 +1363,20 @@ public sealed class LocalHostIntegrationTests
     {
         public Task<PersonalDashboard> GetAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(PersonalDashboard.NotSynchronized());
+    }
+
+    private sealed class FixedInvestmentPortfolioService : IInvestmentPortfolioService
+    {
+        public int GetCount { get; private set; }
+        public Task<InvestmentPortfolio> GetAsync(CancellationToken cancellationToken = default)
+        {
+            GetCount++;
+            return Task.FromResult(new InvestmentPortfolio(InvestmentPortfolioState.Ready, null, []));
+        }
+
+        public Task<InvestmentPosition?> CreateAsync(CreateInvestmentPosition position, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<InvestmentPosition?> UpdateAsync(long positionId, UpdateInvestmentPosition position, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<InvestmentPosition?> ExitAsync(long positionId, int quantity, string? notes, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private static LiveMarketScannerResult ReadyScannerResult()

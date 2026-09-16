@@ -67,7 +67,7 @@ public sealed class InvestmentPortfolioService(
         {
             var history = await historicalAnalytics.GetAsync(position.ItemId, cancellationToken).ConfigureAwait(false);
             var valuation = position.IsClosed ? new InvestmentValuation(InvestmentValuationState.MarketUnavailable, null, null, null, 0, null) : Value(position, listings.GetValueOrDefault(position.ItemId), listingsResult.IsSuccess && !listingsResult.IsPartialData);
-            views.Add(new(position, names.GetValueOrDefault(position.ItemId, $"Item {position.ItemId}"), valuation, ToHistorical(history), valuation.NetLiquidationValue, ActionFor(position, valuation)));
+            views.Add(new(position, names.GetValueOrDefault(position.ItemId, $"Item {position.ItemId}"), valuation, ToHistorical(history), valuation.NetLiquidationValue, DecideAction(position, valuation, listings.GetValueOrDefault(position.ItemId))));
         }
         return new(InvestmentPortfolioState.Ready, null, views);
     }
@@ -122,16 +122,22 @@ public sealed class InvestmentPortfolioService(
         return new(available.Length, analytics.Windows.Count, available.LastOrDefault()?.Coverage.EligibleObservationCount ?? 0, metrics?.BuyPriceRange.MinimumCopper, metrics?.SellPriceRange.MaximumCopper, metrics?.MedianAggregateBuyQuantity, metrics?.MedianAggregateSellQuantity);
     }
 
-    private static InvestmentActionEvidence ActionFor(InvestmentPosition position, InvestmentValuation valuation)
+    internal static InvestmentActionEvidence DecideAction(InvestmentPosition position, InvestmentValuation valuation, MarketListing? listing)
     {
         if (position.IsClosed) return new(InvestmentAction.Hold, 0, "This position is closed; its exit history is retained separately from realized flip reporting.");
-        if (valuation.State != InvestmentValuationState.Available || valuation.CurrentBestBuyPriceInCopper is null) return new(InvestmentAction.Hold, 0, "Visible buy depth cannot currently support a complete modeled exit, so no sell action is suggested.");
-        var target = position.Targets.OrderBy(target => target.UnitPriceInCopper).ThenBy(target => target.Ordinal).FirstOrDefault(target => valuation.CurrentBestBuyPriceInCopper >= target.UnitPriceInCopper);
-        if (target is null) return new(InvestmentAction.Hold, 0, "No configured target is reached at the current visible buy price; this is not a price forecast.");
+        if (valuation.State != InvestmentValuationState.Available || listing is null) return new(InvestmentAction.Hold, 0, "Visible buy depth cannot currently support a complete modeled exit, so no sell action is suggested.");
+        var target = position.Targets.OrderBy(target => target.Ordinal).FirstOrDefault();
+        if (target is null) return new(InvestmentAction.Hold, 0, "No configured target is currently outstanding; this is not a price forecast.");
         var quantity = Math.Min(target.Quantity, position.RemainingQuantity);
+        var execution = new OrderBookExecutionSimulator().SimulateLiquidation(
+            listing.Buys.Select(level => new OrderBookLevel(level.Quantity, new Money(level.UnitPriceInCopper))).ToArray(), quantity);
+        if (!execution.IsFullyFilled || execution.Fills.Any(fill => fill.UnitPrice.Copper < target.UnitPriceInCopper))
+        {
+            return new(InvestmentAction.Hold, 0, "The next staged target is not supported by enough visible buy depth at its target price, so no sell action is suggested.");
+        }
         return quantity >= position.RemainingQuantity
-            ? new(InvestmentAction.Sell, quantity, "The current visible buy price meets a configured full-exit target; verify depth before manually listing or selling.")
-            : new(InvestmentAction.SellPartial, quantity, "The current visible buy price meets a configured staged target; verify depth before a manual partial exit.");
+            ? new(InvestmentAction.Sell, quantity, "Visible buy depth supports the next configured full-exit target; verify depth before manually listing or selling.")
+            : new(InvestmentAction.SellPartial, quantity, "Visible buy depth supports the next configured staged target; verify depth before a manual partial exit.");
     }
 
     private static InvestmentMoney MoneyOf(Money money) => new(money.Copper.ToString(System.Globalization.CultureInfo.InvariantCulture));

@@ -115,6 +115,7 @@ internal sealed class SqliteInvestmentPositionRepository(
             insert.Parameters.AddWithValue("$basis", (object?)allocatedBasis ?? DBNull.Value); insert.Parameters.AddWithValue("$exitedAtUtc", exitedAt); insert.Parameters.AddWithValue("$notes", (object?)notes ?? DBNull.Value);
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
+        await ConsumeTargetsAsync(connection, transaction, positionId, quantity, cancellationToken).ConfigureAwait(false);
         await using (var update = connection.CreateCommand())
         {
             update.Transaction = transaction;
@@ -135,6 +136,33 @@ internal sealed class SqliteInvestmentPositionRepository(
             insert.CommandText = "INSERT INTO investment_position_targets (position_id, ordinal, unit_price_in_copper, quantity) VALUES ($positionId, $ordinal, $price, $quantity);";
             insert.Parameters.AddWithValue("$positionId", positionId); insert.Parameters.AddWithValue("$ordinal", target.Ordinal); insert.Parameters.AddWithValue("$price", target.UnitPriceInCopper); insert.Parameters.AddWithValue("$quantity", target.Quantity);
             await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// A manual exit consumes the outstanding staged plan in its configured
+    /// order. The changed plan is durable, while the exit row remains immutable,
+    /// so an already-completed first stage cannot be suggested again after a
+    /// restart.
+    /// </summary>
+    private static async Task ConsumeTargetsAsync(SqliteConnection connection, SqliteTransaction transaction, long positionId, int exitQuantity, CancellationToken cancellationToken)
+    {
+        var remaining = exitQuantity;
+        var targets = await ReadTargetsAsync(connection, transaction, positionId, cancellationToken).ConfigureAwait(false);
+        foreach (var target in targets)
+        {
+            if (remaining == 0) break;
+            var consumed = Math.Min(remaining, target.Quantity);
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = consumed == target.Quantity
+                ? "DELETE FROM investment_position_targets WHERE position_id = $positionId AND ordinal = $ordinal;"
+                : "UPDATE investment_position_targets SET quantity = quantity - $consumed WHERE position_id = $positionId AND ordinal = $ordinal;";
+            command.Parameters.AddWithValue("$positionId", positionId);
+            command.Parameters.AddWithValue("$ordinal", target.Ordinal);
+            if (consumed != target.Quantity) command.Parameters.AddWithValue("$consumed", consumed);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            remaining -= consumed;
         }
     }
 
