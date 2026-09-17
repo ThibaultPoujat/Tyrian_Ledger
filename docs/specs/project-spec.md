@@ -14,9 +14,9 @@ financial rules to continuously answer:
 - what the owner has actually earned;
 - whether an executed plan later matched its modeled expectations.
 
-The primary daily surface is **`Mes Signaux`**. Scanner, dashboard, raw history,
-order books, inventory and personal learning are supporting engines/evidence,
-not the product's main responsibilities.
+The primary daily Signals surface is displayed as **`Mes Signaux`**. Scanner,
+dashboard, raw history, order books, inventory and personal learning are
+supporting engines/evidence, not the product's main responsibilities.
 
 The application is not a trading bot, gameplay bot, order executor, browser
 automator or autonomous game agent.
@@ -64,25 +64,30 @@ to operate a separate analytics workflow.
 9. **Capital and inventory are shared resources.** Existing commitments and
    started plans constrain new plans; the same resource cannot be promised twice.
 10. **Silence is a feature.** Internal analysis that does not require a concrete
-    manual action does not clutter `Mes Signaux`.
+    manual action does not clutter the Signals surface.
 11. **The project learns safely.** Observed outcomes may evaluate rules, but
     rules/weights change only through reviewed code/config and never by
     autonomous self-modification.
 
-## 4. Language and primary navigation
+## 4. Repository language and displayed navigation
+
+Repository-facing artifacts use **English**: documentation filenames and normal
+prose, code/type/API/database/migration identifiers, internal domain terms,
+reason codes, tests and configuration keys. French appears in repository docs
+only when quoting or specifying user-facing product copy.
 
 All user-facing UI/UX labels and text are written in **French**, including
 navigation, actions, errors, empty states, notifications, explanations and
-accessibility text. Internal code/API/type/database identifiers may remain
-English.
+accessibility text.
 
-Target primary navigation:
+Target displayed primary navigation:
 
 `Mes Signaux / Artisanat / Réglages`
 
-`Mes Signaux` is the default/home destination. `Artisanat` is the deliberate
-crafting-for-profit workspace. `Réglages` owns account/API, health/refresh,
-risk/bankroll policy, notifications, backup/recovery and advanced diagnostics.
+`Mes Signaux` is the displayed label for the default Signals surface.
+`Artisanat` is the displayed label for the deliberate crafting-for-profit
+workspace. `Réglages` owns account/API, health/refresh, risk/bankroll policy,
+notifications, backup/recovery and advanced diagnostics.
 
 Existing investment-position/staged-exit infrastructure is preserved but
 investment discovery/seasonal opportunity research is deferred from the 0.1
@@ -90,14 +95,14 @@ primary experience.
 
 ## 5. Canonical product model
 
-The product distinguishes:
+The internal product model is:
 
-`Renseignement -> Opportunité -> Plan -> Étapes -> Signal -> Réconciliation -> Résultat`
+`Intelligence -> Opportunity -> Plan -> Steps -> Signal -> Reconciliation -> Outcome`
 
 A **Signal** is an opportunity sufficiently safe, profitable, relevant and
 compatible with the owner's current state to justify a concrete manual action.
 
-See `docs/specs/mes-signaux.md` for the detailed attention, plan, execution,
+See `docs/specs/signals.md` for the detailed attention, plan, execution,
 shadow-state and UX contract.
 
 ## 6. Main user journeys
@@ -128,18 +133,18 @@ The main assistant shows:
 - open/unrealized result separately;
 - explicit data coverage and unknown-basis limitations.
 
-Realized strategy attribution must be additive/non-overlapping for the same
-supported population/window:
+Internal realized strategy attribution must be additive/non-overlapping for the
+same supported population/window:
 
-- Trading/Flipping;
-- Crafting;
-- Unclassified.
+- `Trading/Flipping`;
+- `Crafting`;
+- `Unclassified`.
 
-Ambiguous outcomes stay Unclassified until later deterministic evidence can
-resolve them. No screen may claim lifetime profit for periods the retained data
-cannot support.
+The UI renders appropriate French labels. Ambiguous outcomes stay `Unclassified`
+until later deterministic evidence can resolve them. No screen may claim
+lifetime profit for periods the retained data cannot support.
 
-### 6.3 Build and use market evidence
+### 6.3 Build and use market intelligence
 
 The broad market scanner, detailed order-book reads and local history collector
 remain important internal engines.
@@ -151,22 +156,17 @@ stability and liquidity with explicit sample/coverage limitations.
 Raw ROI is never sufficient by itself for a high-priority Signal.
 
 The normal user should not need to operate scanner/history pages to benefit from
-these engines. Detailed evidence is available through `Pourquoi ?` or advanced
-diagnostics.
+these engines. Detailed evidence is available through the displayed `Pourquoi ?`
+control or advanced diagnostics.
 
-### 6.4 Decide what to do — Mes Signaux
+### 6.4 Decide what to do — Signals (`Mes Signaux`)
 
-`Mes Signaux` attention-gates analysis. Internal states such as `WAIT`, `HOLD`,
-`KEEP BID`, `LEAVE SELL LISTING`, `SKIP`, `REVIEW` and harmless market churn
-normally remain silent.
+The Signals surface attention-gates analysis. Internal states such as `WAIT`,
+`HOLD`, `KEEP BID`, `LEAVE SELL LISTING`, `SKIP`, `REVIEW` and harmless market
+churn normally remain silent.
 
-The user-facing feed focuses on concrete manual actions such as:
-
-- buy now;
-- place/update/cancel buy order;
-- craft;
-- list/relist;
-- sell/sell partial.
+The user-facing feed focuses on concrete manual actions such as buy now,
+place/update/cancel buy order, craft, list/relist, and sell/sell partial.
 
 Initial Signal cards show action, item, quantity/relevant price, modeled result,
 confidence and `Pourquoi ?`. Detailed current/history/personal/risk evidence is
@@ -194,7 +194,11 @@ same resource simultaneously.
 The hard bankroll reserve remains protected. A softer opportunity-capital buffer
 may preserve optionality. A preferred attractiveness threshold may relax toward,
 but never below, hard evidence/liquidity/risk floors when meaningful capital
-would otherwise stay idle.
+would otherwise stay idle. The opportunity reserve is not a fixed deployment
+percentage.
+
+Compatible-bundle selection is bounded and deterministic, not unbounded
+portfolio optimization or simple top-N sorting.
 
 ### 6.6 Choose Passive or Active attention
 
@@ -211,8 +215,10 @@ not block later immediate steps.
 If only a few obvious actions exist, a single ordered list is preferable to
 forcing path choice.
 
-Once the owner selects `Démarrer`, the chosen plan reserves its resources and
-remaining alternatives are recomputed from what remains.
+Before selection, Passive/Active proposals may be alternatives that overlap
+resources. Once the owner selects displayed `Démarrer`, the chosen plan reserves
+its resources and alternatives are recomputed from what remains. A waiting
+Passive plan may coexist with Active work that uses only unreserved resources.
 
 ### 6.7 Execute without waiting for API propagation
 
@@ -226,8 +232,10 @@ Effective planning state is:
 `latest verified ArenaNet state + locally recorded unconfirmed execution events`
 
 The local execution shadow is reversible/provisional and separate from verified
-state. `Terminé` reports that the issued instruction was performed essentially
-as specified, allowing the next step to be planned immediately.
+state. Displayed `Terminé` reports that the issued instruction was performed
+essentially as specified, allowing the next step to be planned immediately.
+Exceptional controls allow different quantity/price or reporting that the action
+was not performed.
 
 Undo must at least support reversing the latest unconfirmed local step. Earlier
 reversal must safely invalidate/reconcile dependent later local steps.
@@ -255,12 +263,12 @@ superior, the craft is not an actionable profit opportunity.
 Output liquidity/history/confidence is required before a theoretical margin can
 become a Signal.
 
-`Artisanat` presents a small number of guided profitable plans rather than an
-exhaustive world spreadsheet. Qualified craft plans may also appear in
-`Mes Signaux`.
+The crafting workspace, displayed as `Artisanat`, presents a small number of
+guided profitable plans rather than an exhaustive world spreadsheet. Qualified
+craft plans may also appear in `Mes Signaux`.
 
-The Artisanat page may additionally report **crafting value added** versus the
-best realistic input alternative. This analytical measure must not be added
+The crafting workspace may additionally report **crafting value added** versus
+the best realistic input alternative. This analytical measure must not be added
 again to global realized profit.
 
 ### 6.9 Continuous decision loop
@@ -302,7 +310,9 @@ React or features.
 
 Started plans and passive commitments count against resources available to new
 plans. Hard safety/evidence/liquidity/risk floors never relax because the system
-has few candidates.
+has few candidates. A softer attractiveness threshold may relax toward the hard
+floor when meaningful deployable capital would otherwise remain idle, but it
+must still clear an absolute attention/value threshold.
 
 ## 8. Fee and relisting semantics
 
@@ -377,8 +387,8 @@ turnover/ranking and crafting-account ingestion.
 
 Next checkpoints:
 
-- after #131, the owner can use a first attention-first French `Mes Signaux` MVP
-  with the new primary navigation;
+- after #131, the owner can use a first attention-first French Signals UI
+  displayed as `Mes Signaux` with the new primary navigation;
 - after #133, Signals become stable Active/Passive execution plans with shared
   resource reservations and responsive shadow/reconciliation;
 - after #93/#94, crafting becomes a first-class economic/guided profit engine;
