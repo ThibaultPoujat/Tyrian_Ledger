@@ -232,8 +232,9 @@ four child tables now reference the normalized snapshot row, and restore
 validation rejects orphaned crafting data. The refreshed local regression suite
 (481 tests) and all five GitHub checks passed on 2026-09-16.
 
-TKT-M21-02 / #93 is implemented and awaiting its required fresh separate Sol
-XHigh financial review in a Draft PR. It adds deterministic backend-authoritative
+TKT-M21-02 / #93 is implemented in Draft PR #135
+(https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/135) and awaits its
+required fresh separate Sol XHigh financial review. It adds deterministic backend-authoritative
 crafting economics: account-owned tradable input is valued at its exact
 fee-adjusted current liquidation value, while any remainder uses the current
 market replacement cost. Bound, unknown, and unavailable-price inputs make
