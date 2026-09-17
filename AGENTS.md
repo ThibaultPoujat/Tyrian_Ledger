@@ -6,10 +6,10 @@ Build Tyrian Ledger as a **local-first second-screen personal Guild Wars 2 profi
 assistant**. The product continuously turns account/market evidence into the
 smallest useful set of concrete manual actions for the owner to perform in game.
 
-The primary daily surface is **`Mes Signaux`**. The 0.1 economic focus is Trading
-Post flipping/trading plus crafting. Existing investment-position/staged-exit
-infrastructure is preserved, but investment discovery/seasonality is deferred
-from the 0.1 critical path.
+The primary daily Signals surface is displayed as **`Mes Signaux`**. The 0.1
+economic focus is Trading Post flipping/trading plus crafting. Existing
+investment-position/staged-exit infrastructure is preserved, but investment
+discovery/seasonality is deferred from the 0.1 critical path.
 
 The coding model is a development tool only. It is never part of runtime
 financial truth and never executes gameplay or Trading Post actions.
@@ -17,6 +17,27 @@ financial truth and never executes gameplay or Trading Post actions.
 M0-M11 are historical milestones. The active local-first pivot begins at M12.
 Follow current source-of-truth documents rather than inferring product intent
 from old files.
+
+## Repository and displayed language
+
+Repository-facing artifacts use **English**. This includes documentation
+filenames and ordinary documentation prose, code/type/API/database/migration
+identifiers, internal domain terminology, enums/reason codes, test identifiers,
+configuration keys, branch/ticket technical names when newly created, and
+machine-readable state.
+
+French is the product's **display language**. Exact French strings may appear in
+documentation when they specify or quote what the user sees.
+
+All user-facing UI/UX labels and text introduced or modified by active product
+work MUST be French, including navigation, actions/buttons, headings/helper text,
+errors/degraded states, empty states, notification text, explanations/reasons and
+accessibility labels/announcements.
+
+Proper nouns and technical identifiers may remain canonical where translating
+them would reduce clarity. Do not make financial/recommendation logic depend on
+localized strings. Prefer structured semantics/reason codes with French rendering
+at the presentation boundary.
 
 ## Pre-0.1 development-data policy
 
@@ -63,7 +84,7 @@ Never rewrite durable `CURRENT.md` narrative merely to update live ticket state.
 5. The assigned ticket under `docs/milestones/<M>/tickets/`.
 6. `docs/verification/VERIFY-REGISTER.md` entries relevant to the ticket.
 7. `docs/workflow/model-effort-guide.md`.
-8. `docs/specs/mes-signaux.md` for Signal/plan/UI/crafting-orchestration work.
+8. `docs/specs/signals.md` for Signal/plan/UI/crafting-orchestration work.
 9. Only additional specialized specifications, ADRs, tests and source files
    needed by the ticket.
 
@@ -75,9 +96,9 @@ review-model selection and PR Draft blocking when older annotations conflict.
 
 ## Active product model
 
-Canonical flow:
+Canonical internal flow:
 
-`Renseignement -> Opportunité -> Plan -> Étapes -> Signal -> Réconciliation -> Résultat`
+`Intelligence -> Opportunity -> Plan -> Steps -> Signal -> Reconciliation -> Outcome`
 
 A **Signal** is an opportunity sufficiently safe, profitable, relevant and
 compatible with the owner's current state to justify a concrete manual action.
@@ -86,35 +107,12 @@ Internal no-action states (`WAIT`, `HOLD`, `KEEP BID`, `REVIEW`, harmless
 undercut/outbid, etc.) normally stay silent on the primary feed unless a concrete
 corrective action is required.
 
-Target primary navigation:
+Displayed primary navigation:
 
 `Mes Signaux / Artisanat / Réglages`
 
 Scanner, dashboard, raw inventory, retained history, personal learning and order
 books are supporting engines/evidence rather than primary user destinations.
-
-## UI language requirement
-
-**All user-facing UI/UX labels and text introduced or modified by active product
-work MUST be French.** This includes:
-
-- navigation;
-- actions/buttons;
-- headings/helper text;
-- errors and degraded states;
-- empty states;
-- notification text;
-- explanations/reasons;
-- accessibility labels/announcements.
-
-Internal code symbols, API/type/database names, structured reason identifiers,
-test identifiers and developer diagnostics may remain English. Proper nouns and
-technical identifiers may remain canonical where translating them would reduce
-clarity.
-
-Do not make financial/recommendation logic depend on localized strings. Prefer
-structured semantics/reason codes with French rendering at the presentation
-boundary.
 
 ## Active product boundaries
 
@@ -173,7 +171,7 @@ reconciliation rather than guessing.
 See:
 
 - `docs/specs/project-spec.md`
-- `docs/specs/mes-signaux.md`
+- `docs/specs/signals.md`
 - `docs/specs/trading-rules.md`
 - `docs/architecture/architecture.md`
 - `docs/architecture/data-model.md`
