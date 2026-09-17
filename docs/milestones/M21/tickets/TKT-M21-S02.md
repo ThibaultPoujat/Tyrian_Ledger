@@ -1,14 +1,14 @@
-# TKT-M21-S02 - Prototype and Validate Mes Signaux Second-Screen UX
+# TKT-M21-S02 - Prototype and Validate Signals Second-Screen UX
 
 GitHub issue: #130
 
 ## Milestone
 
-M21 - Mes Signaux and Crafting Intelligence
+M21 - Signals and Crafting Intelligence
 
 ## Goal
 
-Validate the `Mes Signaux` second-screen experience before implementing the MVP, so the implementation ticket receives an intentional UX target rather than inventing one while coding.
+Validate the Signals second-screen experience, displayed to the user as `Mes Signaux`, before implementing the MVP, so the implementation ticket receives an intentional UX target rather than inventing one while coding.
 
 ## Scenarios to prototype
 
@@ -20,7 +20,7 @@ Validate the `Mes Signaux` second-screen experience before implementing the MVP,
 - urgent corrective action;
 - expanded `Pourquoi ?` evidence;
 - compact 30-day realized-profit summary with 7d/90d secondary context;
-- target primary navigation `Mes Signaux / Artisanat / Réglages`.
+- target displayed primary navigation `Mes Signaux / Artisanat / Réglages`.
 
 ## UX rules
 
@@ -29,7 +29,7 @@ Validate the `Mes Signaux` second-screen experience before implementing the MVP,
 - Internal `WAIT`, `HOLD`, `KEEP BID`, `REVIEW`, etc. are not presented as user interruptions.
 - Data freshness reflects the actual relevant source, not a fake single refresh age.
 - Desktop/second-screen density is the primary target.
-- `Artisanat` may be visible but disabled/clearly unavailable until implemented; `Mes Signaux` is the default destination.
+- The crafting destination displayed as `Artisanat` may be visible but disabled/clearly unavailable until implemented; `Mes Signaux` is the displayed default destination for Signals.
 
 ## Tooling
 
