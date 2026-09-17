@@ -1,6 +1,6 @@
 # Current Project State
 
-Last updated: 2026-09-15
+Last updated: 2026-09-17
 
 ## Active direction
 
@@ -19,7 +19,7 @@ architecture to extend.
 
 ## Active milestone
 
-**M20 - Personal Learning and Investments**
+**M21 - Crafting Intelligence**
 
 M13 is complete through the local host, secure API-key validation, and typed
 personal Trading Post gateway work merged in PRs #102-#105. M14 is complete
@@ -232,11 +232,37 @@ four child tables now reference the normalized snapshot row, and restore
 validation rejects orphaned crafting data. The refreshed local regression suite
 (481 tests) and all five GitHub checks passed on 2026-09-16.
 
+TKT-M21-02 / #93 is implemented in Draft PR #135
+(https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/135) and awaits its
+required fresh separate Sol XHigh financial review. It adds deterministic backend-authoritative
+crafting economics: account-owned tradable input is valued at its exact
+fee-adjusted current liquidation value, while any remainder uses the current
+market replacement cost. Bound, unknown, and unavailable-price inputs make
+input cost, profit, ROI, and break-even explicitly incomplete rather than free.
+Output gross value, listing and exchange fees, net proceeds, profit, exact ROI,
+and the first rounding-aware break-even unit price all remain integer copper.
+The canonical fee policy owns the break-even calculation so independent fee
+round-up is never duplicated in crafting. No crafting browser surface is added
+here; TKT-M21-03 owns bounded path analysis and the rendering-only UI. No VERIFY
+entries changed; VERIFY-013 remains OPEN and every fee-derived result reports
+its provisional status.
+
 The next valid implementation ticket is:
 
-**TKT-M21-02 / #93 - Implement Owned-Material Opportunity Cost and Crafting Economics.**
+**TKT-M21-03 / #94 - Add Bounded Crafting-Path Analysis and Profitable-Craft UI.**
 
 ## Known-good baseline
+
+TKT-M21-02 local validation on 2026-09-17 reported:
+
+- Release solution build: zero warnings and zero errors;
+- full .NET regression suite: 492 tests passed (4 Domain, 21 Analytics, 244
+  Application, 178 Infrastructure, and 45 Web);
+- React: 25 component tests passed and the production build succeeded;
+- Playwright: 15 tests passed across Chromium, Firefox, and WebKit with no
+  external request;
+- CI workflow contracts: 3 tests passed; and
+- Gitleaks: 324 reachable commits scanned with no leaks.
 
 TKT-M20-01 local validation on 2026-09-15 reported:
 

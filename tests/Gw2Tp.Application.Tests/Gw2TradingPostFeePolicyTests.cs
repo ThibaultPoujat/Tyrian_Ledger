@@ -82,4 +82,17 @@ public sealed class Gw2TradingPostFeePolicyTests
         Assert.Equal(new Money(7_839_866_231_326_559_435), scenario.NetSaleProceeds);
         Assert.Equal(scenario.NetSaleProceeds, scenario.NetProfit);
     }
+
+    [Fact]
+    public void Calculates_the_first_break_even_unit_price_despite_independent_fee_rounding_dips()
+    {
+        var price = Gw2TradingPostFeePolicy.TryCalculateBreakEvenUnitPrice(new Money(170), quantity: 1);
+
+        Assert.Equal(new Money(200), price);
+        var feePolicy = Gw2TradingPostFeePolicy.Create();
+        var beforeFees = feePolicy.CalculateFees(new Money(199));
+        var atFees = feePolicy.CalculateFees(new Money(200));
+        Assert.Equal(new Money(169), new Money(199) - beforeFees.ListingFee - beforeFees.ExchangeFee);
+        Assert.Equal(new Money(170), new Money(200) - atFees.ListingFee - atFees.ExchangeFee);
+    }
 }
