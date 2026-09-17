@@ -4,7 +4,7 @@ GitHub issue: #133
 
 ## Milestone
 
-M21 - Mes Signaux and Crafting Intelligence
+M21 - Signals and Crafting Intelligence
 
 ## Goal
 
@@ -26,15 +26,15 @@ Turn independent opportunities into stable, mutually compatible execution plans 
 - Preserve hard bankroll reserve and a bounded opportunity-capital buffer; soft attractiveness thresholds may relax toward, never below, hard floors when meaningful capital remains idle.
 - Rank at plan/bundle level using deterministic confidence-adjusted economics, capital efficiency/turnover, attention fit, urgency, concentration/opportunity cost and stability.
 - Use hysteresis: a started plan survives small score changes and is replaced only after material improvement or invalidation under explicit versioned policy thresholds.
-- `Démarrer` reserves the selected plan's resources and recomputes alternatives from what remains.
-- Freeze the current instruction during execution. Material invalidation produces a French `Recalcul requis`/equivalent state rather than silently changing quantity/price.
+- The displayed `Démarrer` action reserves the selected plan's resources and recomputes alternatives from what remains.
+- Freeze the current instruction during execution. Material invalidation produces a French recheck state such as `Recalcul requis` rather than silently changing quantity/price.
 
 ## Local execution shadow
 
 - Effective planning state = latest verified ArenaNet state + locally recorded unconfirmed execution events.
-- `Terminé` records that the current instruction was performed essentially as issued and advances projected state immediately.
+- The displayed `Terminé` action records that the current instruction was performed essentially as issued and advances projected state immediately.
 - Exceptional flow allows different executed quantity/price instead of forcing false exact evidence.
-- Unconfirmed local events are reversible; normal UX supports at least `Annuler la dernière étape`.
+- Unconfirmed local events are reversible; normal UX supports at least the displayed `Annuler la dernière étape` action.
 - Reversing an earlier event invalidates/reconciles dependent later local events.
 - Store local execution events separately from verified state; prefer append-only event + reversal semantics.
 - API refresh may confirm completed shadow events while an Active path continues, without silently mutating the current frozen instruction for immaterial changes.
@@ -47,7 +47,7 @@ Turn independent opportunities into stable, mutually compatible execution plans 
 
 - [ ] Resource-conflicting candidates cannot be selected simultaneously.
 - [ ] Bundle selection can prefer a compatible combination over one higher-absolute-profit candidate when deterministic utility supports it.
-- [ ] Passive/Active proposals fit their attention semantics and recompute after `Démarrer`.
+- [ ] Passive/Active proposals fit their attention semantics and recompute after the displayed `Démarrer` action.
 - [ ] Started plans remain stable through immaterial market changes.
 - [ ] Each completed step immediately changes effective planning state without waiting for API refresh.
 - [ ] Undo restores projected resources and handles dependent later steps safely.
