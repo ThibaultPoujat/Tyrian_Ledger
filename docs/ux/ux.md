@@ -6,32 +6,36 @@ Tyrian Ledger is a **second-screen profit assistant**. The primary experience
 must reduce analysis time and surface only the concrete manual actions that are
 worth the owner's attention now.
 
-The default daily surface is **`Mes Signaux`**. Scanner, raw history, inventory,
-personal learning and detailed order-book analysis are supporting engines and
-evidence, not competing home pages.
+The default daily Signals surface is displayed as **`Mes Signaux`**. Scanner,
+raw history, inventory, personal learning and detailed order-book analysis are
+supporting engines and evidence, not competing home pages.
 
-## Language
+## Language boundary
+
+Repository-facing names and internal UI/domain semantics are English. Exact
+French strings in this document represent displayed product copy.
 
 All user-facing labels and text are written in **French**. This includes
 navigation, actions, buttons, headings, helper text, errors, empty states,
 degraded states, notifications, explanations and accessibility text.
 
-Internal code/API/type names may remain English. Proper nouns and technical
-identifiers may remain canonical when translating them would reduce clarity.
+Internal code/API/type names, route/domain identifiers and reason codes remain
+English. Proper nouns and technical identifiers may remain canonical when
+translation would reduce clarity.
 
 ## Primary navigation
 
-Target primary navigation:
+Target displayed primary navigation:
 
 `Mes Signaux / Artisanat / Réglages`
 
-- `Mes Signaux` is the default/home destination.
-- `Artisanat` is the deliberate guided crafting-for-profit workspace. Until it
-  is implemented it may be visible but disabled/clearly marked unavailable;
-  do not create a fake empty workspace.
-- `Réglages` groups API/account connection, sync/refresh/health, bankroll/risk
-  settings, alerts, collection/history settings, backup/restore/data controls
-  and advanced diagnostics.
+- `Mes Signaux` is the default/home Signals destination.
+- `Artisanat` is the displayed label for the guided crafting-for-profit
+  workspace. Until implemented it may be visible but disabled/clearly marked
+  unavailable; do not create a fake empty workspace.
+- `Réglages` is the displayed label for the settings destination. For the MVP it
+  must be functional, grouping/reusing existing API/account, sync/health, risk,
+  data/backup and diagnostic controls rather than routing to a dead placeholder.
 
 Dashboard, Scanner, Investments, raw Inventory and Personal Learning are not
 primary navigation destinations. Temporary diagnostic/support routes may remain
@@ -56,7 +60,7 @@ Use:
 The visual design should communicate a private intelligence service more than a
 spreadsheet. Function comes before lore decoration.
 
-## Mes Signaux
+## Signals surface (`Mes Signaux`)
 
 ### Attention gate
 
@@ -125,13 +129,15 @@ number. 7-day and 90-day realized results are secondary context.
 Open/unrealized result is visually and semantically separate and must not be
 added to realized profit.
 
-Strategy attribution later uses additive non-overlapping categories:
+Internal strategy categories remain English and non-overlapping:
 
-- Trading/Flipping;
-- Crafting;
-- Non classé / Unclassified.
+- `Trading/Flipping`;
+- `Crafting`;
+- `Unclassified`.
 
-Do not force attribution when evidence is ambiguous.
+Displayed labels are French; exact wording is validated during UX work (for
+example an appropriate French trading/flipping label, `Artisanat`, and
+`Non classé`). Do not force attribution when evidence is ambiguous.
 
 ## Freshness and status
 
@@ -158,7 +164,8 @@ not persistent account modes.
 
 Designed for approximately 1–3 minutes of interaction, such as place/update/
 cancel orders or listings that can then wait for market fills while the user
-returns to gameplay.
+returns to gameplay. A waiting Passive plan may remain in progress while Active
+work uses only unreserved resources.
 
 ### Active
 
@@ -166,12 +173,15 @@ Designed for immediately executable chains, usually approximately 5–15 minutes
 per path, such as buy-now -> craft -> list. The user may complete successive
 Active paths for much longer overall.
 
+A buy-order step may appear in an Active path only as its terminal step; it must
+not block later immediate steps.
+
 If only a few obvious actions exist, prefer one simple ordered list rather than
 forcing path choice.
 
-Before selection Passive/Active proposals may be alternatives. After
-`Démarrer`, the chosen plan reserves resources and the other proposal is
-recomputed from what remains.
+Before selection Passive/Active proposals may be alternatives and may overlap
+resources. After displayed `Démarrer`, the chosen plan reserves resources and
+all alternatives are recomputed from what remains.
 
 Path summary should keep plan-level values scannable:
 
@@ -181,6 +191,14 @@ Path summary should keep plan-level values scannable:
 - confidence;
 - optionality/opportunity capital intentionally left available where relevant.
 
+A progressive `Pourquoi ce parcours ?`/equivalent explanation may disclose
+compatible-plan count, capital/inventory conflicts, slower-turnover exclusions,
+urgency and capital deliberately left free.
+
+A future optional displayed time-budget control such as `2 min / 10 min / 20+
+min` may shape Active-plan construction. It must remain a planning input, not a
+persistent user mode.
+
 ## Started-plan execution
 
 Completed steps remain visible/collapsed until the path finishes so the user can
@@ -189,14 +207,17 @@ trust what state the assistant believes.
 The current instruction must not mutate under the user's hands. During a short
 execution window, background refresh may confirm prior steps but does not change
 current quantity/price for immaterial movement. Material invalidation uses an
-explicit French recheck state rather than silent rewriting.
+explicit French recheck/do-not-execute state rather than silent rewriting.
 
 A normal step offers one simple `Terminé` confirmation. Secondary exceptional
-controls may allow recording a different quantity/price or saying the action was
-not performed.
+controls allow recording a different quantity/price or saying the action was not
+performed.
 
-Unconfirmed local steps should show a subtle state equivalent to `En attente de
-confirmation ArenaNet` rather than pretending verification has occurred.
+Completed-step presentation may subtly distinguish:
+
+- current instruction;
+- locally recorded / awaiting ArenaNet confirmation;
+- confirmed by ArenaNet.
 
 At minimum, provide `Annuler la dernière étape` for an unconfirmed local event.
 If undoing an earlier event would invalidate later locally recorded steps, say so
@@ -205,7 +226,7 @@ explicitly and reconcile them together rather than leaving impossible state.
 If later verified evidence materially contradicts local execution, pause the
 affected path with an exceptional reconciliation state rather than guessing.
 
-## Artisanat
+## Crafting workspace (`Artisanat`)
 
 `Artisanat` is a guided active-profit workspace, not a giant recipe spreadsheet.
 
@@ -227,7 +248,7 @@ not be shown as profitable/actionable.
 
 Craft plans use the same shared execution/step/reconciliation model as trading.
 
-## Réglages
+## Settings (`Réglages`)
 
 Organize configuration around user goals rather than backend subsystems:
 
@@ -254,12 +275,12 @@ detail or diagnostics but should not compete with the main assistant.
 ## Interaction rules
 
 - Do not hide critical assumptions only in tooltips.
-- Use qualifiers equivalent to `Profit modélisé`, `Médiane observée` or other
-  truthful certainty labels where relevant.
+- Use French qualifiers equivalent to `Profit modélisé`, `Médiane observée` or
+  other truthful certainty labels where relevant.
 - Never show guaranteed profit/fill/price language.
 - Unknown/insufficient evidence is a first-class state, not zero/blank.
 - Keep filters/selections stable where practical.
-- Expose binding risk/resource constraints through `Pourquoi ?`.
+- Expose binding risk/resource constraints through progressive explanation.
 - Destructive backup/restore/clear actions require understandable confirmation
   and error recovery.
 - Support keyboard navigation, semantic controls, sensible focus and WCAG 2.2
@@ -276,8 +297,8 @@ prioritizes it.
 
 ## UX validation strategy
 
-Before implementing the first `Mes Signaux` MVP, validate at least these states
-with a lightweight prototype/wireframe:
+Before implementing the first Signals MVP displayed as `Mes Signaux`, validate
+at least these states with a lightweight prototype/wireframe:
 
 1. zero Signals;
 2. two simple Signals;
