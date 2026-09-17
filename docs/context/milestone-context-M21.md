@@ -1,4 +1,4 @@
-# Milestone Context - M21: Mes Signaux and Crafting Intelligence
+# Milestone Context - M21: Signals and Crafting Intelligence
 
 ## User outcome
 
@@ -6,21 +6,21 @@ The owner gets a usable second-screen profit assistant before crafting is comple
 
 ## Product sequence
 
-M21 now contains two linked phases after the completed account-crafting ingestion ticket:
+M21 contains two linked phases after the completed account-crafting ingestion ticket:
 
-1. **Mes Signaux transition** — self-healing delivery state, UX spike, attention-first MVP/navigation, post-MVP cleanup, then shared plan/shadow/reconciliation orchestration.
-2. **Crafting intelligence** — owned-material opportunity-cost economics followed by bounded guided crafting paths and the `Artisanat` workspace.
+1. **Signals transition** — self-healing delivery state, UX spike, attention-first MVP/navigation, post-MVP cleanup, then shared plan/shadow/reconciliation orchestration. The displayed primary surface is `Mes Signaux`.
+2. **Crafting intelligence** — owned-material opportunity-cost economics followed by bounded guided crafting paths and the workspace displayed as `Artisanat`.
 
 The explicit ticket order is defined in `docs/milestones/INDEX.md` and `CURRENT.md`; do not infer it from numeric issue ordering.
 
-## Mes Signaux invariants
+## Signals invariants
 
-- `Mes Signaux` is the primary daily surface.
-- User-facing UI/UX copy is French.
+- The Signals surface displayed as `Mes Signaux` is the primary daily surface.
+- Repository-facing artifacts and internal terminology are English; user-facing UI/UX copy is French.
 - A Signal appears only when there is a concrete manual action worth the user's attention.
 - No-action analytical states remain internal unless they imply a corrective manual action.
 - Dashboard/scanner/personal-learning/raw inventory are supporting engines/evidence, not competing primary destinations.
-- Target navigation is `Mes Signaux / Artisanat / Réglages`.
+- Displayed target navigation is `Mes Signaux / Artisanat / Réglages`.
 - Financial/recommendation truth remains backend-authoritative and deterministic.
 - Active/Passive are attention/time-oriented paths, not permanent modes.
 - Plans reserve shared resources and must be mutually compatible.
