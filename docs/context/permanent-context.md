@@ -17,7 +17,7 @@ only; no application LLM participates in runtime financial truth.
 
 1. Trading Post flipping/trading;
 2. crafting-for-profit;
-3. the shared Signal/Plan/Steps/Reconciliation/Outcome execution model;
+3. the shared `Opportunity -> Plan -> Steps -> Reconciliation -> Outcome` execution lifecycle;
 4. reliable local operation, packaging and observed outcome evaluation.
 
 Existing investment-position/staged-exit infrastructure remains valid and must
@@ -51,15 +51,21 @@ would reduce clarity. Financial logic must never depend on localized strings.
 
 A Signal is an opportunity sufficiently safe, profitable, relevant and
 compatible with the owner's current state to justify a concrete manual action.
+It is a **presentation/eligibility concept**, not a lifecycle stage or a separate
+financial authority. A Signal is what the user sees after an opportunity/plan
+step clears the relevant evidence, resource, risk, freshness and attention gates.
 
 Internal analysis does not automatically deserve attention. `WAIT`, `HOLD`,
 `KEEP BID`, `REVIEW`, harmless undercut/outbid and similar no-action states
 normally remain silent on the displayed `Mes Signaux` surface unless they imply
 a concrete corrective action.
 
-Canonical internal product flow:
+Canonical domain lifecycle:
 
-`Intelligence -> Opportunity -> Plan -> Steps -> Signal -> Reconciliation -> Outcome`
+`Opportunity -> Plan -> Steps -> Reconciliation -> Outcome`
+
+Market/account intelligence is upstream evidence that feeds Opportunity
+discovery; it is not an additional lifecycle stage.
 
 See `docs/specs/signals.md` for the full product/interaction contract.
 
@@ -132,7 +138,7 @@ not restore it as a product runtime.
 The accounting/scanner/history/recommendation/personal-learning foundations are
 already built. Current priority order is:
 
-1. make live project handoff state self-healing from GitHub;
+1. make generated project handoff state self-healing from its explicit authorities;
 2. validate and ship the first usable French Signals UI (`Mes Signaux`) MVP quickly;
 3. remove superseded UI/docs/code after replacement paths are proven;
 4. add deterministic plan/bundle selection, Passive/Active paths, resource
@@ -142,8 +148,9 @@ already built. Current priority order is:
 6. add the continuous decision loop/actionable local notifications;
 7. harden/pack/evaluate observed plan outcomes.
 
-The explicit live sequence is maintained in issue #98, `docs/milestones/INDEX.md`
-and the generated live block in `CURRENT.md`.
+The explicit execution sequence is maintained in issue #98 and
+`docs/milestones/INDEX.md`; operational delivery status comes from GitHub, and
+the generated live block in `CURRENT.md` combines those sources for handoff.
 
 ## Effective planning state
 
@@ -173,21 +180,31 @@ The UI renders French labels for those categories. Ambiguous strategy remains
 additionally show value added versus the best realistic input alternative, but
 that value is never added again to global realized profit.
 
-## `CURRENT.md` live-state authority
+## `CURRENT.md` generated live-state authority
 
-GitHub merged PRs, closed issues and milestone/roadmap state are authoritative
-for **live delivery state**. `CURRENT.md` should contain durable context plus a
-small clearly-delimited generated live-state block.
+Authority is split by concern:
 
-TKT-M21-S01 / #129 adds deterministic post-merge automation with no AI quota.
-Before that ticket lands, and as a fallback afterward, a coding agent must
-compare the generated block with GitHub at session start and repair a stale live
-block before relying on it. The owner should not manually maintain normal
-handoff state.
+- **Operational delivery state:** GitHub merged PRs, issue open/closed state, and milestone assignment/title.
+- **Execution order / next valid ticket:** issue #98 and `docs/milestones/INDEX.md`; numeric issue ordering is not authoritative.
+- **Review effort and gates:** `docs/workflow/model-effort-guide.md`.
+
+Issue #98 and `docs/milestones/INDEX.md` must agree. If they conflict, treat the
+mismatch as a source-of-truth contradiction to repair rather than choosing a
+source silently.
+
+`CURRENT.md` keeps durable narrative plus a bounded generated live-state block
+that combines these authorities. The generated block is not independently
+authoritative. TKT-M21-S01 / #129 adds deterministic post-merge automation with
+no AI quota.
+
+Before that ticket lands, and as a fallback afterward, a coding agent compares
+each generated field with its owning authority at session start and repairs
+stale generated state before relying on it. The owner should not manually
+maintain normal handoff state.
 
 ## Required session context
 
-1. reconcile/read `CURRENT.md` live state against GitHub;
+1. reconcile/read the `CURRENT.md` generated fields against their owning authorities;
 2. `AGENTS.md`;
 3. this file;
 4. current milestone context;

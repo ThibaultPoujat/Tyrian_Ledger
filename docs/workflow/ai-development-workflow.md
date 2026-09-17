@@ -21,18 +21,25 @@ Do not load all historical milestones or the entire specification tree for a rou
 
 For Signals/plan/crafting work, `docs/specs/signals.md` is an active product source of truth and should be read when the assigned ticket depends on its concepts.
 
-## GitHub-authoritative live state
+## Generated live-state authority split
 
-GitHub merged PR, closed issue and milestone state is authoritative for **live delivery state**. `CURRENT.md` carries durable context plus a bounded generated live-state block.
+The generated live-state block in `CURRENT.md` combines multiple authorities; GitHub is not the authority for every field:
+
+- **Operational delivery state:** GitHub merged PRs, issue open/closed state, and milestone assignment/title.
+- **Execution order / next valid ticket:** issue #98 and `docs/milestones/INDEX.md`. Numeric issue ordering is not authoritative.
+- **Review effort and gates:** `docs/workflow/model-effort-guide.md`.
+
+Issue #98 and `docs/milestones/INDEX.md` must agree on execution order. If they conflict, treat that as a source-of-truth contradiction to repair rather than silently selecting one.
 
 At session start:
 
-1. inspect the assigned issue/PR and relevant live GitHub state;
-2. compare it with the generated live-state block in `CURRENT.md`;
-3. if they disagree, trust GitHub and repair/reconcile the generated block before using it as handoff state;
-4. never rewrite durable `CURRENT.md` narrative merely to repair live state.
+1. inspect the assigned issue/PR and the relevant owning authority for each generated field;
+2. compare those authoritative values with the generated live-state block in `CURRENT.md`;
+3. repair stale generated fields from their owning authority before using the block as handoff state;
+4. never infer execution order from GitHub issue numbers or review gates from risk class/issue metadata;
+5. never rewrite durable `CURRENT.md` narrative merely to repair generated live state.
 
-TKT-M21-S01 / #129 owns the deterministic post-merge automation for this block. Until it lands, the implementation/delivery agent performs the reconciliation manually. After it lands, session-start reconciliation remains the fallback if automation failed or state is stale. The owner should not need to edit normal handoff state.
+TKT-M21-S01 / #129 owns the deterministic post-merge automation for this block. Until it lands, the implementation/delivery agent performs the reconciliation manually. After it lands, per-field session-start reconciliation remains the fallback if automation failed or state is stale. The owner should not need to edit normal handoff state.
 
 ## Ticket versus session
 
@@ -45,7 +52,7 @@ A separate session may be used for focused fixes/tests if necessary, but must re
 ## Standard implementation lifecycle
 
 1. Read the ticket and minimum context.
-2. Reconcile GitHub live state with `CURRENT.md` generated live state.
+2. Reconcile the `CURRENT.md` generated fields against their owning authorities.
 3. Inspect current Git/repository state and relevant VERIFY items.
 4. Make a short in-session plan of at most five steps. Use dedicated Plan mode only when `model-effort-guide.md` or a genuine unresolved owner decision warrants it.
 5. If a genuine ambiguity/contradiction cannot be resolved from the repository, ask the owner with a recommendation and concise alternatives before implementing; do not ask routine technical questions.
@@ -56,7 +63,7 @@ A separate session may be used for focused fixes/tests if necessary, but must re
 10. Commit/push/open or update the PR according to `delivery-protocol.md`.
 11. Write the required completion report including the short functional summary, then stop.
 
-The next session recovers from GitHub/repository state; it does not require previous chat history.
+The next session recovers from authoritative GitHub/repository state; it does not require previous chat history.
 
 ## Review paths
 

@@ -95,12 +95,15 @@ primary experience.
 
 ## 5. Canonical product model
 
-The internal product model is:
+Canonical domain lifecycle:
 
-`Intelligence -> Opportunity -> Plan -> Steps -> Signal -> Reconciliation -> Outcome`
+`Opportunity -> Plan -> Steps -> Reconciliation -> Outcome`
 
-A **Signal** is an opportunity sufficiently safe, profitable, relevant and
-compatible with the owner's current state to justify a concrete manual action.
+Market/account intelligence is upstream evidence that feeds Opportunity
+discovery. A **Signal is not a lifecycle stage**; it is a presentation/eligibility
+concept for an opportunity or plan action sufficiently safe, profitable, relevant
+and compatible with the owner's current state to justify surfacing a concrete
+manual action.
 
 See `docs/specs/signals.md` for the detailed attention, plan, execution,
 shadow-state and UX contract.

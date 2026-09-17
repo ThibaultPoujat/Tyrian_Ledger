@@ -32,12 +32,14 @@ The 0.1 product focus is Trading Post flipping/trading plus crafting. Existing
 investment-position/staged-exit infrastructure is preserved, but investment
 opportunity discovery/seasonality is deferred.
 
-Canonical internal product flow:
+Canonical domain lifecycle:
 
-`Intelligence -> Opportunity -> Plan -> Steps -> Signal -> Reconciliation -> Outcome`
+`Opportunity -> Plan -> Steps -> Reconciliation -> Outcome`
 
-A Signal is an opportunity sufficiently safe, profitable, relevant and compatible
-with the owner's current state to justify a concrete manual action. No-action
+Market/account intelligence feeds opportunity discovery but is not a lifecycle
+stage. A Signal is also not a lifecycle stage: it is a presentation/eligibility
+concept for a sufficiently safe, profitable, relevant and compatible
+opportunity/plan action that should be surfaced to the owner now. No-action
 states such as `WAIT`, `HOLD`, `KEEP BID`, harmless outbid/undercut, `SKIP` and
 `REVIEW` normally remain silent on the main action feed.
 
@@ -51,9 +53,10 @@ for the active interface contract.
   - GitHub merged PRs, issue open/closed state, and milestone assignment/title are authoritative for **operational delivery state**;
   - issue #98 and `docs/milestones/INDEX.md` are authoritative for **execution order and the next valid ticket**;
   - `docs/workflow/model-effort-guide.md` is authoritative for **review effort and the active explicit Sol-gate list**.
-- `CURRENT.md` contains durable narrative plus the generated live-state block below. The owner should not manually maintain normal merge handoff state.
+- Issue #98 and `docs/milestones/INDEX.md` must agree on execution order. If they conflict, repair the source-of-truth contradiction instead of silently choosing one or inferring numeric issue order.
+- `CURRENT.md` contains durable narrative plus the generated live-state block below. The generated block is a derived handoff/cache view, not an independent authority. The owner should not manually maintain normal merge handoff state.
 - TKT-M21-S01 / #129 will add a deterministic post-merge workflow/script that combines those authorities and updates only the generated block without AI/model quota.
-- Until #129 lands, a coding agent must compare generated fields with their owning authorities at session start and repair stale generated state before relying on it.
+- Until #129 lands, a coding agent must compare each generated field with its owning authority at session start and repair stale generated state before relying on it.
 - Historical ADRs/tickets remain useful evidence but are not active instructions when superseded by current source-of-truth docs/tickets.
 
 ## Known foundation
@@ -74,7 +77,7 @@ VERIFY register rather than assuming external behavior.
 
 The owner-approved sequence from here is:
 
-1. #129 / TKT-M21-S01 — self-healing GitHub-authoritative `CURRENT.md` live state;
+1. #129 / TKT-M21-S01 — self-healing `CURRENT.md` generated live state using the explicit authority split;
 2. #130 / TKT-M21-S02 — prototype/validate the Signals second-screen UX displayed as `Mes Signaux`;
 3. #131 / TKT-M21-S03 — usable Signals MVP + primary navigation;
 4. #132 / TKT-M21-S04 — remove/archive superseded UI/docs/code after MVP;

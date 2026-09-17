@@ -12,7 +12,9 @@ Turn independent opportunities into stable, mutually compatible execution plans 
 
 ## Core model
 
-`Opportunity -> Plan -> Steps -> Signal -> Reconciliation -> Outcome`
+`Opportunity -> Plan -> Steps -> Reconciliation -> Outcome`
+
+Signal is deliberately **not** a lifecycle stage. It is the presentation/eligibility concept used when a qualified opportunity or plan action has cleared the required constraints and merits a concrete user-facing action.
 
 ## Requirements
 

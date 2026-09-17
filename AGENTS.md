@@ -58,26 +58,35 @@ Follow `docs/context/permanent-context.md`:
 
 ## Live handoff authority and `CURRENT.md`
 
-GitHub merged PRs, closed issues and active roadmap/milestone state are
-authoritative for **live delivery state**.
+Authority is split by concern; there is no single authority for every generated
+handoff field:
+
+- **Operational delivery state:** GitHub merged PRs, issue open/closed state, and milestone assignment/title.
+- **Execution order / next valid ticket:** issue #98 and `docs/milestones/INDEX.md`. Numeric issue ordering is not authoritative.
+- **Review effort and gates:** `docs/workflow/model-effort-guide.md`, including the active explicit Sol-gate list.
+
+Issue #98 and `docs/milestones/INDEX.md` must agree on execution order. If they
+conflict, treat that as a source-of-truth contradiction to repair; do not silently
+choose one or infer order from issue numbers.
 
 `CURRENT.md` contains durable context plus a clearly delimited generated
-live-state block. TKT-M21-S01 / #129 adds deterministic post-merge maintenance
-without AI/model quota.
+live-state block. That block combines the authorities above and is a derived
+handoff/cache view, not an independent source of truth. TKT-M21-S01 / #129 adds
+deterministic post-merge maintenance without AI/model quota.
 
 At the **start of every implementation session**:
 
-1. inspect/reconcile the live GitHub issue/PR state relevant to the roadmap;
-2. compare it with the generated live block in `CURRENT.md`;
-3. if they disagree, treat GitHub as authoritative and repair the stale live
-   block before relying on it;
-4. do not ask the owner to maintain `CURRENT.md` manually during normal work.
+1. inspect the assigned issue/PR and the relevant owning authority for each generated field;
+2. compare those authoritative values with the generated live block in `CURRENT.md`;
+3. repair stale generated fields from their owning authority before relying on them;
+4. never let GitHub issue numbering override the explicit roadmap order and never infer a Sol gate from risk class/issue metadata;
+5. do not ask the owner to maintain `CURRENT.md` manually during normal work.
 
 Never rewrite durable `CURRENT.md` narrative merely to update live ticket state.
 
 ## Read order for an implementation ticket
 
-1. Reconcile/read `CURRENT.md` against live GitHub state.
+1. Reconcile/read the `CURRENT.md` generated fields against their owning authorities.
 2. This file.
 3. `docs/context/permanent-context.md`.
 4. `docs/context/milestone-context-<M>.md` for the assigned milestone.
@@ -96,12 +105,15 @@ review-model selection and PR Draft blocking when older annotations conflict.
 
 ## Active product model
 
-Canonical internal flow:
+Canonical domain lifecycle:
 
-`Intelligence -> Opportunity -> Plan -> Steps -> Signal -> Reconciliation -> Outcome`
+`Opportunity -> Plan -> Steps -> Reconciliation -> Outcome`
 
-A **Signal** is an opportunity sufficiently safe, profitable, relevant and
-compatible with the owner's current state to justify a concrete manual action.
+Market/account intelligence is upstream evidence that feeds Opportunity
+discovery. A **Signal is not a lifecycle stage**; it is a presentation/eligibility
+concept for an opportunity/plan action sufficiently safe, profitable, relevant
+and compatible with the owner's current state to justify surfacing a concrete
+manual action.
 
 Internal no-action states (`WAIT`, `HOLD`, `KEEP BID`, `REVIEW`, harmless
 undercut/outbid, etc.) normally stay silent on the primary feed unless a concrete
@@ -205,8 +217,8 @@ and concise alternatives. Do not ask the owner to decide routine technical
 choices already authorized by the ticket.
 
 Do not begin the next ticket merely because context remains. Durable handoff
-comes from Git, issue/ticket contracts, tests, docs and verified live GitHub
-state rather than chat memory.
+comes from Git, issue/ticket contracts, tests, docs and verified authoritative
+repository/GitHub state rather than chat memory.
 
 A separate focused fix/test session is allowed if the implementation session
 cannot finish safely, but it remains scoped to the same ticket.
@@ -306,7 +318,7 @@ Before delivery:
 
 - ensure PR body contains `Closes #<issue-number>`;
 - ensure actual GitHub milestone matches the issue milestone when tooling allows;
-- reconcile GitHub live state and the `CURRENT.md` generated block;
+- reconcile the generated `CURRENT.md` fields against their owning authorities;
 - do not rewrite durable `CURRENT.md` narrative for routine handoff;
 - keep SOL-GATED PRs Draft until the required review gate is satisfied.
 

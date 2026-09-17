@@ -62,9 +62,16 @@ than opening a fake empty workspace.
 
 ## 4. Canonical internal vocabulary
 
-Tyrian Ledger distinguishes these English internal concepts:
+Canonical domain lifecycle:
 
-`Intelligence -> Opportunity -> Plan -> Steps -> Signal -> Reconciliation -> Outcome`
+`Opportunity -> Plan -> Steps -> Reconciliation -> Outcome`
+
+`Intelligence` and `Signal` are important internal concepts, but neither is a
+lifecycle stage. Intelligence is the evidence/derived-information layer that
+feeds Opportunity discovery. Signal is a **presentation/eligibility concept**:
+it describes an opportunity or plan action that has cleared the required
+evidence, resource, risk, freshness and attention gates and therefore merits a
+concrete user-facing action now.
 
 ### Intelligence
 
@@ -95,9 +102,10 @@ order, buying now, crafting, listing, relisting or selling.
 > compatible with the owner's current state to justify a concrete manual
 > action.**
 
-A good market observation is not necessarily a Signal. It becomes one only
-after evidence, portfolio/resource constraints, freshness, conflicts and
-attention rules have been applied.
+A good market observation is not necessarily a Signal. Signal eligibility is
+applied after evidence, portfolio/resource constraints, freshness, conflicts and
+attention rules. Surfacing a Signal does not insert a new state into the domain
+lifecycle or create a separate source of financial truth.
 
 ### Reconciliation
 
@@ -199,7 +207,7 @@ Do not simply sort independent candidates and take the top N.
 
 Planning pipeline:
 
-`all opportunities -> hard rejection -> executable plans -> attention classification -> shared-resource conflict resolution -> bounded compatible-bundle optimization -> Signals`
+`all opportunities -> hard rejection -> executable plans -> attention classification -> shared-resource conflict resolution -> bounded compatible-bundle optimization -> surfaced Signals`
 
 ### Hard rejection first
 
@@ -541,9 +549,10 @@ Existing investment tracking remains preserved but is not a primary navigation
 focus and no investment-discovery/seasonality engine is required for 0.1.
 
 Future profit engines may plug into the same
-`Opportunity -> Plan -> Steps -> Outcome` model, for example Mystic Forge,
-conversions, time-gated crafts, salvage/opening or vendor arbitrage. They must not
-create parallel product architectures. Trading Post remains the first focus.
+`Opportunity -> Plan -> Steps -> Reconciliation -> Outcome` model, for example
+Mystic Forge, conversions, time-gated crafts, salvage/opening or vendor
+arbitrage. They must not create parallel product architectures. Trading Post
+remains the first focus.
 
 ## 23. Non-goals
 
@@ -562,7 +571,7 @@ create parallel product architectures. Trading Post remains the first focus.
 The owner-approved rollout prioritizes a usable main surface quickly:
 
 1. canonical product/docs transition;
-2. self-healing GitHub-authoritative `CURRENT.md` live state;
+2. self-healing `CURRENT.md` generated live-state maintenance using the explicit authority split;
 3. UX design spike;
 4. Signals MVP displayed as `Mes Signaux` + new primary navigation;
 5. cleanup of superseded UI/docs/code after the MVP proves replacement paths;

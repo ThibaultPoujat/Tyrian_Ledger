@@ -58,7 +58,7 @@ M12-M20 and TKT-M21-01 are complete. The owner-approved sequence from the merged
  -> #97  TKT-M22-03   Signal-plan outcome evaluation
 ```
 
-Do not infer the next ticket from GitHub issue number ordering. `CURRENT.md` plus this sequence and live GitHub state define the current handoff.
+Do not infer the next ticket from GitHub issue number ordering. Issue #98 and this explicit sequence are authoritative for execution order and must agree; GitHub contributes operational open/closed/merged/milestone state, not roadmap ordering. `CURRENT.md` combines those sources for handoff.
 
 ## Product checkpoints
 
@@ -84,9 +84,15 @@ M12-M18 local/account/history foundation
 
 After TKT-M18-02, keep the local collector running during subsequent development whenever practical so owned history continues to accumulate.
 
-## GitHub live-state authority
+## Generated handoff authority split
 
-GitHub merged PR/closed issue/milestone state is authoritative for live delivery state. TKT-M21-S01 / #129 makes the bounded generated live-state block in `CURRENT.md` self-healing after merges, with session-start reconciliation as fallback. Historical Markdown tickets remain durable contracts/evidence; live status must not be inferred from stale prose when GitHub disagrees.
+The generated live-state block in `CURRENT.md` is a derived handoff/cache view and has no independent authority. Its fields come from:
+
+- **Operational delivery state:** GitHub merged PRs, issue open/closed state, and milestone assignment/title.
+- **Execution order / next valid ticket:** issue #98 and the explicit sequence in this file.
+- **Review effort and gates:** `docs/workflow/model-effort-guide.md`.
+
+If issue #98 and this file disagree on execution order, repair the contradiction before continuing; do not infer the answer from numeric issue ordering. TKT-M21-S01 / #129 makes the generated block self-healing after merges, with per-field session-start reconciliation as fallback.
 
 ## GitHub Milestone objects
 

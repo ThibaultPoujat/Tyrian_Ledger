@@ -47,16 +47,23 @@ Before delivery, set the pull request's actual GitHub milestone to the same mile
 
 ## Live handoff and CURRENT.md
 
-GitHub merged PR/closed issue/milestone state is authoritative for live delivery state.
+The generated `CURRENT.md` live-state block combines multiple authorities:
+
+- **Operational delivery state:** GitHub merged PRs, issue open/closed state, and milestone assignment/title.
+- **Execution order / next valid ticket:** issue #98 and `docs/milestones/INDEX.md`; numeric issue ordering is not authoritative.
+- **Review effort and gates:** `docs/workflow/model-effort-guide.md`.
+
+Issue #98 and `docs/milestones/INDEX.md` must agree. If they conflict, repair the source-of-truth contradiction rather than silently selecting one.
 
 Before implementation handoff:
 
-1. ensure the issue/PR metadata is correct;
+1. ensure issue/PR operational metadata is correct in GitHub;
 2. ensure `CURRENT.md` durable prose is not rewritten merely to represent a transient handoff;
-3. ensure its generated live-state block is consistent with the best-known GitHub state or explicitly identify that the post-merge updater will advance it;
-4. if GitHub and the generated block disagree, trust GitHub and repair only the generated block.
+3. compare each generated live-state field with its owning authority;
+4. repair stale generated fields only; do not rewrite execution order from GitHub issue numbering or infer review gates from risk class/issue metadata;
+5. if post-merge state will change an operational field, explicitly identify that the deterministic updater/fallback reconciliation is expected to advance it.
 
-TKT-M21-S01 / #129 adds deterministic post-merge maintenance of the generated block. After it lands, normal merge progression should not require owner editing. Session-start reconciliation remains the fallback when automation is stale or failed.
+TKT-M21-S01 / #129 adds deterministic post-merge maintenance of the generated block. After it lands, normal merge progression should not require owner editing. Per-field session-start reconciliation remains the fallback when automation is stale or failed.
 
 ## Review paths
 
@@ -120,4 +127,4 @@ When a ticket introduces or touches product UI, verify that user-facing labels, 
 - [ ] Any SOL-GATED fixes were revalidated before targeted fresh Sol re-review.
 - [ ] PR not merged by the coding/review agent.
 - [ ] VERIFY register current.
-- [ ] GitHub live state and the generated `CURRENT.md` block are consistent at handoff, or the deterministic post-merge updater/fallback reconciliation path is explicitly expected to advance it.
+- [ ] Each generated `CURRENT.md` field matches its owning authority at handoff, or the deterministic post-merge updater/fallback reconciliation is explicitly expected to advance it.
