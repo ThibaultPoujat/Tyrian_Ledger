@@ -2,9 +2,7 @@
 
 ## Purpose
 
-Codex implements one bounded ticket at a time. The owner supplies functional
-intent and makes durable product decisions. The application runtime remains
-deterministic and contains no application LLM.
+Codex implements one bounded ticket at a time. The owner supplies functional intent and makes durable product decisions. The application runtime remains deterministic and contains no application LLM.
 
 ## Context model
 
@@ -19,8 +17,22 @@ Each implementation session loads the minimum durable context:
 7. `docs/workflow/model-effort-guide.md`;
 8. specialized source/spec/ADR files only when required.
 
-Do not load all historical milestones or the entire specification tree for a
-routine ticket.
+Do not load all historical milestones or the entire specification tree for a routine ticket.
+
+For `Mes Signaux`/plan/crafting work, `docs/specs/mes-signaux.md` is an active product source of truth and should be read when the assigned ticket depends on its concepts.
+
+## GitHub-authoritative live state
+
+GitHub merged PR, closed issue and milestone state is authoritative for **live delivery state**. `CURRENT.md` carries durable context plus a bounded generated live-state block.
+
+At session start:
+
+1. inspect the assigned issue/PR and relevant live GitHub state;
+2. compare it with the generated live-state block in `CURRENT.md`;
+3. if they disagree, trust GitHub and repair/reconcile the generated block before using it as handoff state;
+4. never rewrite durable `CURRENT.md` narrative merely to repair live state.
+
+TKT-M21-S01 / #129 owns the deterministic post-merge automation for this block. Until it lands, the implementation/delivery agent performs the reconciliation manually. After it lands, session-start reconciliation remains the fallback if automation failed or state is stale. The owner should not need to edit normal handoff state.
 
 ## Ticket versus session
 
@@ -28,30 +40,27 @@ A ticket is the unit of product work. Default rule:
 
 **one implementation ticket = one implementation session.**
 
-A separate session may be used for focused fixes/tests if necessary, but must
-remain scoped to the same ticket. Do not begin the next ticket merely because
-context remains.
+A separate session may be used for focused fixes/tests if necessary, but must remain scoped to the same ticket. Do not begin the next ticket merely because context remains.
 
 ## Standard implementation lifecycle
 
 1. Read the ticket and minimum context.
-2. Inspect current Git/repository state and relevant VERIFY items.
-3. Make a short in-session plan of at most five steps. Use dedicated Plan mode only when `model-effort-guide.md` or a genuine unresolved owner decision warrants it.
-4. If a genuine ambiguity/contradiction cannot be resolved from the repository, ask the owner with a recommendation and concise alternatives before implementing; do not ask routine technical questions.
-5. Implement only the ticket outcome.
-6. Run focused validation, then broader checks when justified.
-7. Inspect the diff for scope expansion, secrets, data-loss risk, and stale docs.
-8. Run the review path selected by `model-effort-guide.md`.
-9. Commit/push/open or update the PR according to `delivery-protocol.md`.
-10. Write the required completion report including the short functional summary, then stop.
+2. Reconcile GitHub live state with `CURRENT.md` generated live state.
+3. Inspect current Git/repository state and relevant VERIFY items.
+4. Make a short in-session plan of at most five steps. Use dedicated Plan mode only when `model-effort-guide.md` or a genuine unresolved owner decision warrants it.
+5. If a genuine ambiguity/contradiction cannot be resolved from the repository, ask the owner with a recommendation and concise alternatives before implementing; do not ask routine technical questions.
+6. Implement only the ticket outcome.
+7. Run focused validation, then broader checks when justified.
+8. Inspect the diff for scope expansion, secrets, data-loss risk, stale contradictory docs, and accidental English user-facing UI copy where French is required.
+9. Run the review path selected by `model-effort-guide.md`.
+10. Commit/push/open or update the PR according to `delivery-protocol.md`.
+11. Write the required completion report including the short functional summary, then stop.
 
-The next session recovers from repository state; it does not require previous
-chat history.
+The next session recovers from GitHub/repository state; it does not require previous chat history.
 
 ## Review paths
 
-Review-model selection and effort are defined centrally in
-`docs/workflow/model-effort-guide.md`. **R3 by itself does not require Sol.**
+Review-model selection and effort are defined centrally in `docs/workflow/model-effort-guide.md`. **R3 by itself does not require Sol.**
 
 ### NORMAL
 
@@ -77,51 +86,43 @@ For the explicit active Sol-gated ticket list:
 - after APPROVE and green validation, mark the PR Ready for Review;
 - owner performs the final merge.
 
-Draft state is the merge blocker. Do not rely on the owner remembering the
-Sol-gate list manually. If quota is exhausted, keep the Draft/handoff intact and
-resume later rather than weakening the gate.
+Draft state is the merge blocker. Do not rely on the owner remembering the Sol-gate list manually. If quota is exhausted, keep the Draft/handoff intact and resume later rather than weakening the gate.
 
 ## VERIFY and BLOCKED
 
-`VERIFY` means an external fact is unresolved but safe work can continue without
-assuming it. `BLOCKED` means missing/contradictory information makes requested
-work unsafe or technically impossible.
+`VERIFY` means an external fact is unresolved but safe work can continue without assuming it. `BLOCKED` means missing/contradictory information makes requested work unsafe or technically impossible.
 
-Do not stop merely because a non-blocking external fact is uncertain. Record it
-and proceed with assumptions clearly isolated from financial truth.
+Do not stop merely because a non-blocking external fact is uncertain. Record it and proceed with assumptions clearly isolated from financial truth.
 
 ## Anti-loop policy
 
 - Maximum five planning steps.
 - Prefer execution over repeated summaries.
 - Do not reread unchanged files more than twice without new reason.
-- Do not retry the same failed operation more than twice without changing the
-  approach.
+- Do not retry the same failed operation more than twice without changing the approach.
 - Do not start a second NORMAL review session when a valid same-run independent review already completed.
 - Do not spend Sol review quota before required validation/CI is green unless Sol is explicitly needed to resolve a blocking high-consequence ambiguity.
 - Stop after the coherent ticket slice is delivered.
 
 ## Testing policy
 
-For code tickets, test changed behavior and dangerous boundaries around it. Run
-narrow relevant tests first; broaden when integration risk justifies it.
+For code tickets, test changed behavior and dangerous boundaries around it. Run narrow relevant tests first; broaden when integration risk justifies it.
 
-R3 tickets still require edge/regression cases appropriate to their authority,
-regardless of whether review path is NORMAL or SOL-GATED. The quota-aware policy
-changes effort/reviewer allocation, not correctness standards.
+R3 tickets still require edge/regression cases appropriate to their authority, regardless of whether review path is NORMAL or SOL-GATED. The quota-aware policy changes effort/reviewer allocation, not correctness standards.
 
 Never weaken/delete a test merely to obtain green CI.
 
 ## Architecture and ADRs
 
-Create/update an ADR only for a durable cross-cutting decision. Ordinary ticket
-implementation does not require a new ADR. Superseded ADRs remain historical
-records and are not active instructions.
+Create/update an ADR only for a durable cross-cutting decision. Ordinary ticket implementation does not require a new ADR. Superseded ADRs remain historical records and are not active instructions.
+
+## UI language rule
+
+User-facing UI/UX labels, actions, messages, errors, explanations, empty/degraded states, notifications and accessibility text are French. Internal code/API/type names may remain English. Business/financial logic must use structured semantics and must not depend on parsing translated presentation strings.
 
 ## Required functional summary
 
-Every implementation ticket ends with a short plain-language summary (normally
-2-6 sentences) answering:
+Every implementation ticket ends with a short plain-language summary (normally 2-6 sentences) answering:
 
 - What can the user/project do now that it could not do before?
 - What important behavior changed?

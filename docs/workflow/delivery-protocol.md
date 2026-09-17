@@ -1,8 +1,6 @@
 # Codex Delivery Protocol
 
-This document contains Git/GitHub delivery rules. The ticket and `AGENTS.md`
-define implementation scope and decision gates. `docs/workflow/model-effort-guide.md`
-is authoritative for the current quota-aware model effort, planning, and review policy.
+This document contains Git/GitHub delivery rules. The ticket and `AGENTS.md` define implementation scope and decision gates. `docs/workflow/model-effort-guide.md` is authoritative for the current quota-aware model effort, planning, and review policy.
 
 ## Branch
 
@@ -10,16 +8,15 @@ Create one branch per ticket:
 
 `ticket/<TICKET_NAME>-<short-kebab-title>`
 
-A bootstrap/pivot branch explicitly authorized by the owner may use an
-equivalent descriptive name, but normal M12+ ticket work follows the ticket
-pattern.
+A bootstrap/pivot branch explicitly authorized by the owner may use an equivalent descriptive name, but normal M12+ ticket work follows the ticket pattern.
 
 ## Commits
 
-Every ticket commit, including commits on an authorized bootstrap/pivot branch,
-starts with the exact ticket identifier:
+Every ticket commit, including commits on an authorized bootstrap/pivot branch, starts with the exact ticket identifier:
 
 `[TKT-Mxx-yy] Short description`
+
+For transition tickets that use an `S` identifier, use that exact identifier, for example `[TKT-M21-S03]`.
 
 Keep commits logically reviewable. Do not rewrite unrelated history.
 
@@ -34,9 +31,9 @@ PR title:
 PR body must include:
 
 - ticket and milestone;
-- the exact GitHub issue number;
+- exact GitHub issue number;
 - `Closes #<issue-number>` so GitHub closes the implementation issue when the PR is merged into the default branch;
-- the active review path: `NORMAL` or `SOL-GATED`;
+- active review path: `NORMAL` or `SOL-GATED`;
 - **functional summary** in plain language (2-6 sentences);
 - relevant specification/architecture/ADR references;
 - acceptance-criteria status;
@@ -47,6 +44,19 @@ PR body must include:
 - deliberately out-of-scope follow-up work.
 
 Before delivery, set the pull request's actual GitHub milestone to the same milestone assigned to the implementation issue. The textual milestone entry in the PR body does not replace the GitHub milestone field. If the active tool cannot set the milestone, report that limitation explicitly.
+
+## Live handoff and CURRENT.md
+
+GitHub merged PR/closed issue/milestone state is authoritative for live delivery state.
+
+Before implementation handoff:
+
+1. ensure the issue/PR metadata is correct;
+2. ensure `CURRENT.md` durable prose is not rewritten merely to represent a transient handoff;
+3. ensure its generated live-state block is consistent with the best-known GitHub state or explicitly identify that the post-merge updater will advance it;
+4. if GitHub and the generated block disagree, trust GitHub and repair only the generated block.
+
+TKT-M21-S01 / #129 adds deterministic post-merge maintenance of the generated block. After it lands, normal merge progression should not require owner editing. Session-start reconciliation remains the fallback when automation is stale or failed.
 
 ## Review paths
 
@@ -75,7 +85,7 @@ For a SOL-GATED ticket:
 4. Let required GitHub CI finish. If CI is red, fix with Terra High and revalidate before spending a Sol review session.
 5. With required validation/CI green, run a fresh separate Sol XHigh review using `.codex/skills/tyrian-pr-review/SKILL.md`.
 6. If the review requests changes, use Terra High for fixes, rerun affected validation/CI, and keep the PR Draft.
-7. Run a **targeted fresh Sol re-review** focused on prior findings, the changed diff, and regression risk. Require a full Sol re-review only if fixes materially broadened the reviewed authority/scope.
+7. Run a **targeted fresh Sol re-review** focused on prior findings, changed diff and regression risk. Require a full Sol re-review only if fixes materially broadened reviewed authority/scope.
 8. After Sol returns APPROVE and required validation remains green, mark the PR **Ready for Review**.
 9. The owner performs the final merge decision.
 
@@ -83,32 +93,31 @@ The Draft state is the merge blocker. Do not rely on the owner remembering a che
 
 ## Review handoff
 
-NORMAL tickets should complete their independent review with a Terra review
-subagent/check in the implementation run when supported. A second separate
-review session remains optional and should not be started merely out of habit.
+NORMAL tickets should complete their independent review with a Terra review subagent/check in the implementation run when supported. A second separate review session remains optional and should not be started merely out of habit.
 
-SOL-GATED tickets require the separate fresh Sol review described above after
-required validation/CI is green. The Sol reviewer should report findings first
-and must not broaden ticket scope.
+SOL-GATED tickets require the separate fresh Sol review described above after required validation/CI is green. The Sol reviewer should report findings first and must not broaden ticket scope.
 
-If the owner requests fixes, keep them on the same ticket branch and do not add
-next-ticket features. Re-run affected validation and make the review status clear.
+If the owner requests fixes, keep them on the same ticket branch and do not add next-ticket features. Re-run affected validation and make review status clear.
+
+## User-facing language check
+
+When a ticket introduces or touches product UI, verify that user-facing labels, actions, messages, errors, empty/degraded states, explanations, notifications and accessibility text are French. Internal identifiers and code symbols may remain English. Do not move financial truth into localized strings.
 
 ## Delivery checklist
 
 - [ ] Acceptance criteria satisfied or explicit blocker recorded.
 - [ ] Required functional summary written.
 - [ ] Relevant validation performed.
-- [ ] Diff reviewed for scope expansion, secrets, data/migration risk, and stale contradictory docs.
+- [ ] Diff reviewed for scope expansion, secrets, data/migration risk, stale contradictory docs, and French UI-copy policy where applicable.
 - [ ] Every ticket commit uses the exact ticket prefix.
 - [ ] Branch pushed.
 - [ ] PR created and existence verified.
 - [ ] PR body contains `Closes #<issue-number>`.
-- [ ] PR GitHub milestone matches the implementation issue milestone, or the tooling limitation preventing assignment is reported explicitly.
+- [ ] PR GitHub milestone matches the implementation issue milestone, or tooling limitation is reported explicitly.
 - [ ] PR body names the correct review path without obsolete blanket R3/XHigh language.
 - [ ] NORMAL: same-run independent Terra review subagent/check completed when supported and CI is green.
 - [ ] SOL-GATED: required validation/CI was green before Sol review; PR remains Draft until Sol XHigh APPROVE; only then is it marked Ready.
 - [ ] Any SOL-GATED fixes were revalidated before targeted fresh Sol re-review.
 - [ ] PR not merged by the coding/review agent.
 - [ ] VERIFY register current.
-- [ ] `CURRENT.md` updated by the implementation/delivery agent when the active handoff changes.
+- [ ] GitHub live state and the generated `CURRENT.md` block are consistent at handoff, or the deterministic post-merge updater/fallback reconciliation path is explicitly expected to advance it.

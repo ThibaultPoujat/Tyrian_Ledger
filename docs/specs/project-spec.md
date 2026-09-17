@@ -1,276 +1,395 @@
-# Project Specification - Tyrian Ledger Personal Trading Assistant
+# Project Specification — Tyrian Ledger Personal Profit Assistant
 
 ## 1. Product statement
 
-Tyrian Ledger is a local-first personal decision-support application for Guild
-Wars 2 Trading Post activity. It combines the player's read-only account/Trading
-Post data, current public market data, locally accumulated market history, and
-deterministic financial rules to answer:
+Tyrian Ledger is a local-first personal **second-screen Guild Wars 2 profit
+assistant**. It combines the owner's read-only account/Trading Post data, current
+public market data, locally accumulated market history and deterministic
+financial rules to continuously answer:
 
-- what the player has actually earned;
-- where capital is currently tied up;
-- which markets appear economically tradable;
-- what manual action is justified now;
-- how much capital should be committed;
-- which strategies have worked for this player over time.
+- what manual action is worth performing now;
+- how much capital/inventory should be committed;
+- which candidate actions are mutually compatible;
+- what evidence and constraints justify the action;
+- what the owner has actually earned;
+- whether an executed plan later matched its modeled expectations.
+
+The primary daily surface is **`Mes Signaux`**. Scanner, dashboard, raw history,
+order books, inventory and personal learning are supporting engines/evidence,
+not the product's main responsibilities.
 
 The application is not a trading bot, gameplay bot, order executor, browser
-automator, or autonomous game agent.
+automator or autonomous game agent.
 
-## 2. Intended user and product philosophy
+## 2. Intended user and philosophy
 
-V1 is optimized for the owner as a single local user. It should reduce the need
-for spreadsheets and repetitive cross-checking while keeping every financially
-important conclusion explainable.
+0.1 is optimized for the owner as a single local user. The product should reduce
+market-analysis time enough that the owner can glance at a second monitor,
+perform a small number of concrete actions, confirm execution and return to the
+game.
 
-The product favors **repeatable capital turnover and controlled downside over
-headline ROI**. A stable, liquid market with moderate net ROI may be preferable
-to an extreme spread with negligible depth. Recommendations should be useful in
-roughly one or two minutes of review, with deeper evidence available on demand.
+Tyrian Ledger favors **repeatable capital turnover, controlled downside,
+explainable evidence and low attention cost** over headline ROI. A liquid,
+repeatable moderate-return market may be preferable to an extreme spread with
+negligible depth or long capital lock.
 
-Tyrian Ledger gets better through owned data rather than opaque prediction. It
-records public-market observations and the player's actual outcomes, then uses
-those observations as evidence with explicit sample counts and confidence.
+The application improves through owned evidence rather than opaque prediction.
+It records market observations and personal outcomes, then uses those facts with
+explicit sample counts, recency and confidence. Personal evidence should
+silently improve ranking when sufficiently supported; the user should not need
+to operate a separate analytics workflow.
 
 ## 3. Core principles
 
 1. **Read-only toward Guild Wars 2.** ArenaNet data may inform actions; only the
-   human player performs Trading Post/game actions.
-2. **Local-first privacy.** Account data, history, settings, and owned market
-   history live on the user's computer unless the user explicitly exports a
-   backup.
-3. **Deterministic financial truth.** Money uses integer copper. Fees, cost
-   basis, profit, ROI, allocation, and recommendations are deterministic and
-   covered by tests. One application policy owns the separate GW2 listing and
-   exchange fee configuration. VERIFY-013 remains open because available
-   external evidence does not define fractional-copper rounding, so fee-derived
-   output is explicitly modeled/provisional; tests of the configured model do
-   not make the external behavior verified.
-4. **Explainability before cleverness.** Every score/action exposes the evidence
-   and rule components that produced it. No runtime LLM or opaque ML model owns
-   financial truth.
-5. **History is evidence, not prophecy.** Historical medians, persistence,
-   volatility, and personal fill/turnover statistics describe observations and
-   never guarantee future fills or prices.
-6. **Unknown stays unknown.** Missing permissions, incomplete history, unknown
-   cost basis, and insufficient samples must remain visible states.
-7. **Capital is scarce.** Cash reserve, existing orders/positions, liquidity,
-   and concentration constrain otherwise attractive opportunities.
-8. **The project learns safely.** Recommendation snapshots and realized outcomes
-   may later be compared, but rules change only through reviewed code/config and
-   never through autonomous self-modification.
+   human owner performs Trading Post/game actions.
+2. **Local-first privacy.** Account data, history, settings and owned market
+   history stay local unless the owner explicitly exports a backup.
+3. **Deterministic financial truth.** Authoritative money is integer copper.
+   Fees, cost basis, profit, ROI, allocation, opportunity cost, plan selection
+   and reconciliation rules are deterministic and tested.
+4. **Central fee policy.** One application policy owns separate GW2 listing and
+   exchange fee configuration. VERIFY-013 remains open for fractional-copper
+   rounding, so fee-derived output remains modeled/provisional under the
+   owner-approved configured rounding policy until verified otherwise.
+5. **Explainability before cleverness.** Every action/plan exposes evidence and
+   binding constraints. No runtime LLM or opaque ML model owns financial truth.
+6. **History is evidence, not prophecy.** Observed medians, persistence,
+   volatility, liquidity and personal turnover describe evidence; they do not
+   guarantee future fills or prices.
+7. **Unknown stays unknown.** Missing permissions, incomplete history, unknown
+   basis, insufficient samples and contradictory evidence remain explicit.
+8. **Hard constraints first.** Failed safety/evidence/liquidity/risk/resource
+   requirements cannot be outweighed by a high score.
+9. **Capital and inventory are shared resources.** Existing commitments and
+   started plans constrain new plans; the same resource cannot be promised twice.
+10. **Silence is a feature.** Internal analysis that does not require a concrete
+    manual action does not clutter `Mes Signaux`.
+11. **The project learns safely.** Observed outcomes may evaluate rules, but
+    rules/weights change only through reviewed code/config and never by
+    autonomous self-modification.
 
-## 4. Main user journeys
+## 4. Language and primary navigation
 
-### 4.1 Connect and synchronize
+All user-facing UI/UX labels and text are written in **French**, including
+navigation, actions, errors, empty states, notifications, explanations and
+accessibility text. Internal code/API/type/database identifiers may remain
+English.
 
-The user configures a dedicated ArenaNet API key through an OS-backed local
+Target primary navigation:
+
+`Mes Signaux / Artisanat / Réglages`
+
+`Mes Signaux` is the default/home destination. `Artisanat` is the deliberate
+crafting-for-profit workspace. `Réglages` owns account/API, health/refresh,
+risk/bankroll policy, notifications, backup/recovery and advanced diagnostics.
+
+Existing investment-position/staged-exit infrastructure is preserved but
+investment discovery/seasonal opportunity research is deferred from the 0.1
+primary experience.
+
+## 5. Canonical product model
+
+The product distinguishes:
+
+`Renseignement -> Opportunité -> Plan -> Étapes -> Signal -> Réconciliation -> Résultat`
+
+A **Signal** is an opportunity sufficiently safe, profitable, relevant and
+compatible with the owner's current state to justify a concrete manual action.
+
+See `docs/specs/mes-signaux.md` for the detailed attention, plan, execution,
+shadow-state and UX contract.
+
+## 6. Main user journeys
+
+### 6.1 Connect and synchronize
+
+The owner configures a dedicated ArenaNet API key through an OS-backed local
 secret mechanism. The local host validates it, exposes only safe permission
-status to React, and synchronizes the minimum required read-only personal data.
+status to React and synchronizes the minimum required read-only personal data.
 
-Initial personal Trading Post scope includes:
+Relevant account scope includes current/completed Trading Post transactions,
+wallet Coin, bank/material storage, recipe unlocks and crafting capability where
+the verified API/permissions support them.
 
-- current buy orders;
-- current sell listings;
-- completed buy history;
-- completed sell history;
-- minimal account identity needed to scope local data.
+Partial permission/source failure must degrade only the affected feature and
+must not erase previously valid local data.
 
-Later crafting scope may add inventory/material storage, crafting disciplines,
-and recipe/account unlock evidence when the verified API supports it.
+### 6.2 Observe actual performance
 
-### 4.2 Understand actual performance
+Completed transactions are persisted idempotently. Inventory/cost basis is
+reconstructed with deterministic FIFO matching unless a later owner ADR changes
+the accounting policy.
 
-The application persists completed transactions idempotently and reconstructs
-inventory/cost basis with deterministic FIFO matching unless a later owner ADR
-changes the accounting policy.
+The main assistant shows:
 
-The user can inspect:
+- **30-day realized profit** as the headline;
+- 7-day and 90-day realized profit as secondary context;
+- open/unrealized result separately;
+- explicit data coverage and unknown-basis limitations.
 
-- realized net profit and fees;
-- realized ROI where cost basis is known;
-- 7/30/90-day realized performance;
-- open FIFO cost basis;
-- current buy-order capital;
-- current sell-listing value;
-- current net liquidation value and unrealized P&L, labeled separately;
-- data-coverage start and unknown/unmatched historical inventory.
+Realized strategy attribution must be additive/non-overlapping for the same
+supported population/window:
 
-No screen may claim lifetime profit for periods the local database cannot
-support.
+- Trading/Flipping;
+- Crafting;
+- Unclassified.
 
-### 4.3 Scan current markets
+Ambiguous outcomes stay Unclassified until later deterministic evidence can
+resolve them. No screen may claim lifetime profit for periods the retained data
+cannot support.
 
-The live scanner screens public Trading Post markets using exact fee-aware
-profitability, then obtains detailed order books for candidates that justify the
-extra requests.
+### 6.3 Build and use market evidence
 
-A candidate may expose:
+The broad market scanner, detailed order-book reads and local history collector
+remain important internal engines.
 
-- highest buy and lowest sell;
-- proposed bid/list values;
-- exact modeled fees, net profit, and net ROI;
-- maximum economically allowed bid for the configured target return;
-- aggregate quantity and detailed depth;
-- price impact for intended quantity;
-- freshness;
-- shallow-book and anomaly flags;
-- suggested capital/quantity constrained by risk policy.
+Broad screening may use aggregate data; shortlisted candidates use detailed
+book/depth evidence when practical. Retained history describes persistence,
+stability and liquidity with explicit sample/coverage limitations.
 
-Raw ROI is never sufficient by itself for a high ranking.
+Raw ROI is never sufficient by itself for a high-priority Signal.
 
-### 4.4 Build owned market history
+The normal user should not need to operate scanner/history pages to benefit from
+these engines. Detailed evidence is available through `Pourquoi ?` or advanced
+diagnostics.
 
-While the local application is running, a scheduler collects timestamped public
-market observations according to an adaptive interest policy. High-interest
-items include current personal orders and watchlist markets. Held positions join
-that tier when TKT-M20-03 introduces position tracking and registers its source
-with the sampling policy. Broad-universe sampling can be less frequent. Full
-order books are collected more selectively than best-price snapshots.
+### 6.4 Decide what to do — Mes Signaux
 
-Over time, Tyrian Ledger calculates only from available observations:
+`Mes Signaux` attention-gates analysis. Internal states such as `WAIT`, `HOLD`,
+`KEEP BID`, `LEAVE SELL LISTING`, `SKIP`, `REVIEW` and harmless market churn
+normally remain silent.
 
-- current, 7-day median, and 30-day median net ROI;
-- percentage of observations above configured ROI thresholds;
-- buy/sell price volatility;
-- spread volatility/persistence;
-- median quantity/depth and liquidity stability;
-- observed range/drawdown where useful;
-- sample count and exact observation coverage.
+The user-facing feed focuses on concrete manual actions such as:
 
-### 4.5 Decide what to do
+- buy now;
+- place/update/cancel buy order;
+- craft;
+- list/relist;
+- sell/sell partial.
 
-The primary `What Should I Do?` screen combines personal account state, current
-orders, live market evidence, historical evidence, and portfolio risk.
+Initial Signal cards show action, item, quantity/relevant price, modeled result,
+confidence and `Pourquoi ?`. Detailed current/history/personal/risk evidence is
+progressively disclosed.
 
-Supported action vocabulary includes:
+If nothing clears the attention gate, the correct product outcome is an
+understandable zero-Signal state rather than manufactured work.
 
-- `BUY`, `BUY SMALL`, `WAIT`;
-- `KEEP BID`, `UPDATE BID`, `STOP BIDDING`, `CANCEL BID`;
-- `LIST`, `LEAVE SELL LISTING`;
-- `HOLD`, `REDUCE`, `SELL PARTIAL`, `SELL`;
-- `SKIP`, `REVIEW`.
+Operational health/freshness is shown separately and truthfully by relevant
+source. The UI does not invent a uniform refresh age.
 
-Each action provides applicable quantity/capital, current market, max allowed
-bid, modeled net profit/ROI, liquidity/depth evidence, historical confidence,
-portfolio impact, and plain-language reasons.
+### 6.5 Build compatible plans
 
-The system must not recommend chasing a bid beyond its economic max. It must not
-recommend cancel/relist of a sell merely because another player undercut by one
-copper when the expected benefit does not justify lost listing fees and queue
-position.
+After the MVP, opportunities are converted into executable plans and compatible
+bundles rather than simply sorted by one score.
 
-### 4.6 Learn from personal outcomes
+Hard constraints apply first. Surviving plans are compared using named factors
+such as confidence-adjusted economics, capital efficiency/turnover, attention
+fit, urgency, concentration/opportunity cost and stability.
 
-When enough observations exist, the application may derive approximate personal
-fill/holding durations, realized ROI distribution, realized profit per day,
-capital turns, and completion rates. API observation limitations must be
-explicit; polling intervals must not be presented as exact fill timestamps.
+Plans reserve shared resources: cash, inventory, current exposure, expected
+incoming materials and other relevant commitments. Two plans cannot consume the
+same resource simultaneously.
 
-M20 distinguishes evidence quality: source-provided completed-history
-`created`/`purchased` timestamps may support an exact source-timestamp duration;
-local current-order snapshots support only an interval-censored confirmation
-window from the last observed open order to first local confirmation. A missing
-order in a later snapshot is unknown, not a completed fill. Observed quantity
-reductions are partial-order behavior, not a point fill time. Personal
-profit/day and capital-turn figures are reproducible exact ratios from known
-FIFO basis and are shown as weak or stale evidence until the configured sample
-and recency thresholds are met.
+The hard bankroll reserve remains protected. A softer opportunity-capital buffer
+may preserve optionality. A preferred attractiveness threshold may relax toward,
+but never below, hard evidence/liquidity/risk floors when meaningful capital
+would otherwise stay idle.
 
-Personal evidence affects ranking only above configured sufficiency thresholds.
-Weak samples do not override generic market evidence.
+### 6.6 Choose Passive or Active attention
 
-### 4.7 Track investments
+Passive and Active are execution/attention paths, not permanent account modes.
 
-Medium/long-term positions are tracked separately from short-term flip workflow
-where appropriate. The user can record thesis, strategy, quantity, cost basis,
-targets, current net liquidation value, unrealized P&L, and historical
-price/supply/liquidity context. Staged actions such as `HOLD`, `SELL PARTIAL`,
-and `SELL` are supported without implying that seasonal scarcity guarantees
-appreciation.
+- **Passive**: typically ~1–3 minutes of interaction, then wait for market fills
+  while playing.
+- **Active**: immediately executable chains, typically ~5–15 minutes per path,
+  with successive paths possible during a longer active session.
 
-### 4.8 Analyze crafting later
+A buy-order step may appear in an Active path only as a terminal step; it must
+not block later immediate steps.
 
-Crafting analysis treats owned tradable materials as economic assets, not free
-inputs. It compares owned-material opportunity value, purchase cost, mixed
-strategies, output fees, feasibility, market liquidity, and historical evidence.
-Bounded recipe-graph search uses cycle detection, depth/candidate limits, and
-memoization; exhaustive world optimization is outside scope.
+If only a few obvious actions exist, a single ordered list is preferable to
+forcing path choice.
 
-## 5. Risk and bankroll behavior
+Once the owner selects `Démarrer`, the chosen plan reserves its resources and
+remaining alternatives are recomputed from what remains.
 
-Risk policy is configurable and visible. Initial policy design should support:
+### 6.7 Execute without waiting for API propagation
 
-- a meaningful cash reserve (reference default approximately 15%);
-- smaller single-market caps as liquidity falls;
-- existing orders and held positions counting toward exposure;
-- additional caps based on observed order-book participation/depth;
-- category/strategy concentration warnings;
-- smaller allocations for speculative/illiquid positions than for highly
-  liquid repeatable markets.
+The current manual instruction receives a short execution/freeze window so
+quantity/price does not silently change while the owner is entering it in game.
+Material invalidation may force an explicit recheck; immaterial market movement
+does not reshuffle the instruction.
 
-These are policy defaults to review and test, not magic constants to scatter
-through source code.
+Effective planning state is:
 
-## 6. Data ownership and persistence
+`latest verified ArenaNet state + locally recorded unconfirmed execution events`
 
-SQLite is the durable local store. Completed personal transactions must be
-preserved after they age out of remote API history. Sync is idempotent and
-partial remote failures must not erase previously valid local state.
+The local execution shadow is reversible/provisional and separate from verified
+state. `Terminé` reports that the issued instruction was performed essentially
+as specified, allowing the next step to be planned immediately.
 
-Backups are explicit local artifacts controlled by the user. No automatic cloud
-upload exists in V1.
+Undo must at least support reversing the latest unconfirmed local step. Earlier
+reversal must safely invalidate/reconcile dependent later local steps.
 
-Derived state such as FIFO matches, statistics, and recommendation records must
-be reproducible or versioned from authoritative inputs.
+API refresh may confirm earlier completed steps while an Active path continues.
+Verified evidence eventually wins. Material contradiction pauses the affected
+plan for explicit reconciliation rather than guessing.
 
-## 7. Non-functional requirements
+Executing a listing step does not close the economic outcome; sale/result closes
+only when later evidence supports it.
+
+### 6.8 Craft for profit
+
+Crafting treats owned tradable materials as economic assets, never free inputs.
+It compares consuming them against their realistic sale/opportunity value.
+
+Direct ingredient acquisition may include owned quantity, instant buy and
+bounded buy-order procurement. Bounded recipe search may additionally choose to
+craft intermediates. `Mixed procurement` is internal optimization, not a user
+mode.
+
+Crafting must compare against selling raw inputs. If that alternative is
+superior, the craft is not an actionable profit opportunity.
+
+Output liquidity/history/confidence is required before a theoretical margin can
+become a Signal.
+
+`Artisanat` presents a small number of guided profitable plans rather than an
+exhaustive world spreadsheet. Qualified craft plans may also appear in
+`Mes Signaux`.
+
+The Artisanat page may additionally report **crafting value added** versus the
+best realistic input alternative. This analytical measure must not be added
+again to global realized profit.
+
+### 6.9 Continuous decision loop
+
+A later local loop should, when permitted by verified endpoint/rate/cache policy:
+
+1. refresh relevant evidence;
+2. reconcile verified and local execution state;
+3. update capital/inventory/orders/exposure/resources;
+4. invalidate/recheck stale plans;
+5. regenerate opportunities/plans;
+6. resolve resource conflicts and attention gates;
+7. surface/notify only materially new or changed concrete Signals.
+
+Unchanged Signals are de-duplicated. No-action states stay silent. Operational
+health is not a profit Signal.
+
+### 6.10 Learn from observed outcomes
+
+Tyrian Ledger preserves enough versioned context to compare modeled plan results
+with actual outcomes where user execution can be meaningfully reconciled.
+
+Observed metrics may include realized result, holding/capital-lock duration,
+turnover, low-liquidity failures, plan invalidation/replacement and calibration
+by confidence/utility buckets where sample size is sufficient.
+
+Do not fabricate counterfactual profit for ignored/unexecuted Signals. Do not
+self-modify rules from outcome reports.
+
+## 7. Risk and bankroll behavior
+
+Risk policy is configurable and visible. Existing reference defaults include a
+meaningful cash reserve (currently approximately 15%), liquidity-sensitive
+single-item caps, existing order/position exposure, visible-depth participation
+limits and strategy/category concentration caps.
+
+These are centralized deterministic policies, not constants to scatter through
+React or features.
+
+Started plans and passive commitments count against resources available to new
+plans. Hard safety/evidence/liquidity/risk floors never relax because the system
+has few candidates.
+
+## 8. Fee and relisting semantics
+
+The externally documented listing fee is non-refundable. A completed Trading
+Post sale pays listing and exchange fees under the canonical fee policy.
+
+Final realized P&L must retain all applicable listing fees paid across repeated
+relist attempts plus the final exchange fee where the retained evidence supports
+those actions.
+
+For the marginal decision `should I relist now?`, already-paid listing fees are
+sunk. Compare leaving the current listing against paying the **next** listing fee
+and the modeled benefit/risk of the new outcome. Do not recommend cosmetic
+one-copper churn.
+
+Fractional-copper rounding remains provisional while VERIFY-013 is open.
+
+## 9. Data ownership and persistence
+
+SQLite is the durable local store. Completed personal transactions and retained
+market history must remain recoverable according to their owning tickets.
+
+Sync is idempotent and partial remote failures must not erase previously valid
+local state. Backups are explicit local artifacts controlled by the owner; no
+automatic cloud upload exists in 0.1.
+
+Derived FIFO/statistical/recommendation/plan state must be reproducible or
+versioned from authoritative inputs. Local execution shadow events are stored
+separately from verified account state and reconciled rather than silently
+merging authority.
+
+## 10. Non-functional requirements
 
 - Local host binds to loopback by default.
-- Host-header validation permits only explicit local host values to prevent
-  DNS-rebinding access.
-- Production frontend and API are same-origin. Development CORS allowlists only
-  exact configured trusted development origins; wildcard origins are forbidden.
-- State-changing local endpoints have explicit cross-origin request/anti-forgery
+- Host-header validation permits only explicit local host values.
+- Production frontend/API are same-origin; development CORS allowlists exact
+  configured trusted origins; wildcard origins are forbidden.
+- State-changing local endpoints have explicit cross-origin/anti-forgery
   protection independent of CORS.
-- Current desktop Chrome, Firefox, and Safari-compatible browser behavior remains
-  a target; automated browser coverage uses the supported Playwright engines.
-- UI supports keyboard navigation, semantic controls, sensible focus, and WCAG
+- Browser never receives credentials/secrets.
+- Current desktop browsers remain the target; automated browser coverage uses
+  supported Playwright engines.
+- UI supports keyboard navigation, semantic controls, sensible focus and WCAG
   2.2 AA contrast.
-- Clean-checkout build/test instructions are maintained.
-- Database migrations are versioned and tested.
+- Clean-checkout build/test/start instructions are maintained.
+- Database migrations/integrity/recovery are versioned and tested.
 - Secret scanning remains part of project hygiene.
 - Normal tests use fixtures/mocks instead of live ArenaNet calls.
-- External API uncertainty is recorded in the VERIFY register.
+- Material external API uncertainty belongs in VERIFY.
 - No decorative dependence on proprietary Guild Wars 2 UI assets.
 
-## 8. Explicit non-goals
+## 11. Explicit non-goals
 
-- automated Trading Post order placement/cancellation;
+- automated Trading Post order placement/cancellation/update;
 - gameplay automation;
 - autonomous capital deployment;
-- a runtime LLM making financial decisions;
-- opaque machine-learning price prediction;
+- runtime LLM ownership of financial decisions;
+- opaque ML price prediction/ranking;
 - guaranteed fill/profit/price claims;
-- cloud multi-user account hosting in V1;
+- cloud multi-user hosting in 0.1;
 - exhaustive high-frequency scraping of every order book;
-- treating unknown cost basis or owned materials as free.
+- treating unknown basis or owned materials as free;
+- forcing the user to operate raw scanner/history/personal-learning subsystems;
+- investment discovery/seasonality on the 0.1 critical path;
+- exhaustive unbounded crafting optimization.
 
-## 9. Success checkpoints
+## 12. Current success checkpoints
 
-The product is progressively useful:
+The existing foundation through #92 already provides accounting, live/current
+market analysis, retained history, recommendation/scoring/sizing, personal
+turnover/ranking and crafting-account ingestion.
 
-- after M15, personal accounting is trustworthy;
-- after M16, the user has a useful personal dashboard;
-- after M17, current opportunities can be scanned without manual arithmetic;
-- after M18, owned market history accumulates automatically;
-- after M19, the central action/recommendation workflow is available;
-- M20-M22 deepen personal learning, investment/crafting workflows, reliability,
-  and evaluation.
+Next checkpoints:
 
-## 10. Completion standard for financially authoritative work
+- after #131, the owner can use a first attention-first French `Mes Signaux` MVP
+  with the new primary navigation;
+- after #133, Signals become stable Active/Passive execution plans with shared
+  resource reservations and responsive shadow/reconciliation;
+- after #93/#94, crafting becomes a first-class economic/guided profit engine;
+- after #95, new state can surface concrete Signals without repeated manual
+  checking;
+- after #96/#97, the 0.1 product is hardened and can evaluate observed plan
+  outcomes without fabricated counterfactuals.
 
-A financial/recommendation ticket is not complete because the UI looks right.
-It requires deterministic tests, boundary/edge cases, acceptance-criteria
-coverage, an independent fresh-context review, and a short functional summary
-that a non-programmer can verify.
+## 13. Completion standard for authoritative work
+
+A financial/recommendation/state ticket is not complete because the UI looks
+right. It requires deterministic tests, edge/boundary cases, acceptance-criteria
+coverage, the review path required by `docs/workflow/model-effort-guide.md`, and
+a plain-language functional summary the owner can verify.
