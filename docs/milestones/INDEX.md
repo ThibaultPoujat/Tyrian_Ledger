@@ -43,7 +43,7 @@ The displayed UI labels for the primary surfaces remain French (`Mes Signaux`, `
 
 ## Current explicit execution order
 
-M12-M20 and TKT-M21-01 are complete. The owner-approved sequence from the merged #92 baseline is:
+M12-M20 and TKT-M21-01 are complete. The preferred owner sequence from the merged #92 baseline is:
 
 ```text
 #129 TKT-M21-S01  self-healing CURRENT live state
@@ -58,7 +58,9 @@ M12-M20 and TKT-M21-01 are complete. The owner-approved sequence from the merged
  -> #97  TKT-M22-03   Signal-plan outcome evaluation
 ```
 
-Do not infer the next ticket from GitHub issue number ordering. Issue #98 and this explicit sequence are authoritative for execution order and must agree; GitHub contributes operational open/closed/merged/milestone state, not roadmap ordering. `CURRENT.md` combines those sources for handoff.
+#129 is preferred before #130, but it is explicitly **non-blocking for the MVP**. After #128 merges, #130 may start before #129 when #129 becomes non-trivial or would delay #131. Until #129 lands, the documented session-start reconciliation/manual generated-block repair remains the fallback. #131 depends on #130, not on completion of #129.
+
+Do not infer the next ticket from GitHub issue number ordering. Issue #98 and this explicit sequence/exception are authoritative for execution order and must agree; GitHub contributes operational open/closed/merged/milestone state, not roadmap ordering. `CURRENT.md` combines those sources for handoff.
 
 ## Product checkpoints
 
@@ -89,10 +91,10 @@ After TKT-M18-02, keep the local collector running during subsequent development
 The generated live-state block in `CURRENT.md` is a derived handoff/cache view and has no independent authority. Its fields come from:
 
 - **Operational delivery state:** GitHub merged PRs, issue open/closed state, and milestone assignment/title.
-- **Execution order / next valid ticket:** issue #98 and the explicit sequence in this file.
+- **Execution order / next valid ticket:** issue #98 and the explicit sequence plus its documented non-blocking exception in this file.
 - **Review effort and gates:** `docs/workflow/model-effort-guide.md`.
 
-If issue #98 and this file disagree on execution order, repair the contradiction before continuing; do not infer the answer from numeric issue ordering. TKT-M21-S01 / #129 makes the generated block self-healing after merges, with per-field session-start reconciliation as fallback.
+If issue #98 and this file disagree on execution order or the non-blocking #129/#130 exception, repair the contradiction before continuing; do not infer the answer from numeric issue ordering. TKT-M21-S01 / #129 makes the generated block self-healing after merges, with per-field session-start reconciliation as fallback.
 
 ## GitHub Milestone objects
 

@@ -14,6 +14,8 @@ Stop requiring the owner to repair `CURRENT.md` after manual merges. The generat
 
 After an implementation PR merges to `develop`, a deterministic workflow can advance the live handoff in `CURRENT.md` without owner editing or AI/model quota. If that workflow is stale or failed, the next coding-agent session detects and repairs the generated block before relying on it.
 
+This maintenance capability is preferred before the Signals UX spike but must not block the MVP path. If #129 becomes non-trivial or would delay #131, #130 may proceed after #128 using the documented session-start reconciliation fallback until this ticket lands.
+
 ## Authority split
 
 The generator must not infer every field from issue numbering or from one source:
@@ -27,8 +29,9 @@ The generator must not infer every field from issue numbering or from one source
 
 - Split `CURRENT.md` into durable narrative and a clearly delimited generated live-state block.
 - Add a deterministic GitHub Actions workflow/script that updates only the generated block after merges to `develop`.
-- Generated fields include at minimum: latest completed implementation ticket/PR, active milestone, next valid ticket, and currently active explicit Sol gates relevant to handoff.
+- Generated fields include at minimum: latest completed implementation ticket/PR, active milestone, preferred next ticket, any explicitly allowed non-blocking alternate from the roadmap, and currently active explicit Sol gates relevant to handoff.
 - Resolve each generated field from the authority split above rather than assuming GitHub issue number order defines roadmap order.
+- Preserve the roadmap's explicit non-blocking #129/#130 exception: while #129 is still open, the generated block may identify #129 as preferred next work while also allowing #130 after #128 when delaying #129 would delay the MVP.
 - No LLM/Codex call is used by the workflow.
 - Session-start fallback compares the generated block with its owning authoritative sources and repairs stale live state before using it.
 - Workflow/script fails safely and cannot rewrite durable narrative or silently mutate roadmap/review-policy sources.
@@ -38,6 +41,7 @@ The generator must not infer every field from issue numbering or from one source
 - [ ] A merged implementation PR can advance the generated live-state block without owner editing.
 - [ ] Deterministic tests/fixtures cover normal merge progression and stale-block repair.
 - [ ] A fixture proves that lower-numbered open issues cannot override the explicit roadmap order.
+- [ ] A fixture proves that #129 can remain the preferred next ticket while #130 is an allowed non-blocking alternate under the documented MVP exception.
 - [ ] A fixture proves that the Sol-gate field comes from `docs/workflow/model-effort-guide.md`, not issue risk class or numbering.
 - [ ] Durable `CURRENT.md` prose cannot be overwritten by the generated-state writer.
 - [ ] `AGENTS.md` and workflow docs explain the operational-state / execution-order / review-gate authority split and fallback behavior.
@@ -58,6 +62,7 @@ Review path: **NORMAL** — Terra High by default because this touches delivery 
 - Unit/script tests for generated-block parsing and replacement.
 - Fixture test for merged-ticket progression.
 - Fixture test for explicit roadmap ordering versus numeric issue ordering.
+- Fixture test for preferred-next plus allowed-alternate handling for #129/#130.
 - Fixture test for model-effort-guide Sol-gate extraction.
 - Fixture test proving durable prose is untouched.
 - Workflow syntax/contract checks.

@@ -50,7 +50,9 @@ ChatGPT Sites is a preferred rapid-prototyping tool if/when available in the own
 
 ## Dependencies
 
-#129.
+#128.
+
+#129 is a preferred maintenance predecessor, not a hard dependency. If #129 is already complete, use its generated-state automation. If #129 is still open and completing it would delay the Signals MVP, this ticket may start after #128 using the documented session-start reconciliation/manual generated-block repair until #129 lands.
 
 ## Recommended Codex configuration
 

@@ -75,7 +75,7 @@ VERIFY register rather than assuming external behavior.
 
 ## Active execution order
 
-The owner-approved sequence from here is:
+The preferred owner sequence from here is:
 
 1. #129 / TKT-M21-S01 — self-healing `CURRENT.md` generated live state using the explicit authority split;
 2. #130 / TKT-M21-S02 — prototype/validate the Signals second-screen UX displayed as `Mes Signaux`;
@@ -88,6 +88,12 @@ The owner-approved sequence from here is:
 9. #96 / TKT-M22-02 — security/recovery/E2E/accessibility/local packaging;
 10. #97 / TKT-M22-03 — Signal-plan outcome evaluation and strategy attribution.
 
+#129 is the preferred maintenance predecessor, but it must not delay the MVP path.
+After #128 merges, #130 may start before #129 if #129 becomes non-trivial or would
+delay #131. In that fallback, agents use the documented session-start
+reconciliation/manual generated-block repair until #129 lands. #131 depends on
+#130, not on completion of #129.
+
 Do not use numeric issue ordering to skip #129-#133 and begin #93 early.
 
 ## Generated live state
@@ -99,7 +105,8 @@ outside the markers must never be rewritten by the generated-state updater.
 - Last completed implementation ticket: `TKT-M21-01 / #92`
 - Last merged implementation PR: `#127`
 - Active milestone: `M21 — Signals and Crafting Intelligence`
-- Next valid implementation ticket: `TKT-M21-S01 / #129`
+- Preferred next implementation ticket: `TKT-M21-S01 / #129`
+- Allowed MVP fallback: `TKT-M21-S02 / #130` may start after #128 if #129 would delay the MVP; use session-start reconciliation until #129 lands
 - Explicit active Sol gates: `#133`, `#93`, `#94`, `#96`
 - Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`
 <!-- END GENERATED LIVE STATE -->
