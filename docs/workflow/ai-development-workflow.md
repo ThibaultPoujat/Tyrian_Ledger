@@ -19,7 +19,7 @@ Each implementation session loads the minimum durable context:
 
 Do not load all historical milestones or the entire specification tree for a routine ticket.
 
-For `Mes Signaux`/plan/crafting work, `docs/specs/mes-signaux.md` is an active product source of truth and should be read when the assigned ticket depends on its concepts.
+For Signals/plan/crafting work, `docs/specs/signals.md` is an active product source of truth and should be read when the assigned ticket depends on its concepts.
 
 ## GitHub-authoritative live state
 
@@ -51,7 +51,7 @@ A separate session may be used for focused fixes/tests if necessary, but must re
 5. If a genuine ambiguity/contradiction cannot be resolved from the repository, ask the owner with a recommendation and concise alternatives before implementing; do not ask routine technical questions.
 6. Implement only the ticket outcome.
 7. Run focused validation, then broader checks when justified.
-8. Inspect the diff for scope expansion, secrets, data-loss risk, stale contradictory docs, and accidental English user-facing UI copy where French is required.
+8. Inspect the diff for scope expansion, secrets, data-loss risk, stale contradictory docs, repository-language violations, and accidental English user-facing UI copy where French is required.
 9. Run the review path selected by `model-effort-guide.md`.
 10. Commit/push/open or update the PR according to `delivery-protocol.md`.
 11. Write the required completion report including the short functional summary, then stop.
@@ -116,9 +116,11 @@ Never weaken/delete a test merely to obtain green CI.
 
 Create/update an ADR only for a durable cross-cutting decision. Ordinary ticket implementation does not require a new ADR. Superseded ADRs remain historical records and are not active instructions.
 
-## UI language rule
+## Repository and UI language rule
 
-User-facing UI/UX labels, actions, messages, errors, explanations, empty/degraded states, notifications and accessibility text are French. Internal code/API/type names may remain English. Business/financial logic must use structured semantics and must not depend on parsing translated presentation strings.
+Repository-facing artifacts use English: documentation filenames/prose except quoted UI copy, code/identifiers, internal domain terms, enums/reason codes, migrations and tests.
+
+User-facing UI/UX labels, actions, messages, errors, explanations, empty/degraded states, notifications and accessibility text are French. Business/financial logic must use structured semantics and must not depend on parsing translated presentation strings.
 
 ## Required functional summary
 
