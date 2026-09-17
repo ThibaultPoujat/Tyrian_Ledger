@@ -47,18 +47,14 @@ for the active interface contract.
 ## Durable delivery rules
 
 - One implementation ticket normally equals one implementation session.
-- GitHub merged PR/closed issue/milestone state is authoritative for **live
-  delivery state**.
-- `CURRENT.md` contains durable narrative plus the generated live-state block
-  below. The owner should not manually maintain normal merge handoff state.
-- TKT-M21-S01 / #129 will add a deterministic post-merge workflow/script that
-  updates only the generated block without AI/model quota.
-- Until #129 lands, a coding agent must compare the generated block with GitHub
-  at session start and repair any stale live state before relying on it.
-- Historical ADRs/tickets remain useful evidence but are not active instructions
-  when superseded by current source-of-truth docs/tickets.
-- Review effort and the explicit Sol gate are defined centrally in
-  `docs/workflow/model-effort-guide.md`.
+- Authority is split by concern:
+  - GitHub merged PRs, issue open/closed state, and milestone assignment/title are authoritative for **operational delivery state**;
+  - issue #98 and `docs/milestones/INDEX.md` are authoritative for **execution order and the next valid ticket**;
+  - `docs/workflow/model-effort-guide.md` is authoritative for **review effort and the active explicit Sol-gate list**.
+- `CURRENT.md` contains durable narrative plus the generated live-state block below. The owner should not manually maintain normal merge handoff state.
+- TKT-M21-S01 / #129 will add a deterministic post-merge workflow/script that combines those authorities and updates only the generated block without AI/model quota.
+- Until #129 lands, a coding agent must compare generated fields with their owning authorities at session start and repair stale generated state before relying on it.
+- Historical ADRs/tickets remain useful evidence but are not active instructions when superseded by current source-of-truth docs/tickets.
 
 ## Known foundation
 
@@ -102,5 +98,5 @@ outside the markers must never be rewritten by the generated-state updater.
 - Active milestone: `M21 — Signals and Crafting Intelligence`
 - Next valid implementation ticket: `TKT-M21-S01 / #129`
 - Explicit active Sol gates: `#133`, `#93`, `#94`, `#96`
-- Live-state authority: `GitHub`; reconcile this block before use if it disagrees
+- Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`
 <!-- END GENERATED LIVE STATE -->
