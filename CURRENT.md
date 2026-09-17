@@ -16,31 +16,33 @@ The application never automates gameplay or Trading Post mutations. Authoritativ
 financial/accounting/recommendation behavior remains deterministic, testable and
 integer-copper based.
 
-The primary daily surface is **`Mes Signaux`**. Target primary navigation is:
+The primary daily Signals surface is displayed as **`Mes Signaux`**. Target
+displayed primary navigation is:
 
 - `Mes Signaux`;
 - `Artisanat`;
 - `Réglages`.
 
-All user-facing UI/UX labels, actions, messages, errors, explanations, empty
-states and accessibility text are written in French. Internal code/API/type
-names may remain English.
+Repository-facing documentation, filenames, code, identifiers and internal model
+terminology are English. French is the product's displayed language: all
+user-facing UI/UX labels, actions, messages, errors, explanations, empty states
+and accessibility text are written in French.
 
 The 0.1 product focus is Trading Post flipping/trading plus crafting. Existing
 investment-position/staged-exit infrastructure is preserved, but investment
 opportunity discovery/seasonality is deferred.
 
-Canonical product flow:
+Canonical internal product flow:
 
-`Renseignement -> Opportunité -> Plan -> Étapes -> Signal -> Réconciliation -> Résultat`
+`Intelligence -> Opportunity -> Plan -> Steps -> Signal -> Reconciliation -> Outcome`
 
 A Signal is an opportunity sufficiently safe, profitable, relevant and compatible
 with the owner's current state to justify a concrete manual action. No-action
 states such as `WAIT`, `HOLD`, `KEEP BID`, harmless outbid/undercut, `SKIP` and
 `REVIEW` normally remain silent on the main action feed.
 
-See `docs/specs/mes-signaux.md` for the complete product model and
-`docs/ux/ux.md` for the active interface contract.
+See `docs/specs/signals.md` for the complete product model and `docs/ux/ux.md`
+for the active interface contract.
 
 ## Durable delivery rules
 
@@ -77,12 +79,12 @@ VERIFY register rather than assuming external behavior.
 The owner-approved sequence from here is:
 
 1. #129 / TKT-M21-S01 — self-healing GitHub-authoritative `CURRENT.md` live state;
-2. #130 / TKT-M21-S02 — prototype/validate `Mes Signaux` second-screen UX;
-3. #131 / TKT-M21-S03 — usable `Mes Signaux` MVP + primary navigation;
+2. #130 / TKT-M21-S02 — prototype/validate the Signals second-screen UX displayed as `Mes Signaux`;
+3. #131 / TKT-M21-S03 — usable Signals MVP + primary navigation;
 4. #132 / TKT-M21-S04 — remove/archive superseded UI/docs/code after MVP;
 5. #133 / TKT-M21-S05 — plan orchestration, Active/Passive paths, resource reservations, reversible shadow state, Undo and reconciliation;
 6. #93 / TKT-M21-02 — crafting economic truth and direct procurement alternatives;
-7. #94 / TKT-M21-03 — bounded crafting opportunity paths + guided `Artisanat` UI;
+7. #94 / TKT-M21-03 — bounded crafting opportunity paths + guided crafting UI displayed as `Artisanat`;
 8. #95 / TKT-M22-01 — continuous decision loop + actionable notifications;
 9. #96 / TKT-M22-02 — security/recovery/E2E/accessibility/local packaging;
 10. #97 / TKT-M22-03 — Signal-plan outcome evaluation and strategy attribution.
@@ -97,7 +99,7 @@ outside the markers must never be rewritten by the generated-state updater.
 <!-- BEGIN GENERATED LIVE STATE -->
 - Last completed implementation ticket: `TKT-M21-01 / #92`
 - Last merged implementation PR: `#127`
-- Active milestone: `M21 — Mes Signaux and Crafting Intelligence`
+- Active milestone: `M21 — Signals and Crafting Intelligence`
 - Next valid implementation ticket: `TKT-M21-S01 / #129`
 - Explicit active Sol gates: `#133`, `#93`, `#94`, `#96`
 - Live-state authority: `GitHub`; reconcile this block before use if it disagrees
