@@ -4,7 +4,7 @@ GitHub issue: #129
 
 ## Milestone
 
-M21 - Mes Signaux and Crafting Intelligence
+M21 - Signals and Crafting Intelligence
 
 ## Goal
 
