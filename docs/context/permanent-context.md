@@ -6,10 +6,10 @@ Tyrian Ledger is a **local-first second-screen personal Guild Wars 2 profit
 assistant**. It turns market/account evidence into a small number of concrete
 manual actions while the owner continues to play the game.
 
-The primary daily surface is **`Mes Signaux`**. The application is not a trading
-bot, gameplay bot, order executor, browser automator, or autonomous game agent.
-Codex/coding agents are development tools only; no application LLM participates
-in runtime financial truth.
+The primary daily Signals surface is displayed as **`Mes Signaux`**. The
+application is not a trading bot, gameplay bot, order executor, browser
+automator, or autonomous game agent. Codex/coding agents are development tools
+only; no application LLM participates in runtime financial truth.
 
 ## 0.1 product focus
 
@@ -24,7 +24,7 @@ Existing investment-position/staged-exit infrastructure remains valid and must
 not be deleted merely because it is not the current product focus. Investment
 opportunity discovery/seasonality is deferred from the 0.1 critical path.
 
-Target primary navigation:
+Target displayed primary navigation:
 
 `Mes Signaux / Artisanat / Réglages`
 
@@ -32,15 +32,20 @@ Dashboard, scanner, raw inventory, personal learning, order books and retained
 history are supporting engines/evidence rather than primary product
 responsibilities.
 
-## User-facing language
+## Repository and displayed language
+
+Repository-facing artifacts use **English**. This includes documentation
+filenames and ordinary documentation prose, code/type/API/database/migration
+identifiers, internal domain terminology, reason codes, test identifiers and
+configuration keys. Exact French strings may appear in docs only when quoting or
+specifying displayed product copy.
 
 All user-facing UI/UX labels and text are written in **French**: navigation,
 actions, buttons, headings, helper text, errors, empty/degraded states,
 notifications, explanations and accessibility text.
 
-Internal code/API/type/database/reason identifiers may remain English. Proper
-nouns and technical identifiers may stay canonical when translating them would
-reduce clarity. Financial logic must never depend on localized strings.
+Proper nouns and technical identifiers may stay canonical when translating them
+would reduce clarity. Financial logic must never depend on localized strings.
 
 ## Signal definition
 
@@ -49,14 +54,14 @@ compatible with the owner's current state to justify a concrete manual action.
 
 Internal analysis does not automatically deserve attention. `WAIT`, `HOLD`,
 `KEEP BID`, `REVIEW`, harmless undercut/outbid and similar no-action states
-normally remain silent on `Mes Signaux` unless they imply a concrete corrective
-action.
+normally remain silent on the displayed `Mes Signaux` surface unless they imply
+a concrete corrective action.
 
-Canonical product flow:
+Canonical internal product flow:
 
-`Renseignement -> Opportunité -> Plan -> Étapes -> Signal -> Réconciliation -> Résultat`
+`Intelligence -> Opportunity -> Plan -> Steps -> Signal -> Reconciliation -> Outcome`
 
-See `docs/specs/mes-signaux.md` for the full product/interaction contract.
+See `docs/specs/signals.md` for the full product/interaction contract.
 
 ## Pre-0.1 development status
 
@@ -128,7 +133,7 @@ The accounting/scanner/history/recommendation/personal-learning foundations are
 already built. Current priority order is:
 
 1. make live project handoff state self-healing from GitHub;
-2. validate and ship the first usable French `Mes Signaux` MVP quickly;
+2. validate and ship the first usable French Signals UI (`Mes Signaux`) MVP quickly;
 3. remove superseded UI/docs/code after replacement paths are proven;
 4. add deterministic plan/bundle selection, Passive/Active paths, resource
    reservations, reversible local execution shadow state, Undo and ArenaNet
@@ -156,17 +161,17 @@ contradiction pauses for explicit reconciliation rather than guessing.
 Main assistant headline performance is 30-day realized profit, with 7-day and
 90-day realized results as secondary context. Open/unrealized result is separate.
 
-Realized strategy categories must be additive/non-overlapping for the same
-supported population/window:
+Internal realized strategy categories must be additive/non-overlapping for the
+same supported population/window:
 
-- Trading/Flipping;
-- Crafting;
-- Unclassified.
+- `Trading/Flipping`;
+- `Crafting`;
+- `Unclassified`.
 
-Ambiguous strategy remains Unclassified until later deterministic evidence can
-resolve it. Crafting may additionally show value added versus the best realistic
-input alternative, but that value is never added again to global realized
-profit.
+The UI renders French labels for those categories. Ambiguous strategy remains
+`Unclassified` until later deterministic evidence can resolve it. Crafting may
+additionally show value added versus the best realistic input alternative, but
+that value is never added again to global realized profit.
 
 ## `CURRENT.md` live-state authority
 
@@ -189,7 +194,7 @@ handoff state.
 5. assigned ticket;
 6. relevant `docs/verification/VERIFY-REGISTER.md` entries;
 7. `docs/workflow/model-effort-guide.md`;
-8. `docs/specs/mes-signaux.md` for Signal/plan/UI work;
+8. `docs/specs/signals.md` for Signal/plan/UI work;
 9. only additional specialized source/spec/ADR files needed by the ticket.
 
 Do not load all historical milestone/ticket documents.
