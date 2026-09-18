@@ -2,7 +2,7 @@
 
 GitHub issue: #130
 
-Status: **Owner-reviewed direction; visual refinement in progress**
+Status: **Owner-reviewed and ready for implementation handoff**
 
 This document is the lightweight prototype and durable UX decision record for the
 first Signals experience displayed as `Mes Signaux`. It is intentionally
@@ -209,7 +209,8 @@ Mes Signaux
 Aucun signal ne mérite votre attention pour le moment.
 Les données actuelles ne justifient aucune action.
 
-Marché : 52 s · Compte : 4 min · Historique : 2 min
+Marché actualisé il y a 52 s · actualisation automatique
+[Données ▾]
 ```
 
 Rules:
@@ -228,15 +229,26 @@ Mes Signaux
 
 PLACER UN ORDRE D'ACHAT                                      Confiance élevée
 Objet X
-22 × max. 41s 27c
-Profit modélisé : +2g 18s
-[Pourquoi ?]
+
+Quantité à saisir
+22
+
+Prix max. par unité
+0 [gold] 41 [silver] 27 [copper]
+
+Profit modélisé : +2 [gold] 18 [silver]                      [Pourquoi ?]
+
 
 VENDRE MAINTENANT                                           Confiance moyenne
 Objet Y
-8 × 73s 14c
-Résultat modélisé : +1g 06s
-[Pourquoi ?]
+
+Quantité à vendre
+8
+
+Prix de vente par unité
+0 [gold] 73 [silver] 14 [copper]
+
+Résultat modélisé : +1 [gold] 06 [silver]                    [Pourquoi ?]
 ```
 
 Rules:
@@ -312,8 +324,6 @@ Rules:
 - Do not use a progress bar merely to imply passage of time; it suggests a level
   of deterministic progress the scheduler/network may not guarantee.
 
-Rules:
-
 - The backend/policy decides whether stale evidence invalidates a Signal.
 - The UI never labels invalid/stale-beyond-policy data as current.
 - If only some Signals depend on the stale source, hide/invalidate those Signals
@@ -358,8 +368,14 @@ Prioritaire
 
 ANNULER L'ORDRE D'ACHAT                                     Confiance élevée
 Objet Z
-120 × 18s 04c
-Capital à libérer : 21g 64s
+
+Quantité concernée
+120
+
+Prix de l'ordre par unité
+0 [gold] 18 [silver] 04 [copper]
+
+Capital à libérer : 21 [gold] 64 [silver]
 
 [Pourquoi ?]
 ```
@@ -380,8 +396,14 @@ keeps the action and price in context.
 ```text
 PLACER UN ORDRE D'ACHAT                                      Confiance élevée
 Objet X
-22 × max. 41s 27c
-Profit modélisé : +2g 18s
+
+Quantité à saisir
+22
+
+Prix max. par unité
+0 [gold] 41 [silver] 27 [copper]
+
+Profit modélisé : +2 [gold] 18 [silver]
 
 [Masquer les détails]
 
@@ -400,7 +422,9 @@ Pourquoi ce signal ?
   Le profit est modélisé ; le remplissage et le prix ne sont pas garantis.
 
 • Fraîcheur des données
-  Marché : 45 s · Compte : 3 min · Historique : 2 min
+  Marché actualisé il y a 45 s.
+  Compte ArenaNet synchronisé il y a 3 min.
+  Historique marché : dernier échantillon enregistré il y a 2 min.
 ```
 
 Rules:
