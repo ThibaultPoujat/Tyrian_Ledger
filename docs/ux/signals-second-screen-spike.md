@@ -135,6 +135,22 @@ must be the strongest scannable content after the item name. Quantity and price
 use larger/bolder typography than modeled profit so the owner can reproduce the
 instruction in Guild Wars 2 with minimal visual search.
 
+The execution block should deliberately echo the in-game Trading Post's order
+entry grammar. For order/listing actions, use explicit field labels such as
+`Quantité à saisir` and `Prix max. par unité` / `Prix de vente par unité`
+rather than an abstract `22 × price` expression. The goal is visual transfer:
+the owner should be able to look at Tyrian Ledger, then enter the same values in
+the Trading Post without mentally reformatting them.
+
+Money values should render as denomination groups with coin glyphs immediately
+after each number, for example conceptually:
+
+`12 [gold] 13 [silver] 19 [copper]`
+
+instead of `12g 13s 19c`. Use locally controlled/CSS-rendered denomination
+glyphs rather than adding a fragile community-asset dependency. Text/accessible
+labels must still expose the full value semantically.
+
 Required first-view fields:
 
 1. concrete displayed action;
@@ -156,7 +172,13 @@ Card decisions:
   the card's dominant value.
 - Quantity and actionable price/max price have higher visual weight than modeled
   profit. Do not make the user search for the numbers they must type/click in game.
-- Price constraints use `max.` when the action has a maximum acceptable price.
+- For Trading Post actions, mirror the game's input order: quantity first, then
+  per-unit price split into gold/silver/copper denominations.
+- Price constraints use `Prix max. par unité` when the action has a maximum
+  acceptable price; selling uses `Prix de vente par unité`.
+- Modeled total profit stays visually secondary. A total purchase/listing amount
+  may be shown only when it materially helps execution or bankroll awareness; it
+  must not displace the per-unit values the owner enters in game.
 - Cards are ordered by the backend's actionable ranking; the UI does not
   re-rank financial opportunities.
 
@@ -479,6 +501,9 @@ Owner-approved direction as of the UX spike review:
     #130/#131 MVP interaction model.
 16. Make the execution instruction the strongest card content: action plus
     quantity and price/max price outrank modeled profit in visual hierarchy.
+17. Mirror the in-game Trading Post entry grammar for quantity and unit price,
+    including separate gold/silver/copper denomination glyphs directly after
+    their numeric values.
 
 ## 18. Acceptance mapping
 
