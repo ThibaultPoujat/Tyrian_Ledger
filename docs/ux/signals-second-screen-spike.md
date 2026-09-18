@@ -35,15 +35,19 @@ workspace behavior beyond the disabled navigation destination.
    manual action worth taking.
 2. **Silence is useful.** Do not expose `WAIT`, `HOLD`, `KEEP BID`,
    `REVIEW`, harmless undercut/outbid, or other no-action analysis.
-3. **Compact before complete.** The first view answers what to do, with what,
+3. **Execution first.** The easiest information to find on every Signal is the
+   exact manual action the owner must reproduce in game: action, item, quantity
+   and actionable price/maximum price. These execution values have stronger
+   visual priority than modeled profit.
+4. **Compact before complete.** The first view answers what to do, with what,
    how much, at what price, and why it is worth attention.
-4. **Truthful uncertainty.** Modeled results are labeled as modeled; confidence
+5. **Truthful uncertainty.** Modeled results are labeled as modeled; confidence
    is qualitative rather than false numeric precision.
-5. **Operational truth is separate.** Sync/freshness/API problems use a compact
+6. **Operational truth is separate.** Sync/freshness/API problems use a compact
    status area, not Signal cards.
-6. **No fake freshness.** Market, account and retained-history ages are shown
+7. **No fake freshness.** Market, account and retained-history ages are shown
    separately when materially different.
-7. **Second-screen first.** A glance should be enough to understand the next
+8. **Second-screen first.** A glance should be enough to understand the next
    action and return to the game.
 
 ## 3. Primary shell
@@ -121,11 +125,15 @@ Default card:
 PLACER UN ORDRE D'ACHAT                                      Confiance élevée
 Objet X
 
-22 × max. 41s 27c
-Profit modélisé : +2g 18s
+22 ×     MAX. 41s 27c
 
-[Pourquoi ?]
+Profit modélisé : +2g 18s                                    [Pourquoi ?]
 ```
+
+The action line plus quantity/price form the card's **execution block**. They
+must be the strongest scannable content after the item name. Quantity and price
+use larger/bolder typography than modeled profit so the owner can reproduce the
+instruction in Guild Wars 2 with minimal visual search.
 
 Required first-view fields:
 
@@ -144,7 +152,10 @@ Card decisions:
 - Confidence uses `Confiance élevée`, `Confiance moyenne` or
   `Confiance limitée`; no unsupported percentage.
 - Modeled economics use `Profit modélisé` or `Résultat modélisé`, never
-  guaranteed-profit wording.
+  guaranteed-profit wording. Modeled profit is useful supporting evidence, not
+  the card's dominant value.
+- Quantity and actionable price/max price have higher visual weight than modeled
+  profit. Do not make the user search for the numbers they must type/click in game.
 - Price constraints use `max.` when the action has a maximum acceptable price.
 - Cards are ordered by the backend's actionable ranking; the UI does not
   re-rank financial opportunities.
@@ -466,6 +477,8 @@ Owner-approved direction as of the UX spike review:
 14. Remove the rounded decorative footer treatment.
 15. Model Active/Passive execution paths later under #133; do not add them to the
     #130/#131 MVP interaction model.
+16. Make the execution instruction the strongest card content: action plus
+    quantity and price/max price outrank modeled profit in visual hierarchy.
 
 ## 18. Acceptance mapping
 
