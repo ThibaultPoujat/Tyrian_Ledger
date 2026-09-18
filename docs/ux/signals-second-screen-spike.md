@@ -2,7 +2,7 @@
 
 GitHub issue: #130
 
-Status: **Draft for owner review**
+Status: **Owner-reviewed direction; visual refinement in progress**
 
 This document is the lightweight prototype and durable UX decision record for the
 first Signals experience displayed as `Mes Signaux`. It is intentionally
@@ -48,25 +48,29 @@ workspace behavior beyond the disabled navigation destination.
 
 ## 3. Primary shell
 
-Desktop target: compact vertical navigation plus one main column. A narrow
-secondary header region carries performance and source status without competing
-with the action feed.
+Primary validation target: **1920×1080**. Use a fixed compact left navigation
+and one main action column. The navigation and realized-performance block keep
+the same screen position across normal, empty, degraded and corrective states;
+only their contents may change.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ Tyrian Ledger                                  Profit réalisé · 30 j +12g 48s│
-│                                                7 j +3g 21s · 90 j +31g 02s  │
-├───────────────┬──────────────────────────────────────────────────────────────┤
-│ Mes Signaux   │ Mes Signaux                                                   │
-│               │ 2 signaux méritent votre attention                          │
-│ Artisanat     │                                                              │
-│   Bientôt     │ Marché : 45 s · Compte : 3 min · Historique : 2 min         │
+│               │ Mes Signaux                         Profit réalisé            │
+│               │ 2 signaux méritent votre attention Aujourd'hui   +3g 27s    │
+│ Mes Signaux   │                                    30 j         +12g 48s ▾  │
+│               │                                                              │
+│ Artisanat     │ Marché actualisé il y a 45 s · prochaine actualisation ~15 s │
+│   Bientôt     │ [Données ▾]                                                  │
 │               │                                                              │
 │ Réglages      │ [Signal 1]                                                   │
 │               │ [Signal 2]                                                   │
 │               │                                                              │
 └───────────────┴──────────────────────────────────────────────────────────────┘
 ```
+
+Do not use a rounded decorative footer. Prefer no footer for the product screen;
+if a later implementation genuinely needs a persistent bottom status region, it
+should be flat, quiet and functional.
 
 Navigation decisions:
 
@@ -84,14 +88,26 @@ Performance is contextual, not the main task.
 Displayed hierarchy:
 
 ```text
-Profit réalisé · 30 j     +12g 48s
-7 j +3g 21s · 90 j +31g 02s
+Profit réalisé
+Aujourd'hui     +3g 27s
+30 j           +12g 48s  ▾
+```
+
+The disclosure may expand to:
+
+```text
+Aujourd'hui     +3g 27s
+7 jours         +3g 21s
+30 jours       +12g 48s
+90 jours       +31g 02s
 ```
 
 Rules:
 
-- 30-day realized profit is the only headline number.
-- 7-day and 90-day realized profit are secondary.
+- Today's realized profit and 30-day realized profit remain visible by default.
+- 7-day and 90-day realized profit are hidden behind the compact disclosure.
+- The performance block stays anchored in the same position across every Signals
+  screen state so state changes do not move the owner's visual landmarks.
 - Unrealized/open result, when available, is visually separate and never added
   into realized profit.
 - Strategy breakdown does not occupy the default Signals header. It may live in
@@ -114,11 +130,12 @@ Profit modélisé : +2g 18s
 Required first-view fields:
 
 1. concrete displayed action;
-2. item;
-3. quantity and relevant price/max price;
-4. modeled result/profit;
-5. confidence;
-6. `Pourquoi ?`.
+2. item image when available, with a stable fallback glyph when unavailable;
+3. item;
+4. quantity and relevant price/max price;
+5. modeled result/profit;
+6. confidence;
+7. `Pourquoi ?`.
 
 Card decisions:
 
@@ -222,17 +239,45 @@ Rules:
 
 Freshness is source-specific and compact.
 
-Normal example:
+Default compact state:
 
 ```text
-Marché : 45 s · Compte : 3 min · Historique : 2 min
+Marché actualisé il y a 45 s · prochaine actualisation dans ~15 s
+[Données ▾]
+```
+
+Expanded source detail:
+
+```text
+Marché
+Actualisé il y a 45 s
+Prochaine actualisation : ~15 s
+
+Compte ArenaNet
+Synchronisé il y a 3 min
+
+Historique marché
+Dernier échantillon enregistré il y a 2 min
 ```
 
 Older account evidence:
 
 ```text
-Marché : 38 s · Compte : données datant de 18 min · Historique : 2 min
+Compte ArenaNet
+Synchronisé il y a 18 min · données anciennes
 ```
+
+Rules:
+
+- Prefer explicit labels `Compte ArenaNet` and `Historique marché`; avoid the
+  ambiguous bare labels `Compte` and `Historique`.
+- Show a next-refresh countdown only when the scheduler genuinely knows the next
+  planned refresh time. Approximate values use `~`.
+- When a refresh starts, replace countdown text with `Actualisation en cours…`.
+- When there is no precise scheduled time, show `Actualisation automatique`
+  rather than inventing a countdown.
+- Do not use a progress bar merely to imply passage of time; it suggests a level
+  of deterministic progress the scheduler/network may not guarantee.
 
 Rules:
 
@@ -366,7 +411,21 @@ Keep the specific source name next to the state when ambiguity is possible.
 - Narrow desktop/tablet layouts may stack performance/status above cards rather
   than horizontally compressing actionable prices.
 
-## 15. Density decisions
+## 15. Item imagery
+
+Item imagery is desirable because it materially improves glance recognition.
+The production card reserves a stable square image slot.
+
+The upstream GW2 item contract may provide a full icon URL. #131 should extend
+the existing typed item-display metadata boundary only after verifying and
+documenting that field in the repository's endpoint contract. The frontend must
+not construct render-service URLs itself.
+
+When an icon is missing or fails to load, show a neutral item glyph without
+changing card geometry. Missing imagery never blocks a Signal or changes
+economic semantics.
+
+## 16. Density decisions
 
 For the MVP:
 
@@ -374,6 +433,8 @@ For the MVP:
 - compact left navigation;
 - no dashboard-style grid of analytics;
 - no persistent right-side inspector;
+- validate the main layout at 1920×1080 before #131 implementation;
+- fixed navigation and performance landmarks across all screen states;
 - collapsed card target height roughly 110–150 px depending on wrapping;
 - `Pourquoi ?` expands in place;
 - performance occupies one compact header block;
@@ -382,20 +443,31 @@ For the MVP:
 This keeps the screen useful around common second-monitor desktop widths without
 requiring phone-first optimization.
 
-## 16. Owner-review checkpoints
+## 17. Owner-review decisions
 
-Before #131 implementation, validate these proposed decisions:
+Owner-approved direction as of the UX spike review:
 
-1. The screen is action-first enough and does not feel like another analytics dashboard.
-2. Qualitative confidence labels are preferable to a numeric score.
-3. `REMETTRE EN VENTE` is acceptable displayed copy for relisting.
-4. `Prioritaire` is sufficient for corrective urgency without alarmist styling.
-5. Performance belongs in the compact header rather than below the Signal list.
-6. `Pourquoi ?` should expand inline, not open a modal/side panel.
-7. Showing source-specific age in one compact line is understandable.
-8. Disabled `Artisanat · Bientôt` is preferable to hiding the destination.
+1. Keep the action-first composition rather than an analytics dashboard.
+2. Keep the left vertical navigation and its position stable across states.
+3. Keep qualitative confidence rather than a numeric score.
+4. Use `REMETTRE EN VENTE` for relisting.
+5. Keep `Prioritaire` calm and explicit for corrective urgency.
+6. Keep performance in a stable compact header block.
+7. Show `Aujourd'hui` and `30 j` by default; place `7 jours` and `90 jours`
+   behind a disclosure.
+8. Expand `Pourquoi ?` inline rather than opening a modal or side panel.
+9. Replace terse freshness labels with explicit source meanings and expose detail
+   behind `Données`.
+10. Show truthful next-refresh timing when known; do not fabricate progress.
+11. Keep `Artisanat · Bientôt` visible but disabled.
+12. Preserve action-type color coding as a fast secondary cue, while retaining
+    explicit action text so meaning never depends on color alone.
+13. Reserve an item-image slot with a neutral fallback.
+14. Remove the rounded decorative footer treatment.
+15. Model Active/Passive execution paths later under #133; do not add them to the
+    #130/#131 MVP interaction model.
 
-## 17. Acceptance mapping
+## 18. Acceptance mapping
 
 - Zero Signals: section 6.
 - Two simple Signals: section 7.
@@ -404,7 +476,8 @@ Before #131 implementation, validate these proposed decisions:
 - Degraded/sync failure: section 10.
 - Urgent corrective action: section 11.
 - Expanded `Pourquoi ?`: section 12.
-- Compact 30d/7d/90d performance: sections 3–4.
+- Compact today/30d performance with 7d/90d disclosure: sections 3–4.
 - Primary navigation: section 3.
-- French UI copy: sections 3–14.
+- Item imagery/fallback: section 15.
+- French UI copy: sections 3–15.
 - No live ArenaNet dependency: all examples are static specification wireframes.
