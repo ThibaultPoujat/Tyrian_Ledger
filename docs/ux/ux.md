@@ -60,6 +60,11 @@ Use:
 The visual design should communicate a private intelligence service more than a
 spreadsheet. Function comes before lore decoration.
 
+For the first Signals MVP, the owner-reviewed decision record is
+`docs/ux/signals-second-screen-spike.md`. When this general UX specification and
+that record differ on the first `Mes Signaux` implementation, the spike's
+explicit owner-reviewed decisions govern #131.
+
 ## Signals surface (`Mes Signaux`)
 
 ### Attention gate
@@ -77,31 +82,51 @@ without presenting those as economic actions.
 
 ### Signal card
 
-Default Signal cards are deliberately compact. First view should show:
+Default Signal cards are deliberately compact, but **execution information has
+the strongest visual priority**. First view should show:
 
 - concrete French action;
+- item image when available, with a stable fallback glyph;
 - item;
 - quantity;
-- relevant price or maximum price where applicable;
-- modeled result/profit;
-- confidence;
+- relevant per-unit price or maximum price;
+- modeled result/profit as secondary evidence;
+- qualitative confidence;
 - `Pourquoi ?` progressive disclosure.
+
+For Trading Post actions, mirror the in-game entry grammar rather than showing an
+abstract multiplication expression. Quantity appears first, followed by the
+per-unit price split into gold/silver/copper denomination groups. Each numeric
+denomination is immediately followed by its coin glyph. Accessible text still
+exposes the full monetary value semantically.
+
+Example hierarchy:
+
+```text
+PLACER UN ORDRE D'ACHAT                                      Confiance élevée
+Objet X
+
+Quantité à saisir
+22
+
+Prix max. par unité
+0 [gold] 41 [silver] 27 [copper]
+
+Profit modélisé : +2 [gold] 18 [silver]                      [Pourquoi ?]
+```
+
+The quantity and actionable price must be easier to find than modeled profit,
+because they are the values the owner physically reproduces in Guild Wars 2.
 
 Detailed ROI, depth, spread, history, personal evidence, anomaly flags and risk
 constraints live behind `Pourquoi ?` unless one is itself the reason the action
 must change immediately.
 
-Example hierarchy:
-
-```text
-PLACER UN ORDRE D'ACHAT
-22 × Objet X @ <= 41s 27c
-Profit modélisé : +2g 18s
-Confiance élevée
-[Pourquoi ?]
-```
-
-Exact final French copy is validated in the UX spike; financial/action semantics
+Displayed action copy validated by the spike includes
+`ACHETER MAINTENANT`, `PLACER UN ORDRE D'ACHAT`,
+`METTRE À JOUR L'ORDRE D'ACHAT`, `ANNULER L'ORDRE D'ACHAT`,
+`FABRIQUER`, `METTRE EN VENTE`, `REMETTRE EN VENTE`,
+`VENDRE MAINTENANT` and `VENDRE PARTIELLEMENT`. Financial/action semantics
 remain structured backend output.
 
 ### Zero-Signal state
@@ -123,8 +148,12 @@ Passive/Active paths rather than an arbitrary top-N list.
 
 ## Performance placement
 
-On `Mes Signaux`, show **30-day realized profit** as the headline performance
-number. 7-day and 90-day realized results are secondary context.
+On `Mes Signaux`, keep the realized-performance block anchored in the same
+screen position across normal, empty, degraded and corrective states.
+
+Show **today's realized profit** and **30-day realized profit** by default.
+7-day and 90-day realized results remain available behind a compact disclosure
+rather than occupying the permanent header.
 
 Open/unrealized result is visually and semantically separate and must not be
 added to realized profit.
@@ -144,7 +173,19 @@ example an appropriate French trading/flipping label, `Artisanat`, and
 Freshness must reflect the real relevant data source. Do not collapse different
 ArenaNet/public/history refresh semantics into a fabricated single age.
 
-Where useful, show source-specific age such as market/account/history evidence.
+Use explicit source meanings rather than terse ambiguous labels:
+
+- `Marché actualisé il y a …`;
+- `Compte ArenaNet synchronisé il y a …`;
+- `Historique marché — dernier échantillon enregistré il y a …`.
+
+The compact default may show current market freshness plus a `Données`
+disclosure for account/history detail. Show a next-refresh countdown only when
+the scheduler genuinely knows the next planned refresh time. Use
+`Actualisation en cours…` while refreshing and `Actualisation automatique`
+when no precise next time exists. Do not invent a progress bar/countdown merely
+to imply activity.
+
 Use understandable French degraded states and preserve the difference between:
 
 - loading;
@@ -288,8 +329,15 @@ detail or diagnostics but should not compete with the main assistant.
 
 ## Desktop-first / second-screen-first
 
-Primary optimization is desktop and second-monitor use. The user should be able
-to glance, execute, confirm and return to the game quickly.
+Primary optimization is desktop and second-monitor use. The first Signals MVP is
+validated explicitly at **1920×1080**. The user should be able to glance,
+execute, confirm and return to the game quickly.
+
+Keep the compact left navigation and realized-performance block in stable
+positions across screen states. Use action-type color as a fast secondary cue,
+but never rely on color alone: the explicit action text remains authoritative.
+Avoid decorative rounded footers; prefer no footer unless a quiet flat
+functional status region is genuinely needed.
 
 Responsive behavior should prevent unusable overflow at narrower desktop/tablet
 widths. Full phone-first optimization may be deferred unless a later ticket
