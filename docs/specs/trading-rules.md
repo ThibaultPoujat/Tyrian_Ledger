@@ -40,6 +40,17 @@ Listing fees matter twice to behavior:
 
 A recommendation that proposes relisting must consider that incremental cost.
 
+For **final realized P&L**, every evidenced listing fee paid across the lifecycle
+of the position remains a cost, including listing fees from cancelled/relisted
+attempts, plus the final exchange fee on the completed sale. Relisting must never
+reset prior listing fees or make them disappear from realized accounting.
+
+For the **marginal decision to relist now**, already-paid listing fees are sunk.
+Compare leaving the current listing in place against paying the next listing fee
+and the modeled benefit/risk of the new listing outcome. Do not charge a past
+listing fee a second time in that forward-looking decision, but do retain it in
+final realized P&L.
+
 ## 3. ROI and absolute profit
 
 A candidate must satisfy both a configurable minimum net ROI and minimum
@@ -253,6 +264,33 @@ Suggested size is bounded by the minimum of independently explainable caps:
 - strategy/category concentration cap;
 - speculative/illiquid cap where applicable.
 
+### Plan-level deployment policy
+
+Hard safety/evidence/liquidity/risk/freshness/resource constraints are eligibility
+floors. A score, high ROI, high absolute profit, or idle cash can never override a
+failed hard floor.
+
+A separate **preferred attractiveness floor** controls whether an otherwise safe
+opportunity is worth consuming attention/capital under normal conditions. When
+meaningful deployable capital would otherwise remain idle, deterministic policy
+may relax this preferred floor toward the hard floor, but never below it and
+never below an absolute attention/value threshold. The system must not surface
+trivial work merely because cash is idle.
+
+The hard bankroll reserve (currently approximately 15% under the active sizing
+policy) remains untouched. In addition, plan/bundle selection should preserve a
+bounded **opportunity-capital buffer** inside otherwise deployable capital so
+mediocre current opportunities do not consume all optionality. The soft buffer
+must be centralized, versioned and explainable; no permanent 75-85% deployment
+constant is implied until an explicit policy version defines one.
+
+When plan orchestration is active, allocation is a deterministic compatible-
+bundle problem rather than a raw top-N sort. Started/passive commitments reserve
+their resources before alternatives are recomputed. Utility may consider
+confidence-adjusted economics, capital efficiency/turnover, attention fit,
+urgency, concentration/opportunity cost and plan stability only after hard
+eligibility constraints pass.
+
 ### Position-sizing policy version 1
 
 The disclosed, configurable default policy reserves 15% of total bankroll,
@@ -373,12 +411,17 @@ Possible states include `LIST`, `LEAVE SELL LISTING`, `SELL PARTIAL`, and
 Do not recommend cancel/relist merely because another seller undercut by one
 copper. Consider:
 
-- already-paid listing fee;
+- the next listing fee that would be paid to relist;
 - current queue/order position;
 - current and historical spread/liquidity;
 - price difference versus existing listing;
 - expected time/capital benefit;
 - position/investment thesis.
+
+Already-paid listing fees are sunk for the forward-looking relist decision, but
+they remain part of final realized P&L. A relisted position must therefore carry
+its evidenced cumulative listing-fee history through to final accounting while
+the decision engine compares only the incremental cost/benefit of another relist.
 
 Relisting is justified by a meaningful economic improvement, not cosmetic
 price leadership.
