@@ -60,8 +60,8 @@ only their contents may change.
 ```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │               │ Mes Signaux                         Profit réalisé            │
-│               │ 2 signaux méritent votre attention Aujourd'hui   +3g 27s    │
-│ Mes Signaux   │                                    30 j         +12g 48s ▾  │
+│               │ 2 signaux méritent votre attention Aujourd'hui +3 [gold] 27 [silver] │
+│ Mes Signaux   │                                    30 j +12 [gold] 48 [silver] ▾   │
 │               │                                                              │
 │ Artisanat     │ Marché actualisé il y a 45 s · prochaine actualisation ~15 s │
 │   Bientôt     │ [Données ▾]                                                  │
@@ -93,17 +93,17 @@ Displayed hierarchy:
 
 ```text
 Profit réalisé
-Aujourd'hui     +3g 27s
-30 j           +12g 48s  ▾
+Aujourd'hui     +3 [gold] 27 [silver]
+30 j           +12 [gold] 48 [silver]  ▾
 ```
 
 The disclosure may expand to:
 
 ```text
-Aujourd'hui     +3g 27s
-7 jours         +3g 21s
-30 jours       +12g 48s
-90 jours       +31g 02s
+Aujourd'hui     +3 [gold] 27 [silver]
+7 jours         +3 [gold] 21 [silver]
+30 jours       +12 [gold] 48 [silver]
+90 jours       +31 [gold] 02 [silver]
 ```
 
 Rules:
@@ -125,9 +125,13 @@ Default card:
 PLACER UN ORDRE D'ACHAT                                      Confiance élevée
 Objet X
 
-22 ×     MAX. 41s 27c
+Quantité à saisir
+22
 
-Profit modélisé : +2g 18s                                    [Pourquoi ?]
+Prix max. par unité
+0 [gold] 41 [silver] 27 [copper]
+
+Profit modélisé : +2 [gold] 18 [silver]                      [Pourquoi ?]
 ```
 
 The action line plus quantity/price form the card's **execution block**. They
