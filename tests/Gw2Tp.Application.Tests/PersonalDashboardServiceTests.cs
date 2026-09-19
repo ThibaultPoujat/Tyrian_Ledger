@@ -79,6 +79,9 @@ public sealed class PersonalDashboardServiceTests
 
         Assert.Equal(PersonalDashboardState.Ready, result.State);
         Assert.Equal("70", Assert.Single(result.RealizedWindows, window => window.Days == 7).NetProfit!.Copper);
+        Assert.NotNull(result.TodayRealized);
+        Assert.Equal(RealizedPerformanceWindowStatus.Supported, result.TodayRealized!.Status);
+        Assert.Equal("0", result.TodayRealized.NetProfit!.Copper);
         Assert.Equal("100", result.OpenAcquisitionBasis!.Copper);
         Assert.Equal("70", result.UnrealizedProfit!.Copper);
         Assert.Equal("100", result.CurrentBuyCapital.Copper);
