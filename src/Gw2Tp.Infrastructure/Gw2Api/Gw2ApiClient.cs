@@ -342,7 +342,8 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
         string? iconUrl = null;
         if (!string.IsNullOrWhiteSpace(dto.Icon) &&
             Uri.TryCreate(dto.Icon, UriKind.Absolute, out var iconUri) &&
-            string.Equals(iconUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            string.Equals(iconUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(iconUri.Host, "render.guildwars2.com", StringComparison.OrdinalIgnoreCase))
         {
             iconUrl = iconUri.AbsoluteUri;
         }
