@@ -69,7 +69,8 @@ public sealed record PrimaryRecommendationRecord(
     PrimaryRecommendationEconomics? Economics, PrimaryRecommendationScore? Score,
     PrimaryRecommendationHistory? History, PrimaryRecommendationLiquidity? Liquidity,
     IReadOnlyList<PositionSizingConstraint> PortfolioConstraints,
-    IReadOnlyList<PrimaryRecommendationReason> Reasons);
+    IReadOnlyList<PrimaryRecommendationReason> Reasons,
+    string? ItemIconUrl = null);
 
 public sealed record PrimaryRecommendationResult(
     PrimaryRecommendationState State, string? EvidenceError, DateTimeOffset? GeneratedAtUtc,
@@ -97,7 +98,8 @@ public sealed record PrimaryRecommendationEvidence(
     bool IsSizingAvailable, bool IsReserveCancellation, bool IsUnknownBasis,
     bool IsExposureExceeded, bool IsImmediateFullExitPositive,
     bool IsImmediatePartialExitPositive, bool IsListingExitPositive,
-    Money IncrementalCapitalRequired, Money IncrementalCapitalCapacity);
+    Money IncrementalCapitalRequired, Money IncrementalCapitalCapacity,
+    string? ItemIconUrl = null);
 
 public interface IPrimaryRecommendationPolicy
 {
