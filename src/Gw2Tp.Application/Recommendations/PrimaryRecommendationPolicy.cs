@@ -45,7 +45,8 @@ public sealed class PrimaryRecommendationPolicy : IPrimaryRecommendationPolicy
         return new PrimaryRecommendationRecord(
             action, item.Source, item.OrderState, item.OrderId, item.ItemId, item.ItemName,
             item.SuggestedQuantity, item.SuggestedCapital, item.Prices, item.Economics,
-            item.Score, item.History, item.Liquidity, item.PortfolioConstraints, reasons);
+            item.Score, item.History, item.Liquidity, item.PortfolioConstraints, reasons,
+            item.ItemIconUrl);
     }
 
     public int AllocationBasisPoints(OpportunityScore score, PositionSizingLiquidity liquidity)
