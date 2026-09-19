@@ -668,18 +668,18 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     void fetch('/api/local-data/backup', { method: 'POST', headers: localRequestHeaders() })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('Backup could not be created. Your current local data has not been changed.');
+          setMessage('La sauvegarde n'a pas pu être créée. Vos données locales actuelles n'ont pas été modifiées.');
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || typeof (payload as Record<string, unknown>).fileName !== 'string') {
-          setMessage('Backup outcome could not be confirmed. Check the local backup folder before retrying.');
+          setMessage('Le résultat de la sauvegarde n'a pas pu être confirmé. Vérifiez le dossier de sauvegardes locales avant de réessayer.');
           return;
         }
-        setMessage(`Backup created: ${(payload as Record<string, string>).fileName}`);
+        setMessage(`Sauvegarde créée : ${(payload as Record<string, string>).fileName}`);
         setLocationRefreshGeneration((generation) => generation + 1);
       })
-      .catch(() => setMessage('Backup outcome could not be confirmed. Check the local backup folder before retrying.'))
+      .catch(() => setMessage('Le résultat de la sauvegarde n'a pas pu être confirmé. Vérifiez le dossier de sauvegardes locales avant de réessayer.'))
       .finally(() => setIsBackingUp(false));
   };
 
@@ -699,7 +699,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
       ? location.location.managedBackupUploadLimitBytes
       : undefined;
     if (importedBackupUploadLimit !== undefined && restoreFile.size > importedBackupUploadLimit) {
-      setMessage('This imported backup exceeds the local upload limit. Only application-created Tyrian Ledger backups already moved into the managed Backups folder can be selected for local managed restore. Refresh the managed backup list after moving one.');
+      setMessage('Cette sauvegarde importée dépasse la limite locale. Déplacez une sauvegarde créée par Tyrian Ledger dans le dossier Backups géré, puis actualisez la liste avant de la restaurer.');
       setIsRestoring(false);
       return;
     }
@@ -710,18 +710,18 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     void fetch('/api/local-data/restore', { method: 'POST', headers: localRequestHeaders(), body: form })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('The selected backup could not be restored. Your current local data was kept.');
+          setMessage('La sauvegarde sélectionnée n'a pas pu être restaurée. Vos données locales actuelles ont été conservées.');
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'restored') {
-          setMessage('Restore outcome could not be confirmed. Check local data before retrying.');
+          setMessage('Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.');
           return;
         }
         const preRestore = (payload as Record<string, unknown>).preRestoreBackupFileName;
         setMessage(typeof preRestore === 'string'
-          ? `Backup restored. Your previous data was saved as ${preRestore}.`
-          : 'Backup restored.');
+          ? `Sauvegarde restaurée. Vos données précédentes ont été enregistrées sous ${preRestore}.`
+          : 'Sauvegarde restaurée.');
         setRestoreFile(null);
         setRestoreConfirmation('');
         if (restoreFileInput.current !== null) {
@@ -730,7 +730,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
         onPersonalDataChanged();
         setLocationRefreshGeneration((generation) => generation + 1);
       })
-      .catch(() => setMessage('Restore outcome could not be confirmed. Check local data before retrying.'))
+      .catch(() => setMessage('Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.'))
       .finally(() => setIsRestoring(false));
   };
 
@@ -748,24 +748,24 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('The selected managed backup could not be restored. Your current local data was kept.');
+          setMessage('La sauvegarde gérée sélectionnée n'a pas pu être restaurée. Vos données locales actuelles ont été conservées.');
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'restored') {
-          setMessage('Restore outcome could not be confirmed. Check local data before retrying.');
+          setMessage('Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.');
           return;
         }
         const preRestore = (payload as Record<string, unknown>).preRestoreBackupFileName;
         setMessage(typeof preRestore === 'string'
-          ? `Backup restored. Your previous data was saved as ${preRestore}.`
-          : 'Backup restored.');
+          ? `Sauvegarde restaurée. Vos données précédentes ont été enregistrées sous ${preRestore}.`
+          : 'Sauvegarde restaurée.');
         setManagedBackupFileName('');
         setRestoreConfirmation('');
         onPersonalDataChanged();
         setLocationRefreshGeneration((generation) => generation + 1);
       })
-      .catch(() => setMessage('Restore outcome could not be confirmed. Check local data before retrying.'))
+      .catch(() => setMessage('Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.'))
       .finally(() => setIsRestoring(false));
   };
 
@@ -783,73 +783,73 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('Personal data could not be cleared. Your current local data was kept.');
+          setMessage('Les données personnelles n'ont pas pu être effacées. Vos données locales actuelles ont été conservées.');
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'personal_data_cleared') {
-          setMessage('Clear outcome could not be confirmed. Check local data before retrying.');
+          setMessage('Le résultat de l'effacement n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.');
           return;
         }
-        setMessage('Personal account data cleared. Existing backup files were kept.');
+        setMessage('Données personnelles du compte effacées. Les sauvegardes existantes ont été conservées.');
         setClearConfirmation('');
         onPersonalDataChanged();
       })
-      .catch(() => setMessage('Clear outcome could not be confirmed. Check local data before retrying.'))
+      .catch(() => setMessage('Le résultat de l'effacement n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.'))
       .finally(() => setIsClearing(false));
   };
 
   return (
     <section aria-labelledby="local-data-title" className="local-data-panel">
-      <p className="eyebrow">Local data</p>
-      <h2 id="local-data-title">Backup and recovery</h2>
-      <p>Backups stay on this computer. Tyrian Ledger handles restore files only through its local loopback host and never sends them to a cloud service.</p>
-      {location.kind === 'loading' && <p aria-live="polite" role="status">Finding local data locations…</p>}
-      {location.kind === 'unavailable' && <p role="alert">Local data locations are unavailable. Check that the local host is running.</p>}
+      <p className="eyebrow">Données locales</p>
+      <h2 id="local-data-title">Sauvegarde et restauration</h2>
+      <p>Les sauvegardes restent sur cet ordinateur. Tyrian Ledger traite les fichiers uniquement via l'application locale et ne les envoie jamais vers un service cloud.</p>
+      {location.kind === 'loading' && <p aria-live="polite" role="status">Recherche des emplacements de données locales…</p>}
+      {location.kind === 'unavailable' && <p role="alert">Les emplacements de données locales sont indisponibles. Vérifiez que l'application locale fonctionne.</p>}
       {location.kind === 'ready' && (
         <dl className="local-data-locations">
-          <div><dt>Database</dt><dd><code>{location.location.databasePath}</code></dd></div>
-          <div><dt>Backups</dt><dd><code>{location.location.backupDirectoryPath}</code></dd></div>
+          <div><dt>Base de données</dt><dd><code>{location.location.databasePath}</code></dd></div>
+          <div><dt>Sauvegardes</dt><dd><code>{location.location.backupDirectoryPath}</code></dd></div>
         </dl>
       )}
       <div className="local-data-action">
-        <h3>Create a backup</h3>
-        <p>Create a timestamped, consistent copy before making major changes to your computer or this application.</p>
+        <h3>Créer une sauvegarde</h3>
+        <p>Créez une copie cohérente et horodatée avant une modification importante de l'ordinateur ou de l'application.</p>
         <button disabled={isRecoveryBusy || location.kind !== 'ready'} onClick={createBackup} type="button">
-          {isBackingUp ? 'Creating backup…' : 'Create local backup'}
+          {isBackingUp ? 'Création de la sauvegarde…' : 'Créer une sauvegarde locale'}
         </button>
       </div>
       <div className="local-data-action">
-        <h3>Restore a backup</h3>
-        <p>Restoring replaces the active database only after the selected file is checked. A backup of the current data is created first.</p>
-        {location.kind === 'ready' && location.location.managedBackupUploadLimitBytes !== undefined && <p>Imported selected backup files are limited to {Math.floor(location.location.managedBackupUploadLimitBytes / (1024 * 1024))} MiB.</p>}
-        <label htmlFor="restore-backup">Backup file</label>
+        <h3>Restaurer une sauvegarde</h3>
+        <p>La restauration remplace la base active uniquement après vérification du fichier sélectionné. Une sauvegarde des données actuelles est créée auparavant.</p>
+        {location.kind === 'ready' && location.location.managedBackupUploadLimitBytes !== undefined && <p>Les sauvegardes importées sélectionnées sont limitées à {Math.floor(location.location.managedBackupUploadLimitBytes / (1024 * 1024))} MiB.</p>}
+        <label htmlFor="restore-backup">Fichier de sauvegarde</label>
         <input ref={restoreFileInput} id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
-        <label htmlFor="restore-confirmation">Type RESTORE LOCAL DATA to continue</label>
+        <label htmlFor="restore-confirmation">Saisissez RESTORE LOCAL DATA pour continuer</label>
         <input id="restore-confirmation" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} />
         <button disabled={isRecoveryBusy || restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restore} type="button">
-          {isRestoring ? 'Restoring backup…' : 'Restore selected backup'}
+          {isRestoring ? 'Restauration en cours…' : 'Restaurer la sauvegarde sélectionnée'}
         </button>
         {location.kind === 'ready' && location.location.managedBackups !== undefined && <>
-          <p>Managed restore is only for application-created Tyrian Ledger backups listed in this application’s Backups folder. After moving one there, refresh this list before selecting it.</p>
-          <button disabled={isRecoveryBusy} onClick={refreshManagedBackups} type="button">Refresh managed backups</button>
-          <label htmlFor="managed-restore-backup">Managed backup</label>
+          <p>La restauration gérée accepte uniquement les sauvegardes créées par Tyrian Ledger présentes dans le dossier Backups de l'application. Après y avoir déplacé un fichier, actualisez cette liste avant de le sélectionner.</p>
+          <button disabled={isRecoveryBusy} onClick={refreshManagedBackups} type="button">Actualiser les sauvegardes gérées</button>
+          <label htmlFor="managed-restore-backup">Sauvegarde gérée</label>
           <select id="managed-restore-backup" value={managedBackupFileName} onChange={(event) => setManagedBackupFileName(event.target.value)}>
-            <option value="">Select a managed backup</option>
+            <option value="">Sélectionner une sauvegarde gérée</option>
             {location.location.managedBackups.map((backup) => <option key={backup.fileName} value={backup.fileName}>{backup.fileName}</option>)}
           </select>
           <button disabled={isRecoveryBusy || managedBackupFileName === '' || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restoreManagedBackup} type="button">
-            {isRestoring ? 'Restoring backup…' : 'Restore managed backup'}
+            {isRestoring ? 'Restauration en cours…' : 'Restaurer la sauvegarde gérée'}
           </button>
         </>}
       </div>
       <div className="local-data-action local-data-action--danger">
-        <h3>Clear personal account data</h3>
-        <p>This permanently removes synced account history and current-order records from the active database. Shared item metadata and settings remain. Existing backup files are not deleted.</p>
-        <label htmlFor="clear-confirmation">Type CLEAR PERSONAL DATA to continue</label>
+        <h3>Effacer les données personnelles du compte</h3>
+        <p>Cette action supprime définitivement de la base active l'historique synchronisé du compte et les ordres actuels. Les métadonnées partagées, les réglages et les sauvegardes existantes sont conservés.</p>
+        <label htmlFor="clear-confirmation">Saisissez CLEAR PERSONAL DATA pour continuer</label>
         <input id="clear-confirmation" value={clearConfirmation} onChange={(event) => setClearConfirmation(event.target.value)} />
         <button disabled={isRecoveryBusy || clearConfirmation !== 'CLEAR PERSONAL DATA'} onClick={clearPersonalData} type="button">
-          {isClearing ? 'Clearing personal data…' : 'Clear personal account data'}
+          {isClearing ? 'Effacement en cours…' : 'Effacer les données personnelles'}
         </button>
       </div>
       {message !== null && <p aria-live="polite" className="local-data-message" role="status">{message}</p>}
