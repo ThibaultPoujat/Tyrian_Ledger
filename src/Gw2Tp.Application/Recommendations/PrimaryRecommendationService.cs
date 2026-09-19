@@ -854,6 +854,8 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
     private static Money Multiply(Money unitPrice, int quantity) => new(checked(unitPrice.Copper * quantity));
     private static string NameFor(int itemId, IReadOnlyDictionary<int, string> metadata, string? scannerName) =>
         !string.IsNullOrWhiteSpace(scannerName) ? scannerName : metadata.GetValueOrDefault(itemId) ?? $"Item #{itemId}";
+    private static string? IconFor(int itemId, IReadOnlyDictionary<int, MarketItemMetadata> metadata) =>
+        metadata.TryGetValue(itemId, out var item) ? item.IconUrl : null;
     private static DateTimeOffset RequireUtc(DateTimeOffset value) => value.Offset == TimeSpan.Zero
         ? value : throw new InvalidOperationException("The recommendation clock must return UTC.");
     private static string? ErrorName(Gw2ApiErrorCategory? error) => error?.ToString();
