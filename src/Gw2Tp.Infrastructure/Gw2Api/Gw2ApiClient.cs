@@ -340,14 +340,10 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
         }
 
         string? iconUrl = null;
-        if (!string.IsNullOrWhiteSpace(dto.Icon))
+        if (!string.IsNullOrWhiteSpace(dto.Icon) &&
+            Uri.TryCreate(dto.Icon, UriKind.Absolute, out var iconUri) &&
+            string.Equals(iconUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
-            if (!Uri.TryCreate(dto.Icon, UriKind.Absolute, out var iconUri) ||
-                !string.Equals(iconUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new JsonException("The item icon URL must be an absolute HTTPS URL when present.");
-            }
-
             iconUrl = iconUri.AbsoluteUri;
         }
 
