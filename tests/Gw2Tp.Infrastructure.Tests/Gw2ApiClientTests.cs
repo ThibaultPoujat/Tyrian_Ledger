@@ -105,6 +105,8 @@ public sealed class Gw2ApiClientTests
         var metadata = Assert.IsAssignableFrom<IReadOnlyList<MarketItemMetadata>>(result.Value);
         Assert.Equal("Synthetic Mithril Widget", metadata[0].Name);
         Assert.Equal(MarketItemStackPolicy.NormalStackLimit, metadata[0].NormalStackLimit);
+        Assert.Equal("https://render.guildwars2.com/file/synthetic-mithril.png", metadata[0].IconUrl);
+        Assert.Null(metadata[1].IconUrl);
 
         var request = Assert.Single(handler.Requests);
         AssertBatchGetRequest(request, "items", "900001,900002");
