@@ -62,4 +62,7 @@ internal sealed class ItemMetadataDto
 
     [JsonPropertyName("name")]
     public required string Name { get; init; }
+
+    [JsonPropertyName("icon")]
+    public string? Icon { get; init; }
 }
