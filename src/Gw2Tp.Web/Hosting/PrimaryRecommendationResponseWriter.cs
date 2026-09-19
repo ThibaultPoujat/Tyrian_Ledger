@@ -50,7 +50,7 @@ internal static class PrimaryRecommendationResponseWriter
         actions = result.Actions.Select(action => new
         {
             action = ActionName(action.Action), action.Source, action.OrderState, action.OrderId,
-            action.ItemId, action.ItemName, action.Quantity,
+            action.ItemId, action.ItemName, action.ItemIconUrl, action.Quantity,
             capital = MoneyResponse.From(action.Capital),
             prices = new
             {
