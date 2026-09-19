@@ -29,7 +29,8 @@ public sealed record MarketListing(
 public sealed record MarketItemMetadata(
     int ItemId,
     string Name,
-    int NormalStackLimit);
+    int NormalStackLimit,
+    string? IconUrl = null);
 
 /// <summary>
 /// M9's owner-selected cap for a normal in-game item stack. Quantity selection
