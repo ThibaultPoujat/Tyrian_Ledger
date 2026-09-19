@@ -102,11 +102,11 @@ The block between the markers is machine-owned once #129 lands. Durable prose
 outside the markers must never be rewritten by the generated-state updater.
 
 <!-- BEGIN GENERATED LIVE STATE -->
-- Last completed implementation ticket: `TKT-M21-01 / #92`
-- Last merged implementation PR: `#127`
+- Last completed implementation ticket: `TKT-M21-S02 / #130`
+- Last merged implementation PR: `#136`
 - Active milestone: `M21 — Signals and Crafting Intelligence`
 - Preferred next implementation ticket: `TKT-M21-S01 / #129`
-- Allowed MVP fallback: `TKT-M21-S02 / #130` may start after #128 if #129 would delay the MVP; use session-start reconciliation until #129 lands
+- Allowed MVP fallback: `TKT-M21-S03 / #131` may start now that #130 is complete; #131 does not depend on #129, so use session-start reconciliation until #129 lands
 - Explicit active Sol gates: `#133`, `#93`, `#94`, `#96`
 - Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`
 <!-- END GENERATED LIVE STATE -->

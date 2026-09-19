@@ -24,20 +24,31 @@ The Signals surface displayed as `Mes Signaux` becomes the default primary surfa
 - Attention-gate the feed to concrete actions supported by current backend evidence.
 - Internal no-action states such as WAIT/HOLD/KEEP BID/LEAVE SELL LISTING/SKIP/REVIEW do not appear as ordinary Signals.
 - A zero-Signal state says there is currently nothing worth the user's attention rather than manufacturing work.
-- Initial Signal content: concrete action, item, quantity/relevant price, modeled profit/result, confidence, and displayed `Pourquoi ?` for deeper evidence.
+- Signal cards follow the owner-reviewed #130 execution-first hierarchy: displayed action, item image/name, quantity, and actionable per-unit price are the easiest information to find; modeled profit/result and qualitative confidence are supporting evidence.
+- Trading Post execution fields mirror the in-game entry grammar: quantity first, then per-unit price. Money values render as number + gold/silver/copper denomination glyphs, with accessible text exposing the full value semantically.
+- Reserve a stable item-image slot. Use verified item icon metadata when available and a neutral fallback glyph otherwise; missing imagery must not block a Signal or change card geometry. If #131 extends the GW2 item metadata contract, verify/document the upstream field and keep URL construction out of React.
+- `Pourquoi ?` expands inline beneath the same card for depth/history/personal/risk evidence; do not use a modal or persistent inspector.
 - Operational status is separate and compact: stale source, ArenaNet unavailable, sync failure, etc.
-- Freshness reflects actual relevant data-source timing rather than a fabricated uniform timestamp.
-- Show 30-day realized profit as the main performance number, with 7d/90d secondary context. Open/unrealized result stays separate.
-- Follow the owner-approved UX decision record from #130.
+- Freshness reflects actual relevant data-source timing rather than a fabricated uniform timestamp. The compact state names market freshness explicitly; `Données` may disclose `Compte ArenaNet` and `Historique marché` ages.
+- Show truthful next-refresh timing only when the scheduler actually knows it. While refreshing show `Actualisation en cours…`; if no precise next time exists show `Actualisation automatique`. Do not invent a countdown or progress bar.
+- Keep the realized-performance block in a stable location across normal, empty, degraded and corrective states. Show `Aujourd'hui` and `30 j` by default; keep `7 jours` and `90 jours` behind a compact disclosure. Open/unrealized result stays separate.
+- Validate the primary desktop composition at 1920×1080. Keep the compact left navigation and performance block in stable positions across states.
+- Preserve action-type color coding as a fast secondary cue, but never rely on color alone; explicit action text remains authoritative.
+- Avoid a decorative rounded footer; prefer no footer unless a flat functional status region is genuinely needed.
+- Follow the owner-approved UX decision record from #130 (`docs/ux/signals-second-screen-spike.md`) and the aligned canonical `docs/ux/ux.md`.
 - All user-facing UI/UX copy introduced or touched by this ticket is French, including labels, actions, messages, errors, empty states, helper text and accessibility text. Repository/code/internal terminology remains English.
 
 ## Acceptance criteria
 
 - [ ] App opens on the Signals surface displayed as `Mes Signaux` with the new primary navigation.
 - [ ] Existing low-value/no-action recommendation states no longer create a wall of user actions.
-- [ ] Signal cards expose evidence progressively through displayed `Pourquoi ?`.
+- [ ] At 1920×1080, the compact left navigation and realized-performance block remain stable across normal, zero-signal, degraded and corrective states.
+- [ ] Signal cards make the executable instruction easiest to scan: action, item, quantity and Trading Post-style per-unit price precede modeled profit.
+- [ ] Gold/silver/copper denomination glyphs are rendered directly with price values and remain accessible; item imagery has a stable fallback.
+- [ ] Signal cards expose evidence progressively through inline displayed `Pourquoi ?`.
 - [ ] Zero-signal, degraded-data and stale-data states are understandable and distinct.
-- [ ] 30d realized performance is visible without burying Signals; 7d/90d are secondary.
+- [ ] `Aujourd'hui` and `30 j` realized performance are visible without burying Signals; `7 jours`/`90 jours` are behind disclosure.
+- [ ] Market/account/history freshness semantics and next-refresh states are truthful and source-specific.
 - [ ] French user-facing copy is covered by representative component/E2E tests.
 - [ ] Financial truth remains backend-authoritative; no duplicate React recommendation/fee/P&L formulas.
 - [ ] Legacy supporting pages are not deleted in this ticket.
