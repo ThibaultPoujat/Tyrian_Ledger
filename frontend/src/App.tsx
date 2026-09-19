@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import './App.css';
-import ScannerPanel from './ScannerPanel';
 import RecommendationPanel from './RecommendationPanel';
-import InvestmentPanel from './InvestmentPanel';
+import MoneyDisplay from './MoneyDisplay';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
 type AccountConnectionState =
@@ -41,6 +40,7 @@ type Dashboard = {
   marketState: 'available' | 'unavailable';
   isFeeRoundingExternallyVerified: boolean;
   realizedWindows: Array<{ days: number; status: 'supported' | 'insufficientCoverage'; netProfit: Money | null; unknownBasisQuantity: number }>;
+  todayRealized: { days: number; status: 'supported' | 'insufficientCoverage'; netProfit: Money | null; unknownBasisQuantity: number } | null;
   openAcquisitionBasis: Money | null;
   netLiquidationValue: Money | null;
   unrealizedProfit: Money | null;
@@ -89,17 +89,17 @@ function isAccountConnectionResponse(payload: unknown): payload is AccountConnec
 function accountConnectionMessage(state: AccountConnectionState, missingPermissions: string[]): string {
   switch (state) {
     case 'checking':
-      return 'Checking ArenaNet key status…';
+      return 'Vérification de la clé ArenaNet…';
     case 'not_configured':
-      return 'No ArenaNet key configured';
+      return 'Aucune clé ArenaNet configurée';
     case 'valid':
-      return 'Account connection ready';
+      return 'Connexion au compte prête';
     case 'invalid':
-      return 'ArenaNet key is invalid or revoked';
+      return 'La clé ArenaNet est invalide ou révoquée';
     case 'insufficient_permissions':
-      return `ArenaNet key needs permission${missingPermissions.length === 1 ? '' : 's'}: ${missingPermissions.join(', ')}`;
+      return `Autorisation ArenaNet insuffisante : ${missingPermissions.join(', ')}`;
     case 'unavailable':
-      return 'ArenaNet key status unavailable';
+      return 'État de la clé ArenaNet indisponible';
   }
 }
 
@@ -140,6 +140,7 @@ export default function App() {
   const [dashboardStatus, setDashboardStatus] = useState<'loading' | 'error' | 'ready'>('loading');
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'failed'>('idle');
   const [localDataRefreshGeneration, setLocalDataRefreshGeneration] = useState(0);
+  const [activeView, setActiveView] = useState<'signals' | 'settings'>('signals');
   const dashboardRequestGeneration = useRef(0);
 
   useEffect(() => {
@@ -253,59 +254,124 @@ export default function App() {
   }, []);
 
   return (
-    <div className="app-page">
-      <a className="skip-link" href="#main-content">Skip to main content</a>
-      <div className="app-shell">
-        <header className="app-header">
-          <div aria-label="Tyrian Ledger" className="brand-lockup">
-            <span aria-hidden="true" className="brand-mark">TL</span>
-            <span><strong>Tyrian Ledger</strong><small>Personal trading assistant</small></span>
-          </div>
-        </header>
+    <div className="signals-app">
+      <a className="skip-link" href="#main-content">Aller au contenu principal</a>
+      <aside className="signals-sidebar">
+        <div aria-label="Tyrian Ledger" className="brand-lockup">
+          <span aria-hidden="true" className="brand-mark">TL</span>
+          <span><strong>Tyrian Ledger</strong><small>Assistant de profit</small></span>
+        </div>
+        <nav aria-label="Navigation principale" className="primary-navigation">
+          <button
+            aria-current={activeView === 'signals' ? 'page' : undefined}
+            className={activeView === 'signals' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => setActiveView('signals')}
+            type="button"
+          >
+            <span aria-hidden="true">◆</span>
+            <span>Mes Signaux</span>
+          </button>
+          <button className="nav-item" disabled type="button">
+            <span aria-hidden="true">◇</span>
+            <span>Artisanat <small>Bientôt</small></span>
+          </button>
+          <button
+            aria-current={activeView === 'settings' ? 'page' : undefined}
+            className={activeView === 'settings' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => setActiveView('settings')}
+            type="button"
+          >
+            <span aria-hidden="true">⚙</span>
+            <span>Réglages</span>
+          </button>
+        </nav>
+        <div className="sidebar-status">
+          <span className={`host-dot host-dot--${hostStatus}`} aria-hidden="true" />
+          {hostStatus === 'checking' && 'Application locale…'}
+          {hostStatus === 'connected' && 'Application locale connectée'}
+          {hostStatus === 'unavailable' && 'Application locale indisponible'}
+        </div>
+      </aside>
 
-        <main id="main-content">
-          <section aria-labelledby="primary-title" className="transition-panel">
-            <p className="eyebrow">Daily decision workflow</p>
-            <h1 id="primary-title">What should I do?</h1>
-            <p className="page-introduction">Review explicit manual actions built locally from your cash, orders, inventory, current market depth, and retained history.</p>
-            <p aria-live="polite" className={`host-status host-status--${hostStatus}`} role="status">
-              <span aria-hidden="true" />
-              {hostStatus === 'checking' && 'Checking the local host…'}
-              {hostStatus === 'connected' && 'Local host connected'}
-              {hostStatus === 'unavailable' && 'Local host unavailable'}
-            </p>
+      <main className="signals-main" id="main-content">
+        {activeView === 'signals' ? (
+          <>
+            <header className="signals-header">
+              <div>
+                <p className="eyebrow">Assistant d'action</p>
+                <h1>Mes Signaux</h1>
+                <p className="page-introduction">Uniquement les actions qui méritent votre attention maintenant.</p>
+              </div>
+              <PerformanceSummary dashboard={dashboard} status={dashboardStatus} />
+            </header>
             <RecommendationPanel refreshGeneration={localDataRefreshGeneration} />
+          </>
+        ) : (
+          <section aria-labelledby="settings-title" className="settings-view">
+            <header className="settings-header">
+              <p className="eyebrow">Configuration locale</p>
+              <h1 id="settings-title">Réglages</h1>
+              <p>Connexion ArenaNet, synchronisation et gestion des données locales.</p>
+            </header>
+
             <section aria-labelledby="account-connection-title" className="account-connection-panel">
-              <p className="eyebrow">Account connection</p>
-              <h2 id="account-connection-title">Keep your key on this computer</h2>
+              <p className="eyebrow">Compte ArenaNet</p>
+              <h2 id="account-connection-title">Connexion en lecture seule</h2>
               <p aria-live="polite" className={`account-connection-status account-connection-status--${accountConnection.state}`} role="status">
                 <span aria-hidden="true" />
                 {accountConnectionMessage(accountConnection.state, accountConnection.missingPermissions)}
               </p>
               {(accountConnection.state === 'not_configured' || accountConnection.state === 'unavailable') && (
-                <p>Store a dedicated read-only ArenaNet key with account, trading-post, and wallet access in your operating system’s credential vault. Tyrian Ledger never asks the browser to store or send it.</p>
+                <p>Enregistrez une clé ArenaNet dédiée et en lecture seule dans le coffre d'identifiants du système. Le navigateur ne stocke jamais la clé.</p>
               )}
               {accountConnection.state === 'insufficient_permissions' && (
-                <p>Use a dedicated key with account, trading-post, and wallet access for read-only personal recommendations.</p>
+                <p>La clé doit autoriser account, tradingpost et wallet pour les recommandations personnelles en lecture seule.</p>
               )}
               <button className="sync-button" disabled={syncStatus === 'syncing' || accountConnection.state !== 'valid'} onClick={synchronize} type="button">
-                {syncStatus === 'syncing' ? 'Synchronizing…' : 'Synchronize Trading Post data'}
+                {syncStatus === 'syncing' ? 'Synchronisation en cours…' : 'Synchroniser les données du Comptoir'}
               </button>
-              {syncStatus === 'failed' && <p role="alert">Synchronization could not be confirmed. Your existing local data was kept.</p>}
+              {syncStatus === 'failed' && <p role="alert">La synchronisation n'a pas pu être confirmée. Les données locales existantes sont conservées.</p>}
             </section>
-            <DashboardPanel dashboard={dashboard} status={dashboardStatus} />
-            <InvestmentPanel refreshGeneration={localDataRefreshGeneration} />
-            <ScannerPanel watchlistRefreshGeneration={localDataRefreshGeneration} />
+
             <LocalDataPanel onPersonalDataChanged={refreshLocalDataViews} />
+
+            <section className="legal-notice">
+              <h2>À propos</h2>
+              <p>Tyrian Ledger est un projet communautaire indépendant et non officiel pour Guild Wars 2. Il n'est ni affilié à ArenaNet ou NCSOFT, ni approuvé par eux.</p>
+              <p>Guild Wars 2 © ArenaNet, LLC. Tous droits réservés. Guild Wars 2 et GW2 sont des marques de NCSOFT Corporation.</p>
+            </section>
           </section>
-        </main>
-      </div>
-      <footer className="site-footer">
-        <div><strong>Tyrian Ledger</strong><span>Local-first, read-only Trading Post decision support.</span></div>
-        <p>Tyrian Ledger is an unofficial, independent Guild Wars 2 fan project and is not affiliated with or endorsed by ArenaNet or NCSOFT.</p>
-        <p>Guild Wars 2 © ArenaNet, LLC. All rights reserved. Guild Wars 2 and GW2 are trademarks or registered trademarks of NCSOFT Corporation.</p>
-      </footer>
+        )}
+      </main>
     </div>
+  );
+}
+
+function PerformanceSummary({ dashboard, status }: { dashboard: Dashboard | null; status: 'loading' | 'error' | 'ready' }) {
+  const windowFor = (days: number) => dashboard?.realizedWindows.find(window => window.days === days) ?? null;
+  const today = dashboard?.todayRealized ?? null;
+  const thirty = windowFor(30);
+  const seven = windowFor(7);
+  const ninety = windowFor(90);
+  const value = (window: { status: 'supported' | 'insufficientCoverage'; netProfit: Money | null } | null) =>
+    window?.status === 'supported' ? window.netProfit : null;
+  const unavailable = status === 'loading' ? 'Chargement…' : 'Couverture insuffisante';
+
+  return (
+    <section aria-label="Profit réalisé" className="performance-summary">
+      <span className="performance-title">Profit réalisé</span>
+      <div className="performance-primary">
+        <div><span>Aujourd'hui</span>{value(today) ? <MoneyDisplay compact money={value(today)} /> : <strong>{unavailable}</strong>}</div>
+        <div><span>30 j</span>{value(thirty) ? <MoneyDisplay compact money={value(thirty)} /> : <strong>{unavailable}</strong>}</div>
+      </div>
+      <details>
+        <summary>7 j / 90 j</summary>
+        <div className="performance-secondary">
+          <div><span>7 jours</span>{value(seven) ? <MoneyDisplay compact money={value(seven)} /> : <strong>{unavailable}</strong>}</div>
+          <div><span>90 jours</span>{value(ninety) ? <MoneyDisplay compact money={value(ninety)} /> : <strong>{unavailable}</strong>}</div>
+        </div>
+      </details>
+    </section>
   );
 }
 
@@ -319,6 +385,7 @@ function isDashboard(payload: unknown): payload is Dashboard {
     && isOneOf(payload.marketState, ['available', 'unavailable'])
     && typeof payload.isFeeRoundingExternallyVerified === 'boolean'
     && isArrayOf(payload.realizedWindows, isRealizedWindow)
+    && (payload.todayRealized === null || payload.todayRealized === undefined || isRealizedWindow(payload.todayRealized))
     && isNullableMoney(payload.openAcquisitionBasis)
     && isNullableMoney(payload.netLiquidationValue)
     && isNullableMoney(payload.unrealizedProfit)
@@ -559,6 +626,8 @@ function DashboardTable({ title, columns, children }: { title: string; columns: 
 function DashboardItems({ title, items }: { title: string; items: Dashboard['bestRealizedItems'] }) {
   return <section className="dashboard-items"><h3>{title}</h3>{items.length === 0 ? <p>No known-basis realized sales yet.</p> : <ol>{items.map((item) => <li key={item.itemId}><span>{item.itemName} ({item.quantity})</span><strong>{copper(item.netProfit)}</strong></li>)}</ol>}</section>;
 }
+
+void DashboardPanel;
 
 function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () => void }) {
   const [location, setLocation] = useState<LocalDataLocationState>({ kind: 'loading' });
