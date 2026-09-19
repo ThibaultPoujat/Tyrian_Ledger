@@ -172,6 +172,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
 
         IReadOnlyDictionary<int, HistoricalMarketAnalytics> historyByItem;
         IReadOnlyDictionary<int, MarketListing> listingsByItem;
+        IReadOnlyDictionary<int, MarketItemMetadata> displayMetadataByItem;
         try
         {
             var historyTasks = allItemIds.ToDictionary(
@@ -180,8 +181,21 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             var listingsTask = allItemIds.Length == 0
                 ? Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketListing>>.Success([]))
                 : marketDataClient.GetListingsAsync(allItemIds, cancellationToken);
+            var metadataTask = allItemIds.Length == 0
+                ? Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Success([]))
+                : marketDataClient.GetItemMetadataAsync(allItemIds, cancellationToken);
             await Task.WhenAll(historyTasks.Values).ConfigureAwait(false);
             var listingsResult = await listingsTask.ConfigureAwait(false);
+            Gw2ApiResult<IReadOnlyList<MarketItemMetadata>> metadataResult;
+            try
+            {
+                metadataResult = await metadataTask.ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException and not OperationCanceledException)
+            {
+                metadataResult = Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Failure(Gw2ApiErrorCategory.UnexpectedResponse);
+            }
+
             historyByItem = historyTasks.ToDictionary(pair => pair.Key, pair => pair.Value.Result);
             if (!listingsResult.IsSuccess || listingsResult.IsPartialData || listingsResult.Value is null)
             {
@@ -191,6 +205,20 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             listingsByItem = listingsResult.Value.Where(IsValidListing)
                 .GroupBy(value => value.ItemId).Where(group => group.Count() == 1)
                 .ToDictionary(group => group.Key, group => group.Single());
+
+            var displayMetadata = scan.Candidates
+                .Select(candidate => candidate.Item)
+                .GroupBy(item => item.ItemId)
+                .ToDictionary(group => group.Key, group => group.First());
+            if (metadataResult.IsSuccess && !metadataResult.IsPartialData && metadataResult.Value is not null)
+            {
+                foreach (var item in metadataResult.Value)
+                {
+                    displayMetadata[item.ItemId] = item;
+                }
+            }
+
+            displayMetadataByItem = displayMetadata;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -235,10 +263,10 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             scan.Candidates, scoresByItem, historyByItem, allocationsByItem,
             sizing.State == PositionSizingResultState.Sized));
         evidence.AddRange(BuildOrderEvidence(
-            local, historyByItem, listingsByItem, candidatesByItem,
+            local, historyByItem, listingsByItem, displayMetadataByItem, candidatesByItem,
             scoresByItem, allocationsByItem, reserveCancellations, sizing));
         evidence.AddRange(BuildInventoryEvidence(
-            local, historyByItem, listingsByItem, candidatesByItem,
+            local, historyByItem, listingsByItem, displayMetadataByItem, candidatesByItem,
             scoresByItem, sellQuantityByItem, sizing));
 
         var actions = actionPolicy.Evaluate(evidence);
@@ -285,13 +313,14 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             Score(score), History(history[candidate.Item.ItemId]),
             Liquidity(candidate.Liquidity, ClassifyLiquidity(candidate.Liquidity.Reasons), candidate.Liquidity.ParticipationCapQuantity),
             allocation.Constraints, true, sizingAvailable, false, false, false, false, false, false,
-            Money.Zero, Money.Zero);
+            Money.Zero, Money.Zero, candidate.Item.IconUrl);
     }).ToArray();
 
     private IReadOnlyList<PrimaryRecommendationEvidence> BuildOrderEvidence(
         LocalSnapshot local,
         IReadOnlyDictionary<int, HistoricalMarketAnalytics> history,
         IReadOnlyDictionary<int, MarketListing> listings,
+        IReadOnlyDictionary<int, MarketItemMetadata> displayMetadata,
         IReadOnlyDictionary<int, LiveMarketScannerCandidate> candidates,
         IReadOnlyDictionary<int, OpportunityScore> scores,
         IReadOnlyDictionary<int, PositionSizingAllocation> allocations,
@@ -357,7 +386,8 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 liquidity is null || classification is null ? null : Liquidity(liquidity, classification.Value, liquidity.ParticipationCapQuantity),
                 orderConstraints, complete, allocation?.State == PositionSizingAllocationState.Suggested,
                 reserveCancellations.Contains(order.ExternalOrderId), !hasKnownSellBasis,
-                exposureExceeded, false, false, false, incremental, capacity));
+                exposureExceeded, false, false, false, incremental, capacity,
+                IconFor(order.ItemId, displayMetadata)));
         }
         return result;
     }
@@ -366,6 +396,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         LocalSnapshot local,
         IReadOnlyDictionary<int, HistoricalMarketAnalytics> history,
         IReadOnlyDictionary<int, MarketListing> listings,
+        IReadOnlyDictionary<int, MarketItemMetadata> displayMetadata,
         IReadOnlyDictionary<int, LiveMarketScannerCandidate> candidates,
         IReadOnlyDictionary<int, OpportunityScore> scores,
         IReadOnlyDictionary<int, int> listedQuantity,
@@ -428,7 +459,8 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 sizing.State == PositionSizingResultState.Sized, false, false, exposureExceeded,
                 fullImmediate?.NetProfit.Copper > 0,
                 partialQuantity < unlistedQuantity && partialImmediate?.NetProfit.Copper > 0,
-                listingEconomics?.NetProfit.Copper > 0, Money.Zero, Money.Zero));
+                listingEconomics?.NetProfit.Copper > 0, Money.Zero, Money.Zero,
+                IconFor(itemId, displayMetadata)));
         }
         return result;
     }
