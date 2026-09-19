@@ -157,6 +157,7 @@ public sealed class PrimaryRecommendationServiceTests
         var buySmall = Assert.Single(result.Actions, action =>
             action.Source == PrimaryRecommendationSource.NewOpportunity && action.ItemId == 2);
         Assert.Equal(PrimaryRecommendationAction.Buy, buy.Action);
+        Assert.Equal("https://render.guildwars2.com/file/synthetic-1.png", buy.ItemIconUrl);
         Assert.Equal(10, buy.Quantity);
         Assert.Equal(1_110, buy.Capital.Copper);
         Assert.Equal(1_110, buy.Economics!.TotalCost.Copper);
@@ -727,7 +728,8 @@ public sealed class PrimaryRecommendationServiceTests
                 requestedItemIds.Select(itemId => new MarketItemMetadata(
                     itemId,
                     $"Item {itemId}",
-                    MarketItemStackPolicy.NormalStackLimit)).ToArray()));
+                    MarketItemStackPolicy.NormalStackLimit,
+                    $"https://render.guildwars2.com/file/synthetic-{itemId}.png")).ToArray()));
 
         private static Gw2ApiResult<T> Success<T>(T value) => Gw2ApiResult<T>.Success(value);
     }
@@ -739,7 +741,13 @@ public sealed class PrimaryRecommendationServiceTests
                 listing is null || !itemIds.Contains(listing.ItemId) ? [] : [listing]));
         public Task<Gw2ApiResult<IReadOnlyList<int>>> GetPriceItemIdsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>> GetPricesAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Success(
+                itemIds.Select(itemId => new MarketItemMetadata(
+                    itemId,
+                    $"Item {itemId}",
+                    MarketItemStackPolicy.NormalStackLimit,
+                    $"https://render.guildwars2.com/file/synthetic-{itemId}.png")).ToArray()));
     }
 
     private sealed class FakeHistoryService(IReadOnlyDictionary<int, HistoricalMarketAnalytics>? histories = null) : IHistoricalMarketAnalyticsService
