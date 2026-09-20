@@ -147,7 +147,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
   }, [refreshGeneration]);
 
   const signals = useMemo(
-    () => (result?.actions ?? []).filter(record => actionable.has(record.action)).slice(0, 5),
+    () => (result?.actions ?? []).filter(record => actionable.has(record.action)),
     [result],
   );
   const historyCutoff = useMemo(() => oldestHistoryCutoff(result?.actions ?? []), [result]);
