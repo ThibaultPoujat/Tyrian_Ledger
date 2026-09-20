@@ -389,8 +389,11 @@ describe('Réglages et sécurité locale', () => {
     expect(await screen.findByRole('heading', { name: 'Réglages', level: 1 })).toBeInTheDocument();
     expect(screen.getByText('Connexion au compte prête')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Synchroniser les données du Comptoir' })).toBeEnabled();
-    expect(await screen.findByRole('heading', { name: 'Sauvegarde et restauration' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Données locales' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Créer une sauvegarde locale' })).toBeEnabled();
+    expect(screen.getByText('Restaurer des données', { selector: 'summary' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Diagnostic' })).toBeInTheDocument();
+    expect(screen.getByText('Zone sensible', { selector: 'summary' })).toBeInTheDocument();
   });
 
   it('requires French destructive confirmations while preserving the guarded local API contract', async () => {
@@ -398,6 +401,7 @@ describe('Réglages et sécurité locale', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
 
+    fireEvent.click(screen.getByText('Zone sensible', { selector: 'summary' }));
     const clearButton = await screen.findByRole('button', { name: 'Effacer les données personnelles' });
     expect(clearButton).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Saisissez EFFACER LES DONNÉES PERSONNELLES pour continuer'), { target: { value: 'EFFACER LES DONNÉES PERSONNELLES' } });
@@ -407,6 +411,7 @@ describe('Réglages et sécurité locale', () => {
     const clearCall = calls.find(call => String(call.input) === '/api/local-data/clear-personal');
     expect(JSON.parse(String(clearCall?.init?.body))).toEqual({ confirmation: 'CLEAR PERSONAL DATA' });
 
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
     const restoreButton = screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' });
     expect(restoreButton).toBeDisabled();
     const file = new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' });
@@ -432,6 +437,8 @@ describe('Réglages et sécurité locale', () => {
 
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
+    fireEvent.click(screen.getByText('Zone sensible', { selector: 'summary' }));
     const restoreFile = await screen.findByLabelText('Fichier de sauvegarde');
     fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
     fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
@@ -458,6 +465,7 @@ describe('Réglages et sécurité locale', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
 
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
     fireEvent.change(await screen.findByLabelText('Sauvegarde gérée'), { target: { value: 'managed.db' } });
     fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
     fireEvent.click(screen.getByRole('button', { name: 'Restaurer la sauvegarde gérée' }));
@@ -479,6 +487,7 @@ describe('Réglages et sécurité locale', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
 
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
     const file = new File(['synthetic payload'], 'backup.db', { type: 'application/x-sqlite3' });
     fireEvent.change(await screen.findByLabelText('Fichier de sauvegarde'), { target: { files: [file] } });
     fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
@@ -500,6 +509,8 @@ describe('Réglages et sécurité locale', () => {
     }));
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
+    fireEvent.click(screen.getByText('Zone sensible', { selector: 'summary' }));
 
     fireEvent.change(await screen.findByLabelText('Fichier de sauvegarde'), { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
     fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
@@ -514,6 +525,7 @@ describe('Réglages et sécurité locale', () => {
   it('resets imported restore selection after a confirmed restore', async () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
 
     fireEvent.change(await screen.findByLabelText('Fichier de sauvegarde'), { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
     fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
