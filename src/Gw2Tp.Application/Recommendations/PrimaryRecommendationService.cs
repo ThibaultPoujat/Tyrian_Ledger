@@ -718,6 +718,9 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         evidence.CompletionRateLimitation);
     private static PrimaryRecommendationHistory History(HistoricalMarketAnalytics history) => new(
         Confidence(history), history.AsOfUtc,
+        history.Windows.Select(window => window.Coverage.LastEligibleObservedAtUtc)
+            .Where(value => value is not null)
+            .Max(),
         history.Windows.Select(window => new PrimaryRecommendationHistoryWindow(
             (int)(window.Coverage.ToInclusiveUtc - window.Coverage.FromInclusiveUtc).TotalDays,
             window.State == HistoricalMarketWindowState.Available,
