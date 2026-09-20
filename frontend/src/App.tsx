@@ -336,14 +336,13 @@ export default function App() {
         ) : (
           <section aria-labelledby="settings-title" className="settings-view">
             <header className="settings-header">
-              <p className="eyebrow">Configuration locale</p>
               <h1 id="settings-title">Réglages</h1>
-              <p>Connexion ArenaNet, synchronisation et gestion des données locales.</p>
+              <p>Compte ArenaNet, données locales et diagnostic.</p>
             </header>
 
-            <section aria-labelledby="account-connection-title" className="account-connection-panel">
-              <p className="eyebrow">Compte ArenaNet</p>
-              <h2 id="account-connection-title">Connexion en lecture seule</h2>
+            <section aria-labelledby="account-connection-title" className="settings-panel settings-panel--primary">
+              <h2 id="account-connection-title">Compte ArenaNet</h2>
+              <p className="settings-section-note">Connexion en lecture seule</p>
               <p aria-live="polite" className={`account-connection-status account-connection-status--${accountConnection.state}`} role="status">
                 <span aria-hidden="true" />
                 {accountConnectionMessage(accountConnection.state, accountConnection.missingPermissions)}
@@ -358,15 +357,6 @@ export default function App() {
                 {syncStatus === 'syncing' ? 'Synchronisation en cours…' : 'Synchroniser les données du Comptoir'}
               </button>
               {syncStatus.startsWith('failed') && <p role="alert">{syncFailureMessage(syncStatus.includes(':') ? syncStatus.slice(syncStatus.indexOf(':') + 1) : null)}</p>}
-            </section>
-
-            <section aria-labelledby="diagnostics-title" className="account-connection-panel">
-              <p className="eyebrow">Support</p>
-              <h2 id="diagnostics-title">Diagnostic</h2>
-              <p>Exportez les événements techniques récents pour diagnostiquer un problème. Les clés API et les en-têtes d'autorisation ne sont pas enregistrés.</p>
-              <button className="sync-button" onClick={() => { window.location.href = '/api/diagnostics/export'; }} type="button">
-                Exporter le diagnostic
-              </button>
             </section>
 
             <LocalDataPanel onPersonalDataChanged={refreshLocalDataViews} />
@@ -848,59 +838,84 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
   };
 
   return (
-    <section aria-labelledby="local-data-title" className="local-data-panel">
-      <p className="eyebrow">Données locales</p>
-      <h2 id="local-data-title">Sauvegarde et restauration</h2>
-      <p>Les sauvegardes restent sur cet ordinateur. Tyrian Ledger traite les fichiers uniquement via l'application locale et ne les envoie jamais vers un service cloud.</p>
-      {location.kind === 'loading' && <p aria-live="polite" role="status">Recherche des emplacements de données locales…</p>}
-      {location.kind === 'unavailable' && <p role="alert">Les emplacements de données locales sont indisponibles. Vérifiez que l'application locale fonctionne.</p>}
-      {location.kind === 'ready' && (
-        <dl className="local-data-locations">
-          <div><dt>Base de données</dt><dd><code>{location.location.databasePath}</code></dd></div>
-          <div><dt>Sauvegardes</dt><dd><code>{location.location.backupDirectoryPath}</code></dd></div>
-        </dl>
-      )}
-      <div className="local-data-action">
-        <h3>Créer une sauvegarde</h3>
-        <p>Créez une copie cohérente et horodatée avant une modification importante de l'ordinateur ou de l'application.</p>
-        <button disabled={isRecoveryBusy || location.kind !== 'ready'} onClick={createBackup} type="button">
-          {isBackingUp ? 'Création de la sauvegarde…' : 'Créer une sauvegarde locale'}
-        </button>
-      </div>
-      <div className="local-data-action">
-        <h3>Restaurer une sauvegarde</h3>
-        <p>La restauration remplace la base active uniquement après vérification du fichier sélectionné. Une sauvegarde des données actuelles est créée auparavant.</p>
-        {location.kind === 'ready' && location.location.managedBackupUploadLimitBytes !== undefined && <p>Les sauvegardes importées sélectionnées sont limitées à {Math.floor(location.location.managedBackupUploadLimitBytes / (1024 * 1024))} MiB.</p>}
-        <label htmlFor="restore-backup">Fichier de sauvegarde</label>
-        <input ref={restoreFileInput} id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
-        <label htmlFor="restore-confirmation">Saisissez {restoreConfirmationText} pour continuer</label>
-        <input id="restore-confirmation" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} />
-        <button disabled={isRecoveryBusy || restoreFile === null || restoreConfirmation !== restoreConfirmationText} onClick={restore} type="button">
-          {isRestoring ? 'Restauration en cours…' : 'Restaurer la sauvegarde sélectionnée'}
-        </button>
-        {location.kind === 'ready' && location.location.managedBackups !== undefined && <>
-          <p>La restauration gérée accepte uniquement les sauvegardes créées par Tyrian Ledger présentes dans le dossier Backups de l'application. Après y avoir déplacé un fichier, actualisez cette liste avant de le sélectionner.</p>
-          <button disabled={isRecoveryBusy} onClick={refreshManagedBackups} type="button">Actualiser les sauvegardes gérées</button>
-          <label htmlFor="managed-restore-backup">Sauvegarde gérée</label>
-          <select id="managed-restore-backup" value={managedBackupFileName} onChange={(event) => setManagedBackupFileName(event.target.value)}>
-            <option value="">Sélectionner une sauvegarde gérée</option>
-            {location.location.managedBackups.map((backup) => <option key={backup.fileName} value={backup.fileName}>{backup.fileName}</option>)}
-          </select>
-          <button disabled={isRecoveryBusy || managedBackupFileName === '' || restoreConfirmation !== restoreConfirmationText} onClick={restoreManagedBackup} type="button">
-            {isRestoring ? 'Restauration en cours…' : 'Restaurer la sauvegarde gérée'}
+    <>
+      <section aria-labelledby="local-data-title" className="settings-panel">
+        <h2 id="local-data-title">Données locales</h2>
+        <p>Créez une sauvegarde avant une modification importante. Les sauvegardes restent sur cet ordinateur et ne sont jamais envoyées vers un service cloud.</p>
+        {location.kind === 'loading' && <p aria-live="polite" role="status">Recherche des emplacements de données locales…</p>}
+        {location.kind === 'unavailable' && <p role="alert">Les emplacements de données locales sont indisponibles. Vérifiez que l'application locale fonctionne.</p>}
+        {location.kind === 'ready' && (
+          <details className="settings-disclosure settings-disclosure--quiet">
+            <summary>Emplacements locaux</summary>
+            <dl className="local-data-locations">
+              <div><dt>Base de données</dt><dd><code>{location.location.databasePath}</code></dd></div>
+              <div><dt>Sauvegardes</dt><dd><code>{location.location.backupDirectoryPath}</code></dd></div>
+            </dl>
+          </details>
+        )}
+
+        <div className="settings-primary-action">
+          <div>
+            <h3>Sauvegarde</h3>
+            <p>Conservez une copie cohérente et horodatée de vos données locales.</p>
+          </div>
+          <button disabled={isRecoveryBusy || location.kind !== 'ready'} onClick={createBackup} type="button">
+            {isBackingUp ? 'Création de la sauvegarde…' : 'Créer une sauvegarde locale'}
           </button>
-        </>}
-      </div>
-      <div className="local-data-action local-data-action--danger">
-        <h3>Effacer les données personnelles du compte</h3>
-        <p>Cette action supprime définitivement de la base active l'historique synchronisé du compte et les ordres actuels. Les métadonnées partagées, les réglages et les sauvegardes existantes sont conservés.</p>
-        <label htmlFor="clear-confirmation">Saisissez {clearConfirmationText} pour continuer</label>
-        <input id="clear-confirmation" value={clearConfirmation} onChange={(event) => setClearConfirmation(event.target.value)} />
-        <button disabled={isRecoveryBusy || clearConfirmation !== clearConfirmationText} onClick={clearPersonalData} type="button">
-          {isClearing ? 'Effacement en cours…' : 'Effacer les données personnelles'}
+        </div>
+
+        <details className="settings-disclosure">
+          <summary>Restaurer des données</summary>
+          <div className="settings-disclosure-content">
+            <p>La restauration remplace la base active uniquement après vérification du fichier sélectionné. Une sauvegarde des données actuelles est créée auparavant.</p>
+            {location.kind === 'ready' && location.location.managedBackupUploadLimitBytes !== undefined && <p>Les sauvegardes importées sélectionnées sont limitées à {Math.floor(location.location.managedBackupUploadLimitBytes / (1024 * 1024))} MiB.</p>}
+            <label htmlFor="restore-backup">Fichier de sauvegarde</label>
+            <input ref={restoreFileInput} id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
+            <label htmlFor="restore-confirmation">Saisissez {restoreConfirmationText} pour continuer</label>
+            <input id="restore-confirmation" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} />
+            <button disabled={isRecoveryBusy || restoreFile === null || restoreConfirmation !== restoreConfirmationText} onClick={restore} type="button">
+              {isRestoring ? 'Restauration en cours…' : 'Restaurer la sauvegarde sélectionnée'}
+            </button>
+            {location.kind === 'ready' && location.location.managedBackups !== undefined && <>
+              <div className="settings-subsection">
+                <h3>Sauvegarde gérée</h3>
+                <p>Utilisez une sauvegarde créée par Tyrian Ledger présente dans le dossier Backups de l'application.</p>
+                <button disabled={isRecoveryBusy} onClick={refreshManagedBackups} type="button">Actualiser les sauvegardes gérées</button>
+                <label htmlFor="managed-restore-backup">Sauvegarde gérée</label>
+                <select id="managed-restore-backup" value={managedBackupFileName} onChange={(event) => setManagedBackupFileName(event.target.value)}>
+                  <option value="">Sélectionner une sauvegarde gérée</option>
+                  {location.location.managedBackups.map((backup) => <option key={backup.fileName} value={backup.fileName}>{backup.fileName}</option>)}
+                </select>
+                <button disabled={isRecoveryBusy || managedBackupFileName === '' || restoreConfirmation !== restoreConfirmationText} onClick={restoreManagedBackup} type="button">
+                  {isRestoring ? 'Restauration en cours…' : 'Restaurer la sauvegarde gérée'}
+                </button>
+              </div>
+            </>}
+          </div>
+        </details>
+        {message !== null && <p aria-live="polite" className="local-data-message" role="status">{message}</p>}
+      </section>
+
+      <section aria-labelledby="diagnostics-title" className="settings-panel settings-panel--support">
+        <h2 id="diagnostics-title">Diagnostic</h2>
+        <p>Exportez les événements techniques récents lorsqu'un problème doit être analysé. Les clés API et les en-têtes d'autorisation ne sont pas enregistrés.</p>
+        <button className="settings-secondary-button" onClick={() => { window.location.href = '/api/diagnostics/export'; }} type="button">
+          Exporter le diagnostic
         </button>
-      </div>
-      {message !== null && <p aria-live="polite" className="local-data-message" role="status">{message}</p>}
-    </section>
+      </section>
+
+      <details className="settings-panel settings-danger">
+        <summary>Zone sensible</summary>
+        <div className="settings-disclosure-content">
+          <h2>Effacer les données personnelles locales</h2>
+          <p>Cette action supprime définitivement de la base active l'historique synchronisé du compte et les ordres actuels. Les métadonnées partagées, les réglages et les sauvegardes existantes sont conservés.</p>
+          <label htmlFor="clear-confirmation">Saisissez {clearConfirmationText} pour continuer</label>
+          <input id="clear-confirmation" value={clearConfirmation} onChange={(event) => setClearConfirmation(event.target.value)} />
+          <button disabled={isRecoveryBusy || clearConfirmation !== clearConfirmationText} onClick={clearPersonalData} type="button">
+            {isClearing ? 'Effacement en cours…' : 'Effacer les données personnelles'}
+          </button>
+        </div>
+      </details>
+    </>
   );
 }
