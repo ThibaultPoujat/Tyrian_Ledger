@@ -183,15 +183,15 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
           <div className="freshness-grid">
             <div>
               <strong>Marché</strong>
-              <span>{sourceAge(result.scannerObservedAtUtc, 'Aucune observation récente')}</span>
+              <span>{sourceAge(result.scannerObservedAtUtc, 'Aucune observation récente', 'Actualisé')}</span>
             </div>
             <div>
               <strong>Compte ArenaNet</strong>
-              <span>{sourceAge(result.lastSuccessfulSyncAtUtc, "Pas encore synchronisé")}</span>
+              <span>{sourceAge(result.lastSuccessfulSyncAtUtc, "Pas encore synchronisé", 'Synchronisé')}</span>
             </div>
             <div>
               <strong>Historique marché</strong>
-              <span>{sourceAge(historyCutoff, 'Aucun échantillon exploitable')}</span>
+              <span>{sourceAge(historyCutoff, 'Aucun échantillon exploitable', 'Dernier échantillon enregistré')}</span>
             </div>
           </div>
         </details>
@@ -340,7 +340,7 @@ function SignalCard({ record }: { record: RecommendationRecord }) {
               </section>
               <section>
                 <h4>Fraîcheur des données</h4>
-                <p>{record.history ? `Historique marché : ${sourceAge(record.history.commonCutoffUtc, 'inconnu')}.` : 'Historique marché : inconnu.'}</p>
+                <p>{record.history ? `Historique marché : ${sourceAge(record.history.commonCutoffUtc, 'inconnu', 'Dernier échantillon enregistré')}.` : 'Historique marché : inconnu.'}</p>
               </section>
             </div>
           </details>
@@ -504,8 +504,8 @@ function marketFreshness(timestamp: string | null): string {
   return timestamp ? `Marché actualisé ${agePhrase(timestamp)}` : 'Marché : aucune observation récente';
 }
 
-function sourceAge(timestamp: string | null, fallback: string): string {
-  return timestamp ? `Mis à jour ${agePhrase(timestamp)}` : fallback;
+function sourceAge(timestamp: string | null, fallback: string, prefix: string): string {
+  return timestamp ? `${prefix} ${agePhrase(timestamp)}` : fallback;
 }
 
 function agePhrase(timestamp: string): string {
