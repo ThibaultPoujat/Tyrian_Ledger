@@ -358,6 +358,10 @@ function PerformanceSummary({ dashboard, status }: { dashboard: Dashboard | null
   const ninety = windowFor(90);
   const value = (window: { status: 'supported' | 'insufficientCoverage'; netProfit: Money | null } | null) =>
     window?.status === 'supported' ? window.netProfit : null;
+  const excluded = (window: { unknownBasisQuantity: number } | null) =>
+    window !== null && window.unknownBasisQuantity > 0
+      ? <small>{window.unknownBasisQuantity} unité{window.unknownBasisQuantity === 1 ? '' : 's'} vendue{window.unknownBasisQuantity === 1 ? '' : 's'} exclue{window.unknownBasisQuantity === 1 ? '' : 's'} (prix d'achat inconnu)</small>
+      : null;
   const unavailable = status === 'loading'
     ? 'Chargement…'
     : status === 'error' || dashboard === null
@@ -372,14 +376,14 @@ function PerformanceSummary({ dashboard, status }: { dashboard: Dashboard | null
     <section aria-label="Profit réalisé" className="performance-summary">
       <span className="performance-title">Profit réalisé</span>
       <div className="performance-primary">
-        <div><span>Aujourd'hui</span>{value(today) ? <MoneyDisplay compact money={value(today)} /> : <strong>{unavailable}</strong>}</div>
-        <div><span>30 j</span>{value(thirty) ? <MoneyDisplay compact money={value(thirty)} /> : <strong>{unavailable}</strong>}</div>
+        <div><span>Aujourd'hui</span>{value(today) ? <MoneyDisplay compact money={value(today)} /> : <strong>{unavailable}</strong>}{excluded(today)}</div>
+        <div><span>30 j</span>{value(thirty) ? <MoneyDisplay compact money={value(thirty)} /> : <strong>{unavailable}</strong>}{excluded(thirty)}</div>
       </div>
       <details>
         <summary>7 j / 90 j</summary>
         <div className="performance-secondary">
-          <div><span>7 jours</span>{value(seven) ? <MoneyDisplay compact money={value(seven)} /> : <strong>{unavailable}</strong>}</div>
-          <div><span>90 jours</span>{value(ninety) ? <MoneyDisplay compact money={value(ninety)} /> : <strong>{unavailable}</strong>}</div>
+          <div><span>7 jours</span>{value(seven) ? <MoneyDisplay compact money={value(seven)} /> : <strong>{unavailable}</strong>}{excluded(seven)}</div>
+          <div><span>90 jours</span>{value(ninety) ? <MoneyDisplay compact money={value(ninety)} /> : <strong>{unavailable}</strong>}{excluded(ninety)}</div>
         </div>
       </details>
     </section>
