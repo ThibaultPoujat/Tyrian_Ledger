@@ -181,10 +181,11 @@ Use explicit source meanings rather than terse ambiguous labels:
 
 The compact default may show current market freshness plus a `Données`
 disclosure for account/history detail. Show a next-refresh countdown only when
-the scheduler genuinely knows the next planned refresh time. Use
-`Actualisation en cours…` while refreshing and `Actualisation automatique`
-when no precise next time exists. Do not invent a progress bar/countdown merely
-to imply activity.
+a scheduler genuinely exists and knows the next planned refresh time. Use
+`Actualisation en cours…` while refreshing. Before #95 adds the continuous
+Signal loop, #131 truthfully displays `Actualisation à la demande`; use
+`Actualisation automatique` only once an automatic scheduler actually exists.
+Do not invent a progress bar/countdown merely to imply activity.
 
 Use understandable French degraded states and preserve the difference between:
 
