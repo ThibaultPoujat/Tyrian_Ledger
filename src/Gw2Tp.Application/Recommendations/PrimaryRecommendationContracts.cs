@@ -35,6 +35,7 @@ public sealed record PrimaryRecommendationHistoryWindow(
     int DurationDays, bool IsAvailable, int RawObservationCount, int EligibleObservationCount, decimal ObservedSpanPercent);
 public sealed record PrimaryRecommendationHistory(
     OpportunityHistoricalConfidence Confidence, DateTimeOffset CommonCutoffUtc,
+    DateTimeOffset? LastObservedAtUtc,
     IReadOnlyList<PrimaryRecommendationHistoryWindow> Windows);
 public sealed record PrimaryRecommendationLiquidity(
     PositionSizingLiquidity Classification, long TotalBuyQuantity, long TotalSellQuantity,
