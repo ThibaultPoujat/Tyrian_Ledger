@@ -97,7 +97,7 @@ function syncFailureMessage(error: string | null): string {
     forbidden: "La clé ArenaNet ne dispose pas des autorisations nécessaires : account, tradingpost et wallet.",
     rate_limited: "ArenaNet limite temporairement les requêtes. Réessayez dans quelques instants.",
     upstream_unavailable: "ArenaNet est temporairement indisponible. Vos données locales existantes sont conservées.",
-    transport_failure: "La connexion à ArenaNet a échoué. Vérifiez votre connexion réseau puis réessayez.",
+    transport_failure: "La requête vers ArenaNet a échoué ou a expiré. Réessayez dans quelques instants.",
     persistence_failure: "La synchronisation a été reçue, mais l'enregistrement local a échoué. Vos données locales existantes sont conservées.",
     invalid_payload: "ArenaNet a renvoyé des données inattendues. Vos données locales existantes sont conservées.",
     incomplete_data: "Les données reçues d'ArenaNet sont incomplètes. Vos données locales existantes sont conservées.",
