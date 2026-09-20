@@ -420,6 +420,32 @@ describe('Réglages et sécurité locale', () => {
     expect(restoreBody.get('confirmation')).toBe('RESTORE LOCAL DATA');
   });
 
+  it('keeps destructive recovery actions mutually exclusive while a backup is running', async () => {
+    let completeBackup!: (value: unknown) => void;
+    const baseFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/local-data/backup') {
+        return new Promise(resolve => { completeBackup = resolve; });
+      }
+      return baseFetch(input, init);
+    }));
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+    const restoreFile = await screen.findByLabelText('Fichier de sauvegarde');
+    fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    fireEvent.change(screen.getByLabelText('Saisissez EFFACER LES DONNÉES PERSONNELLES pour continuer'), { target: { value: 'EFFACER LES DONNÉES PERSONNELLES' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Créer une sauvegarde locale' }));
+
+    expect(await screen.findByRole('button', { name: 'Création de la sauvegarde…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Effacer les données personnelles' })).toBeDisabled();
+
+    completeBackup({ ok: true, json: vi.fn().mockResolvedValue({ fileName: 'synthetic.db' }) });
+    expect(await screen.findByText('Sauvegarde créée : synthetic.db')).toBeInTheDocument();
+  });
+
   it('uses only same-origin application contracts and never browser storage', async () => {
     const { calls } = installFetch();
     render(<App />);
