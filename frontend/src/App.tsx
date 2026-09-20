@@ -360,6 +360,15 @@ export default function App() {
               {syncStatus.startsWith('failed') && <p role="alert">{syncFailureMessage(syncStatus.includes(':') ? syncStatus.slice(syncStatus.indexOf(':') + 1) : null)}</p>}
             </section>
 
+            <section aria-labelledby="diagnostics-title" className="account-connection-panel">
+              <p className="eyebrow">Support</p>
+              <h2 id="diagnostics-title">Diagnostic</h2>
+              <p>Exportez les événements techniques récents pour diagnostiquer un problème. Les clés API et les en-têtes d'autorisation ne sont pas enregistrés.</p>
+              <button className="sync-button" onClick={() => { window.location.href = '/api/diagnostics/export'; }} type="button">
+                Exporter le diagnostic
+              </button>
+            </section>
+
             <LocalDataPanel onPersonalDataChanged={refreshLocalDataViews} />
 
             <section className="legal-notice">
