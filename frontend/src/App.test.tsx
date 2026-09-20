@@ -536,6 +536,22 @@ describe('Réglages et sécurité locale', () => {
     expect(Storage.prototype.removeItem).not.toHaveBeenCalled();
   });
 
+  it('shows the backend synchronization failure reason in actionable French copy', async () => {
+    const baseFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/personal-trading-post/sync') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'failed', error: 'unauthorized' }) });
+      }
+      return baseFetch(input, init);
+    }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Synchroniser les données du Comptoir' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("La clé ArenaNet a été refusée. Vérifiez qu'elle est toujours valide.");
+  });
+
   it('refreshes Signals evidence after a successful account synchronization', async () => {
     const { calls } = installFetch();
     render(<App />);
