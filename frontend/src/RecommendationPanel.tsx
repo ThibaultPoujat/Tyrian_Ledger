@@ -130,7 +130,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
     }).then(async response => {
       const payload: unknown = await response.json();
       if (generation !== requestGeneration.current) return;
-      if (!response.ok || !isRecommendationResponse(payload)) {
+      if (!isRecommendationResponse(payload)) {
         setStatus('error');
         return;
       }
