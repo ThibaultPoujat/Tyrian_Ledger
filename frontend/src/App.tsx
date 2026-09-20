@@ -31,6 +31,9 @@ type LocalDataLocationState =
   | { kind: 'ready'; location: LocalDataLocation };
 
 type Money = { copper: string };
+const restoreConfirmationText = 'RESTAURER LES DONNÉES LOCALES';
+const clearConfirmationText = 'EFFACER LES DONNÉES PERSONNELLES';
+
 type Dashboard = {
   state: 'ready' | 'notSynchronized' | 'accountUnavailable';
   accountError: string | null;
@@ -697,7 +700,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
   };
 
   const restore = () => {
-    if (restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA') {
+    if (restoreFile === null || restoreConfirmation !== restoreConfirmationText) {
       return;
     }
 
@@ -714,7 +717,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
 
     const form = new FormData();
     form.append('backup', restoreFile);
-    form.append('confirmation', restoreConfirmation);
+    form.append('confirmation', 'RESTORE LOCAL DATA');
     void fetch('/api/local-data/restore', { method: 'POST', headers: localRequestHeaders(), body: form })
       .then(async (response) => {
         if (!response.ok) {
@@ -743,7 +746,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
   };
 
   const restoreManagedBackup = () => {
-    if (managedBackupFileName === '' || restoreConfirmation !== 'RESTORE LOCAL DATA') {
+    if (managedBackupFileName === '' || restoreConfirmation !== restoreConfirmationText) {
       return;
     }
 
@@ -752,7 +755,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     void fetch('/api/local-data/restore-managed', {
       method: 'POST',
       headers: { ...localRequestHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmation: restoreConfirmation, backupFileName: managedBackupFileName }),
+      body: JSON.stringify({ confirmation: 'RESTORE LOCAL DATA', backupFileName: managedBackupFileName }),
     })
       .then(async (response) => {
         if (!response.ok) {
@@ -778,7 +781,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
   };
 
   const clearPersonalData = () => {
-    if (clearConfirmation !== 'CLEAR PERSONAL DATA') {
+    if (clearConfirmation !== clearConfirmationText) {
       return;
     }
 
@@ -787,7 +790,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     void fetch('/api/local-data/clear-personal', {
       method: 'POST',
       headers: { ...localRequestHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmation: clearConfirmation }),
+      body: JSON.stringify({ confirmation: 'CLEAR PERSONAL DATA' }),
     })
       .then(async (response) => {
         if (!response.ok) {
@@ -833,9 +836,9 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
         {location.kind === 'ready' && location.location.managedBackupUploadLimitBytes !== undefined && <p>Les sauvegardes importées sélectionnées sont limitées à {Math.floor(location.location.managedBackupUploadLimitBytes / (1024 * 1024))} MiB.</p>}
         <label htmlFor="restore-backup">Fichier de sauvegarde</label>
         <input ref={restoreFileInput} id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
-        <label htmlFor="restore-confirmation">Saisissez RESTORE LOCAL DATA pour continuer</label>
+        <label htmlFor="restore-confirmation">Saisissez {restoreConfirmationText} pour continuer</label>
         <input id="restore-confirmation" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} />
-        <button disabled={isRecoveryBusy || restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restore} type="button">
+        <button disabled={isRecoveryBusy || restoreFile === null || restoreConfirmation !== restoreConfirmationText} onClick={restore} type="button">
           {isRestoring ? 'Restauration en cours…' : 'Restaurer la sauvegarde sélectionnée'}
         </button>
         {location.kind === 'ready' && location.location.managedBackups !== undefined && <>
@@ -846,7 +849,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
             <option value="">Sélectionner une sauvegarde gérée</option>
             {location.location.managedBackups.map((backup) => <option key={backup.fileName} value={backup.fileName}>{backup.fileName}</option>)}
           </select>
-          <button disabled={isRecoveryBusy || managedBackupFileName === '' || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restoreManagedBackup} type="button">
+          <button disabled={isRecoveryBusy || managedBackupFileName === '' || restoreConfirmation !== restoreConfirmationText} onClick={restoreManagedBackup} type="button">
             {isRestoring ? 'Restauration en cours…' : 'Restaurer la sauvegarde gérée'}
           </button>
         </>}
@@ -854,9 +857,9 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
       <div className="local-data-action local-data-action--danger">
         <h3>Effacer les données personnelles du compte</h3>
         <p>Cette action supprime définitivement de la base active l'historique synchronisé du compte et les ordres actuels. Les métadonnées partagées, les réglages et les sauvegardes existantes sont conservés.</p>
-        <label htmlFor="clear-confirmation">Saisissez CLEAR PERSONAL DATA pour continuer</label>
+        <label htmlFor="clear-confirmation">Saisissez {clearConfirmationText} pour continuer</label>
         <input id="clear-confirmation" value={clearConfirmation} onChange={(event) => setClearConfirmation(event.target.value)} />
-        <button disabled={isRecoveryBusy || clearConfirmation !== 'CLEAR PERSONAL DATA'} onClick={clearPersonalData} type="button">
+        <button disabled={isRecoveryBusy || clearConfirmation !== clearConfirmationText} onClick={clearPersonalData} type="button">
           {isClearing ? 'Effacement en cours…' : 'Effacer les données personnelles'}
         </button>
       </div>
