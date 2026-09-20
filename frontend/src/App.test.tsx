@@ -489,6 +489,41 @@ describe('Réglages et sécurité locale', () => {
     expect(calls.some(call => String(call.input) === '/api/local-data/restore-managed')).toBe(false);
   });
 
+  it('reports unknown restore and clear outcomes without encouraging a destructive retry', async () => {
+    const baseFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/local-data/restore' || url === '/api/local-data/clear-personal') {
+        return Promise.reject(new TypeError('connection lost'));
+      }
+      return baseFetch(input, init);
+    }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    fireEvent.change(await screen.findByLabelText('Fichier de sauvegarde'), { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' }));
+    expect(await screen.findByText("Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Saisissez EFFACER LES DONNÉES PERSONNELLES pour continuer'), { target: { value: 'EFFACER LES DONNÉES PERSONNELLES' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Effacer les données personnelles' }));
+    expect(await screen.findByText("Le résultat de l'effacement n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.")).toBeInTheDocument();
+  });
+
+  it('resets imported restore selection after a confirmed restore', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    fireEvent.change(await screen.findByLabelText('Fichier de sauvegarde'), { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    const button = screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' });
+    fireEvent.click(button);
+
+    expect(await screen.findByText(/Sauvegarde restaurée/)).toBeInTheDocument();
+    expect(button).toBeDisabled();
+  });
+
   it('uses only same-origin application contracts and never browser storage', async () => {
     const { calls } = installFetch();
     render(<App />);
