@@ -121,6 +121,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
   const [result, setResult] = useState<RecommendationResponse | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const requestGeneration = useRef(0);
+  const [, setFreshnessTick] = useState(0);
 
   const load = () => {
     const generation = ++requestGeneration.current;
@@ -145,6 +146,11 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
     load();
     return () => { requestGeneration.current++; };
   }, [refreshGeneration]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setFreshnessTick(tick => tick + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const signals = useMemo(
     () => (result?.actions ?? [])
