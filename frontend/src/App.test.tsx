@@ -249,7 +249,8 @@ describe('Mes Signaux MVP', () => {
     const performance = await screen.findByLabelText('Profit réalisé');
     expect(within(performance).getByText("Aujourd'hui")).toBeInTheDocument();
     expect(within(performance).getByText('30 j')).toBeInTheDocument();
-    expect(within(performance).queryByText('7 jours')).not.toBeInTheDocument();
+    const disclosure = within(performance).getByText('7 j / 90 j').closest('details');
+    expect(disclosure).not.toHaveAttribute('open');
 
     fireEvent.click(within(performance).getByText('7 j / 90 j'));
     expect(within(performance).getByText('7 jours')).toBeInTheDocument();
@@ -291,8 +292,9 @@ describe('Mes Signaux MVP', () => {
   it('uses an item image when supplied and preserves the fallback slot on image failure', async () => {
     render(<App />);
     const buyCard = (await screen.findByRole('heading', { name: "Lingot d'orichalque", level: 3 })).closest('article');
-    const image = within(buyCard!).getByRole('img', { hidden: true });
-    fireEvent.error(image);
+    const image = buyCard!.querySelector('img');
+    expect(image).not.toBeNull();
+    fireEvent.error(image!);
     expect(within(buyCard!).getByText('◇')).toBeInTheDocument();
   });
 
