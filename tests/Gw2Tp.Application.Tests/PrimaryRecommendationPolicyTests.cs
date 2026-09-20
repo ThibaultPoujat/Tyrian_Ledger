@@ -292,7 +292,7 @@ public sealed class PrimaryRecommendationPolicyTests
     private static PrimaryRecommendationScore Score(decimal total = 80m, IReadOnlyList<OpportunityScoreAnomaly>? anomalies = null) =>
         new(1, total, total, 0m, [], anomalies ?? []);
     private static PrimaryRecommendationHistory History(OpportunityHistoricalConfidence confidence) =>
-        new(confidence, new DateTimeOffset(2026, 9, 9, 10, 0, 0, TimeSpan.Zero), []);
+        new(confidence, new DateTimeOffset(2026, 9, 9, 10, 0, 0, TimeSpan.Zero), null, []);
     private static PrimaryRecommendationLiquidity Liquidity() =>
         new(PositionSizingLiquidity.High, 100, 100, 50, 50, 10, 10, []);
 }
