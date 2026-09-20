@@ -113,7 +113,7 @@ const allActions: RecommendationAction[] = [
 ];
 const sources: RecommendationSource[] = ['newOpportunity', 'buyOrder', 'sellListing', 'inventory'];
 const actionable = new Set<RecommendationAction>([
-  'BUY', 'BUY SMALL', 'UPDATE BID', 'STOP BIDDING', 'CANCEL BID',
+  'BUY', 'BUY SMALL', 'UPDATE BID', 'CANCEL BID',
   'LIST', 'REDUCE', 'SELL PARTIAL', 'SELL',
 ]);
 
