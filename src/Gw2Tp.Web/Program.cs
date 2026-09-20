@@ -11,6 +11,7 @@ using Gw2Tp.Application.Investments;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Infrastructure.AccountConnection;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Infrastructure.Persistence;
 using Gw2Tp.Web.Hosting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -115,9 +116,25 @@ public static class Program
                 new HealthCheckOptions { ResponseWriter = HealthResponseWriter.WriteAsync })
             .WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
 
-        app.MapGet("/api/diagnostics/export", (LocalDiagnosticLog diagnostics) =>
-            Results.Text(diagnostics.ExportText(), "text/plain; charset=utf-8"))
-            .WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
+        app.MapGet("/api/diagnostics/export", (LocalDiagnosticLog diagnostics, SafeTransportDiagnosticBuffer transportDiagnostics) =>
+        {
+            var export = diagnostics.ExportText();
+            var transport = transportDiagnostics.Snapshot();
+            if (transport.Count > 0)
+            {
+                export += Environment.NewLine + "Transport ArenaNet" + Environment.NewLine;
+                foreach (var item in transport)
+                {
+                    export += $"{item.TimestampUtc:O} [ERROR] ArenaNet/{item.Operation} code={item.Code} exception={item.ExceptionType}";
+                    if (item.InnerExceptionType is not null)
+                    {
+                        export += $" inner={item.InnerExceptionType}";
+                    }
+                    export += $" elapsedMs={item.ElapsedMilliseconds}" + Environment.NewLine;
+                }
+            }
+            return Results.Text(export, "text/plain; charset=utf-8");
+        }).WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
         app.MapGet(
             "/api/account-connection",
             async (
