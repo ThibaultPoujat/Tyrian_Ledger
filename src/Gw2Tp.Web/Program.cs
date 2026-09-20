@@ -135,9 +135,19 @@ public static class Program
             async (
                 HttpContext context,
                 IPersonalTradingPostSynchronizationService synchronizationService,
+                LocalDiagnosticLog diagnostics,
                 CancellationToken cancellationToken) =>
             {
+                var correlationId = Guid.NewGuid().ToString("N");
+                diagnostics.Record("INFO", "ArenaNet", "personal-trading-post-sync", "SYNC_STARTED", "Synchronisation du Comptoir démarrée.", correlationId: correlationId);
                 var result = await synchronizationService.SynchronizeAsync(cancellationToken).ConfigureAwait(false);
+                diagnostics.Record(
+                    result.IsSuccess ? "INFO" : "ERROR",
+                    "ArenaNet",
+                    "personal-trading-post-sync",
+                    result.IsSuccess ? "SYNC_SUCCEEDED" : (result.IsPersistenceFailure ? "PERSISTENCE_FAILURE" : result.ErrorCategory?.ToString().ToUpperInvariant() ?? "UNKNOWN_FAILURE"),
+                    result.IsSuccess ? "Synchronisation du Comptoir terminée." : "La synchronisation du Comptoir a échoué. Consultez le code pour la catégorie de panne.",
+                    correlationId: correlationId);
                 await PersonalTradingPostSynchronizationResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
             });
         app.MapPost(
