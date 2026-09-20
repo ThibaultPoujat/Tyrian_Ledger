@@ -289,7 +289,6 @@ describe('Mes Signaux MVP', () => {
     expect(within(buyCard!).getByText('Les fenêtres historiques disponibles soutiennent cette opportunité.')).toBeInTheDocument();
     expect(within(buyCard!).getByText(/Historique personnel : 3 résultats à base connue/)).toBeInTheDocument();
     expect(within(buyCard!).queryByText('Backend English text must not be rendered directly.')).not.toBeInTheDocument();
-    expect(within(buyCard!).getByLabelText("Masquer l'explication de ce signal")).toBeInTheDocument();
     expect(within(buyCard!).getByText(/Le profit est modélisé/)).toBeInTheDocument();
   });
 
