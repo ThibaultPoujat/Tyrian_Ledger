@@ -989,12 +989,21 @@ tbody tr:last-child td { border-bottom: 0; }
   }
 
   .primary-navigation {
-    width: 100%;
+    width: auto;
+    min-width: 0;
+    flex: 1 1 auto;
     justify-content: flex-end;
   }
 
   .nav-item {
-    font-size: 0.78rem;
+    min-width: 0;
+    padding-inline: 0.4rem;
+    font-size: 0.74rem;
+  }
+
+  .signals-sidebar {
+    gap: 0.45rem;
+    padding-inline: 0.65rem;
   }
 
   .nav-item small {
