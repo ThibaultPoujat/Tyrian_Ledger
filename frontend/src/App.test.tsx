@@ -446,6 +446,49 @@ describe('Réglages et sécurité locale', () => {
     expect(await screen.findByText('Sauvegarde créée : synthetic.db')).toBeInTheDocument();
   });
 
+  it('restores a selected managed backup through the guarded local route', async () => {
+    const { calls } = installFetch({
+      localData: {
+        databasePath: '/synthetic/Tyrian Ledger/tyrian-ledger.db',
+        backupDirectoryPath: '/synthetic/Tyrian Ledger/backups',
+        managedBackupUploadLimitBytes: 512 * 1024 * 1024,
+        managedBackups: [{ fileName: 'managed.db', createdAtUtc: '2026-09-19T07:00:00Z' }],
+      },
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    fireEvent.change(await screen.findByLabelText('Sauvegarde gérée'), { target: { value: 'managed.db' } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurer la sauvegarde gérée' }));
+
+    await waitFor(() => expect(calls.some(call => String(call.input) === '/api/local-data/restore-managed')).toBe(true));
+    const call = calls.find(entry => String(entry.input) === '/api/local-data/restore-managed');
+    expect(JSON.parse(String(call?.init?.body))).toEqual({ confirmation: 'RESTORE LOCAL DATA', backupFileName: 'managed.db' });
+  });
+
+  it('blocks oversized imported backups without inferring a managed restore', async () => {
+    const { calls } = installFetch({
+      localData: {
+        databasePath: '/synthetic/Tyrian Ledger/tyrian-ledger.db',
+        backupDirectoryPath: '/synthetic/Tyrian Ledger/backups',
+        managedBackupUploadLimitBytes: 10,
+        managedBackups: [{ fileName: 'backup.db', createdAtUtc: '2026-09-19T07:00:00Z' }],
+      },
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    const file = new File(['synthetic payload'], 'backup.db', { type: 'application/x-sqlite3' });
+    fireEvent.change(await screen.findByLabelText('Fichier de sauvegarde'), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' }));
+
+    expect(await screen.findByText(/Cette sauvegarde importée dépasse la limite locale/)).toBeInTheDocument();
+    expect(calls.some(call => String(call.input) === '/api/local-data/restore')).toBe(false);
+    expect(calls.some(call => String(call.input) === '/api/local-data/restore-managed')).toBe(false);
+  });
+
   it('uses only same-origin application contracts and never browser storage', async () => {
     const { calls } = installFetch();
     render(<App />);
