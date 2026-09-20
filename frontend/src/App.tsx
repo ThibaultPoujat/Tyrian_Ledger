@@ -214,7 +214,10 @@ export default function App() {
       .then(async (response) => {
         const payload: unknown = await response.json();
         if (!response.ok || typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'succeeded') {
-          setSyncStatus('failed');
+          const error = typeof payload === 'object' && payload !== null && typeof (payload as Record<string, unknown>).error === 'string'
+            ? (payload as Record<string, string>).error
+            : null;
+          setSyncStatus(error === null ? 'failed' : `failed:${error}`);
           return;
         }
         setSyncStatus('idle');
