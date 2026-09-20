@@ -154,6 +154,7 @@ const readyRecommendations = {
 type ApiOverrides = {
   dashboard?: unknown;
   recommendations?: unknown;
+  recommendationsOk?: boolean;
   health?: unknown;
   account?: unknown;
   localData?: unknown;
@@ -183,7 +184,7 @@ function installFetch(overrides: ApiOverrides = {}) {
     }
     if (url === '/api/recommendations') {
       return Promise.resolve({
-        ok: true,
+        ok: overrides.recommendationsOk ?? true,
         json: vi.fn().mockResolvedValue(overrides.recommendations ?? readyRecommendations),
       });
     }
@@ -315,6 +316,22 @@ describe('Mes Signaux MVP', () => {
 
     expect(await screen.findByText('Aucun signal ne mérite votre attention pour le moment.')).toBeInTheDocument();
     expect(screen.getByText('Les données actuelles ne justifient aucune action.')).toBeInTheDocument();
+  });
+
+  it('preserves structured degraded operational truth returned with HTTP 503', async () => {
+    cleanup();
+    installFetch({
+      recommendationsOk: false,
+      recommendations: {
+        ...readyRecommendations,
+        state: 'evidenceUnavailable',
+        evidenceError: 'upstreamUnavailable',
+        actions: [],
+      },
+    });
+    render(<App />);
+
+    expect(await screen.findByText(/ArenaNet ou les données de marché sont temporairement indisponibles/)).toHaveAttribute('role', 'status');
   });
 
   it('keeps degraded operational truth separate from Signal cards', async () => {
