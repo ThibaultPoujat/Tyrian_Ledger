@@ -1567,7 +1567,7 @@ public sealed class LocalHostIntegrationTests
                     new Money(300), new Money(603), new Money(31), new Money(61),
                     new Money(511), new Money(211), new Money(331), "63.75%"),
                 new PrimaryRecommendationScore(1, 80m, 80m, 0m, [], []),
-                new PrimaryRecommendationHistory(OpportunityHistoricalConfidence.Strong, now, []),
+                new PrimaryRecommendationHistory(OpportunityHistoricalConfidence.Strong, now, now, []),
                 new PrimaryRecommendationLiquidity(PositionSizingLiquidity.High, 100, 100, 50, 50, 10, 10, []),
                 [new PositionSizingConstraint(PositionSizingConstraintName.ItemExposure, new Money(500), 5, true)],
                 [
