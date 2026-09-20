@@ -263,10 +263,9 @@ describe('Mes Signaux MVP', () => {
     render(<App />);
 
     expect(await screen.findByText("ANNULER L'ORDRE D'ACHAT")).toBeInTheDocument();
-    expect(document.querySelectorAll('.signal-list > .signal-card')).toHaveLength(5);
-    expect(screen.getByText('5 signaux méritent votre attention')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Quatrième opportunité', level: 3 })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Cinquième opportunité', level: 3 })).not.toBeInTheDocument();
+    expect(document.querySelectorAll('.signal-list > .signal-card')).toHaveLength(6);
+    expect(screen.getByText('6 signaux méritent votre attention')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Cinquième opportunité', level: 3 })).toBeInTheDocument();
     expect(screen.queryByText('À attendre')).not.toBeInTheDocument();
     expect(screen.queryByText('À examiner')).not.toBeInTheDocument();
     expect(screen.queryByText('Ordre à conserver')).not.toBeInTheDocument();
