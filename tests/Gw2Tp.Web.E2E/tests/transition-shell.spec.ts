@@ -25,7 +25,7 @@ test('loads Mes Signaux by default and keeps account/recovery controls under Ré
   await navigation.getByRole('button', { name: 'Réglages' }).click();
   await expect(page.getByRole('heading', { name: 'Réglages', level: 1 })).toBeVisible();
   await expect(page.getByText('Aucune clé ArenaNet configurée')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Sauvegarde et restauration' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Données locales' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Créer une sauvegarde locale' })).toBeVisible();
 
   expect(apiRequests).toEqual(expect.arrayContaining([
