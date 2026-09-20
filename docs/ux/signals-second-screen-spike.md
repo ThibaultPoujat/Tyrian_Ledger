@@ -213,7 +213,7 @@ Mes Signaux
 Aucun signal ne mérite votre attention pour le moment.
 Les données actuelles ne justifient aucune action.
 
-Marché actualisé il y a 52 s · actualisation automatique
+Marché actualisé il y a 52 s · actualisation à la demande
 [Données ▾]
 ```
 
