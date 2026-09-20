@@ -355,7 +355,15 @@ function PerformanceSummary({ dashboard, status }: { dashboard: Dashboard | null
   const ninety = windowFor(90);
   const value = (window: { status: 'supported' | 'insufficientCoverage'; netProfit: Money | null } | null) =>
     window?.status === 'supported' ? window.netProfit : null;
-  const unavailable = status === 'loading' ? 'Chargement…' : 'Couverture insuffisante';
+  const unavailable = status === 'loading'
+    ? 'Chargement…'
+    : status === 'error' || dashboard === null
+      ? 'Indisponible'
+      : dashboard.state === 'notSynchronized'
+        ? 'Non synchronisé'
+        : dashboard.state === 'accountUnavailable'
+          ? 'Compte indisponible'
+          : 'Couverture insuffisante';
 
   return (
     <section aria-label="Profit réalisé" className="performance-summary">
