@@ -164,6 +164,7 @@ function mockRecommendations() {
     history: {
       confidence: 'strong',
       commonCutoffUtc: '2026-09-19T07:59:00Z',
+      lastObservedAtUtc: '2026-09-19T07:58:00Z',
       windows: [
         { durationDays: 7, isAvailable: true, rawObservationCount: 24, eligibleObservationCount: 22, observedSpanPercent: 91 },
         { durationDays: 30, isAvailable: true, rawObservationCount: 80, eligibleObservationCount: 75, observedSpanPercent: 88 },
