@@ -357,7 +357,8 @@ describe('Réglages et sécurité locale', () => {
     expect(screen.getByRole('button', { name: 'Créer une sauvegarde locale' })).toBeEnabled();
   });
 
-  it('requires exact destructive confirmation tokens before enabling recovery actions', async () => {
+  it('requires French destructive confirmations while preserving the guarded local API contract', async () => {
+    const { calls } = installFetch();
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
 
@@ -365,6 +366,10 @@ describe('Réglages et sécurité locale', () => {
     expect(clearButton).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Saisissez EFFACER LES DONNÉES PERSONNELLES pour continuer'), { target: { value: 'EFFACER LES DONNÉES PERSONNELLES' } });
     expect(clearButton).toBeEnabled();
+    fireEvent.click(clearButton);
+    await waitFor(() => expect(calls.some(call => String(call.input) === '/api/local-data/clear-personal')).toBe(true));
+    const clearCall = calls.find(call => String(call.input) === '/api/local-data/clear-personal');
+    expect(JSON.parse(String(clearCall?.init?.body))).toEqual({ confirmation: 'CLEAR PERSONAL DATA' });
 
     const restoreButton = screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' });
     expect(restoreButton).toBeDisabled();
@@ -372,6 +377,11 @@ describe('Réglages et sécurité locale', () => {
     fireEvent.change(screen.getByLabelText('Fichier de sauvegarde'), { target: { files: [file] } });
     fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
     expect(restoreButton).toBeEnabled();
+    fireEvent.click(restoreButton);
+    await waitFor(() => expect(calls.some(call => String(call.input) === '/api/local-data/restore')).toBe(true));
+    const restoreCall = calls.find(call => String(call.input) === '/api/local-data/restore');
+    const restoreBody = restoreCall?.init?.body as FormData;
+    expect(restoreBody.get('confirmation')).toBe('RESTORE LOCAL DATA');
   });
 
   it('uses only same-origin application contracts and never browser storage', async () => {
