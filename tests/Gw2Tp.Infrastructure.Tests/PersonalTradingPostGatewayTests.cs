@@ -376,6 +376,26 @@ public sealed class PersonalTradingPostGatewayTests
     }
 
     [Fact]
+    public void Registered_personal_client_honors_configured_request_timeout()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gw2Api:RequestTimeoutMs"] = "30000",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddTyrianLedgerAccountConnection(new TestingHostEnvironment(), configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var client = provider.GetRequiredService<IHttpClientFactory>()
+            .CreateClient(PersonalTradingPostGateway.HttpClientName);
+
+        Assert.Equal(TimeSpan.FromSeconds(30), client.Timeout);
+    }
+
+    [Fact]
     public async Task Registered_gateway_suppresses_default_http_logging_and_never_logs_the_key_from_a_transport_exception()
     {
         const string sensitiveValue = "synthetic-sensitive-personal-gateway-key";
