@@ -50,7 +50,7 @@ test('presents the execution-first Signal flow at 1920x1080 using only mocked lo
 
   await page.goto('/');
 
-  await expect(page.getByText('7 signaux méritent votre attention')).toBeVisible();
+  await expect(page.getByText('5 signaux méritent votre attention')).toBeVisible();
   const firstSignal = page.locator('.signal-card').first();
   await expect(firstSignal.getByText("ANNULER L'ORDRE D'ACHAT", { exact: true })).toBeVisible();
   await expect(firstSignal.getByRole('heading', { name: 'Ordre trop cher' })).toBeVisible();
@@ -59,7 +59,8 @@ test('presents the execution-first Signal flow at 1920x1080 using only mocked lo
   await expect(firstSignal.getByText("Prix actuel de l'ordre")).toBeVisible();
   await expect(firstSignal.getByLabel("12 pièces d'or, 34 pièces d'argent, 56 pièces de cuivre")).toBeVisible();
   await expect(firstSignal.getByText('Capital à libérer')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Sixième opportunité', level: 3 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Quatrième opportunité', level: 3 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Cinquième opportunité', level: 3 })).toHaveCount(0);
   await expect(page.getByText('À attendre')).toHaveCount(0);
 
   const sidebarBefore = await page.locator('.signals-sidebar').boundingBox();
