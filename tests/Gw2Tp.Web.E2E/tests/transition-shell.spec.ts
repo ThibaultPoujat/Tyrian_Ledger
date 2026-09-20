@@ -68,6 +68,7 @@ test('presents the execution-first Signal flow at 1920x1080 using only mocked lo
   const why = firstSignal.getByText('Pourquoi ?');
   await why.focus();
   await why.press('Enter');
+  await expect(why).toHaveAttribute('aria-label', "Masquer l'explication de ce signal");
   await expect(firstSignal.getByRole('heading', { name: 'Pourquoi maintenant ?' })).toBeVisible();
   await expect(firstSignal.getByText(/L’ordre actuel dépasse le prix maximal autorisé/)).toBeVisible();
   await expect(firstSignal.getByText(/Le profit est modélisé/)).toBeVisible();
