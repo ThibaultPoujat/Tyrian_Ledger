@@ -267,7 +267,7 @@ function SignalCard({ record }: { record: RecommendationRecord }) {
     <li className={`signal-card signal-card--${tone(record.action)}`}>
       <article aria-labelledby={`signal-${record.source}-${record.orderId ?? record.itemId}`}>
         <div className="signal-card-header">
-          <ItemVisual name={record.itemName} url={record.itemIconUrl} />
+          <ItemVisual url={record.itemIconUrl} />
           <div className="signal-identity">
             <div className="signal-badges">
               {corrective && <span className="priority-badge">Prioritaire</span>}
@@ -350,14 +350,13 @@ function SignalCard({ record }: { record: RecommendationRecord }) {
   );
 }
 
-function ItemVisual({ name, url }: { name: string; url: string | null }) {
+function ItemVisual({ url }: { url: string | null }) {
   const [failed, setFailed] = useState(false);
   return (
     <span aria-hidden="true" className="item-visual">
       {url && !failed
         ? <img alt="" onError={() => setFailed(true)} src={url} />
         : <span className="item-fallback">◇</span>}
-      <span className="sr-only">{name}</span>
     </span>
   );
 }
