@@ -160,7 +160,7 @@ function mockRecommendations() {
       totalCost: { copper: '2864531' },
       roiDisplayPercent: '7.61%',
     },
-    score: { rank: itemId, totalPoints: 82, basePoints: 85, appliedPenaltyPoints: 3, components: [], anomalies: [] },
+    score: { rank: itemId, totalPoints: 82, basePoints: 85, appliedPenaltyPoints: 3, components: [], anomalies: [], personalEvidence: null },
     history: {
       confidence: 'strong',
       commonCutoffUtc: '2026-09-19T07:59:00Z',
