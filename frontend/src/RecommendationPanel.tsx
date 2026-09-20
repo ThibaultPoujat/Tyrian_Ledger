@@ -161,7 +161,9 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
             {status === 'ready' && result?.state === 'ready'
               ? signals.length === 0
                 ? 'Aucun signal'
-                : `${signals.length} signal${signals.length > 1 ? 's' : ''} mérite${signals.length > 1 ? 'nt' : ''} votre attention`
+                : signals.length === 1
+                  ? '1 signal mérite votre attention'
+                  : `${signals.length} signaux méritent votre attention`
               : 'Mes Signaux'}
           </h2>
         </div>
