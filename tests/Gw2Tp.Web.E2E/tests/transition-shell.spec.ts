@@ -84,6 +84,35 @@ test('presents the execution-first Signal flow at 1920x1080 using only mocked lo
   expect(externalRequests).toEqual([]);
 });
 
+test('keeps the primary shell fixed across normal, zero and degraded states at 1920x1080', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  let response = mockRecommendations();
+  await page.route('**/api/recommendations', route => route.fulfill({
+    contentType: 'application/json',
+    status: response.state === 'evidenceUnavailable' ? 503 : 200,
+    body: JSON.stringify(response),
+  }));
+
+  await page.goto('/');
+  await expect(page.getByText('7 signaux méritent votre attention')).toBeVisible();
+  const normalLayout = await primaryLayout(page);
+
+  response = { ...mockRecommendations(), actions: [] };
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Aucun signal ne mérite votre attention pour le moment.' })).toBeVisible();
+  await expectPrimaryLayout(page, normalLayout);
+
+  response = {
+    ...mockRecommendations(),
+    state: 'evidenceUnavailable',
+    evidenceError: 'upstream_unavailable',
+    actions: [],
+  };
+  await page.reload();
+  await expect(page.getByText(/ArenaNet ou les données de marché sont temporairement indisponibles/)).toBeVisible();
+  await expectPrimaryLayout(page, normalLayout);
+});
+
 test('keeps the Signals workspace accessible', async ({ page }) => {
   await page.route('**/api/recommendations', route => route.fulfill({
     contentType: 'application/json',
@@ -125,6 +154,30 @@ test('keeps managed local backup recovery usable from Réglages on a narrow view
   await expect.poll(async () => (await managedBackup.locator('option').count()) > 1).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+type PrimaryLayout = {
+  sidebar: { x: number; y: number };
+  performance: { x: number; y: number };
+};
+
+async function primaryLayout(page: import('@playwright/test').Page): Promise<PrimaryLayout> {
+  const sidebar = await page.locator('.signals-sidebar').boundingBox();
+  const performance = await page.locator('.performance-summary').boundingBox();
+  expect(sidebar).not.toBeNull();
+  expect(performance).not.toBeNull();
+  return {
+    sidebar: { x: sidebar!.x, y: sidebar!.y },
+    performance: { x: performance!.x, y: performance!.y },
+  };
+}
+
+async function expectPrimaryLayout(page: import('@playwright/test').Page, expected: PrimaryLayout) {
+  const actual = await primaryLayout(page);
+  expect(actual.sidebar.x).toBe(expected.sidebar.x);
+  expect(actual.sidebar.y).toBe(expected.sidebar.y);
+  expect(actual.performance.x).toBe(expected.performance.x);
+  expect(actual.performance.y).toBe(expected.performance.y);
+}
 
 function mockRecommendations() {
   const action = (
