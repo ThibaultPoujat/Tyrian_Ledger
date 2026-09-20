@@ -260,6 +260,22 @@ describe('Mes Signaux MVP', () => {
     expect(within(performance).getByLabelText(/3 pièces d'or, 27 pièces d'argent/)).toBeInTheDocument();
   });
 
+  it('discloses units excluded from realized profit when acquisition basis is unknown', async () => {
+    cleanup();
+    installFetch({
+      dashboard: {
+        ...dashboardBase,
+        todayRealized: { ...dashboardBase.todayRealized, unknownBasisQuantity: 2 },
+        realizedWindows: dashboardBase.realizedWindows.map(window =>
+          window.days === 30 ? { ...window, unknownBasisQuantity: 3 } : window),
+      },
+    });
+    render(<App />);
+
+    expect(await screen.findByText("2 unités vendues exclues (prix d'achat inconnu)")).toBeInTheDocument();
+    expect(screen.getByText("3 unités vendues exclues (prix d'achat inconnu)")).toBeInTheDocument();
+  });
+
   it('attention-gates no-action states and prioritizes the exact Trading Post instruction', async () => {
     render(<App />);
 
