@@ -668,18 +668,18 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     void fetch('/api/local-data/backup', { method: 'POST', headers: localRequestHeaders() })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('La sauvegarde n'a pas pu être créée. Vos données locales actuelles n'ont pas été modifiées.');
+          setMessage("La sauvegarde n'a pas pu être créée. Vos données locales actuelles n'ont pas été modifiées.");
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || typeof (payload as Record<string, unknown>).fileName !== 'string') {
-          setMessage('Le résultat de la sauvegarde n'a pas pu être confirmé. Vérifiez le dossier de sauvegardes locales avant de réessayer.');
+          setMessage("Le résultat de la sauvegarde n'a pas pu être confirmé. Vérifiez le dossier de sauvegardes locales avant de réessayer.");
           return;
         }
         setMessage(`Sauvegarde créée : ${(payload as Record<string, string>).fileName}`);
         setLocationRefreshGeneration((generation) => generation + 1);
       })
-      .catch(() => setMessage('Le résultat de la sauvegarde n'a pas pu être confirmé. Vérifiez le dossier de sauvegardes locales avant de réessayer.'))
+      .catch(() => setMessage("Le résultat de la sauvegarde n'a pas pu être confirmé. Vérifiez le dossier de sauvegardes locales avant de réessayer."))
       .finally(() => setIsBackingUp(false));
   };
 
@@ -710,12 +710,12 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     void fetch('/api/local-data/restore', { method: 'POST', headers: localRequestHeaders(), body: form })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('La sauvegarde sélectionnée n'a pas pu être restaurée. Vos données locales actuelles ont été conservées.');
+          setMessage("La sauvegarde sélectionnée n'a pas pu être restaurée. Vos données locales actuelles ont été conservées.");
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'restored') {
-          setMessage('Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.');
+          setMessage("Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.");
           return;
         }
         const preRestore = (payload as Record<string, unknown>).preRestoreBackupFileName;
@@ -730,7 +730,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
         onPersonalDataChanged();
         setLocationRefreshGeneration((generation) => generation + 1);
       })
-      .catch(() => setMessage('Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.'))
+      .catch(() => setMessage("Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer."))
       .finally(() => setIsRestoring(false));
   };
 
@@ -748,12 +748,12 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('La sauvegarde gérée sélectionnée n'a pas pu être restaurée. Vos données locales actuelles ont été conservées.');
+          setMessage("La sauvegarde gérée sélectionnée n'a pas pu être restaurée. Vos données locales actuelles ont été conservées.");
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'restored') {
-          setMessage('Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.');
+          setMessage("Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.");
           return;
         }
         const preRestore = (payload as Record<string, unknown>).preRestoreBackupFileName;
@@ -765,7 +765,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
         onPersonalDataChanged();
         setLocationRefreshGeneration((generation) => generation + 1);
       })
-      .catch(() => setMessage('Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.'))
+      .catch(() => setMessage("Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer."))
       .finally(() => setIsRestoring(false));
   };
 
@@ -783,19 +783,19 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('Les données personnelles n'ont pas pu être effacées. Vos données locales actuelles ont été conservées.');
+          setMessage("Les données personnelles n'ont pas pu être effacées. Vos données locales actuelles ont été conservées.");
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'personal_data_cleared') {
-          setMessage('Le résultat de l'effacement n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.');
+          setMessage("Le résultat de l'effacement n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.");
           return;
         }
         setMessage('Données personnelles du compte effacées. Les sauvegardes existantes ont été conservées.');
         setClearConfirmation('');
         onPersonalDataChanged();
       })
-      .catch(() => setMessage('Le résultat de l'effacement n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.'))
+      .catch(() => setMessage("Le résultat de l'effacement n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer."))
       .finally(() => setIsClearing(false));
   };
 
