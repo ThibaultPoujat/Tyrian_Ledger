@@ -89,6 +89,27 @@ function isAccountConnectionResponse(payload: unknown): payload is AccountConnec
     && candidate.missingRequiredPermissions.every((permission) => typeof permission === 'string');
 }
 
+function syncFailureMessage(error: string | null): string {
+  const messages: Record<string, string> = {
+    credential_not_configured: "Aucune clé ArenaNet n'est configurée. Vérifiez la connexion du compte dans les réglages.",
+    credential_unavailable: "La clé ArenaNet enregistrée n'est pas accessible. Vérifiez le coffre d'identifiants du système.",
+    unauthorized: "La clé ArenaNet a été refusée. Vérifiez qu'elle est toujours valide.",
+    forbidden: "La clé ArenaNet ne dispose pas des autorisations nécessaires : account, tradingpost et wallet.",
+    rate_limited: "ArenaNet limite temporairement les requêtes. Réessayez dans quelques instants.",
+    upstream_unavailable: "ArenaNet est temporairement indisponible. Vos données locales existantes sont conservées.",
+    transport_failure: "La connexion à ArenaNet a échoué. Vérifiez votre connexion réseau puis réessayez.",
+    persistence_failure: "La synchronisation a été reçue, mais l'enregistrement local a échoué. Vos données locales existantes sont conservées.",
+    invalid_payload: "ArenaNet a renvoyé des données inattendues. Vos données locales existantes sont conservées.",
+    incomplete_data: "Les données reçues d'ArenaNet sont incomplètes. Vos données locales existantes sont conservées.",
+    invalid_request: "La requête de synchronisation a été refusée comme invalide. Vos données locales existantes sont conservées.",
+    not_found: "Une ressource ArenaNet nécessaire à la synchronisation est introuvable.",
+    unexpected_response: "ArenaNet a renvoyé une réponse inattendue. Vos données locales existantes sont conservées.",
+  };
+  return error !== null && messages[error] !== undefined
+    ? messages[error]
+    : "La synchronisation n'a pas pu être confirmée. Les données locales existantes sont conservées.";
+}
+
 function accountConnectionMessage(state: AccountConnectionState, missingPermissions: string[]): string {
   switch (state) {
     case 'checking':
@@ -141,7 +162,7 @@ export default function App() {
   }>({ state: 'checking', missingPermissions: [] });
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dashboardStatus, setDashboardStatus] = useState<'loading' | 'error' | 'ready'>('loading');
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'failed'>('idle');
+  const [syncStatus, setSyncStatus] = useState<string>('idle');
   const [localDataRefreshGeneration, setLocalDataRefreshGeneration] = useState(0);
   const [activeView, setActiveView] = useState<'signals' | 'settings'>('signals');
   const dashboardRequestGeneration = useRef(0);
@@ -336,7 +357,7 @@ export default function App() {
               <button className="sync-button" disabled={syncStatus === 'syncing' || accountConnection.state !== 'valid'} onClick={synchronize} type="button">
                 {syncStatus === 'syncing' ? 'Synchronisation en cours…' : 'Synchroniser les données du Comptoir'}
               </button>
-              {syncStatus === 'failed' && <p role="alert">La synchronisation n'a pas pu être confirmée. Les données locales existantes sont conservées.</p>}
+              {syncStatus.startsWith('failed') && <p role="alert">{syncFailureMessage(syncStatus.includes(':') ? syncStatus.slice(syncStatus.indexOf(':') + 1) : null)}</p>}
             </section>
 
             <LocalDataPanel onPersonalDataChanged={refreshLocalDataViews} />
