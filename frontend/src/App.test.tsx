@@ -363,14 +363,14 @@ describe('Réglages et sécurité locale', () => {
 
     const clearButton = await screen.findByRole('button', { name: 'Effacer les données personnelles' });
     expect(clearButton).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Saisissez CLEAR PERSONAL DATA pour continuer'), { target: { value: 'CLEAR PERSONAL DATA' } });
+    fireEvent.change(screen.getByLabelText('Saisissez EFFACER LES DONNÉES PERSONNELLES pour continuer'), { target: { value: 'EFFACER LES DONNÉES PERSONNELLES' } });
     expect(clearButton).toBeEnabled();
 
     const restoreButton = screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' });
     expect(restoreButton).toBeDisabled();
     const file = new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' });
     fireEvent.change(screen.getByLabelText('Fichier de sauvegarde'), { target: { files: [file] } });
-    fireEvent.change(screen.getByLabelText('Saisissez RESTORE LOCAL DATA pour continuer'), { target: { value: 'RESTORE LOCAL DATA' } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
     expect(restoreButton).toBeEnabled();
   });
 
