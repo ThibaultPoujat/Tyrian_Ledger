@@ -323,8 +323,9 @@ Rules:
 - Show a next-refresh countdown only when the scheduler genuinely knows the next
   planned refresh time. Approximate values use `~`.
 - When a refresh starts, replace countdown text with `Actualisation en cours…`.
-- When there is no precise scheduled time, show `Actualisation automatique`
-  rather than inventing a countdown.
+- Show `Actualisation automatique` only when an automatic refresh scheduler
+  actually exists. #131 currently refreshes Signals on demand; until #95 owns
+  the continuous loop, its truthful state is `Actualisation à la demande`.
 - Do not use a progress bar merely to imply passage of time; it suggests a level
   of deterministic progress the scheduler/network may not guarantee.
 
