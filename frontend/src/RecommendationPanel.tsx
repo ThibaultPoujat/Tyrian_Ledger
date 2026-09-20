@@ -176,7 +176,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
         <details className="data-freshness">
           <summary>
             <span>{marketFreshness(result.scannerObservedAtUtc)}</span>
-            <span className="freshness-auto">Actualisation automatique</span>
+            <span className="freshness-auto">Actualisation à la demande</span>
           </summary>
           <div className="freshness-grid">
             <div>
@@ -252,12 +252,14 @@ function OperationalStatus({
 }
 
 function SignalCard({ record }: { record: RecommendationRecord }) {
+  const [whyOpen, setWhyOpen] = useState(false);
   const binding = record.portfolioConstraints.filter(constraint => constraint.isBinding);
   const price = executionPrice(record);
   const maxPrice = ['BUY', 'BUY SMALL', 'UPDATE BID'].includes(record.action)
     ? record.prices.maximumBid
     : null;
-  const corrective = ['CANCEL BID', 'STOP BIDDING', 'REDUCE'].includes(record.action);
+  const corrective = ['CANCEL BID', 'REDUCE'].includes(record.action);
+  const supporting = supportingMetric(record);
 
   return (
     <li className={`signal-card signal-card--${tone(record.action)}`}>
@@ -295,13 +297,13 @@ function SignalCard({ record }: { record: RecommendationRecord }) {
 
         <div className="signal-supporting">
           <div>
-            <span>Profit modélisé</span>
-            {record.economics
-              ? <MoneyDisplay className="modeled-profit" compact money={record.economics.netProfit} />
+            <span>{supporting.label}</span>
+            {supporting.money
+              ? <MoneyDisplay className="modeled-profit" compact money={supporting.money} />
               : <strong>Indisponible</strong>}
           </div>
-          <details className="why-disclosure">
-            <summary aria-label="Afficher pourquoi ce signal est recommandé">Pourquoi ?</summary>
+          <details className="why-disclosure" onToggle={event => setWhyOpen(event.currentTarget.open)}>
+            <summary aria-label={whyOpen ? "Masquer l'explication de ce signal" : 'Afficher pourquoi ce signal est recommandé'}>Pourquoi ?</summary>
             <div className="why-content">
               <section>
                 <h4>Pourquoi maintenant ?</h4>
@@ -327,6 +329,7 @@ function SignalCard({ record }: { record: RecommendationRecord }) {
                     ? 'La quantité proposée respecte les contraintes de portefeuille actuellement connues.'
                     : `Contrainte active : ${binding.map(value => constraintLabel(value.name)).join(', ')}.`}
                 </p>
+                {record.score?.personalEvidence && <p>{personalEvidenceSummary(record.score.personalEvidence)}</p>}
               </section>
               <section>
                 <h4>Risques et limites</h4>
@@ -382,7 +385,6 @@ function actionLabel(action: RecommendationAction): string {
     case 'BUY':
     case 'BUY SMALL': return "PLACER UN ORDRE D'ACHAT";
     case 'UPDATE BID': return "METTRE À JOUR L'ORDRE D'ACHAT";
-    case 'STOP BIDDING':
     case 'CANCEL BID': return "ANNULER L'ORDRE D'ACHAT";
     case 'LIST': return 'METTRE EN VENTE';
     case 'REDUCE':
@@ -393,16 +395,48 @@ function actionLabel(action: RecommendationAction): string {
 }
 
 function quantityLabel(action: RecommendationAction): string {
-  if (['CANCEL BID', 'STOP BIDDING'].includes(action)) return 'Quantité concernée';
+  if (action === 'CANCEL BID') return 'Quantité concernée';
   if (['LIST', 'REDUCE', 'SELL PARTIAL', 'SELL'].includes(action)) return 'Quantité à vendre';
   return 'Quantité à saisir';
 }
 
 function priceLabel(action: RecommendationAction): string {
-  if (['CANCEL BID', 'STOP BIDDING'].includes(action)) return "Prix actuel de l'ordre";
+  if (action === 'CANCEL BID') return "Prix actuel de l'ordre";
   if (action === 'LIST') return 'Prix de vente par unité';
   if (['REDUCE', 'SELL PARTIAL', 'SELL'].includes(action)) return 'Prix de vente immédiate par unité';
   return 'Prix à saisir par unité';
+}
+
+function supportingMetric(record: RecommendationRecord): { label: string; money: Money | null } {
+  if (record.action === 'CANCEL BID') {
+    return { label: 'Capital à libérer', money: record.capital };
+  }
+
+  return {
+    label: 'Profit modélisé',
+    money: record.economics?.netProfit ?? null,
+  };
+}
+
+function personalEvidenceSummary(evidence: NonNullable<NonNullable<RecommendationRecord['score']>['personalEvidence']>): string {
+  const samples = evidence.knownBasisSampleCount ?? 0;
+  switch (evidence.state) {
+    case 'supported':
+      return `Historique personnel : ${samples} résultat${samples === 1 ? '' : 's'} à base connue pris en compte.`;
+    case 'stale':
+      return 'Historique personnel disponible, mais trop ancien pour constituer une preuve forte.';
+    case 'insufficientSamples':
+      return `Historique personnel : seulement ${samples} résultat${samples === 1 ? '' : 's'} à base connue, encore insuffisant.`;
+    case 'insufficientCoverage':
+      return 'Historique personnel : couverture continue insuffisante.';
+    case 'insufficientMetrics':
+      return 'Historique personnel disponible, mais métriques insuffisantes.';
+    case 'noHistory':
+    case 'notYetAvailable':
+      return 'Historique personnel : pas encore de preuve exploitable.';
+    default:
+      return 'Historique personnel : preuve limitée.';
+  }
 }
 
 function confidenceLabel(confidence: HistoryConfidence | undefined): string {
@@ -460,7 +494,7 @@ function constraintLabel(value: string): string {
 function tone(action: RecommendationAction): string {
   if (['BUY', 'BUY SMALL', 'UPDATE BID'].includes(action)) return 'buy';
   if (['LIST', 'SELL', 'SELL PARTIAL'].includes(action)) return 'sell';
-  if (['CANCEL BID', 'STOP BIDDING', 'REDUCE'].includes(action)) return 'corrective';
+  if (['CANCEL BID', 'REDUCE'].includes(action)) return 'corrective';
   return 'neutral';
 }
 
