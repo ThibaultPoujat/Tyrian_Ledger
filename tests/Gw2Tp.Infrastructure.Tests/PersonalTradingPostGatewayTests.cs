@@ -4,6 +4,7 @@ using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Infrastructure.Gw2Api;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Infrastructure.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Secrets;
 using Gw2Tp.Testing;
@@ -315,6 +316,33 @@ public sealed class PersonalTradingPostGatewayTests
 
         Assert.Equal(Gw2ApiErrorCategory.TransportFailure, result.ErrorCategory);
         Assert.DoesNotContain(SyntheticKey, result.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Request_timeout_is_diagnosed_safely_without_disclosing_the_credential()
+    {
+        var handler = new RecordingHandler(async (_, cancellationToken) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return CreatePagedJsonResponse(HttpStatusCode.OK, "[]");
+        });
+        using var httpClient = CreateHttpClient(handler);
+        var diagnostics = new SafeTransportDiagnosticBuffer();
+        var gateway = new PersonalTradingPostGateway(
+            new FixedKeySource(SyntheticKey),
+            httpClient,
+            new ImmediateRequestScheduler(),
+            TimeSpan.FromMilliseconds(25),
+            diagnostics);
+
+        var result = await gateway.GetCompletedBuyHistoryAsync(0);
+
+        Assert.Equal(Gw2ApiErrorCategory.TransportFailure, result.ErrorCategory);
+        var diagnostic = Assert.Single(diagnostics.Snapshot());
+        Assert.Equal("commerce/transactions/history/buys", diagnostic.Operation);
+        Assert.Equal("TIMEOUT", diagnostic.Code);
+        Assert.Equal(nameof(TaskCanceledException), diagnostic.ExceptionType);
+        Assert.DoesNotContain(SyntheticKey, diagnostic.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
