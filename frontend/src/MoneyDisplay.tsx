@@ -45,6 +45,7 @@ export default function MoneyDisplay({
     <span
       aria-label={`${negative ? 'moins ' : ''}${spoken}`}
       className={`money-display ${className}`.trim()}
+      role="img"
     >
       {negative && <span aria-hidden="true" className="money-sign">−</span>}
       {values.map(([denomination, amount]) => (
