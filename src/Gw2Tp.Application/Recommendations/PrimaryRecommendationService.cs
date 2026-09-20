@@ -260,7 +260,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
 
         var evidence = new List<PrimaryRecommendationEvidence>();
         evidence.AddRange(BuildNewOpportunityEvidence(
-            scan.Candidates, scoresByItem, historyByItem, allocationsByItem,
+            scan.Candidates, scoresByItem, historyByItem, displayMetadataByItem, allocationsByItem,
             sizing.State == PositionSizingResultState.Sized));
         evidence.AddRange(BuildOrderEvidence(
             local, historyByItem, listingsByItem, displayMetadataByItem, candidatesByItem,
@@ -299,6 +299,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         IReadOnlyList<LiveMarketScannerCandidate> candidates,
         IReadOnlyDictionary<int, OpportunityScore> scores,
         IReadOnlyDictionary<int, HistoricalMarketAnalytics> history,
+        IReadOnlyDictionary<int, MarketItemMetadata> displayMetadata,
         IReadOnlyDictionary<int, PositionSizingAllocation> allocations,
         bool sizingAvailable) => candidates.Select(candidate =>
     {
@@ -313,7 +314,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             Score(score), History(history[candidate.Item.ItemId]),
             Liquidity(candidate.Liquidity, ClassifyLiquidity(candidate.Liquidity.Reasons), candidate.Liquidity.ParticipationCapQuantity),
             allocation.Constraints, true, sizingAvailable, false, false, false, false, false, false,
-            Money.Zero, Money.Zero, candidate.Item.IconUrl);
+            Money.Zero, Money.Zero, candidate.Item.IconUrl ?? IconFor(candidate.Item.ItemId, displayMetadata));
     }).ToArray();
 
     private IReadOnlyList<PrimaryRecommendationEvidence> BuildOrderEvidence(
