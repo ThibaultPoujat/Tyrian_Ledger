@@ -113,6 +113,24 @@ public sealed class Gw2ApiClientTests
         Assert.Equal("en", GetQueryParameters(request.RequestUri)["lang"]);
     }
 
+    [Theory]
+    [InlineData("not-a-url")]
+    [InlineData("http://render.guildwars2.com/file/insecure.png")]
+    [InlineData("https://example.invalid/file/untrusted.png")]
+    public async Task Optional_item_icon_is_ignored_when_it_is_not_an_official_https_render_url(string icon)
+    {
+        var payload = $"[{{\"id\":900001,\"name\":\"Synthetic Mithril Widget\",\"icon\":\"{icon}\"}}]";
+        var handler = new StubHttpMessageHandler(
+            (_, _) => Task.FromResult(CreateJsonResponse(HttpStatusCode.OK, payload)));
+        using var httpClient = CreateHttpClient(handler);
+        var apiClient = CreateApiClient(httpClient);
+
+        var result = await apiClient.GetItemMetadataAsync([900001]);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(Assert.Single(result.Value!).IconUrl);
+    }
+
     [Fact]
     public async Task Item_metadata_malformed_or_rate_limited_responses_use_the_stable_gateway_contract()
     {
