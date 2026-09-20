@@ -181,9 +181,11 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             var listingsTask = allItemIds.Length == 0
                 ? Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketListing>>.Success([]))
                 : marketDataClient.GetListingsAsync(allItemIds, cancellationToken);
-            var metadataTask = allItemIds.Length == 0
+            var scannerItemIds = scan.Candidates.Select(candidate => candidate.Item.ItemId).ToHashSet();
+            var metadataItemIds = allItemIds.Where(itemId => !scannerItemIds.Contains(itemId)).ToArray();
+            var metadataTask = metadataItemIds.Length == 0
                 ? Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Success([]))
-                : marketDataClient.GetItemMetadataAsync(allItemIds, cancellationToken);
+                : marketDataClient.GetItemMetadataAsync(metadataItemIds, cancellationToken);
             await Task.WhenAll(historyTasks.Values).ConfigureAwait(false);
             var listingsResult = await listingsTask.ConfigureAwait(false);
             Gw2ApiResult<IReadOnlyList<MarketItemMetadata>> metadataResult;
