@@ -531,7 +531,11 @@ public sealed class PrimaryRecommendationServiceTests
             simulator.SimulateLiquidation([new OrderBookLevel(marketQuantity, new Money(100))], 1),
             marketQuantity / 10, [], buys, sells);
         return new LiveMarketScannerCandidate(
-            new MarketItemMetadata(itemId, $"Item {itemId}", MarketItemStackPolicy.NormalStackLimit),
+            new MarketItemMetadata(
+                itemId,
+                $"Item {itemId}",
+                MarketItemStackPolicy.NormalStackLimit,
+                $"https://render.guildwars2.com/file/synthetic-{itemId}.png"),
             new MarketOrderSummary(100, 100), new MarketOrderSummary(100, 200),
             plannedBid, plannedList, profit, totalCost, new ExactRoi(profit.NetProfit, totalCost),
             new Money(168), [], liquidity);
