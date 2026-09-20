@@ -14,7 +14,7 @@ test('loads Mes Signaux by default and keeps account/recovery controls under Ré
 
   await page.goto('/');
 
-  await expect(page).toHaveTitle('Tyrian Ledger | Local-first personal trading assistant');
+  await expect(page).toHaveTitle('Tyrian Ledger | Assistant personnel de profit');
   await expect(page.getByRole('heading', { name: 'Mes Signaux', level: 1 })).toBeVisible();
   const navigation = page.getByRole('navigation', { name: 'Navigation principale' });
   await expect(navigation.getByRole('button', { name: 'Mes Signaux' })).toHaveAttribute('aria-current', 'page');
