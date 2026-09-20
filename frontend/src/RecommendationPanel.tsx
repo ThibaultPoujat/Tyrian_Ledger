@@ -150,7 +150,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
     () => (result?.actions ?? []).filter(record => actionable.has(record.action)).slice(0, 5),
     [result],
   );
-  const historyCutoff = useMemo(() => oldestHistoryCutoff(signals), [signals]);
+  const historyCutoff = useMemo(() => oldestHistoryCutoff(result?.actions ?? []), [result]);
 
   return (
     <section aria-labelledby="signals-feed-title" className="signals-feed">
