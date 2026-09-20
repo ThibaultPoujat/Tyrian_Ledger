@@ -50,6 +50,7 @@ public static class Program
         });
 
         builder.Services.AddHealthChecks();
+        builder.Services.AddSingleton<LocalDiagnosticLog>();
         builder.Services.AddTyrianLedgerAccountConnection(builder.Environment, builder.Configuration);
         builder.Services.AddTyrianLedgerPersistence(builder.Configuration);
         builder.Services.AddSingleton<IPersonalDashboardService, PersonalDashboardService>();
@@ -112,6 +113,10 @@ public static class Program
         app.MapHealthChecks(
                 "/api/health",
                 new HealthCheckOptions { ResponseWriter = HealthResponseWriter.WriteAsync })
+            .WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
+
+        app.MapGet("/api/diagnostics/export", (LocalDiagnosticLog diagnostics) =>
+            Results.Text(diagnostics.ExportText(), "text/plain; charset=utf-8"))
             .WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
         app.MapGet(
             "/api/account-connection",
