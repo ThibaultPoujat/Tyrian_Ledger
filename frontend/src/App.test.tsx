@@ -147,6 +147,7 @@ const readyRecommendations = {
     recommendationAction(6, 'À attendre', 'WAIT'),
     recommendationAction(7, 'À examiner', 'REVIEW'),
     recommendationAction(8, 'Ordre à conserver', 'KEEP BID', 'buyOrder'),
+    recommendationAction(9, 'Ordre dépassé à ne pas poursuivre', 'STOP BIDDING', 'buyOrder'),
   ],
 };
 
@@ -262,10 +263,11 @@ describe('Mes Signaux MVP', () => {
     render(<App />);
 
     expect(await screen.findByText("ANNULER L'ORDRE D'ACHAT")).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(5);
+    expect(document.querySelectorAll('.signal-list > .signal-card')).toHaveLength(5);
     expect(screen.queryByText('À attendre')).not.toBeInTheDocument();
     expect(screen.queryByText('À examiner')).not.toBeInTheDocument();
     expect(screen.queryByText('Ordre à conserver')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ordre dépassé à ne pas poursuivre')).not.toBeInTheDocument();
 
     const buyCard = screen.getByRole('heading', { name: "Lingot d'orichalque", level: 3 }).closest('article');
     expect(buyCard).not.toBeNull();
