@@ -489,6 +489,7 @@ function constraintLabel(value: string): string {
     liquidityParticipation: 'liquidité disponible',
     availableCash: 'capital disponible',
     cashReserve: 'réserve de sécurité',
+    cashAfterReserve: 'capital disponible après réserve',
   };
   return labels[value] ?? value;
 }
