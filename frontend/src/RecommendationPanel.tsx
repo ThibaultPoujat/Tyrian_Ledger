@@ -55,6 +55,7 @@ type RecommendationRecord = {
   history: {
     confidence: HistoryConfidence;
     commonCutoffUtc: string;
+    lastObservedAtUtc: string | null;
     windows: Array<{
       durationDays: number;
       isAvailable: boolean;
@@ -157,7 +158,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
       .filter(record => actionable.has(record.action)),
     [result],
   );
-  const historyCutoff = useMemo(() => oldestHistoryCutoff(result?.actions ?? []), [result]);
+  const historyCutoff = useMemo(() => oldestHistoryObservation(result?.actions ?? []), [result]);
 
   return (
     <section aria-labelledby="signals-feed-title" className="signals-feed">
@@ -525,9 +526,9 @@ function agePhrase(timestamp: string): string {
   return `le ${new Date(timestamp).toLocaleString('fr-FR')}`;
 }
 
-function oldestHistoryCutoff(records: RecommendationRecord[]): string | null {
+function oldestHistoryObservation(records: RecommendationRecord[]): string | null {
   const timestamps = records
-    .map(record => record.history?.commonCutoffUtc ?? null)
+    .map(record => record.history?.lastObservedAtUtc ?? null)
     .filter((value): value is string => value !== null)
     .map(value => ({ value, time: new Date(value).getTime() }))
     .filter(value => Number.isFinite(value.time))
@@ -593,6 +594,7 @@ function isHistory(value: unknown): boolean {
   return isRecord(value)
     && ['insufficient', 'partial', 'strong'].includes(value.confidence as string)
     && typeof value.commonCutoffUtc === 'string'
+    && isNullableString(value.lastObservedAtUtc)
     && Array.isArray(value.windows)
     && value.windows.every(window => isRecord(window)
       && isNonNegativeInteger(window.durationDays)
