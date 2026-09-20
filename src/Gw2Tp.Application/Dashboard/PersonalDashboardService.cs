@@ -205,11 +205,11 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
 
         var known = performance.KnownBasisSaleAllocations
             .Where(allocation => allocation.Match.SellCompletedAtUtc >= startUtc &&
-                                 allocation.Match.SellCompletedAtUtc <= endUtc)
+                                 allocation.Match.SellCompletedAtUtc < endUtc)
             .ToArray();
         var unknownQuantity = checked((int)performance.UnknownBasisSaleAllocations
             .Where(allocation => allocation.Sale.SellCompletedAtUtc >= startUtc &&
-                                 allocation.Sale.SellCompletedAtUtc <= endUtc)
+                                 allocation.Sale.SellCompletedAtUtc < endUtc)
             .Sum(allocation => (long)allocation.Sale.UnmatchedQuantity));
 
         return new DashboardRealizedWindow(
