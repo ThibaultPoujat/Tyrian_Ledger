@@ -71,8 +71,8 @@ choose one or infer order from issue numbers.
 
 `CURRENT.md` contains durable context plus a clearly delimited generated
 live-state block. That block combines the authorities above and is a derived
-handoff/cache view, not an independent source of truth. TKT-M21-S01 / #129 adds
-deterministic post-merge maintenance without AI/model quota.
+handoff/cache view, not an independent source of truth. TKT-M21-S01 / #129
+maintains it deterministically after merges without AI/model quota.
 
 At the **start of every implementation session**:
 

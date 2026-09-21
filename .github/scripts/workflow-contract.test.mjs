@@ -34,3 +34,15 @@ test('the retired Pages workflow and selector are absent', async () => {
   await assert.rejects(access(new URL('../workflows/pages.yml', import.meta.url)));
   await assert.rejects(access(new URL('../pages-preview-selector.json', import.meta.url)));
 });
+
+test('generated live-state maintenance runs only after a develop merge or manual recovery', async () => {
+  const content = await workflow('update-current-live-state.yml');
+  assert.match(content, /pull_request:\s*\n\s+types: \[closed\]/);
+  assert.match(content, /workflow_dispatch:/);
+  assert.match(content, /github\.event\.pull_request\.merged == true/);
+  assert.match(content, /github\.event\.pull_request\.base\.ref == 'develop'/);
+  assert.match(content, /node \.github\/scripts\/update-current-live-state\.mjs/);
+  assert.match(content, /git diff --quiet -- CURRENT\.md/);
+  assert.match(content, /git add CURRENT\.md/);
+  assert.doesNotMatch(content, /codex|openai|model/i);
+});

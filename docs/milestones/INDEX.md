@@ -43,10 +43,11 @@ The displayed UI labels for the primary surfaces remain French (`Mes Signaux`, `
 
 ## Current explicit execution order
 
-M12-M20 and TKT-M21-01 are complete. The preferred owner sequence from the merged #92 baseline is:
+M12-M20, TKT-M21-01, and #128 are complete. The preferred owner sequence is:
 
 ```text
-#129 TKT-M21-S01  self-healing CURRENT live state
+#128 TKT-M21-01  consolidate Signals product/docs/roadmap
+ -> #129 TKT-M21-S01  self-healing CURRENT live state
  -> #130 TKT-M21-S02  Signals UX spike (displayed as Mes Signaux)
  -> #131 TKT-M21-S03  Signals MVP + primary navigation
  -> #132 TKT-M21-S04  post-MVP cleanup
@@ -58,7 +59,7 @@ M12-M20 and TKT-M21-01 are complete. The preferred owner sequence from the merge
  -> #97  TKT-M22-03   Signal-plan outcome evaluation
 ```
 
-#129 is preferred before #130, but it is explicitly **non-blocking for the MVP**. After #128 merges, #130 may start before #129 when #129 becomes non-trivial or would delay #131. Until #129 lands, the documented session-start reconciliation/manual generated-block repair remains the fallback. #131 depends on #130, not on completion of #129.
+#129 is preferred before #130, but it is explicitly **non-blocking for the MVP**. While #129 remains open after #128 merges, #130 may start before it when #129 becomes non-trivial or would delay #131. The documented session-start reconciliation/manual generated-block repair remains the fallback. #131 depends on #130, not on completion of #129.
 
 Do not infer the next ticket from GitHub issue number ordering. Issue #98 and this explicit sequence/exception are authoritative for execution order and must agree; GitHub contributes operational open/closed/merged/milestone state, not roadmap ordering. `CURRENT.md` combines those sources for handoff.
 

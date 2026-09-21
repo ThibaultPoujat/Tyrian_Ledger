@@ -63,7 +63,7 @@ Before implementation handoff:
 4. repair stale generated fields only; do not rewrite execution order from GitHub issue numbering or infer review gates from risk class/issue metadata;
 5. if post-merge state will change an operational field, explicitly identify that the deterministic updater/fallback reconciliation is expected to advance it.
 
-TKT-M21-S01 / #129 adds deterministic post-merge maintenance of the generated block. After it lands, normal merge progression should not require owner editing. Per-field session-start reconciliation remains the fallback when automation is stale or failed.
+TKT-M21-S01 / #129 provides deterministic post-merge maintenance of the generated block. The workflow can be manually dispatched if a failed/disabled run leaves state stale, but normal merge progression requires no owner editing. Per-field session-start reconciliation remains the fallback when automation is stale or failed.
 
 ## Review paths
 

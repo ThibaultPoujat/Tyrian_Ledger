@@ -55,8 +55,8 @@ for the active interface contract.
   - `docs/workflow/model-effort-guide.md` is authoritative for **review effort and the active explicit Sol-gate list**.
 - Issue #98 and `docs/milestones/INDEX.md` must agree on execution order. If they conflict, repair the source-of-truth contradiction instead of silently choosing one or inferring numeric issue order.
 - `CURRENT.md` contains durable narrative plus the generated live-state block below. The generated block is a derived handoff/cache view, not an independent authority. The owner should not manually maintain normal merge handoff state.
-- TKT-M21-S01 / #129 will add a deterministic post-merge workflow/script that combines those authorities and updates only the generated block without AI/model quota.
-- Until #129 lands, a coding agent must compare each generated field with its owning authority at session start and repair stale generated state before relying on it.
+- TKT-M21-S01 / #129 provides a deterministic post-merge workflow/script that combines those authorities and updates only the generated block without AI/model quota.
+- A coding agent still compares each generated field with its owning authority at session start and repairs stale generated state if the workflow failed or has not yet run.
 - Historical ADRs/tickets remain useful evidence but are not active instructions when superseded by current source-of-truth docs/tickets.
 
 ## Known foundation
@@ -89,9 +89,9 @@ The preferred owner sequence from here is:
 10. #97 / TKT-M22-03 — Signal-plan outcome evaluation and strategy attribution.
 
 #129 is the preferred maintenance predecessor, but it must not delay the MVP path.
-After #128 merges, #130 may start before #129 if #129 becomes non-trivial or would
-delay #131. In that fallback, agents use the documented session-start
-reconciliation/manual generated-block repair until #129 lands. #131 depends on
+While #129 remains open, #130 may start after #128 merges if #129 becomes
+non-trivial or would delay #131. In that fallback, agents use the documented
+session-start reconciliation/manual generated-block repair. #131 depends on
 #130, not on completion of #129.
 
 Do not use numeric issue ordering to skip #129-#133 and begin #93 early.
@@ -102,11 +102,11 @@ The block between the markers is machine-owned once #129 lands. Durable prose
 outside the markers must never be rewritten by the generated-state updater.
 
 <!-- BEGIN GENERATED LIVE STATE -->
-- Last completed implementation ticket: `TKT-M21-S02 / #130`
-- Last merged implementation PR: `#136`
+- Last completed implementation ticket: `TKT-M21-S03 / #131`
+- Last merged implementation PR: `#138`
 - Active milestone: `M21 — Signals and Crafting Intelligence`
 - Preferred next implementation ticket: `TKT-M21-S01 / #129`
-- Allowed MVP fallback: `TKT-M21-S03 / #131` may start now that #130 is complete; #131 does not depend on #129, so use session-start reconciliation until #129 lands
-- Explicit active Sol gates: `#133`, `#93`, `#94`, `#96`
+- Allowed non-blocking alternate: `None`
+- Explicit active Sol gates: `TKT-M21-S05 / #133`, `TKT-M21-02 / #93`, `TKT-M21-03 / #94`, `TKT-M22-02 / #96`
 - Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`
 <!-- END GENERATED LIVE STATE -->
