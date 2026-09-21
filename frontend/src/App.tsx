@@ -394,12 +394,15 @@ function PerformanceSummary({ dashboard, status }: { dashboard: Dashboard | null
         : dashboard.state === 'accountUnavailable'
           ? 'Compte indisponible'
           : 'Couverture insuffisante';
+  const todayThrough = value(today) && dashboard?.historyCoverage?.endUtc
+    ? new Date(dashboard.historyCoverage.endUtc).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+    : null;
 
   return (
     <section aria-label="Profit réalisé" className="performance-summary">
       <span className="performance-title">Profit réalisé</span>
       <div className="performance-primary">
-        <div><span>Aujourd'hui</span>{value(today) ? <MoneyDisplay compact money={value(today)} /> : <strong>{unavailable}</strong>}{excluded(today)}</div>
+        <div><span>Aujourd'hui</span>{value(today) ? <MoneyDisplay compact money={value(today)} /> : <strong>{unavailable}</strong>}{todayThrough && <small>Données jusqu’au {todayThrough}</small>}{excluded(today)}</div>
         <div><span>30 j</span>{value(thirty) ? <MoneyDisplay compact money={value(thirty)} /> : <strong>{unavailable}</strong>}{excluded(thirty)}</div>
       </div>
       <details>
@@ -679,6 +682,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
   const [clearConfirmation, setClearConfirmation] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [diagnosticMessage, setDiagnosticMessage] = useState<string | null>(null);
   const isRecoveryBusy = isBackingUp || isRestoring || isClearing;
 
   useEffect(() => {
@@ -837,6 +841,23 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
       .finally(() => setIsClearing(false));
   };
 
+  const exportDiagnostics = () => {
+    setDiagnosticMessage(null);
+    void fetch('/api/diagnostics/export', { headers: localRequestHeaders() })
+      .then(async response => {
+        if (!response.ok) throw new Error('Diagnostic export failed');
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const revokeObjectURL = URL.revokeObjectURL.bind(URL);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'tyrian-ledger-diagnostic.txt';
+        link.click();
+        window.setTimeout(() => revokeObjectURL(url), 0);
+      })
+      .catch(() => setDiagnosticMessage("Le diagnostic n'a pas pu être exporté."));
+  };
+
   return (
     <>
       <section aria-labelledby="local-data-title" className="settings-panel">
@@ -899,9 +920,10 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
       <section aria-labelledby="diagnostics-title" className="settings-panel settings-panel--support">
         <h2 id="diagnostics-title">Diagnostic</h2>
         <p>Exportez les événements techniques récents lorsqu'un problème doit être analysé. Les clés API et les en-têtes d'autorisation ne sont pas enregistrés.</p>
-        <button className="settings-secondary-button" onClick={() => { window.location.href = '/api/diagnostics/export'; }} type="button">
+        <button className="settings-secondary-button" onClick={exportDiagnostics} type="button">
           Exporter le diagnostic
         </button>
+        {diagnosticMessage && <p role="alert">{diagnosticMessage}</p>}
       </section>
 
       <details className="settings-panel settings-danger">

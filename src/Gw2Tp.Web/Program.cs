@@ -116,8 +116,9 @@ public static class Program
                 new HealthCheckOptions { ResponseWriter = HealthResponseWriter.WriteAsync })
             .WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
 
-        app.MapGet("/api/diagnostics/export", (LocalDiagnosticLog diagnostics, SafeTransportDiagnosticBuffer transportDiagnostics) =>
+        app.MapGet("/api/diagnostics/export", (HttpContext context, LocalDiagnosticLog diagnostics, SafeTransportDiagnosticBuffer transportDiagnostics) =>
         {
+            context.Response.Headers.CacheControl = "no-store";
             var export = diagnostics.ExportText();
             var transport = transportDiagnostics.Snapshot();
             if (transport.Count > 0)

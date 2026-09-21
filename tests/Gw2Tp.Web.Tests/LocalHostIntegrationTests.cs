@@ -15,6 +15,7 @@ using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Application.Investments;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Domain.Finance;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Web.Hosting;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Builder;
@@ -36,6 +37,35 @@ namespace Gw2Tp.Web.Tests;
 
 public sealed class LocalHostIntegrationTests
 {
+    [Fact]
+    public async Task Diagnostic_export_requires_protected_local_read_headers()
+    {
+        const string sensitiveValue = "synthetic-sensitive-authorization-value";
+        await using var app = await StartApplicationAsync("Production");
+        app.Services.GetRequiredService<SafeTransportDiagnosticBuffer>().Record(
+            "commerce/transactions/history/buys", "HTTP_TRANSPORT_FAILURE",
+            new HttpRequestException(sensitiveValue), TimeSpan.FromMilliseconds(5));
+        using var client = app.GetTestClient();
+
+        using var missingHeader = await client.GetAsync("/api/diagnostics/export");
+        Assert.Equal(HttpStatusCode.Forbidden, missingHeader.StatusCode);
+
+        using var attacker = new HttpRequestMessage(HttpMethod.Get, "/api/diagnostics/export");
+        attacker.Headers.Add("Origin", "https://attacker.example");
+        attacker.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var rejected = await client.SendAsync(attacker);
+        Assert.Equal(HttpStatusCode.Forbidden, rejected.StatusCode);
+
+        using var trusted = new HttpRequestMessage(HttpMethod.Get, "/api/diagnostics/export");
+        trusted.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var accepted = await client.SendAsync(trusted);
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        Assert.Equal("no-store", accepted.Headers.CacheControl?.ToString());
+        var export = await accepted.Content.ReadAsStringAsync();
+        Assert.Contains("HTTP_TRANSPORT_FAILURE", export, StringComparison.Ordinal);
+        Assert.DoesNotContain(sensitiveValue, export, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task StartsWithoutArenaNetKeyAndReturnsHealthyStatus()
     {

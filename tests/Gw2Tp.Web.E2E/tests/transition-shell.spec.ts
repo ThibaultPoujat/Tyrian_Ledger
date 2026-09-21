@@ -34,6 +34,16 @@ test('loads Mes Signaux by default and keeps account/recovery controls under Ré
   expect(externalRequests).toEqual([]);
 });
 
+test('exports local diagnostics from Réglages through the protected read', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Réglages' }).click();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Exporter le diagnostic' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('tyrian-ledger-diagnostic.txt');
+});
+
 test('presents the execution-first Signal flow at 1920x1080 using only mocked local evidence', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   const externalRequests: string[] = [];

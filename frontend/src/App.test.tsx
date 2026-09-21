@@ -214,6 +214,9 @@ function installFetch(overrides: ApiOverrides = {}) {
     if (url === '/api/personal-trading-post/sync') {
       return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'succeeded' }) });
     }
+    if (url === '/api/diagnostics/export') {
+      return Promise.resolve({ ok: true, blob: vi.fn().mockResolvedValue(new Blob(['safe diagnostic'], { type: 'text/plain' })) });
+    }
     return Promise.resolve({ ok: false, json: vi.fn().mockResolvedValue({}) });
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -252,6 +255,7 @@ describe('Mes Signaux MVP', () => {
     const performance = await screen.findByLabelText('Profit réalisé');
     expect(within(performance).getByText("Aujourd'hui")).toBeInTheDocument();
     expect(within(performance).getByText('30 j')).toBeInTheDocument();
+    expect(within(performance).getByText(`Données jusqu’au ${new Date(dashboardBase.historyCoverage.endUtc).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`)).toBeInTheDocument();
     const disclosure = within(performance).getByText('7 j / 90 j').closest('details');
     expect(disclosure).not.toHaveAttribute('open');
 
@@ -351,6 +355,25 @@ describe('Mes Signaux MVP', () => {
     expect(await screen.findByText(/ArenaNet ou les données de marché sont temporairement indisponibles/)).toHaveAttribute('role', 'status');
   });
 
+  it('does not show actionable cards from a failed HTTP response claiming to be ready', async () => {
+    cleanup();
+    installFetch({ recommendationsOk: false, recommendations: readyRecommendations });
+    render(<App />);
+
+    expect(await screen.findByText("La lecture des signaux depuis l'application locale a échoué.")).toHaveAttribute('role', 'alert');
+    expect(screen.queryByRole('heading', { name: "Lingot d'orichalque" })).not.toBeInTheDocument();
+  });
+
+  it('uses the observed history sample time in the card explanation', async () => {
+    render(<App />);
+    const card = (await screen.findByRole('heading', { name: "Lingot d'orichalque", level: 3 })).closest('article');
+    fireEvent.click(within(card!).getByText('Pourquoi ?'));
+
+    const history = within(card!).getByText(/Historique marché : Dernier échantillon enregistré/);
+    expect(history.textContent).toContain(new Date('2026-09-19T07:58:00Z').toLocaleString('fr-FR'));
+    expect(history.textContent).not.toContain(new Date('2026-09-19T07:59:00Z').toLocaleString('fr-FR'));
+  });
+
   it('keeps degraded operational truth separate from Signal cards', async () => {
     cleanup();
     installFetch({
@@ -382,6 +405,23 @@ describe('Mes Signaux MVP', () => {
 });
 
 describe('Réglages et sécurité locale', () => {
+  it('requests diagnostic export through the protected local read contract', async () => {
+    const { calls } = installFetch();
+    const originalUrl = URL;
+    vi.stubGlobal('URL', class extends originalUrl {
+      static createObjectURL = vi.fn(() => 'blob:diagnostic');
+      static revokeObjectURL = vi.fn();
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Exporter le diagnostic' }));
+
+    await waitFor(() => expect(calls.some(call => String(call.input) === '/api/diagnostics/export')).toBe(true));
+    const exportCall = calls.find(call => String(call.input) === '/api/diagnostics/export');
+    expect(exportCall?.init?.headers).toMatchObject({ 'X-Tyrian-Ledger-Request': '1' });
+  });
+
   it('moves account and local recovery controls under Réglages with French displayed copy', async () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));

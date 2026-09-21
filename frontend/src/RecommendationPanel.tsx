@@ -132,7 +132,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
     }).then(async response => {
       const payload: unknown = await response.json();
       if (generation !== requestGeneration.current) return;
-      if (!isRecommendationResponse(payload)) {
+      if (!isRecommendationResponse(payload) || (!response.ok && payload.state === 'ready')) {
         setStatus('error');
         return;
       }
@@ -348,7 +348,7 @@ function SignalCard({ record }: { record: RecommendationRecord }) {
               </section>
               <section>
                 <h4>Fraîcheur des données</h4>
-                <p>{record.history ? `Historique marché : ${sourceAge(record.history.commonCutoffUtc, 'inconnu', 'Dernier échantillon enregistré')}.` : 'Historique marché : inconnu.'}</p>
+                <p>{record.history ? `Historique marché : ${sourceAge(record.history.lastObservedAtUtc, 'aucun échantillon exploitable', 'Dernier échantillon enregistré')}.` : 'Historique marché : inconnu.'}</p>
               </section>
             </div>
           </details>
