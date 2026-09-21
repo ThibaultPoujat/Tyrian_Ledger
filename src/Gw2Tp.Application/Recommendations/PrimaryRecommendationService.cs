@@ -22,6 +22,8 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
 {
     public const string Strategy = "FastFlip";
     public const string Category = "TradingPost";
+    private static readonly PrimaryRecommendationFreshnessPolicy FreshnessPolicy =
+        PrimaryRecommendationFreshnessPolicy.Default;
 
     private readonly IAccountPortfolioGateway accountPortfolioGateway;
     private readonly IPersonalTradingPostRepository repository;
@@ -98,6 +100,15 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             {
                 return PrimaryRecommendationResult.Unavailable(PrimaryRecommendationState.NotSynchronized, null, policies);
             }
+            var accountEvidenceExpirationAtUtc = FreshnessPolicy.AccountEvidenceExpiresAtUtc(
+                profile.LastSuccessfulSyncAtUtc, currentOrders.ObservedAtUtc);
+            if (!FreshnessPolicy.IsAccountEvidenceCurrent(
+                    profile.LastSuccessfulSyncAtUtc, currentOrders.ObservedAtUtc, RequireUtc(clock.UtcNow)))
+            {
+                return PrimaryRecommendationResult.AccountEvidenceStale(
+                    policies, profile.LastSuccessfulSyncAtUtc.Value, currentOrders.ObservedAtUtc,
+                    accountEvidenceExpirationAtUtc!.Value);
+            }
 
             var coveredTransactions = coverage.StartUtc is { } start && coverage.EndUtc is { } end
                 ? storedTransactions.Where(value => value.Transaction.CompletedAtUtc >= start && value.Transaction.CompletedAtUtc <= end)
@@ -151,12 +162,12 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 PrimaryRecommendationState.EvidenceUnavailable, ErrorName(scan.ErrorCategory), local.Policies);
         }
 
-        var asOfUtc = RequireUtc(clock.UtcNow);
+        var analysisAsOfUtc = RequireUtc(clock.UtcNow);
         IReadOnlyDictionary<int, PersonalItemTurnoverIntelligence> personalByItem;
         try
         {
             personalByItem = turnoverCalculator.Rebuild(new PersonalTurnoverRequest(
-                    asOfUtc, local.Profile.Id, local.HistoryCoverage, local.CompletedTransactions,
+                    analysisAsOfUtc, local.Profile.Id, local.HistoryCoverage, local.CompletedTransactions,
                     local.CurrentOrderObservations))
                 .Items.ToDictionary(item => item.ItemId);
         }
@@ -172,16 +183,18 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
 
         IReadOnlyDictionary<int, HistoricalMarketAnalytics> historyByItem;
         IReadOnlyDictionary<int, MarketListing> listingsByItem;
+        IReadOnlyDictionary<int, MarketItemMetadata> displayMetadataByItem;
         try
         {
             var historyTasks = allItemIds.ToDictionary(
                 itemId => itemId,
-                itemId => historyService.GetAtAsync(itemId, asOfUtc, cancellationToken));
+                itemId => historyService.GetAtAsync(itemId, analysisAsOfUtc, cancellationToken));
             var listingsTask = allItemIds.Length == 0
                 ? Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketListing>>.Success([]))
                 : marketDataClient.GetListingsAsync(allItemIds, cancellationToken);
             await Task.WhenAll(historyTasks.Values).ConfigureAwait(false);
             var listingsResult = await listingsTask.ConfigureAwait(false);
+
             historyByItem = historyTasks.ToDictionary(pair => pair.Key, pair => pair.Value.Result);
             if (!listingsResult.IsSuccess || listingsResult.IsPartialData || listingsResult.Value is null)
             {
@@ -191,6 +204,11 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             listingsByItem = listingsResult.Value.Where(IsValidListing)
                 .GroupBy(value => value.ItemId).Where(group => group.Count() == 1)
                 .ToDictionary(group => group.Key, group => group.Single());
+
+            displayMetadataByItem = scan.Candidates
+                .Select(candidate => candidate.Item)
+                .GroupBy(item => item.ItemId)
+                .ToDictionary(group => group.Key, group => group.First());
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -232,13 +250,13 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
 
         var evidence = new List<PrimaryRecommendationEvidence>();
         evidence.AddRange(BuildNewOpportunityEvidence(
-            scan.Candidates, scoresByItem, historyByItem, allocationsByItem,
+            scan.Candidates, scoresByItem, historyByItem, displayMetadataByItem, allocationsByItem,
             sizing.State == PositionSizingResultState.Sized));
         evidence.AddRange(BuildOrderEvidence(
-            local, historyByItem, listingsByItem, candidatesByItem,
+            local, historyByItem, listingsByItem, displayMetadataByItem, candidatesByItem,
             scoresByItem, allocationsByItem, reserveCancellations, sizing));
         evidence.AddRange(BuildInventoryEvidence(
-            local, historyByItem, listingsByItem, candidatesByItem,
+            local, historyByItem, listingsByItem, displayMetadataByItem, candidatesByItem,
             scoresByItem, sellQuantityByItem, sizing));
 
         var actions = actionPolicy.Evaluate(evidence);
@@ -250,11 +268,23 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 RemainingCashAfterRecommendations(portfolioResult.Value.AvailableCash, actions))
             : null;
 
+        var generatedAtUtc = RequireUtc(clock.UtcNow);
+        var accountEvidenceExpiresAtUtc = FreshnessPolicy.AccountEvidenceExpiresAtUtc(
+            local.Profile.LastSuccessfulSyncAtUtc, local.CurrentOrders.ObservedAtUtc);
+        if (!FreshnessPolicy.IsAccountEvidenceCurrent(
+                local.Profile.LastSuccessfulSyncAtUtc, local.CurrentOrders.ObservedAtUtc, generatedAtUtc))
+        {
+            return PrimaryRecommendationResult.AccountEvidenceStale(
+                local.Policies, local.Profile.LastSuccessfulSyncAtUtc!.Value,
+                local.CurrentOrders.ObservedAtUtc, accountEvidenceExpiresAtUtc!.Value);
+        }
+
         return new PrimaryRecommendationResult(
             PrimaryRecommendationState.Ready,
             sizing.State == PositionSizingResultState.Unavailable ? "buy_sizing_unavailable" : null,
-            asOfUtc, local.Profile.LastSuccessfulSyncAtUtc, local.CurrentOrders.ObservedAtUtc,
-            scan.ObservedAtUtc, local.Policies, portfolio, actions);
+            generatedAtUtc, local.Profile.LastSuccessfulSyncAtUtc, local.CurrentOrders.ObservedAtUtc,
+            scan.ObservedAtUtc, local.Policies, portfolio, actions,
+            accountEvidenceExpiresAtUtc);
     }
 
     private static Money RemainingCashAfterRecommendations(
@@ -271,6 +301,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         IReadOnlyList<LiveMarketScannerCandidate> candidates,
         IReadOnlyDictionary<int, OpportunityScore> scores,
         IReadOnlyDictionary<int, HistoricalMarketAnalytics> history,
+        IReadOnlyDictionary<int, MarketItemMetadata> displayMetadata,
         IReadOnlyDictionary<int, PositionSizingAllocation> allocations,
         bool sizingAvailable) => candidates.Select(candidate =>
     {
@@ -285,13 +316,14 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             Score(score), History(history[candidate.Item.ItemId]),
             Liquidity(candidate.Liquidity, ClassifyLiquidity(candidate.Liquidity.Reasons), candidate.Liquidity.ParticipationCapQuantity),
             allocation.Constraints, true, sizingAvailable, false, false, false, false, false, false,
-            Money.Zero, Money.Zero);
+            Money.Zero, Money.Zero, candidate.Item.IconUrl ?? IconFor(candidate.Item.ItemId, displayMetadata));
     }).ToArray();
 
     private IReadOnlyList<PrimaryRecommendationEvidence> BuildOrderEvidence(
         LocalSnapshot local,
         IReadOnlyDictionary<int, HistoricalMarketAnalytics> history,
         IReadOnlyDictionary<int, MarketListing> listings,
+        IReadOnlyDictionary<int, MarketItemMetadata> displayMetadata,
         IReadOnlyDictionary<int, LiveMarketScannerCandidate> candidates,
         IReadOnlyDictionary<int, OpportunityScore> scores,
         IReadOnlyDictionary<int, PositionSizingAllocation> allocations,
@@ -357,7 +389,8 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 liquidity is null || classification is null ? null : Liquidity(liquidity, classification.Value, liquidity.ParticipationCapQuantity),
                 orderConstraints, complete, allocation?.State == PositionSizingAllocationState.Suggested,
                 reserveCancellations.Contains(order.ExternalOrderId), !hasKnownSellBasis,
-                exposureExceeded, false, false, false, incremental, capacity));
+                exposureExceeded, false, false, false, incremental, capacity,
+                IconFor(order.ItemId, displayMetadata)));
         }
         return result;
     }
@@ -366,6 +399,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         LocalSnapshot local,
         IReadOnlyDictionary<int, HistoricalMarketAnalytics> history,
         IReadOnlyDictionary<int, MarketListing> listings,
+        IReadOnlyDictionary<int, MarketItemMetadata> displayMetadata,
         IReadOnlyDictionary<int, LiveMarketScannerCandidate> candidates,
         IReadOnlyDictionary<int, OpportunityScore> scores,
         IReadOnlyDictionary<int, int> listedQuantity,
@@ -403,16 +437,19 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 ? EconomicsFromBasis(BasisFor(unlistedLots, unlistedQuantity), listPrice, unlistedQuantity) : null;
             var suggestedQuantity = exposureExceeded
                 ? Math.Min(requiredReduction, safeQuantity)
-                : fullImmediate?.NetProfit.Copper > 0 ? unlistedQuantity
-                : partialImmediate?.NetProfit.Copper > 0 ? partialQuantity : unlistedQuantity;
-            var selectedEconomics = exposureExceeded && suggestedQuantity > 0 && listing is not null
+                : fullImmediate?.Economics.NetProfit.Copper > 0 ? unlistedQuantity
+                : partialImmediate?.Economics.NetProfit.Copper > 0 ? partialQuantity : unlistedQuantity;
+            var selectedImmediate = exposureExceeded && suggestedQuantity > 0 && listing is not null
                 ? TryLiquidationEconomics(listing, unlistedLots, suggestedQuantity)
                 : exposureExceeded ? null
-                : fullImmediate?.NetProfit.Copper > 0 ? fullImmediate
-                : partialImmediate?.NetProfit.Copper > 0 ? partialImmediate : listingEconomics;
+                : fullImmediate?.Economics.NetProfit.Copper > 0 ? fullImmediate
+                : partialImmediate?.Economics.NetProfit.Copper > 0 ? partialImmediate : null;
+            var selectedEconomics = exposureExceeded
+                ? selectedImmediate?.Economics
+                : selectedImmediate?.Economics ?? listingEconomics;
             var constraints = BuildInventoryConstraints(
                 unlistedLots, unlistedQuantity, requiredReduction, safeQuantity, itemCap, exposureExceeded,
-                partialQuantity < unlistedQuantity && partialImmediate?.NetProfit.Copper > 0,
+                partialQuantity < unlistedQuantity && partialImmediate?.Economics.NetProfit.Copper > 0,
                 liquidity is not null, sizing.State);
             result.Add(new PrimaryRecommendationEvidence(
                 PrimaryRecommendationSource.Inventory, PrimaryRecommendationOrderState.NotApplicable,
@@ -421,14 +458,16 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 new PrimaryRecommendationPriceState(
                     null, BestBuy(listing) > 0 ? new Money(BestBuy(listing)) : null,
                     LowestSell(listing) > 0 ? new Money(LowestSell(listing)) : null,
-                    candidate?.PlannedBid, plannedList, candidate?.MaximumBid),
+                    candidate?.PlannedBid, plannedList, candidate?.MaximumBid,
+                    selectedImmediate?.UnitPriceRange),
                 selectedEconomics, score is null ? null : Score(score), itemHistory is null ? null : History(itemHistory),
                 liquidity is null ? null : Liquidity(liquidity, classification, safeQuantity), constraints,
                 listing is not null && itemHistory is not null && BestBuy(listing) > 0 && LowestSell(listing) > 1,
                 sizing.State == PositionSizingResultState.Sized, false, false, exposureExceeded,
-                fullImmediate?.NetProfit.Copper > 0,
-                partialQuantity < unlistedQuantity && partialImmediate?.NetProfit.Copper > 0,
-                listingEconomics?.NetProfit.Copper > 0, Money.Zero, Money.Zero));
+                fullImmediate?.Economics.NetProfit.Copper > 0,
+                partialQuantity < unlistedQuantity && partialImmediate?.Economics.NetProfit.Copper > 0,
+                listingEconomics?.NetProfit.Copper > 0, Money.Zero, Money.Zero,
+                IconFor(itemId, displayMetadata)));
         }
         return result;
     }
@@ -525,13 +564,19 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         return constraints;
     }
 
-    private PrimaryRecommendationEconomics? TryLiquidationEconomics(MarketListing listing, IReadOnlyList<LotSlice> lots, int quantity)
+    private ImmediateLiquidation? TryLiquidationEconomics(MarketListing listing, IReadOnlyList<LotSlice> lots, int quantity)
     {
         if (quantity <= 0) return null;
         var scenario = executionSimulator.SimulateLiquidation(
             listing.Buys.OrderByDescending(level => level.UnitPriceInCopper)
                 .Select(level => new OrderBookLevel(level.Quantity, new Money(level.UnitPriceInCopper))).ToArray(), quantity);
-        return scenario.IsFullyFilled ? EconomicsFromTotals(BasisFor(lots, quantity), scenario.TotalValue) : null;
+        return scenario.IsFullyFilled
+            ? new ImmediateLiquidation(
+                EconomicsFromTotals(BasisFor(lots, quantity), scenario.TotalValue),
+                new PrimaryRecommendationImmediateSalePriceRange(
+                    new Money(scenario.Fills.Min(fill => fill.UnitPrice.Copper)),
+                    new Money(scenario.Fills.Max(fill => fill.UnitPrice.Copper))))
+            : null;
     }
 
     private PrimaryRecommendationEconomics Economics(Money unitBuy, Money unitSell, int quantity) =>
@@ -683,6 +728,9 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         evidence.CompletionRateLimitation);
     private static PrimaryRecommendationHistory History(HistoricalMarketAnalytics history) => new(
         Confidence(history), history.AsOfUtc,
+        history.Windows.Select(window => window.Coverage.LastEligibleObservedAtUtc)
+            .Where(value => value is not null)
+            .Max(),
         history.Windows.Select(window => new PrimaryRecommendationHistoryWindow(
             (int)(window.Coverage.ToInclusiveUtc - window.Coverage.FromInclusiveUtc).TotalDays,
             window.State == HistoricalMarketWindowState.Available,
@@ -822,6 +870,8 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
     private static Money Multiply(Money unitPrice, int quantity) => new(checked(unitPrice.Copper * quantity));
     private static string NameFor(int itemId, IReadOnlyDictionary<int, string> metadata, string? scannerName) =>
         !string.IsNullOrWhiteSpace(scannerName) ? scannerName : metadata.GetValueOrDefault(itemId) ?? $"Item #{itemId}";
+    private static string? IconFor(int itemId, IReadOnlyDictionary<int, MarketItemMetadata> metadata) =>
+        metadata.TryGetValue(itemId, out var item) ? item.IconUrl : null;
     private static DateTimeOffset RequireUtc(DateTimeOffset value) => value.Offset == TimeSpan.Zero
         ? value : throw new InvalidOperationException("The recommendation clock must return UTC.");
     private static string? ErrorName(Gw2ApiErrorCategory? error) => error?.ToString();
@@ -833,6 +883,9 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         PersonalTradingPostHistoryCoverage HistoryCoverage,
         IReadOnlyList<StoredCompletedPersonalTradingPostTransaction> CompletedTransactions,
         IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot> CurrentOrderObservations);
+    private sealed record ImmediateLiquidation(
+        PrimaryRecommendationEconomics Economics,
+        PrimaryRecommendationImmediateSalePriceRange UnitPriceRange);
     private sealed record MarketModel(Money PlannedBid, Money PlannedList, Money MaximumBid);
     private sealed record LotSlice(Money UnitPrice, int Quantity);
 }

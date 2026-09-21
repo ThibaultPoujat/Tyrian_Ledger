@@ -2,102 +2,238 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
-const notSynchronizedDashboard = {
-  state: 'notSynchronized', accountError: null, lastSuccessfulSyncAtUtc: null, currentOrdersObservedAtUtc: null,
-  historyCoverage: null, marketState: 'unavailable', isFeeRoundingExternallyVerified: false,
-  realizedWindows: [], openAcquisitionBasis: null, netLiquidationValue: null, unrealizedProfit: null,
-  isOpenInventoryFullyValued: null, openInventory: [], currentBuyCapital: { copper: '0' },
-  currentSellGrossValue: { copper: '0' }, currentSellNetValue: { copper: '0' }, currentOrders: [],
-  recentTrades: [], bestRealizedItems: [], worstRealizedItems: [], personalLearning: null,
+const dashboardBase = {
+  state: 'ready',
+  accountError: null,
+  lastSuccessfulSyncAtUtc: '2026-09-19T08:00:00Z',
+  currentOrdersObservedAtUtc: '2026-09-19T08:00:00Z',
+  historyCoverage: { startUtc: '2026-06-01T00:00:00Z', endUtc: '2026-09-19T08:00:00Z' },
+  marketState: 'available',
+  isFeeRoundingExternallyVerified: false,
+  realizedWindows: [
+    { days: 7, status: 'supported', netProfit: { copper: '32100' }, unknownBasisQuantity: 0 },
+    { days: 30, status: 'supported', netProfit: { copper: '124819' }, unknownBasisQuantity: 0 },
+    { days: 90, status: 'supported', netProfit: { copper: '310200' }, unknownBasisQuantity: 0 },
+  ],
+  todayRealized: { days: 0, status: 'supported', netProfit: { copper: '32700' }, unknownBasisQuantity: 0 },
+  openAcquisitionBasis: { copper: '0' },
+  netLiquidationValue: { copper: '0' },
+  unrealizedProfit: { copper: '0' },
+  isOpenInventoryFullyValued: true,
+  openInventory: [],
+  currentBuyCapital: { copper: '0' },
+  currentSellGrossValue: { copper: '0' },
+  currentSellNetValue: { copper: '0' },
+  currentOrders: [],
+  recentTrades: [],
+  bestRealizedItems: [],
+  worstRealizedItems: [],
+  personalLearning: null,
 };
 
-function recommendationAction(itemId: number, itemName: string, action = 'BUY', source = 'newOpportunity') {
+function recommendationAction(
+  itemId: number,
+  itemName: string,
+  action = 'BUY',
+  source = 'newOpportunity',
+  itemIconUrl: string | null = null,
+) {
   return {
-    action, source, orderState: source === 'buyOrder' ? 'aboveMaximumBid' : 'notApplicable',
+    action,
+    source,
+    orderState: source === 'buyOrder' ? 'aboveMaximumBid' : 'notApplicable',
     orderId: source === 'buyOrder' ? String(9000 + itemId) : null,
-    itemId, itemName, quantity: 3, capital: { copper: '315' },
-    prices: { currentOrderUnitPrice: source === 'buyOrder' ? { copper: '125' } : null, bestBuy: { copper: '99' }, lowestSell: { copper: '151' }, plannedBid: { copper: '100' }, plannedListPrice: { copper: '150' }, maximumBid: { copper: '110' } },
-    economics: { acquisitionCost: { copper: '300' }, grossSaleValue: { copper: '450' }, listingFee: { copper: '23' }, exchangeFee: { copper: '45' }, netSaleProceeds: { copper: '382' }, netProfit: { copper: '82' }, totalCost: { copper: '323' }, roiDisplayPercent: '25.39%' },
+    itemId,
+    itemName,
+    itemIconUrl,
+    quantity: 22,
+    capital: { copper: '2716032' },
+    prices: {
+      currentOrderUnitPrice: source === 'buyOrder' ? { copper: '123456' } : null,
+      bestBuy: { copper: '118056' },
+      lowestSell: { copper: '135000' },
+      plannedBid: { copper: '123456' },
+      plannedListPrice: { copper: '134999' },
+      maximumBid: { copper: '124000' },
+      immediateSalePriceRange: null,
+    },
+    economics: {
+      acquisitionCost: { copper: '2716032' },
+      grossSaleValue: { copper: '2969978' },
+      listingFee: { copper: '148499' },
+      exchangeFee: { copper: '296998' },
+      netSaleProceeds: { copper: '2524481' },
+      netProfit: { copper: '21800' },
+      totalCost: { copper: '2864531' },
+      roiDisplayPercent: '7.61%',
+    },
     score: {
-      rank: itemId, totalPoints: 82, basePoints: 85, appliedPenaltyPoints: 3,
+      rank: itemId,
+      totalPoints: 82,
+      basePoints: 85,
+      appliedPenaltyPoints: 3,
       components: [{ name: 'personalEvidence', state: 'available', normalizedPercent: 80, maximumPoints: 15, awardedPoints: 9 }],
       anomalies: [],
       personalEvidence: {
-        state: 'supported', knownBasisSampleCount: 3, latestKnownBasisCompletionAtUtc: '2026-09-09T12:00:00Z',
-        realizedRoiSaleCount: 3, minimumRealizedRoiBasisPoints: 1200, medianRealizedRoiBasisPoints: 1800, maximumRealizedRoiBasisPoints: 2200,
-        realizedProfitPerDayNumerator: '9', realizedProfitPerDayDenominator: '1', capitalTurnsPerDayNumerator: '1', capitalTurnsPerDayDenominator: '2',
-        typicalHoldingDuration: '1.00:00:00', completionRateLimitation: 'No cancellation denominator is retained.',
+        state: 'supported',
+        knownBasisSampleCount: 3,
+        latestKnownBasisCompletionAtUtc: '2026-09-19T07:00:00Z',
+        completionRateLimitation: 'Synthetic limitation.',
       },
     },
-    history: { confidence: 'strong', commonCutoffUtc: '2026-09-09T12:00:00Z', windows: [
-      { durationDays: 7, isAvailable: true, rawObservationCount: 24, eligibleObservationCount: 22, observedSpanPercent: 91 },
-      { durationDays: 30, isAvailable: true, rawObservationCount: 80, eligibleObservationCount: 75, observedSpanPercent: 88 },
-    ] },
-    liquidity: { classification: 'high', totalBuyQuantity: 100, totalSellQuantity: 120, nearBestBuyQuantity: 30, nearBestSellQuantity: 40, participationCapQuantity: 10, safeLiquidationQuantity: 10, reasons: [] },
-    portfolioConstraints: [{ name: 'itemExposure', capitalCapacity: { copper: '500' }, quantityCapacity: 5, isBinding: true }],
-    reasons: [{ code: action === 'CANCEL BID' ? 'bidAboveMaximum' : 'strongEvidence', message: action === 'CANCEL BID' ? 'The current bid is above the maximum allowed bid.' : 'Both retained-history windows support this opportunity.' }],
+    history: {
+      confidence: 'strong',
+      commonCutoffUtc: '2026-09-19T07:59:00Z',
+      lastObservedAtUtc: '2026-09-19T07:58:00Z',
+      windows: [
+        { durationDays: 7, isAvailable: true, rawObservationCount: 24, eligibleObservationCount: 22, observedSpanPercent: 91 },
+        { durationDays: 30, isAvailable: true, rawObservationCount: 80, eligibleObservationCount: 75, observedSpanPercent: 88 },
+      ],
+    },
+    liquidity: {
+      classification: 'high',
+      totalBuyQuantity: 100,
+      totalSellQuantity: 120,
+      nearBestBuyQuantity: 30,
+      nearBestSellQuantity: 40,
+      participationCapQuantity: 25,
+      safeLiquidationQuantity: 25,
+      reasons: [],
+    },
+    portfolioConstraints: [
+      { name: 'itemExposure', capitalCapacity: { copper: '5000000' }, quantityCapacity: 40, isBinding: false },
+    ],
+    reasons: [
+      {
+        code: action === 'CANCEL BID' ? 'bidAboveMaximum' : 'strongEvidence',
+        message: 'Backend English text must not be rendered directly.',
+      },
+    ],
   };
 }
 
 const readyRecommendations = {
-  state: 'ready', evidenceError: null, generatedAtUtc: '2026-09-09T12:00:00Z',
-  lastSuccessfulSyncAtUtc: '2026-09-09T11:59:00Z', currentOrdersObservedAtUtc: '2026-09-09T11:58:00Z', scannerObservedAtUtc: '2026-09-09T11:57:00Z',
-  policies: { actionPolicyVersion: 1, scorePolicyVersion: 1, positionSizingPolicyVersion: 1, fifoPolicyVersion: 1, feePolicyVersion: 1, minimumProfit: { copper: '1' }, minimumRoiBasisPoints: 0, cashReserveBasisPoints: 1500, strategy: 'FastFlip', category: 'TradingPost' },
-  portfolio: { availableCash: { copper: '9007199254740993' }, totalBankroll: { copper: '9007199254741993' }, cashReserve: { copper: '1500' }, reserveStatus: 'satisfied', cashReserveShortfall: { copper: '0' }, remainingCashAfterSizing: { copper: '9007199254740678' } },
+  state: 'ready',
+  evidenceError: null,
+  generatedAtUtc: '2026-09-19T08:01:00Z',
+  lastSuccessfulSyncAtUtc: '2026-09-19T08:00:00Z',
+  currentOrdersObservedAtUtc: '2026-09-19T08:00:00Z',
+  scannerObservedAtUtc: '2026-09-19T08:01:00Z',
+  accountEvidenceExpiresAtUtc: '2030-09-19T08:15:00Z',
+  policies: {
+    actionPolicyVersion: 1,
+    scorePolicyVersion: 1,
+    positionSizingPolicyVersion: 1,
+    fifoPolicyVersion: 1,
+    feePolicyVersion: 1,
+    minimumProfit: { copper: '1' },
+    minimumRoiBasisPoints: 0,
+    cashReserveBasisPoints: 1500,
+    strategy: 'FastFlip',
+    category: 'TradingPost',
+  },
+  portfolio: {
+    availableCash: { copper: '9007199254740993' },
+    totalBankroll: { copper: '9007199254741993' },
+    cashReserve: { copper: '1500' },
+    reserveStatus: 'satisfied',
+    cashReserveShortfall: { copper: '0' },
+    remainingCashAfterSizing: { copper: '9007199254740678' },
+  },
   actions: [
-    recommendationAction(90, 'Overpriced bid', 'CANCEL BID', 'buyOrder'),
-    recommendationAction(1, 'Top opportunity'), recommendationAction(2, 'Second opportunity'),
-    recommendationAction(3, 'Third opportunity'), recommendationAction(4, 'Fourth opportunity'),
-    recommendationAction(5, 'Fifth opportunity'), recommendationAction(6, 'Sixth opportunity'),
+    recommendationAction(90, 'Ordre trop cher', 'CANCEL BID', 'buyOrder'),
+    recommendationAction(1, "Lingot d'orichalque", 'BUY', 'newOpportunity', 'https://render.guildwars2.com/file/synthetic.png'),
+    recommendationAction(2, 'Deuxième opportunité'),
+    recommendationAction(3, 'Troisième opportunité'),
+    recommendationAction(4, 'Quatrième opportunité'),
+    recommendationAction(5, 'Cinquième opportunité'),
+    recommendationAction(6, 'À attendre', 'WAIT'),
+    recommendationAction(7, 'À examiner', 'REVIEW'),
+    recommendationAction(8, 'Ordre à conserver', 'KEEP BID', 'buyOrder'),
+    recommendationAction(9, 'Ordre dépassé à ne pas poursuivre', 'STOP BIDDING', 'buyOrder'),
   ],
 };
 
-beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
-    if (input === '/api/health') {
+type ApiOverrides = {
+  dashboard?: unknown;
+  dashboardResponses?: Array<{ ok: boolean; payload: unknown }>;
+  recommendations?: unknown;
+  recommendationsOk?: boolean;
+  health?: unknown;
+  account?: unknown;
+  localData?: unknown;
+};
+
+function installFetch(overrides: ApiOverrides = {}) {
+  const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+  let dashboardRequests = 0;
+  const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ input, init });
+    const url = String(input);
+
+    if (url === '/api/health') {
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(overrides.health ?? { status: 'healthy' }) });
+    }
+    if (url === '/api/account-connection') {
       return Promise.resolve({
         ok: true,
-        json: vi.fn().mockResolvedValue({ status: 'healthy' }),
+        json: vi.fn().mockResolvedValue(overrides.account ?? {
+          state: 'valid',
+          grantedPermissions: ['account', 'tradingpost', 'wallet'],
+          missingRequiredPermissions: [],
+        }),
       });
     }
-
-    if (input === '/api/local-data') {
+    if (url === '/api/personal-dashboard') {
+      const response = overrides.dashboardResponses?.[Math.min(dashboardRequests, overrides.dashboardResponses.length - 1)];
+      dashboardRequests++;
+      return Promise.resolve({
+        ok: response?.ok ?? true,
+        json: vi.fn().mockResolvedValue(response?.payload ?? overrides.dashboard ?? dashboardBase),
+      });
+    }
+    if (url === '/api/recommendations') {
+      return Promise.resolve({
+        ok: overrides.recommendationsOk ?? true,
+        json: vi.fn().mockResolvedValue(overrides.recommendations ?? readyRecommendations),
+      });
+    }
+    if (url === '/api/local-data') {
       return Promise.resolve({
         ok: true,
-        json: vi.fn().mockResolvedValue({
+        json: vi.fn().mockResolvedValue(overrides.localData ?? {
           databasePath: '/synthetic/Tyrian Ledger/tyrian-ledger.db',
           backupDirectoryPath: '/synthetic/Tyrian Ledger/backups',
+          managedBackups: [{ fileName: 'backup.db', createdAtUtc: '2026-09-19T07:00:00Z' }],
         }),
       });
     }
-
-    if (input === '/api/personal-dashboard') {
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue(notSynchronizedDashboard),
-      });
+    if (url === '/api/local-data/clear-personal') {
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'personal_data_cleared' }) });
     }
-
-    if (input === '/api/recommendations') {
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          state: 'notSynchronized', evidenceError: null, generatedAtUtc: null,
-          lastSuccessfulSyncAtUtc: null, currentOrdersObservedAtUtc: null, scannerObservedAtUtc: null,
-          policies: { ...readyRecommendations.policies }, portfolio: null, actions: [],
-        }),
-      });
+    if (url === '/api/local-data/backup') {
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ fileName: 'backup.db' }) });
     }
+    if (url === '/api/local-data/restore') {
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored', preRestoreBackupFileName: 'before-restore.db' }) });
+    }
+    if (url === '/api/local-data/restore-managed') {
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored', preRestoreBackupFileName: 'before-managed.db' }) });
+    }
+    if (url === '/api/personal-trading-post/sync') {
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'succeeded' }) });
+    }
+    if (url === '/api/diagnostics/export') {
+      return Promise.resolve({ ok: true, blob: vi.fn().mockResolvedValue(new Blob(['safe diagnostic'], { type: 'text/plain' })) });
+    }
+    return Promise.resolve({ ok: false, json: vi.fn().mockResolvedValue({}) });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return { fetchMock, calls };
+}
 
-    return Promise.resolve({
-      ok: true,
-      json: vi.fn().mockResolvedValue({
-        state: 'not_configured',
-        grantedPermissions: [],
-        missingRequiredPermissions: ['account', 'tradingpost', 'wallet'],
-      }),
-    });
-  }));
+beforeEach(() => {
+  installFetch();
   vi.spyOn(Storage.prototype, 'getItem');
   vi.spyOn(Storage.prototype, 'setItem');
   vi.spyOn(Storage.prototype, 'removeItem');
@@ -109,683 +245,537 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('M14 local data controls', () => {
-  it('renders backend-authoritative scanner evidence and toggles a durable watchlist entry', async () => {
-    let watched = false;
-    const scanner = {
-      state: 'ready', error: null, observedAtUtc: '2026-09-08T12:00:00Z', isFeeRoundingExternallyVerified: false, isTruncated: false,
-      exclusions: [{ reason: 'feeLosing', count: 2 }],
-      candidates: [{ itemId: 42, itemName: 'Scanner item', bestBuy: { quantity: 5, unitPrice: { copper: '100' } }, lowestSell: { quantity: 8, unitPrice: { copper: '200' } }, plannedBid: { copper: '100' }, plannedListPrice: { copper: '200' }, netProfit: { copper: '70' }, totalCost: { copper: '105' }, maximumBid: { copper: '120' }, modeledRoi: { profit: { copper: '70' }, totalCost: { copper: '105' }, displayPercent: '66.67%' }, liquidity: { participationCapQuantity: 3, reasons: ['buyPriceCliff'], acquisition: { requestedQuantity: 1, filledQuantity: 1, isFullyFilled: true, totalValue: { copper: '110' } }, liquidation: { requestedQuantity: 1, filledQuantity: 1, isFullyFilled: true, totalValue: { copper: '200' } }, topBuyLevels: [{ listings: 2, quantity: 5, unitPrice: { copper: '100' } }], topSellLevels: [{ listings: 3, quantity: 8, unitPrice: { copper: '200' } }] } }],
-    };
-    scanner.candidates.push({ ...scanner.candidates[0], itemId: 43, itemName: 'Higher maximum bid', netProfit: { copper: '60' }, maximumBid: { copper: '130' } });
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-      if (typeof input === 'string' && input.startsWith('/api/live-market-scanner')) return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(scanner) } as unknown as Response);
-      if (input === '/api/watchlist') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ itemIds: watched ? [42] : [] }) } as unknown as Response);
-      if (input === '/api/watchlist/42' && init?.method === 'PUT') { watched = true; return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'watching' }) } as unknown as Response); }
-      if (input === '/api/watchlist/42' && init?.method === 'DELETE') { watched = false; return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'removed' }) } as unknown as Response); }
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+describe('Mes Signaux MVP', () => {
+  it('opens on the French Signals surface with the stable primary navigation', async () => {
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'Mes Signaux', level: 1 })).toBeInTheDocument();
+    const navigation = screen.getByRole('navigation', { name: 'Navigation principale' });
+    expect(within(navigation).getByRole('button', { name: 'Mes Signaux' })).toHaveAttribute('aria-current', 'page');
+    expect(within(navigation).getByRole('button', { name: /Artisanat/i })).toBeDisabled();
+    expect(within(navigation).getByRole('button', { name: /Réglages/i })).toBeEnabled();
+    expect(screen.queryByText('Scanner')).not.toBeInTheDocument();
+    expect(screen.queryByText('Investments')).not.toBeInTheDocument();
+  });
+
+  it('announces asynchronous local-host status changes politely', async () => {
+    render(<App />);
+
+    const status = await screen.findByText('Application locale connectée');
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('shows today and 30-day realized profit permanently and keeps 7/90-day values behind disclosure', async () => {
+    render(<App />);
+
+    const performance = await screen.findByLabelText('Profit réalisé');
+    expect(within(performance).getByText("Aujourd'hui")).toBeInTheDocument();
+    expect(within(performance).getByText('30 j')).toBeInTheDocument();
+    expect(within(performance).getByText(`Données jusqu’au ${new Date(dashboardBase.historyCoverage.endUtc).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`)).toBeInTheDocument();
+    const disclosure = within(performance).getByText('7 j / 90 j').closest('details');
+    expect(disclosure).not.toHaveAttribute('open');
+
+    fireEvent.click(within(performance).getByText('7 j / 90 j'));
+    expect(within(performance).getByText('7 jours')).toBeInTheDocument();
+    expect(within(performance).getByText('90 jours')).toBeInTheDocument();
+    expect(within(performance).getByLabelText(/3 pièces d'or, 27 pièces d'argent/)).toBeInTheDocument();
+  });
+
+  it('does not present retained profit as current after a dashboard refresh fails', async () => {
+    cleanup();
+    const { calls } = installFetch({
+      dashboardResponses: [
+        { ok: true, payload: dashboardBase },
+        { ok: false, payload: {} },
+      ],
     });
-
     render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Current scanner and watchlist' })).toBeVisible();
-    expect(await screen.findByText('Scanner item')).toBeVisible();
-    expect(screen.getAllByText('66.67%')).toHaveLength(2);
-    expect(screen.getAllByText(/Risk: Buy Price Cliff/)).toHaveLength(2);
-    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'maxBid' } });
-    expect(document.querySelector('.scanner-candidate h3')?.textContent).toBe('Higher maximum bid');
-    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'profit' } });
-    fireEvent.click(screen.getAllByText('Order-book detail')[0]);
-    expect(screen.getAllByRole('heading', { name: 'Buy orders' })).toHaveLength(2);
-    fireEvent.change(screen.getByLabelText('Max planned bid (copper)'), { target: { value: '99' } });
-    expect(screen.getByText('No current candidates match these presentation filters.')).toBeVisible();
-    fireEvent.change(screen.getByLabelText('Max planned bid (copper)'), { target: { value: '100' } });
-    expect(screen.getByText('Scanner item')).toBeVisible();
-    fireEvent.change(screen.getByLabelText('Max per-unit capital (copper)'), { target: { value: '104' } });
-    expect(screen.getByText('No current candidates match these presentation filters.')).toBeVisible();
-    fireEvent.change(screen.getByLabelText('Max per-unit capital (copper)'), { target: { value: '105' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: 'No liquidity flags only' }));
-    expect(screen.getByText('No current candidates match these presentation filters.')).toBeVisible();
-    fireEvent.click(screen.getByRole('checkbox', { name: 'No liquidity flags only' }));
-    fireEvent.change(screen.getByLabelText('Minimum ROI (basis points)'), { target: { value: '250' } });
-    fireEvent.change(screen.getByLabelText('Minimum modeled profit (copper)'), { target: { value: '50' } });
-    fireEvent.change(screen.getByLabelText('Intended quantity'), { target: { value: '2' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh scanner' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/live-market-scanner?minimumRoiBasisPoints=250&minimumNetProfitCopper=50&intendedQuantity=2', expect.anything()));
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add to watchlist' })[0]);
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/watchlist/42', expect.objectContaining({ method: 'PUT' })));
-    expect(await screen.findByRole('button', { name: 'Remove from watchlist' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove from watchlist' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/watchlist/42', expect.objectContaining({ method: 'DELETE' })));
-    expect(Storage.prototype.setItem).not.toHaveBeenCalled();
+    await screen.findByLabelText('Profit réalisé');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Réglages' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Synchroniser les données du Comptoir' }));
+    await waitFor(() => expect(calls.filter(call => String(call.input) === '/api/personal-dashboard')).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', { name: 'Mes Signaux' }));
+
+    const performance = await screen.findByLabelText('Profit réalisé');
+    expect(within(performance).getAllByText('Indisponible')).toHaveLength(4);
+    expect(within(performance).queryByText(`Données jusqu’au ${new Date(dashboardBase.historyCoverage.endUtc).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`)).not.toBeInTheDocument();
   });
 
-  it('distinguishes an empty scanner from an unavailable durable watchlist', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (typeof input === 'string' && input.startsWith('/api/live-market-scanner')) return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'ready', error: null, observedAtUtc: null, isFeeRoundingExternallyVerified: true, isTruncated: false, candidates: [], exclusions: [] }) } as unknown as Response);
-      if (input === '/api/watchlist') return Promise.reject(new TypeError('unavailable'));
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+  it('discloses units excluded from realized profit when acquisition basis is unknown', async () => {
+    cleanup();
+    installFetch({
+      dashboard: {
+        ...dashboardBase,
+        todayRealized: { ...dashboardBase.todayRealized, unknownBasisQuantity: 2 },
+        realizedWindows: dashboardBase.realizedWindows.map(window =>
+          window.days === 30 ? { ...window, unknownBasisQuantity: 3 } : window),
+      },
     });
-
     render(<App />);
 
-    expect(await screen.findByText('No current candidates match these presentation filters.')).toBeVisible();
-    expect(await screen.findByText('Watchlist unavailable.')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible();
+    expect(await screen.findByText("2 unités vendues exclues (prix d'achat inconnu)")).toBeInTheDocument();
+    expect(screen.getByText("3 unités vendues exclues (prix d'achat inconnu)")).toBeInTheDocument();
   });
 
-  it('keeps the local watchlist available when current market collection is unavailable', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (typeof input === 'string' && input.startsWith('/api/live-market-scanner')) return Promise.resolve({ ok: false, json: vi.fn().mockResolvedValue({ state: 'unavailable', error: 'upstreamUnavailable', observedAtUtc: null, isFeeRoundingExternallyVerified: false, isTruncated: false, candidates: [], exclusions: [] }) } as unknown as Response);
-      if (input === '/api/watchlist') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ itemIds: [42] }) } as unknown as Response);
-      if (input === '/api/watchlist/42') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({}) } as unknown as Response);
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
+  it('attention-gates no-action states and prioritizes the exact Trading Post instruction', async () => {
+    render(<App />);
+
+    expect(await screen.findByText("ANNULER L'ORDRE D'ACHAT")).toBeInTheDocument();
+    expect(document.querySelectorAll('.signal-list > .signal-card')).toHaveLength(6);
+    expect(screen.getByText('6 signaux méritent votre attention')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Cinquième opportunité', level: 3 })).toBeInTheDocument();
+    expect(screen.queryByText('À attendre')).not.toBeInTheDocument();
+    expect(screen.queryByText('À examiner')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ordre à conserver')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ordre dépassé à ne pas poursuivre')).not.toBeInTheDocument();
+
+    const buyCard = screen.getByRole('heading', { name: "Lingot d'orichalque", level: 3 }).closest('article');
+    expect(buyCard).not.toBeNull();
+    expect(within(buyCard!).getByText("PLACER UN ORDRE D'ACHAT")).toBeInTheDocument();
+    expect(within(buyCard!).getByText('Quantité à saisir')).toBeInTheDocument();
+    expect(within(buyCard!).getByText('22')).toBeInTheDocument();
+    expect(within(buyCard!).getByText('Prix à saisir par unité')).toBeInTheDocument();
+    expect(within(buyCard!).getByLabelText("12 pièces d'or, 34 pièces d'argent, 56 pièces de cuivre")).toBeInTheDocument();
+    expect(within(buyCard!).getByText('Profit modélisé')).toBeInTheDocument();
+  });
+
+  it('renders structured French explanations without leaking backend English reason copy', async () => {
+    render(<App />);
+
+    const buyCard = (await screen.findByRole('heading', { name: "Lingot d'orichalque", level: 3 })).closest('article');
+    fireEvent.click(within(buyCard!).getByText('Pourquoi ?'));
+
+    expect(within(buyCard!).getByText('Pourquoi maintenant ?')).toBeInTheDocument();
+    expect(within(buyCard!).getByText('Les fenêtres historiques disponibles soutiennent cette opportunité.')).toBeInTheDocument();
+    expect(within(buyCard!).getByText(/Historique personnel : 3 résultats à base connue/)).toBeInTheDocument();
+    expect(within(buyCard!).queryByText('Backend English text must not be rendered directly.')).not.toBeInTheDocument();
+    expect(within(buyCard!).getByText(/Le profit est modélisé/)).toBeInTheDocument();
+  });
+
+  it('uses an item image when supplied and preserves the fallback slot on image failure', async () => {
+    render(<App />);
+    const buyCard = (await screen.findByRole('heading', { name: "Lingot d'orichalque", level: 3 })).closest('article');
+    const image = buyCard!.querySelector('img');
+    expect(image).not.toBeNull();
+    fireEvent.error(image!);
+    expect(within(buyCard!).getByText('◇')).toBeInTheDocument();
+  });
+
+  it('shows a deliberate zero-Signal state when only internal no-action states remain', async () => {
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        actions: [recommendationAction(6, 'Attendre', 'WAIT'), recommendationAction(7, 'Examiner', 'REVIEW')],
+      },
     });
-
     render(<App />);
 
-    expect(await screen.findByText('Current scanner evidence is unavailable. Try again shortly.')).toBeVisible();
-    expect(await screen.findByRole('button', { name: 'Remove' })).toBeVisible();
+    expect(await screen.findByText('Aucun signal ne mérite votre attention pour le moment.')).toBeInTheDocument();
+    expect(screen.getByText('Les données actuelles ne justifient aucune action.')).toBeInTheDocument();
   });
 
-  it('shows the local foundation, safe no-key status, and guarded recovery controls', async () => {
+  it('preserves structured degraded operational truth returned with HTTP 503', async () => {
+    cleanup();
+    installFetch({
+      recommendationsOk: false,
+      recommendations: {
+        ...readyRecommendations,
+        state: 'evidenceUnavailable',
+        evidenceError: 'upstreamUnavailable',
+        actions: [],
+      },
+    });
     render(<App />);
 
-    expect(screen.getByRole('heading', { name: 'What should I do?' })).toBeVisible();
-    expect(await screen.findByText('Local host connected')).toBeVisible();
-    expect(await screen.findByText('No ArenaNet key configured')).toBeVisible();
-    expect(await screen.findByRole('heading', { name: 'No personal data yet' })).toBeVisible();
-    expect(screen.getByText(/never asks the browser to store or send it/i)).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Backup and recovery' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Create local backup' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Clear personal account data' })).toBeDisabled();
-    expect(screen.getByText('/synthetic/Tyrian Ledger/backups')).toBeVisible();
+    expect(await screen.findByText(/ArenaNet ou les données de marché sont temporairement indisponibles/)).toHaveAttribute('role', 'status');
   });
 
-  it('calls only same-origin safe contracts and does not use browser storage', async () => {
+  it('does not show actionable cards from a failed HTTP response claiming to be ready', async () => {
+    cleanup();
+    installFetch({ recommendationsOk: false, recommendations: readyRecommendations });
     render(<App />);
 
-    expect(await screen.findByText('Local host connected')).toBeVisible();
-    expect(fetch).toHaveBeenCalledWith('/api/health', expect.objectContaining({
-      headers: { Accept: 'application/json' },
-    }));
-    expect(fetch).toHaveBeenCalledWith('/api/account-connection', expect.objectContaining({
-      headers: {
-        Accept: 'application/json',
-        'X-Tyrian-Ledger-Request': '1',
+    expect(await screen.findByText("La lecture des signaux depuis l'application locale a échoué.")).toHaveAttribute('role', 'alert');
+    expect(screen.queryByRole('heading', { name: "Lingot d'orichalque" })).not.toBeInTheDocument();
+  });
+
+  it('uses the observed history sample time in the card explanation', async () => {
+    render(<App />);
+    const card = (await screen.findByRole('heading', { name: "Lingot d'orichalque", level: 3 })).closest('article');
+    fireEvent.click(within(card!).getByText('Pourquoi ?'));
+
+    const history = within(card!).getByText(/Historique marché : Dernier échantillon enregistré/);
+    expect(history.textContent).toContain(new Date('2026-09-19T07:58:00Z').toLocaleString('fr-FR'));
+    expect(history.textContent).not.toContain(new Date('2026-09-19T07:59:00Z').toLocaleString('fr-FR'));
+  });
+
+  it('keeps degraded operational truth separate from Signal cards', async () => {
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        state: 'evidenceUnavailable',
+        evidenceError: 'upstreamUnavailable',
+        actions: [],
       },
-    }));
-    expect(fetch).toHaveBeenCalledWith('/api/local-data', expect.objectContaining({
-      headers: {
-        Accept: 'application/json',
-        'X-Tyrian-Ledger-Request': '1',
+    });
+    render(<App />);
+
+    expect(await screen.findByText(/ArenaNet ou les données de marché sont temporairement indisponibles/)).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+  });
+
+  it('hides actions and gives an explicit state when account evidence is stale', async () => {
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        state: 'accountEvidenceStale',
+        evidenceError: 'account_evidence_stale',
+        accountEvidenceExpiresAtUtc: '2026-09-19T08:15:00Z',
+        actions: [],
       },
-    }));
-    expect(fetch).toHaveBeenCalledWith('/api/personal-dashboard', expect.objectContaining({
-      headers: {
-        Accept: 'application/json',
-        'X-Tyrian-Ledger-Request': '1',
+    });
+    render(<App />);
+
+    expect(await screen.findByText(/Les données du compte ont expiré/)).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+  });
+
+  it('expires open Signal cards at the backend-provided account-evidence deadline', async () => {
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        accountEvidenceExpiresAtUtc: new Date(Date.now() - 1_000).toISOString(),
       },
+    });
+    render(<App />);
+
+    expect(await screen.findByText(/Les données du compte ont expiré/)).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('heading', { name: "Lingot d'orichalque" })).not.toBeInTheDocument();
+  });
+
+  it('uses the simulated immediate-sale range instead of the top bid for the full quantity', async () => {
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        actions: [
+          {
+            ...recommendationAction(77, 'Lot à vendre', 'SELL', 'inventory'),
+            prices: {
+              ...recommendationAction(77, 'Lot à vendre', 'SELL', 'inventory').prices,
+              immediateSalePriceRange: {
+                lowestUnitPrice: { copper: '900' },
+                highestUnitPrice: { copper: '1000' },
+              },
+            },
+          },
+        ],
+      },
+    });
+    render(<App />);
+
+    const card = (await screen.findByRole('heading', { name: 'Lot à vendre', level: 3 })).closest('article');
+    expect(within(card!).getByText('Fourchette de vente immédiate par unité (modélisée)')).toBeInTheDocument();
+    expect(within(card!).getByLabelText("9 pièces d'argent")).toBeInTheDocument();
+    expect(within(card!).getByLabelText("10 pièces d'argent")).toBeInTheDocument();
+    expect(within(card!).queryByLabelText('11 pièces d’or, 80 pièces d’argent, 56 pièces de cuivre')).not.toBeInTheDocument();
+  });
+
+  it('distinguishes account setup, permissions, and an ArenaNet outage', async () => {
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        state: 'accountUnavailable',
+        evidenceError: 'CredentialNotConfigured',
+        actions: [],
+      },
+    });
+    render(<App />);
+    expect(await screen.findByText(/Aucune clé ArenaNet n'est configurée/)).toBeInTheDocument();
+
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        state: 'accountUnavailable',
+        evidenceError: 'Forbidden',
+        actions: [],
+      },
+    });
+    render(<App />);
+    expect(await screen.findByText(/ne dispose pas des autorisations nécessaires/)).toBeInTheDocument();
+
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        state: 'accountUnavailable',
+        evidenceError: 'UpstreamUnavailable',
+        actions: [],
+      },
+    });
+    render(<App />);
+    expect(await screen.findByText(/ArenaNet est temporairement indisponible/)).toBeInTheDocument();
+  });
+
+  it('labels source freshness explicitly without inventing a countdown', async () => {
+    render(<App />);
+
+    const freshness = await screen.findByText(/Marché actualisé/);
+    expect(freshness).toBeInTheDocument();
+    expect(screen.getByText('Actualisation à la demande')).toBeInTheDocument();
+
+    fireEvent.click(freshness.closest('summary')!);
+    expect(screen.getByText('Compte ArenaNet')).toBeInTheDocument();
+    expect(screen.getByText(/Synchronisé /)).toBeInTheDocument();
+    expect(screen.getByText(/Ordres relevés /)).toBeInTheDocument();
+    expect(screen.getByText('Historique marché')).toBeInTheDocument();
+    expect(screen.queryByText(/prochaine actualisation dans/i)).not.toBeInTheDocument();
+  });
+
+  it('uses the most recent history observation in the aggregate freshness row', async () => {
+    const recentObservation = new Date(Date.now() - 61_000).toISOString();
+    const olderObservation = new Date(Date.now() - 3_600_000).toISOString();
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        actions: [
+          {
+            ...recommendationAction(1, 'Observation ancienne'),
+            history: { ...recommendationAction(1, 'Observation ancienne').history, lastObservedAtUtc: olderObservation },
+          },
+          {
+            ...recommendationAction(2, 'Observation récente'),
+            history: { ...recommendationAction(2, 'Observation récente').history, lastObservedAtUtc: recentObservation },
+          },
+        ],
+      },
+    });
+    render(<App />);
+
+    const freshness = await screen.findByText(/Marché actualisé/);
+    fireEvent.click(freshness.closest('summary')!);
+    expect(screen.getByText('Dernier échantillon enregistré il y a 1 min')).toBeInTheDocument();
+  });
+});
+
+describe('Réglages et sécurité locale', () => {
+  it('requests diagnostic export through the protected local read contract', async () => {
+    const { calls } = installFetch();
+    const originalUrl = URL;
+    vi.stubGlobal('URL', class extends originalUrl {
+      static createObjectURL = vi.fn(() => 'blob:diagnostic');
+      static revokeObjectURL = vi.fn();
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Exporter le diagnostic' }));
+
+    await waitFor(() => expect(calls.some(call => String(call.input) === '/api/diagnostics/export')).toBe(true));
+    const exportCall = calls.find(call => String(call.input) === '/api/diagnostics/export');
+    expect(exportCall?.init?.headers).toMatchObject({ 'X-Tyrian-Ledger-Request': '1' });
+  });
+
+  it('moves account and local recovery controls under Réglages with French displayed copy', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Réglages', level: 1 })).toBeInTheDocument();
+    expect(screen.getByText('Connexion au compte prête')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Synchroniser les données du Comptoir' })).toBeEnabled();
+    expect(await screen.findByRole('heading', { name: 'Données locales' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Créer une sauvegarde locale' })).toBeEnabled();
+    expect(screen.getByText('Restaurer des données', { selector: 'summary' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Diagnostic' })).toBeInTheDocument();
+    expect(screen.getByText('Zone sensible', { selector: 'summary' })).toBeInTheDocument();
+  });
+
+  it('requires French destructive confirmations while preserving the guarded local API contract', async () => {
+    const { calls } = installFetch();
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    fireEvent.click(screen.getByText('Zone sensible', { selector: 'summary' }));
+    const clearButton = await screen.findByRole('button', { name: 'Effacer les données personnelles' });
+    expect(clearButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Saisissez EFFACER LES DONNÉES PERSONNELLES pour continuer'), { target: { value: 'EFFACER LES DONNÉES PERSONNELLES' } });
+    expect(clearButton).toBeEnabled();
+    fireEvent.click(clearButton);
+    await waitFor(() => expect(calls.some(call => String(call.input) === '/api/local-data/clear-personal')).toBe(true));
+    const clearCall = calls.find(call => String(call.input) === '/api/local-data/clear-personal');
+    expect(JSON.parse(String(clearCall?.init?.body))).toEqual({ confirmation: 'CLEAR PERSONAL DATA' });
+
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
+    const restoreButton = screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' });
+    expect(restoreButton).toBeDisabled();
+    const file = new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' });
+    fireEvent.change(screen.getByLabelText('Fichier de sauvegarde'), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    expect(restoreButton).toBeEnabled();
+    fireEvent.click(restoreButton);
+    await waitFor(() => expect(calls.some(call => String(call.input) === '/api/local-data/restore')).toBe(true));
+    const restoreCall = calls.find(call => String(call.input) === '/api/local-data/restore');
+    const restoreBody = restoreCall?.init?.body as FormData;
+    expect(restoreBody.get('confirmation')).toBe('RESTORE LOCAL DATA');
+  });
+
+  it('keeps destructive recovery actions mutually exclusive while a backup is running', async () => {
+    let completeBackup!: (value: unknown) => void;
+    const baseFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/local-data/backup') {
+        return new Promise(resolve => { completeBackup = resolve; });
+      }
+      return baseFetch(input, init);
     }));
+
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
+    fireEvent.click(screen.getByText('Zone sensible', { selector: 'summary' }));
+    const restoreFile = await screen.findByLabelText('Fichier de sauvegarde');
+    fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    fireEvent.change(screen.getByLabelText('Saisissez EFFACER LES DONNÉES PERSONNELLES pour continuer'), { target: { value: 'EFFACER LES DONNÉES PERSONNELLES' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Créer une sauvegarde locale' }));
+
+    expect(await screen.findByRole('button', { name: 'Création de la sauvegarde…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Effacer les données personnelles' })).toBeDisabled();
+
+    completeBackup({ ok: true, json: vi.fn().mockResolvedValue({ fileName: 'synthetic.db' }) });
+    expect(await screen.findByText('Sauvegarde créée : synthetic.db')).toBeInTheDocument();
+  });
+
+  it('restores a selected managed backup through the guarded local route', async () => {
+    const { calls } = installFetch({
+      localData: {
+        databasePath: '/synthetic/Tyrian Ledger/tyrian-ledger.db',
+        backupDirectoryPath: '/synthetic/Tyrian Ledger/backups',
+        managedBackupUploadLimitBytes: 512 * 1024 * 1024,
+        managedBackups: [{ fileName: 'managed.db', createdAtUtc: '2026-09-19T07:00:00Z' }],
+      },
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
+    fireEvent.change(await screen.findByLabelText('Sauvegarde gérée'), { target: { value: 'managed.db' } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurer la sauvegarde gérée' }));
+
+    await waitFor(() => expect(calls.some(call => String(call.input) === '/api/local-data/restore-managed')).toBe(true));
+    const call = calls.find(entry => String(entry.input) === '/api/local-data/restore-managed');
+    expect(JSON.parse(String(call?.init?.body))).toEqual({ confirmation: 'RESTORE LOCAL DATA', backupFileName: 'managed.db' });
+  });
+
+  it('blocks oversized imported backups without inferring a managed restore', async () => {
+    const { calls } = installFetch({
+      localData: {
+        databasePath: '/synthetic/Tyrian Ledger/tyrian-ledger.db',
+        backupDirectoryPath: '/synthetic/Tyrian Ledger/backups',
+        managedBackupUploadLimitBytes: 10,
+        managedBackups: [{ fileName: 'backup.db', createdAtUtc: '2026-09-19T07:00:00Z' }],
+      },
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
+    const file = new File(['synthetic payload'], 'backup.db', { type: 'application/x-sqlite3' });
+    fireEvent.change(await screen.findByLabelText('Fichier de sauvegarde'), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' }));
+
+    expect(await screen.findByText(/Cette sauvegarde importée dépasse la limite locale/)).toBeInTheDocument();
+    expect(calls.some(call => String(call.input) === '/api/local-data/restore')).toBe(false);
+    expect(calls.some(call => String(call.input) === '/api/local-data/restore-managed')).toBe(false);
+  });
+
+  it('reports unknown restore and clear outcomes without encouraging a destructive retry', async () => {
+    const baseFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/local-data/restore' || url === '/api/local-data/clear-personal') {
+        return Promise.reject(new TypeError('connection lost'));
+      }
+      return baseFetch(input, init);
+    }));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
+    fireEvent.click(screen.getByText('Zone sensible', { selector: 'summary' }));
+
+    fireEvent.change(await screen.findByLabelText('Fichier de sauvegarde'), { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' }));
+    expect(await screen.findByText("Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Saisissez EFFACER LES DONNÉES PERSONNELLES pour continuer'), { target: { value: 'EFFACER LES DONNÉES PERSONNELLES' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Effacer les données personnelles' }));
+    expect(await screen.findByText("Le résultat de l'effacement n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.")).toBeInTheDocument();
+  });
+
+  it('resets imported restore selection after a confirmed restore', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+    fireEvent.click(screen.getByText('Restaurer des données', { selector: 'summary' }));
+
+    fireEvent.change(await screen.findByLabelText('Fichier de sauvegarde'), { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
+    fireEvent.change(screen.getByLabelText('Saisissez RESTAURER LES DONNÉES LOCALES pour continuer'), { target: { value: 'RESTAURER LES DONNÉES LOCALES' } });
+    const button = screen.getByRole('button', { name: 'Restaurer la sauvegarde sélectionnée' });
+    fireEvent.click(button);
+
+    expect(await screen.findByText(/Sauvegarde restaurée/)).toBeInTheDocument();
+    expect(button).toBeDisabled();
+  });
+
+  it('uses only same-origin application contracts and never browser storage', async () => {
+    const { calls } = installFetch();
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    await waitFor(() => expect(calls.some(call => String(call.input) === '/api/local-data')).toBe(true));
+    expect(calls.every(call => String(call.input).startsWith('/api/'))).toBe(true);
     expect(Storage.prototype.getItem).not.toHaveBeenCalled();
     expect(Storage.prototype.setItem).not.toHaveBeenCalled();
     expect(Storage.prototype.removeItem).not.toHaveBeenCalled();
   });
 
-  it('reports an unavailable host while leaving local recovery guidance available', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/health') {
-        return Promise.reject(new TypeError('connection failed'));
+  it('shows the backend synchronization failure reason in actionable French copy', async () => {
+    const baseFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/personal-trading-post/sync') {
+        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'failed', error: 'unauthorized' }) });
       }
-
-      if (input === '/api/local-data') {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            databasePath: '/synthetic/Tyrian Ledger/tyrian-ledger.db',
-            backupDirectoryPath: '/synthetic/Tyrian Ledger/backups',
-          }),
-        } as unknown as Response);
-      }
-
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          state: 'not_configured',
-          grantedPermissions: [],
-          missingRequiredPermissions: ['account', 'tradingpost', 'wallet'],
-        }),
-      } as unknown as Response);
-    });
-
-    render(<App />);
-
-    expect(await screen.findByText('Local host unavailable')).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Backup and recovery' })).toBeVisible();
-  });
-
-  it('keeps vault setup guidance available when native-store status is unavailable', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/health') {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({ status: 'healthy' }),
-        } as unknown as Response);
-      }
-
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          state: 'unavailable',
-          grantedPermissions: [],
-          missingRequiredPermissions: ['account', 'tradingpost', 'wallet'],
-        }),
-      } as unknown as Response);
-    });
-
-    render(<App />);
-
-    expect(await screen.findByText('ArenaNet key status unavailable')).toBeVisible();
-    expect(screen.getByText(/store a dedicated read-only ArenaNet key/i)).toBeVisible();
-  });
-
-  it('explains missing permissions without treating untrusted data as markup', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/health') {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({ status: 'healthy' }),
-        } as unknown as Response);
-      }
-
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({
-          state: 'insufficient_permissions',
-          grantedPermissions: ['account'],
-          missingRequiredPermissions: ['tradingpost'],
-          name: '<img src=x onerror=alert(1)>',
-        }),
-      } as unknown as Response);
-    });
-
-    render(<App />);
-
-    expect(await screen.findByText('ArenaNet key needs permission: tradingpost')).toBeVisible();
-    expect(screen.queryByRole('img')).not.toBeInTheDocument();
-    expect(document.body.innerHTML).not.toContain('<img src=x');
-  });
-
-  it('requires the exact clear confirmation before the browser can request deletion', async () => {
-    render(<App />);
-
-    const clearConfirmation = await screen.findByLabelText('Type CLEAR PERSONAL DATA to continue');
-    fireEvent.change(clearConfirmation, { target: { value: 'CLEAR PERSONAL DATA' } });
-    expect(screen.getByRole('button', { name: 'Clear personal account data' })).toBeEnabled();
-  });
-
-  it('requires both a selected backup and the exact restore confirmation', async () => {
-    render(<App />);
-
-    const restoreFile = await screen.findByLabelText('Backup file');
-    fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
-    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
-
-    expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeEnabled();
-  });
-
-  it('makes recovery actions mutually exclusive while one is running', async () => {
-    let completeBackup: (value: Response) => void;
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/health') {
-        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      }
-      if (input === '/api/local-data') {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }),
-        } as unknown as Response);
-      }
-      if (input === '/api/local-data/backup') {
-        return new Promise((resolve) => {
-          completeBackup = resolve;
-        });
-      }
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
-      } as unknown as Response);
-    });
-    render(<App />);
-
-    const restoreFile = await screen.findByLabelText('Backup file');
-    fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
-    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
-    fireEvent.change(screen.getByLabelText('Type CLEAR PERSONAL DATA to continue'), { target: { value: 'CLEAR PERSONAL DATA' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create local backup' }));
-
-    expect(await screen.findByRole('button', { name: 'Creating backup…' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Clear personal account data' })).toBeDisabled();
-
-    completeBackup!({ ok: true, json: vi.fn().mockResolvedValue({ fileName: 'synthetic.db' }) } as unknown as Response);
-    expect(await screen.findByText('Backup created: synthetic.db')).toBeVisible();
-  });
-
-  it('resets the restore selection after a confirmed restore', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/health') {
-        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      }
-      if (input === '/api/local-data') {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }),
-        } as unknown as Response);
-      }
-      if (input === '/api/local-data/restore') {
-        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response);
-      }
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
-      } as unknown as Response);
-    });
-    render(<App />);
-
-    const restoreFile = await screen.findByLabelText('Backup file');
-    fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
-    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
-
-    expect(await screen.findByText('Backup restored.')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Restore selected backup' })).toBeDisabled();
-    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/local-data')).toHaveLength(2));
-  });
-
-  it('restores an explicitly selected managed backup through the local managed-backup route', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/health') {
-        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      }
-      if (input === '/api/local-data') {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            databasePath: '/synthetic/tyrian-ledger.db',
-            backupDirectoryPath: '/synthetic/backups',
-            managedBackupUploadLimitBytes: 512 * 1024 * 1024,
-            managedBackups: [{ fileName: 'tyrian-ledger-backup-20260908T120000000Z.db', createdAtUtc: '2026-09-08T12:00:00Z' }],
-          }),
-        } as unknown as Response);
-      }
-      if (input === '/api/local-data/restore-managed') {
-        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response);
-      }
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
-      } as unknown as Response);
-    });
-    render(<App />);
-
-    fireEvent.change(await screen.findByLabelText('Managed backup'), { target: { value: 'tyrian-ledger-backup-20260908T120000000Z.db' } });
-    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Restore managed backup' }));
-
-    expect(await screen.findByText('Backup restored.')).toBeVisible();
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/local-data/restore-managed', expect.objectContaining({
-      method: 'POST',
-      headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ confirmation: 'RESTORE LOCAL DATA', backupFileName: 'tyrian-ledger-backup-20260908T120000000Z.db' }),
+      return baseFetch(input, init);
     }));
-    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/local-data')).toHaveLength(2));
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Synchroniser les données du Comptoir' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("La clé ArenaNet a été refusée. Vérifiez qu'elle est toujours valide.");
   });
 
-  it('refreshes the managed backup inventory on demand', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/health') {
-        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      }
-      if (input === '/api/local-data') {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            databasePath: '/synthetic/tyrian-ledger.db',
-            backupDirectoryPath: '/synthetic/backups',
-            managedBackups: [],
-          }),
-        } as unknown as Response);
-      }
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
-      } as unknown as Response);
-    });
+  it('refreshes Signals evidence after a successful account synchronization', async () => {
+    const { calls } = installFetch();
     render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /Réglages/i }));
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Refresh managed backups' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Synchroniser les données du Comptoir' }));
+    await waitFor(() => expect(calls.filter(call => String(call.input) === '/api/personal-dashboard').length).toBeGreaterThan(1));
 
-    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/local-data')).toHaveLength(2));
-  });
-
-  it('does not infer a managed backup from an oversized imported file name', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/health') {
-        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      }
-      if (input === '/api/local-data') {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            databasePath: '/synthetic/tyrian-ledger.db',
-            backupDirectoryPath: '/synthetic/backups',
-            managedBackupUploadLimitBytes: 512 * 1024 * 1024,
-            managedBackups: [{ fileName: 'tyrian-ledger-backup-20260908T120000000Z.db', createdAtUtc: '2026-09-08T12:00:00Z' }],
-          }),
-        } as unknown as Response);
-      }
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
-      } as unknown as Response);
-    });
-    render(<App />);
-
-    const importedBackup = new File(['synthetic'], 'tyrian-ledger-backup-20260908T120000000Z.db', { type: 'application/x-sqlite3' });
-    Object.defineProperty(importedBackup, 'size', { value: 512 * 1024 * 1024 + 1 });
-    fireEvent.change(await screen.findByLabelText('Backup file'), { target: { files: [importedBackup] } });
-    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
-
-    expect(await screen.findByText('This imported backup exceeds the local upload limit. Only application-created Tyrian Ledger backups already moved into the managed Backups folder can be selected for local managed restore. Refresh the managed backup list after moving one.')).toBeVisible();
-    expect(vi.mocked(fetch).mock.calls.some(([path]) => path === '/api/local-data/restore-managed')).toBe(false);
-  });
-
-  it('reports an unknown outcome when restore or clear loses its response', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/health') {
-        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      }
-      if (input === '/api/local-data') {
-        return Promise.resolve({
-          ok: true,
-          json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }),
-        } as unknown as Response);
-      }
-      if (input === '/api/local-data/restore' || input === '/api/local-data/clear-personal') {
-        return Promise.reject(new TypeError('connection lost'));
-      }
-      return Promise.resolve({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }),
-      } as unknown as Response);
-    });
-    render(<App />);
-
-    const restoreFile = await screen.findByLabelText('Backup file');
-    fireEvent.change(restoreFile, { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
-    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
-    expect(await screen.findByText('Restore outcome could not be confirmed. Check local data before retrying.')).toBeVisible();
-
-    fireEvent.change(screen.getByLabelText('Type CLEAR PERSONAL DATA to continue'), { target: { value: 'CLEAR PERSONAL DATA' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Clear personal account data' }));
-    expect(await screen.findByText('Clear outcome could not be confirmed. Check local data before retrying.')).toBeVisible();
-  });
-
-  it('renders backend-authoritative performance, unknown basis, and current-order states', async () => {
-    const dashboard = {
-      state: 'ready', accountError: null, lastSuccessfulSyncAtUtc: '2026-09-08T12:00:00Z', currentOrdersObservedAtUtc: '2026-09-08T12:00:00Z',
-      historyCoverage: { startUtc: '2026-06-10T12:00:00Z', endUtc: '2026-09-08T12:00:00Z' }, marketState: 'available', isFeeRoundingExternallyVerified: false,
-      realizedWindows: [{ days: 7, status: 'supported', netProfit: { copper: '70' }, unknownBasisQuantity: 2 }, { days: 30, status: 'insufficientCoverage', netProfit: null, unknownBasisQuantity: 0 }],
-      openAcquisitionBasis: { copper: '100' }, netLiquidationValue: { copper: '170' }, unrealizedProfit: { copper: '70' }, isOpenInventoryFullyValued: true,
-      openInventory: [{ itemId: 42, itemName: 'Test item', quantity: 1, acquisitionBasis: { copper: '100' }, liquidationStatus: 'fullyValued', unliquidatedQuantity: 0, netLiquidationValue: { copper: '170' }, unrealizedProfit: { copper: '70' } }],
-      currentBuyCapital: { copper: '9007199254740993' }, currentSellGrossValue: { copper: '600' }, currentSellNetValue: { copper: '510' },
-      currentOrders: [{ orderId: '1', side: 'buy', itemId: 42, itemName: 'Test item', quantity: 2, unitPrice: { copper: '50' }, marketComparisonStatus: 'available', currentMarketUnitPrice: { copper: '60' } }],
-      recentTrades: [{ transactionId: '2', side: 'sell', itemName: 'Test item', quantity: 1, unitPrice: { copper: '200' }, completedAtUtc: '2026-09-08T12:00:00Z' }],
-      bestRealizedItems: [{ itemId: 42, itemName: 'Test item', quantity: 1, netProfit: { copper: '70' } }], worstRealizedItems: [],
-      personalLearning: {
-        status: 'supported', timestampLimitation: 'Polling supplies bounds only.', minimumKnownBasisSamples: 3,
-        exactSourceTimestampCount: 6, intervalCensoredCompletionCount: 2, unknownOrderTimingCount: 1, observedQuantityReductionCount: 1,
-        fillTiming: [
-          { side: 'buy', exactSourceTimestampCount: 3, averageSourceDuration: '01:00:00', intervalCensoredCompletionCount: 1, averageConfirmationWindow: '02:00:00' },
-          { side: 'sell', exactSourceTimestampCount: 3, averageSourceDuration: '01:00:00', intervalCensoredCompletionCount: 1, averageConfirmationWindow: '02:00:00' },
-        ],
-        items: [{ itemId: 42, itemName: 'Test item', status: 'insufficientMetrics', exactSourceTimestampCount: 3, intervalCensoredCompletionCount: 1, unknownOrderTimingCount: 0, observedQuantityReductionCount: 1, knownBasisSampleCount: 3, averageHoldingDuration: '01:00:00', realizedProfitPerDay: { numerator: '21000', denominator: '100' }, capitalTurns: { numerator: '150', denominator: '100' } }],
-        knownBasisSampleCount: 3, latestKnownBasisCompletionAtUtc: '2026-09-08T12:00:00Z', netProfit: { copper: '210' }, matchedAcquisitionBasis: { copper: '300' },
-        averageHoldingDuration: '01:00:00', realizedProfitPerDay: { numerator: '21000', denominator: '100' }, capitalTurns: { numerator: '150', denominator: '100' },
-      },
-    };
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/account-connection') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: ['account', 'tradingpost', 'wallet'], missingRequiredPermissions: [] }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(dashboard) } as unknown as Response);
-      if (input === '/api/personal-trading-post/sync') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'succeeded' }) } as unknown as Response);
-      return Promise.reject(new TypeError('unexpected request'));
-    });
-
-    render(<App />);
-
-    expect(await screen.findByRole('heading', { name: 'Performance and current orders' })).toBeVisible();
-    expect(screen.getByText('900719925474g 9s 93c')).toBeVisible();
-    expect(screen.getAllByText('70c', { exact: false })).not.toHaveLength(0);
-    expect(screen.getByText('2 sold without known basis, excluded.')).toBeVisible();
-    expect(screen.getByText('Insufficient coverage')).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Fill time and capital turnover' })).toBeVisible();
-    expect(screen.getByText('Polling supplies bounds only.')).toBeVisible();
-    expect(screen.getByText(/portfolio-wide known-basis completed outcomes retained/i)).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Buy timing' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Observed quantity reductions' })).toBeVisible();
-    expect(screen.getAllByText('210.00 c/day')).toHaveLength(2);
-    expect(screen.getByRole('columnheader', { name: 'Current market' })).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Synchronize Trading Post data' }));
-    expect(await screen.findByRole('heading', { name: 'Performance and current orders' })).toBeVisible();
-    expect(fetch).toHaveBeenCalledWith('/api/personal-trading-post/sync', expect.objectContaining({ method: 'POST' }));
-  });
-
-  it('shows loading, malformed data, and account-unavailable dashboard states safely', async () => {
-    let resolveDashboard: (response: Response) => void;
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/personal-dashboard') return new Promise((resolve) => { resolveDashboard = resolve; });
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
-    });
-    render(<App />);
-    expect(screen.getByRole('heading', { name: 'Loading personal dashboard…' })).toBeVisible();
-    resolveDashboard!({ ok: true, json: vi.fn().mockResolvedValue({ state: 'ready' }) } as unknown as Response);
-    expect(await screen.findByRole('heading', { name: 'Dashboard unavailable' })).toBeVisible();
-
-    cleanup();
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ ...notSynchronizedDashboard, state: 'accountUnavailable', accountError: 'upstreamUnavailable' }) } as unknown as Response);
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
-    });
-    render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Connect an account to view your dashboard' })).toBeVisible();
-  });
-
-  it('renders incomplete coverage and unavailable liquidation evidence explicitly', async () => {
-    const incompleteDashboard = {
-      ...notSynchronizedDashboard,
-      state: 'ready', historyCoverage: { startUtc: null, endUtc: null }, isOpenInventoryFullyValued: false,
-      openInventory: [
-        { itemId: 42, itemName: 'Shallow item', quantity: 2, acquisitionBasis: { copper: '100' }, liquidationStatus: 'insufficientBuyDepth', unliquidatedQuantity: 1, netLiquidationValue: null, unrealizedProfit: null },
-        { itemId: 84, itemName: 'Unpriced item', quantity: 1, acquisitionBasis: { copper: '100' }, liquidationStatus: 'evidenceMissing', unliquidatedQuantity: 1, netLiquidationValue: null, unrealizedProfit: null },
-      ],
-    };
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(incompleteDashboard) } as unknown as Response);
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
-    });
-    render(<App />);
-    expect(await screen.findByText(/Continuous history coverage is not available/)).toBeVisible();
-    expect(screen.getByText('Not fully valued')).toBeVisible();
-    expect(screen.getByText('Insufficient buy depth (1 remaining)')).toBeVisible();
-    expect(screen.getByText('Market evidence missing')).toBeVisible();
-  });
-
-  it('does not let an older dashboard response replace a newer refresh', async () => {
-    const dashboardResponses: Array<(response: Response) => void> = [];
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/personal-dashboard') return new Promise((resolve) => { dashboardResponses.push(resolve); });
-      if (input === '/api/personal-trading-post/sync') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'succeeded' }) } as unknown as Response);
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
-    });
-    render(<App />);
-    await waitFor(() => expect(dashboardResponses).toHaveLength(1));
-    fireEvent.click(await screen.findByRole('button', { name: 'Synchronize Trading Post data' }));
-    await waitFor(() => expect(dashboardResponses).toHaveLength(2));
-
-    dashboardResponses[1]({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
-    expect(await screen.findByRole('heading', { name: 'No personal data yet' })).toBeVisible();
-    dashboardResponses[0]({ ok: true, json: vi.fn().mockResolvedValue({ state: 'ready' }) } as unknown as Response);
-    await Promise.resolve();
-    expect(screen.getByRole('heading', { name: 'No personal data yet' })).toBeVisible();
-  });
-
-  it('refreshes the dashboard after confirmed restore and clear outcomes', async () => {
-    let restored = false;
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
-      if (input === '/api/watchlist') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ itemIds: restored ? [84] : [42] }) } as unknown as Response);
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/tyrian-ledger.db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/local-data/restore') { restored = true; return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'restored' }) } as unknown as Response); }
-      if (input === '/api/local-data/clear-personal') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'personal_data_cleared' }) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
-    });
-    render(<App />);
-    await screen.findByRole('heading', { name: 'No personal data yet' });
-    expect(await screen.findByText('Item #42')).toBeVisible();
-    fireEvent.change(screen.getByLabelText('Backup file'), { target: { files: [new File(['synthetic'], 'backup.db', { type: 'application/x-sqlite3' })] } });
-    fireEvent.change(screen.getByLabelText('Type RESTORE LOCAL DATA to continue'), { target: { value: 'RESTORE LOCAL DATA' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Restore selected backup' }));
-    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/personal-dashboard')).toHaveLength(2));
-    expect(await screen.findByText('Item #84')).toBeVisible();
-    fireEvent.change(screen.getByLabelText('Type CLEAR PERSONAL DATA to continue'), { target: { value: 'CLEAR PERSONAL DATA' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Clear personal account data' }));
-    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/personal-dashboard')).toHaveLength(3));
-  });
-
-  it('renders the backend action order, initially limits new opportunities, and expands evidence', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/recommendations') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(readyRecommendations) } as unknown as Response);
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: ['account', 'tradingpost', 'wallet'], missingRequiredPermissions: [] }) } as unknown as Response);
-    });
-
-    render(<App />);
-
-    expect(await screen.findByText('7 manual actions ready to review.')).toBeVisible();
-    const primaryCard = document.querySelector<HTMLElement>('.recommendation-card');
-    expect(primaryCard?.querySelector('.action-badge')?.textContent).toBe('CANCEL BID');
-    expect(screen.getByText('900719925474g 9s 93c')).toBeVisible();
-    expect(screen.queryByText('Sixth opportunity')).not.toBeInTheDocument();
-    fireEvent.click(within(primaryCard!).getByText('Review depth, history, score, and reasons'));
-    expect(within(primaryCard!).getByRole('heading', { name: 'Retained history' })).toBeVisible();
-    expect(within(primaryCard!).getByText(/7 days: 22\/24 eligible/)).toBeVisible();
-    expect(within(primaryCard!).getByText(/Personal evidence/)).toBeVisible();
-    expect(within(primaryCard!).getByText(/3 known-basis sales/)).toBeVisible();
-    expect(within(primaryCard!).getByText(/latest known-basis completion 2026-09-09T12:00:00Z/)).toBeVisible();
-    expect(within(primaryCard!).getByText(/Realized profit\/day: 9 \/ 1 copper\/day/)).toBeVisible();
-    expect(within(primaryCard!).getByText(/capital turns\/day: 1 \/ 2 turns\/day/)).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Show 1 more new opportunities' }));
-    expect(screen.getByText('Sixth opportunity')).toBeVisible();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh actions' }));
-    await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([path]) => path === '/api/recommendations')).toHaveLength(2));
-    expect(Storage.prototype.getItem).not.toHaveBeenCalled();
-    expect(Storage.prototype.setItem).not.toHaveBeenCalled();
-  });
-
-  it('renders degraded recommendation states and rejects malformed money safely', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/recommendations') return Promise.resolve({ ok: false, json: vi.fn().mockResolvedValue({ ...readyRecommendations, state: 'evidenceUnavailable', portfolio: null, actions: [] }) } as unknown as Response);
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: ['account', 'tradingpost', 'wallet'] }) } as unknown as Response);
-    });
-    render(<App />);
-    expect(await screen.findByText(/Current market or history evidence is temporarily unavailable/)).toBeVisible();
-
-    cleanup();
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/recommendations') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ ...readyRecommendations, portfolio: { ...readyRecommendations.portfolio, availableCash: { copper: 42 } } }) } as unknown as Response);
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: ['account', 'tradingpost', 'wallet'] }) } as unknown as Response);
-    });
-    render(<App />);
-    expect(await screen.findByText('Recommendations could not be read from the local host.')).toBeVisible();
-  });
-
-  it('accepts and displays every backend recommendation action state', async () => {
-    const actionStates = [
-      'BUY', 'BUY SMALL', 'WAIT', 'KEEP BID', 'UPDATE BID', 'STOP BIDDING', 'CANCEL BID',
-      'LIST', 'LEAVE SELL LISTING', 'HOLD', 'REDUCE', 'SELL PARTIAL', 'SELL', 'SKIP', 'REVIEW',
-    ];
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
-      if (input === '/api/recommendations') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({
-        ...readyRecommendations,
-        actions: actionStates.map((action, index) => recommendationAction(100 + index, `Action ${index + 1}`, action, 'inventory')),
-      }) } as unknown as Response);
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'valid', grantedPermissions: ['account', 'tradingpost', 'wallet'], missingRequiredPermissions: [] }) } as unknown as Response);
-    });
-
-    render(<App />);
-
-    expect(await screen.findByText('15 manual actions ready to review.')).toBeVisible();
-    expect(Array.from(document.querySelectorAll('.action-badge'), badge => badge.textContent)).toEqual(actionStates);
-  });
-});
-
-describe('M20 investment tracking', () => {
-  it('renders explicit unknown-basis investment guidance and records a staged position locally', async () => {
-    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
-      if (input === '/api/investments') {
-        if (init?.method === 'POST') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ position: {} }) } as unknown as Response);
-        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'ready', positions: [{ position: { id: '1', itemId: 42, originalQuantity: 5, remainingQuantity: 5, acquisitionBasisInCopper: null, strategy: 'Seasonal', category: 'Festival', openedAtUtc: '2026-09-15T12:00:00Z', thesis: 'Supply can change.', notes: null, isClosed: false, targets: [{ ordinal: 0, unitPriceInCopper: 250, quantity: 2 }], exits: [] }, itemName: 'Tracked item', valuation: { state: 'available', grossLiquidationValue: { copper: '1000' }, netLiquidationValue: { copper: '850' }, unrealizedProfit: null, unliquidatedQuantity: 0 }, historicalEvidence: { availableWindowCount: 1, totalWindowCount: 2, latestEligibleObservationCount: 20, minimumBuyPriceInCopper: 100, maximumSellPriceInCopper: 300, medianAggregateBuyQuantity: 15, medianAggregateSellQuantity: 20 }, opportunityCost: { copper: '850' }, action: { action: 'SELL PARTIAL', suggestedQuantity: 2, reason: 'A staged target is reached.' } }] }) } as unknown as Response);
-      }
-      if (input === '/api/health') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ status: 'healthy' }) } as unknown as Response);
-      if (input === '/api/local-data') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ databasePath: '/synthetic/db', backupDirectoryPath: '/synthetic/backups' }) } as unknown as Response);
-      if (input === '/api/personal-dashboard') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(notSynchronizedDashboard) } as unknown as Response);
-      if (input === '/api/recommendations') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'notSynchronized', evidenceError: null, generatedAtUtc: null, lastSuccessfulSyncAtUtc: null, currentOrdersObservedAtUtc: null, scannerObservedAtUtc: null, policies: readyRecommendations.policies, portfolio: null, actions: [] }) } as unknown as Response);
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'not_configured', grantedPermissions: [], missingRequiredPermissions: [] }) } as unknown as Response);
-    });
-
-    render(<App />);
-    expect(await screen.findByRole('heading', { name: 'Investments and staged exits' })).toBeVisible();
-    expect(screen.getByText('Unknown basis')).toBeVisible();
-    expect(screen.getByText(/not a forecast/i)).toBeVisible();
-    fireEvent.change(screen.getByLabelText('Item ID'), { target: { value: '99' } });
-    fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: '2' } });
-    fireEvent.change(screen.getByLabelText('Thesis'), { target: { value: 'Manual staged exit.' } });
-    fireEvent.change(screen.getByLabelText('Staged targets (price:quantity, comma-separated)'), { target: { value: '200:2' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Record position' }));
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/investments', expect.objectContaining({ method: 'POST' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Mes Signaux' }));
+    await waitFor(() => expect(calls.filter(call => String(call.input) === '/api/recommendations').length).toBeGreaterThan(1));
   });
 });

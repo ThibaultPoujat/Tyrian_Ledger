@@ -1,57 +1,131 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import MoneyDisplay from './MoneyDisplay';
 
 type Money = { copper: string };
-type RecommendationState = 'ready' | 'notSynchronized' | 'accountUnavailable' | 'evidenceUnavailable';
+type RecommendationState = 'ready' | 'notSynchronized' | 'accountEvidenceStale' | 'accountUnavailable' | 'evidenceUnavailable';
 type RecommendationAction =
   | 'BUY' | 'BUY SMALL' | 'WAIT' | 'KEEP BID' | 'UPDATE BID' | 'STOP BIDDING'
   | 'CANCEL BID' | 'LIST' | 'LEAVE SELL LISTING' | 'HOLD' | 'REDUCE'
   | 'SELL PARTIAL' | 'SELL' | 'SKIP' | 'REVIEW';
 type RecommendationSource = 'newOpportunity' | 'buyOrder' | 'sellListing' | 'inventory';
+type HistoryConfidence = 'insufficient' | 'partial' | 'strong';
+type ImmediateSalePriceRange = { lowestUnitPrice: Money; highestUnitPrice: Money };
 
 type RecommendationRecord = {
-  action: RecommendationAction; source: RecommendationSource; orderState: string;
-  orderId: string | null; itemId: number; itemName: string; quantity: number; capital: Money;
-  prices: { currentOrderUnitPrice: Money | null; bestBuy: Money | null; lowestSell: Money | null; plannedBid: Money | null; plannedListPrice: Money | null; maximumBid: Money | null };
-  economics: { acquisitionCost: Money; grossSaleValue: Money; listingFee: Money; exchangeFee: Money; netSaleProceeds: Money; netProfit: Money; totalCost: Money; roiDisplayPercent: string } | null;
+  action: RecommendationAction;
+  source: RecommendationSource;
+  orderState: string;
+  orderId: string | null;
+  itemId: number;
+  itemName: string;
+  itemIconUrl: string | null;
+  quantity: number;
+  capital: Money;
+  prices: {
+    currentOrderUnitPrice: Money | null;
+    bestBuy: Money | null;
+    lowestSell: Money | null;
+    plannedBid: Money | null;
+    plannedListPrice: Money | null;
+    maximumBid: Money | null;
+    immediateSalePriceRange: ImmediateSalePriceRange | null;
+  };
+  economics: {
+    acquisitionCost: Money;
+    grossSaleValue: Money;
+    listingFee: Money;
+    exchangeFee: Money;
+    netSaleProceeds: Money;
+    netProfit: Money;
+    totalCost: Money;
+    roiDisplayPercent: string;
+  } | null;
   score: {
-    rank: number; totalPoints: number; basePoints: number; appliedPenaltyPoints: number;
+    rank: number;
+    totalPoints: number;
+    basePoints: number;
+    appliedPenaltyPoints: number;
     components: Array<{ name: string; state: string; normalizedPercent: number; maximumPoints: number; awardedPoints: number }>;
     anomalies: unknown[];
     personalEvidence: {
-      state: 'noHistory' | 'insufficientCoverage' | 'insufficientSamples' | 'insufficientMetrics' | 'stale' | 'supported';
-      knownBasisSampleCount: number | null; latestKnownBasisCompletionAtUtc: string | null;
-      realizedRoiSaleCount: number | null; minimumRealizedRoiBasisPoints: number | null;
-      medianRealizedRoiBasisPoints: number | null; maximumRealizedRoiBasisPoints: number | null;
-      realizedProfitPerDayNumerator: string | null; realizedProfitPerDayDenominator: string | null;
-      capitalTurnsPerDayNumerator: string | null; capitalTurnsPerDayDenominator: string | null;
-      typicalHoldingDuration: string | null; completionRateLimitation: string;
+      state: string;
+      knownBasisSampleCount: number | null;
+      latestKnownBasisCompletionAtUtc: string | null;
+      completionRateLimitation: string;
     } | null;
   } | null;
-  history: { confidence: 'insufficient' | 'partial' | 'strong'; commonCutoffUtc: string; windows: Array<{ durationDays: number; isAvailable: boolean; rawObservationCount: number; eligibleObservationCount: number; observedSpanPercent: number }> } | null;
-  liquidity: { classification: 'high' | 'medium' | 'low'; totalBuyQuantity: number; totalSellQuantity: number; nearBestBuyQuantity: number; nearBestSellQuantity: number; participationCapQuantity: number; safeLiquidationQuantity: number; reasons: string[] } | null;
+  history: {
+    confidence: HistoryConfidence;
+    commonCutoffUtc: string;
+    lastObservedAtUtc: string | null;
+    windows: Array<{
+      durationDays: number;
+      isAvailable: boolean;
+      rawObservationCount: number;
+      eligibleObservationCount: number;
+      observedSpanPercent: number;
+    }>;
+  } | null;
+  liquidity: {
+    classification: 'high' | 'medium' | 'low';
+    totalBuyQuantity: number;
+    totalSellQuantity: number;
+    nearBestBuyQuantity: number;
+    nearBestSellQuantity: number;
+    participationCapQuantity: number;
+    safeLiquidationQuantity: number;
+    reasons: string[];
+  } | null;
   portfolioConstraints: Array<{ name: string; capitalCapacity: Money; quantityCapacity: number; isBinding: boolean }>;
   reasons: Array<{ code: string; message: string }>;
 };
 
 type RecommendationResponse = {
-  state: RecommendationState; evidenceError: string | null; generatedAtUtc: string | null;
-  lastSuccessfulSyncAtUtc: string | null; currentOrdersObservedAtUtc: string | null; scannerObservedAtUtc: string | null;
-  policies: { actionPolicyVersion: number; scorePolicyVersion: number; positionSizingPolicyVersion: number; fifoPolicyVersion: number; feePolicyVersion: number; minimumProfit: Money; minimumRoiBasisPoints: number; cashReserveBasisPoints: number; strategy: string; category: string };
-  portfolio: { availableCash: Money; totalBankroll: Money; cashReserve: Money; reserveStatus: 'satisfied' | 'breached'; cashReserveShortfall: Money; remainingCashAfterSizing: Money } | null;
+  state: RecommendationState;
+  evidenceError: string | null;
+  generatedAtUtc: string | null;
+  lastSuccessfulSyncAtUtc: string | null;
+  currentOrdersObservedAtUtc: string | null;
+  scannerObservedAtUtc: string | null;
+  accountEvidenceExpiresAtUtc: string | null;
+  policies: {
+    actionPolicyVersion: number;
+    scorePolicyVersion: number;
+    positionSizingPolicyVersion: number;
+    fifoPolicyVersion: number;
+    feePolicyVersion: number;
+    minimumProfit: Money;
+    minimumRoiBasisPoints: number;
+    cashReserveBasisPoints: number;
+    strategy: string;
+    category: string;
+  };
+  portfolio: {
+    availableCash: Money;
+    totalBankroll: Money;
+    cashReserve: Money;
+    reserveStatus: 'satisfied' | 'breached';
+    cashReserveShortfall: Money;
+    remainingCashAfterSizing: Money;
+  } | null;
   actions: RecommendationRecord[];
 };
 
-const actions: RecommendationAction[] = [
+const allActions: RecommendationAction[] = [
   'BUY', 'BUY SMALL', 'WAIT', 'KEEP BID', 'UPDATE BID', 'STOP BIDDING', 'CANCEL BID',
   'LIST', 'LEAVE SELL LISTING', 'HOLD', 'REDUCE', 'SELL PARTIAL', 'SELL', 'SKIP', 'REVIEW',
 ];
 const sources: RecommendationSource[] = ['newOpportunity', 'buyOrder', 'sellListing', 'inventory'];
+const actionable = new Set<RecommendationAction>([
+  'BUY', 'BUY SMALL', 'UPDATE BID', 'CANCEL BID',
+  'LIST', 'REDUCE', 'SELL PARTIAL', 'SELL',
+]);
 
 export default function RecommendationPanel({ refreshGeneration = 0 }: { refreshGeneration?: number }) {
   const [result, setResult] = useState<RecommendationResponse | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [showAllOpportunities, setShowAllOpportunities] = useState(false);
   const requestGeneration = useRef(0);
+  const [, setFreshnessTick] = useState(0);
 
   const load = () => {
     const generation = ++requestGeneration.current;
@@ -61,12 +135,11 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
     }).then(async response => {
       const payload: unknown = await response.json();
       if (generation !== requestGeneration.current) return;
-      if (!isRecommendationResponse(payload)) {
+      if (!isRecommendationResponse(payload) || (!response.ok && payload.state === 'ready')) {
         setStatus('error');
         return;
       }
       setResult(payload);
-      setShowAllOpportunities(false);
       setStatus('ready');
     }).catch(() => {
       if (generation === requestGeneration.current) setStatus('error');
@@ -78,118 +151,469 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
     return () => { requestGeneration.current++; };
   }, [refreshGeneration]);
 
-  const newOpportunityCount = result?.actions.filter(action => action.source === 'newOpportunity').length ?? 0;
-  let visibleNewOpportunities = 0;
-  const visibleActions = result?.actions.filter(action => {
-    if (action.source !== 'newOpportunity' || showAllOpportunities) return true;
-    visibleNewOpportunities++;
-    return visibleNewOpportunities <= 5;
-  }) ?? [];
+  useEffect(() => {
+    const timer = window.setInterval(() => setFreshnessTick(tick => tick + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const expiresAtMilliseconds = Date.parse(result?.accountEvidenceExpiresAtUtc ?? '');
+    if (!Number.isFinite(expiresAtMilliseconds)) return undefined;
+
+    const delayMilliseconds = expiresAtMilliseconds - Date.now() + 1;
+    if (delayMilliseconds > 2_147_483_647) return undefined;
+
+    const timer = window.setTimeout(
+      () => setFreshnessTick(tick => tick + 1),
+      Math.max(0, delayMilliseconds),
+    );
+    return () => window.clearTimeout(timer);
+  }, [result?.accountEvidenceExpiresAtUtc]);
+
+  const signals = useMemo(
+    () => (result?.actions ?? [])
+      .filter(record => actionable.has(record.action)),
+    [result],
+  );
+  const latestHistoryObservation = useMemo(() => latestHistoryObservationAt(result?.actions ?? []), [result]);
+  const accountEvidenceExpired = isExpired(result?.accountEvidenceExpiresAtUtc ?? null);
+  const readyForSignals = status === 'ready' && result?.state === 'ready' && !accountEvidenceExpired;
 
   return (
-    <section aria-labelledby="recommendation-list-title" className="recommendation-panel">
-      <div className="recommendation-toolbar">
-        <div><p className="eyebrow">Attention first</p><h2 id="recommendation-list-title">Your next manual actions</h2></div>
-        <button disabled={status === 'loading'} onClick={load} type="button">
-          {status === 'loading' ? 'Refreshing…' : 'Refresh actions'}
+    <section aria-labelledby="signals-feed-title" className="signals-feed">
+      <div className="signals-toolbar">
+        <div>
+          <p className="eyebrow">Actions à effectuer dans Guild Wars 2</p>
+          <h2 id="signals-feed-title">
+            {readyForSignals
+              ? signals.length === 0
+                ? 'Aucun signal'
+                : signals.length === 1
+                  ? '1 signal mérite votre attention'
+                  : `${signals.length} signaux méritent votre attention`
+              : 'Mes Signaux'}
+          </h2>
+        </div>
+        <button className="refresh-signals" disabled={status === 'loading'} onClick={load} type="button">
+          {status === 'loading' ? 'Actualisation en cours…' : 'Actualiser'}
         </button>
       </div>
-      <p aria-live="polite" className="recommendation-status" role="status">
-        {status === 'loading' && 'Checking cash, orders, market depth, and retained history…'}
-        {status === 'error' && 'Recommendations could not be read from the local host.'}
-        {status === 'ready' && result?.state === 'ready' && `${result.actions.length} manual action${result.actions.length === 1 ? '' : 's'} ready to review.`}
-        {status === 'ready' && result?.state === 'notSynchronized' && 'Synchronize Trading Post data to build your action list.'}
-        {status === 'ready' && result?.state === 'accountUnavailable' && 'A ready ArenaNet account key and wallet balance are required.'}
-        {status === 'ready' && result?.state === 'evidenceUnavailable' && 'Current market or history evidence is temporarily unavailable. No action is recommended.'}
-      </p>
-      {result?.state === 'ready' && result.portfolio && (
-        <div className="recommendation-portfolio" aria-label="Portfolio sizing status">
-          <span>Available cash <strong>{copper(result.portfolio.availableCash)}</strong></span>
-          <span>Reserve <strong>{copper(result.portfolio.cashReserve)}</strong></span>
-          <span>Reserve status <strong>{humanize(result.portfolio.reserveStatus)}</strong></span>
-          <span>After sizing <strong>{copper(result.portfolio.remainingCashAfterSizing)}</strong></span>
+
+      <OperationalStatus status={status} result={result} accountEvidenceExpired={accountEvidenceExpired} />
+
+      {result?.state === 'ready' && (
+        <details className="data-freshness">
+          <summary>
+            <span>{marketFreshness(result.scannerObservedAtUtc)}</span>
+            <span className="freshness-auto">Actualisation à la demande</span>
+          </summary>
+          <div className="freshness-grid">
+            <div>
+              <strong>Marché</strong>
+              <span>{sourceAge(result.scannerObservedAtUtc, 'Aucune observation récente', 'Actualisé')}</span>
+            </div>
+            <div>
+              <strong>Compte ArenaNet</strong>
+              <span>{sourceAge(result.lastSuccessfulSyncAtUtc, 'Pas encore synchronisé', 'Synchronisé')}</span>
+              <span>{sourceAge(result.currentOrdersObservedAtUtc, "Aucun relevé d'ordres", 'Ordres relevés')}</span>
+              {accountEvidenceExpired && <span>Données expirées : synchronisation requise</span>}
+            </div>
+            <div>
+              <strong>Historique marché</strong>
+              <span>{sourceAge(latestHistoryObservation, 'Aucun échantillon exploitable', 'Dernier échantillon enregistré')}</span>
+            </div>
+          </div>
+        </details>
+      )}
+
+      {readyForSignals && signals.length === 0 && (
+        <div className="signals-zero-state">
+          <span aria-hidden="true" className="zero-state-mark">✓</span>
+          <div>
+            <h3>Aucun signal ne mérite votre attention pour le moment.</h3>
+            <p>Les données actuelles ne justifient aucune action.</p>
+          </div>
         </div>
       )}
-      {result?.state === 'ready' && visibleActions.length === 0 && <p>No supported action has complete evidence yet.</p>}
-      {result?.state === 'ready' && visibleActions.length > 0 && (
-        <ol className="recommendation-list">
-          {visibleActions.map((record, index) => <RecommendationCard key={`${record.source}-${record.orderId ?? record.itemId}-${index}`} record={record} />)}
+
+      {readyForSignals && signals.length > 0 && (
+        <ol className="signal-list">
+          {signals.map((record, index) => (
+            <SignalCard
+              key={`${record.source}-${record.orderId ?? record.itemId}-${index}`}
+              record={record}
+            />
+          ))}
         </ol>
       )}
-      {result?.state === 'ready' && newOpportunityCount > 5 && (
-        <button className="show-opportunities" onClick={() => setShowAllOpportunities(value => !value)} type="button">
-          {showAllOpportunities ? 'Show top 5 new opportunities' : `Show ${newOpportunityCount - 5} more new opportunities`}
-        </button>
-      )}
-      {result?.generatedAtUtc && <p className="recommendation-timestamp">Generated {new Date(result.generatedAtUtc).toLocaleString()} · Policy v{result.policies.actionPolicyVersion}</p>}
     </section>
   );
 }
 
-function RecommendationCard({ record }: { record: RecommendationRecord }) {
-  const primaryPrice = record.source === 'sellListing'
-    ? record.prices.currentOrderUnitPrice
-    : record.source === 'buyOrder'
-      ? record.action === 'UPDATE BID' ? record.prices.plannedBid : record.prices.currentOrderUnitPrice
-      : record.action === 'LIST'
-        ? record.prices.plannedListPrice
-        : ['SELL', 'SELL PARTIAL', 'REDUCE'].includes(record.action)
-          ? record.prices.bestBuy
-          : record.prices.plannedBid ?? record.prices.currentOrderUnitPrice;
+function OperationalStatus({
+  status,
+  result,
+  accountEvidenceExpired,
+}: {
+  status: 'loading' | 'ready' | 'error';
+  result: RecommendationResponse | null;
+  accountEvidenceExpired: boolean;
+}) {
+  if (status === 'loading') {
+    return <p aria-live="polite" className="operational-status" role="status">Chargement des données…</p>;
+  }
+  if (status === 'error') {
+    return <p className="operational-status operational-status--error" role="alert">La lecture des signaux depuis l'application locale a échoué.</p>;
+  }
+  if (result?.state === 'notSynchronized') {
+    return <p className="operational-status operational-status--warning" role="status">Aucun compte synchronisé. Synchronisez vos données ArenaNet pour calculer les signaux.</p>;
+  }
+  if (result?.state === 'accountEvidenceStale' || accountEvidenceExpired) {
+    return <p className="operational-status operational-status--warning" role="status">Les données du compte ont expiré. Ouvrez Réglages, synchronisez les données du Comptoir, puis actualisez les signaux.</p>;
+  }
+  if (result?.state === 'accountUnavailable') {
+    return <p className="operational-status operational-status--warning" role="status">{accountUnavailableMessage(result.evidenceError)}</p>;
+  }
+  if (result?.state === 'evidenceUnavailable') {
+    return (
+      <p className="operational-status operational-status--warning" role="status">
+        ArenaNet ou les données de marché sont temporairement indisponibles. Aucun signal incomplet n'est affiché.
+      </p>
+    );
+  }
+  if (result?.evidenceError) {
+    return <p className="operational-status operational-status--warning" role="status">Certaines données sont limitées. Les signaux affichés restent fondés sur les preuves disponibles.</p>;
+  }
+  return null;
+}
+
+function accountUnavailableMessage(error: string | null): string {
+  switch (error) {
+    case 'CredentialNotConfigured':
+      return "Aucune clé ArenaNet n'est configurée. Ajoutez une clé dédiée, en lecture seule, dans Réglages.";
+    case 'Unauthorized':
+      return 'La clé ArenaNet a été refusée ou révoquée. Vérifiez la connexion du compte dans Réglages.';
+    case 'Forbidden':
+      return 'La clé ArenaNet ne dispose pas des autorisations nécessaires : account, tradingpost et wallet.';
+    case 'CredentialUnavailable':
+      return "La clé ArenaNet enregistrée n'est pas accessible. Vérifiez le coffre d'identifiants du système.";
+    case 'RateLimited':
+      return 'ArenaNet limite temporairement les requêtes. Les signaux dépendant du compte sont masqués.';
+    case 'UpstreamUnavailable':
+      return 'ArenaNet est temporairement indisponible. Les signaux dépendant du compte sont masqués.';
+    case 'TransportFailure':
+      return 'La requête vers ArenaNet a échoué ou a expiré. Les signaux dépendant du compte sont masqués.';
+    case 'IncompleteData':
+      return "ArenaNet a fourni des données de compte incomplètes. Les signaux dépendant du compte sont masqués.";
+    case 'InvalidPayload':
+    case 'UnexpectedResponse':
+      return "ArenaNet a renvoyé des données de compte inattendues. Les signaux dépendant du compte sont masqués.";
+    default:
+      return "Le compte ArenaNet n'est pas disponible. Les signaux dépendant du compte sont masqués.";
+  }
+}
+
+function SignalCard({ record }: { record: RecommendationRecord }) {
+  const [whyOpen, setWhyOpen] = useState(false);
   const binding = record.portfolioConstraints.filter(constraint => constraint.isBinding);
+  const immediateSalePriceRange = ['REDUCE', 'SELL PARTIAL', 'SELL'].includes(record.action)
+    ? record.prices.immediateSalePriceRange
+    : null;
+  const price = immediateSalePriceRange ? null : executionPrice(record);
+  const maxPrice = ['BUY', 'BUY SMALL', 'UPDATE BID'].includes(record.action)
+    ? record.prices.maximumBid
+    : null;
+  const corrective = ['CANCEL BID', 'REDUCE'].includes(record.action);
+  const supporting = supportingMetric(record);
+
   return (
-    <li className={`recommendation-card recommendation-card--${tone(record.action)}`}>
-      <article aria-labelledby={`recommendation-${record.source}-${record.orderId ?? record.itemId}`}>
-        <header>
-          <span className="action-badge">{record.action}</span>
-          <span className="recommendation-source">{sourceName(record.source)}</span>
-          <h3 id={`recommendation-${record.source}-${record.orderId ?? record.itemId}`}>{record.itemName}</h3>
-        </header>
-        <dl className="recommendation-summary">
-          <div><dt>Quantity</dt><dd>{record.quantity}</dd></div>
-          <div><dt>{record.source === 'newOpportunity' ? 'Capital' : 'Basis / capital'}</dt><dd>{copper(record.capital)}</dd></div>
-          <div><dt>Price</dt><dd>{primaryPrice ? copper(primaryPrice) : 'Review evidence'}</dd></div>
-          <div><dt>Max bid</dt><dd>{record.prices.maximumBid ? copper(record.prices.maximumBid) : 'Not applicable'}</dd></div>
-          <div><dt>Modeled profit</dt><dd>{record.economics ? copper(record.economics.netProfit) : 'Unavailable'}</dd></div>
-          <div><dt>ROI</dt><dd>{record.economics?.roiDisplayPercent ?? 'Unavailable'}</dd></div>
-        </dl>
-        <p className="recommendation-reason"><strong>Why:</strong> {record.reasons[0]?.message ?? 'Review the supporting evidence.'}</p>
-        <p className="recommendation-confidence">
-          Confidence <strong>{record.history ? humanize(record.history.confidence) : 'Unavailable'}</strong>
-          {' · '}Liquidity <strong>{record.liquidity ? humanize(record.liquidity.classification) : 'Unavailable'}</strong>
-          {' · '}Constraint <strong>{binding.length > 0 ? binding.map(value => humanize(value.name)).join(', ') : 'None binding'}</strong>
-        </p>
-        <details>
-          <summary>Review depth, history, score, and reasons</summary>
-          <div className="recommendation-evidence">
-            <section><h4>Current evidence</h4><p>Best buy {record.prices.bestBuy ? copper(record.prices.bestBuy) : 'unavailable'} · Lowest sell {record.prices.lowestSell ? copper(record.prices.lowestSell) : 'unavailable'} · Order {humanize(record.orderState)}</p><p>{record.liquidity ? `${record.liquidity.totalBuyQuantity} buy / ${record.liquidity.totalSellQuantity} sell quantity visible; participation cap ${record.liquidity.participationCapQuantity}.` : 'Depth unavailable.'}</p></section>
-            <section><h4>Retained history</h4>{record.history ? record.history.windows.map(window => <p key={window.durationDays}>{window.durationDays} days: {window.eligibleObservationCount}/{window.rawObservationCount} eligible, {window.observedSpanPercent}% span, {window.isAvailable ? 'available' : 'insufficient'}.</p>) : <p>History unavailable.</p>}</section>
-            <section><h4>Score and constraints</h4><p>{record.score ? `Rank ${record.score.rank}, ${record.score.totalPoints.toFixed(2)} points after ${record.score.appliedPenaltyPoints.toFixed(2)} penalty.` : 'Score unavailable.'}</p>{record.score && <p>{record.score.components.map(component => `${humanize(component.name)}: ${component.awardedPoints.toFixed(2)} / ${component.name === 'personalEvidence' ? '±' : ''}${component.maximumPoints.toFixed(2)} (${humanize(component.state)})`).join(' · ')}</p>}{record.score?.personalEvidence && <PersonalEvidence evidence={record.score.personalEvidence} />}<p>{binding.length > 0 ? binding.map(value => `${humanize(value.name)}: ${value.quantityCapacity} units`).join(' · ') : 'No binding position-size constraint.'}</p></section>
-            <section><h4>All reasons</h4><ul>{record.reasons.map(reason => <li key={reason.code}>{reason.message}</li>)}</ul></section>
+    <li className={`signal-card signal-card--${tone(record.action)}`}>
+      <article aria-labelledby={`signal-${record.source}-${record.orderId ?? record.itemId}`}>
+        <div className="signal-card-header">
+          <ItemVisual url={record.itemIconUrl} />
+          <div className="signal-identity">
+            <div className="signal-badges">
+              {corrective && <span className="priority-badge">Prioritaire</span>}
+              <span className="action-badge">{actionLabel(record.action)}</span>
+            </div>
+            <h3 id={`signal-${record.source}-${record.orderId ?? record.itemId}`}>{record.itemName}</h3>
           </div>
-        </details>
+          <span className="confidence-badge">Confiance {confidenceLabel(record.history?.confidence)}</span>
+        </div>
+
+        <div className="execution-block">
+          <div className="execution-field">
+            <span className="execution-label">{quantityLabel(record.action)}</span>
+            <strong className="execution-quantity">{record.quantity}</strong>
+          </div>
+          <div className="execution-field execution-field--price">
+            <span className="execution-label">{priceLabel(record.action)}</span>
+            {immediateSalePriceRange
+              ? <ImmediateSalePriceRangeDisplay range={immediateSalePriceRange} />
+              : price
+              ? <MoneyDisplay className="execution-price" money={price} />
+              : <strong className="execution-unavailable">À vérifier</strong>}
+          </div>
+          {maxPrice && !sameMoney(price, maxPrice) && (
+            <div className="execution-limit">
+              <span>Ne pas dépasser</span>
+              <MoneyDisplay compact money={maxPrice} />
+            </div>
+          )}
+        </div>
+
+        <div className="signal-supporting">
+          <div>
+            <span>{supporting.label}</span>
+            {supporting.money
+              ? <MoneyDisplay className="modeled-profit" compact money={supporting.money} />
+              : <strong>Indisponible</strong>}
+          </div>
+          <details className="why-disclosure" onToggle={event => setWhyOpen(event.currentTarget.open)}>
+            <summary aria-label={whyOpen ? "Masquer l'explication de ce signal" : 'Afficher pourquoi ce signal est recommandé'}>Pourquoi ?</summary>
+            <div className="why-content">
+              <section>
+                <h4>Pourquoi maintenant ?</h4>
+                <ul>
+                  {record.reasons
+                    .filter(reason => reason.code !== 'readOnlyManualAction')
+                    .map(reason => <li key={reason.code}>{reasonLabel(reason.code)}</li>)}
+                </ul>
+              </section>
+              <section>
+                <h4>Marché</h4>
+                <p>
+                  {record.liquidity
+                    ? `Liquidité ${liquidityLabel(record.liquidity.classification)} · ${record.liquidity.nearBestBuyQuantity} à l'achat / ${record.liquidity.nearBestSellQuantity} à la vente près du meilleur prix.`
+                    : 'La profondeur de marché détaillée n’est pas disponible.'}
+                </p>
+                {record.history && <p>Historique retenu : confiance {confidenceLabel(record.history.confidence)}.</p>}
+              </section>
+              <section>
+                <h4>Votre situation</h4>
+                <p>
+                  {binding.length === 0
+                    ? 'La quantité proposée respecte les contraintes de portefeuille actuellement connues.'
+                    : `Contrainte active : ${binding.map(value => constraintLabel(value.name)).join(', ')}.`}
+                </p>
+                {record.score?.personalEvidence && <p>{personalEvidenceSummary(record.score.personalEvidence)}</p>}
+              </section>
+              <section>
+                <h4>Risques et limites</h4>
+                <p>Le profit est modélisé. Le remplissage, le délai et le prix final ne sont pas garantis.</p>
+                {record.economics && <p>ROI modélisé : {record.economics.roiDisplayPercent}.</p>}
+              </section>
+              <section>
+                <h4>Fraîcheur des données</h4>
+                <p>{record.history ? `Historique marché : ${sourceAge(record.history.lastObservedAtUtc, 'aucun échantillon exploitable', 'Dernier échantillon enregistré')}.` : 'Historique marché : inconnu.'}</p>
+              </section>
+            </div>
+          </details>
+        </div>
       </article>
     </li>
   );
 }
 
-function PersonalEvidence({ evidence }: { evidence: NonNullable<NonNullable<RecommendationRecord['score']>['personalEvidence']> }) {
-  const basisPoints = (value: number | null) => value === null ? 'unavailable' : `${(value / 100).toFixed(2)}%`;
-  const fraction = (numerator: string | null, denominator: string | null, unit: string) =>
-    numerator === null || denominator === null ? 'unavailable' : `${numerator} / ${denominator} ${unit}`;
-  return <div className="personal-evidence">
-    <p>Personal evidence <strong>{humanize(evidence.state)}</strong>
-      {' · '}{evidence.knownBasisSampleCount ?? 0} known-basis sales
-      {' · '}latest known-basis completion {evidence.latestKnownBasisCompletionAtUtc ?? 'unavailable'}.</p>
-    <p>Realized ROI: minimum {basisPoints(evidence.minimumRealizedRoiBasisPoints)} · median {basisPoints(evidence.medianRealizedRoiBasisPoints)} · maximum {basisPoints(evidence.maximumRealizedRoiBasisPoints)}.</p>
-    <p>Realized profit/day: {fraction(evidence.realizedProfitPerDayNumerator, evidence.realizedProfitPerDayDenominator, 'copper/day')} · capital turns/day: {fraction(evidence.capitalTurnsPerDayNumerator, evidence.capitalTurnsPerDayDenominator, 'turns/day')} · typical hold {evidence.typicalHoldingDuration ?? 'unavailable'}.</p>
-    <p>{evidence.completionRateLimitation}</p>
-  </div>;
+function ItemVisual({ url }: { url: string | null }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span aria-hidden="true" className="item-visual">
+      {url && !failed
+        ? <img alt="" onError={() => setFailed(true)} src={url} />
+        : <span className="item-fallback">◇</span>}
+    </span>
+  );
+}
+
+function ImmediateSalePriceRangeDisplay({ range }: { range: ImmediateSalePriceRange }) {
+  const hasRange = range.lowestUnitPrice.copper !== range.highestUnitPrice.copper;
+  return (
+    <span className="execution-price-range">
+      <MoneyDisplay className="execution-price" money={range.lowestUnitPrice} />
+      {hasRange && <><span aria-hidden="true">–</span><MoneyDisplay className="execution-price" money={range.highestUnitPrice} /></>}
+    </span>
+  );
+}
+
+function executionPrice(record: RecommendationRecord): Money | null {
+  switch (record.action) {
+    case 'BUY':
+    case 'BUY SMALL':
+    case 'UPDATE BID':
+      return record.prices.plannedBid;
+    case 'CANCEL BID':
+    case 'STOP BIDDING':
+      return record.prices.currentOrderUnitPrice;
+    case 'LIST':
+      return record.prices.plannedListPrice;
+    default:
+      return null;
+  }
+}
+
+function actionLabel(action: RecommendationAction): string {
+  switch (action) {
+    case 'BUY':
+    case 'BUY SMALL': return "PLACER UN ORDRE D'ACHAT";
+    case 'UPDATE BID': return "METTRE À JOUR L'ORDRE D'ACHAT";
+    case 'CANCEL BID': return "ANNULER L'ORDRE D'ACHAT";
+    case 'LIST': return 'METTRE EN VENTE';
+    case 'REDUCE':
+    case 'SELL PARTIAL': return 'VENDRE PARTIELLEMENT';
+    case 'SELL': return 'VENDRE MAINTENANT';
+    default: return action;
+  }
+}
+
+function quantityLabel(action: RecommendationAction): string {
+  if (action === 'CANCEL BID') return 'Quantité concernée';
+  if (['LIST', 'REDUCE', 'SELL PARTIAL', 'SELL'].includes(action)) return 'Quantité à vendre';
+  return 'Quantité à saisir';
+}
+
+function priceLabel(action: RecommendationAction): string {
+  if (action === 'CANCEL BID') return "Prix actuel de l'ordre";
+  if (action === 'LIST') return 'Prix de vente par unité';
+  if (['REDUCE', 'SELL PARTIAL', 'SELL'].includes(action)) return 'Fourchette de vente immédiate par unité (modélisée)';
+  return 'Prix à saisir par unité';
+}
+
+function supportingMetric(record: RecommendationRecord): { label: string; money: Money | null } {
+  if (record.action === 'CANCEL BID') {
+    return { label: 'Capital à libérer', money: record.capital };
+  }
+
+  return {
+    label: 'Profit modélisé',
+    money: record.economics?.netProfit ?? null,
+  };
+}
+
+function personalEvidenceSummary(evidence: NonNullable<NonNullable<RecommendationRecord['score']>['personalEvidence']>): string {
+  const samples = evidence.knownBasisSampleCount ?? 0;
+  switch (evidence.state) {
+    case 'supported':
+      return `Historique personnel : ${samples} résultat${samples === 1 ? '' : 's'} à base connue pris en compte.`;
+    case 'stale':
+      return 'Historique personnel disponible, mais trop ancien pour constituer une preuve forte.';
+    case 'insufficientSamples':
+      return `Historique personnel : seulement ${samples} résultat${samples === 1 ? '' : 's'} à base connue, encore insuffisant.`;
+    case 'insufficientCoverage':
+      return 'Historique personnel : couverture continue insuffisante.';
+    case 'insufficientMetrics':
+      return 'Historique personnel disponible, mais métriques insuffisantes.';
+    case 'noHistory':
+    case 'notYetAvailable':
+      return 'Historique personnel : pas encore de preuve exploitable.';
+    default:
+      return 'Historique personnel : preuve limitée.';
+  }
+}
+
+function confidenceLabel(confidence: HistoryConfidence | undefined): string {
+  switch (confidence) {
+    case 'strong': return 'élevée';
+    case 'partial': return 'moyenne';
+    default: return 'limitée';
+  }
+}
+
+function liquidityLabel(value: RecommendationRecord['liquidity'] extends infer T ? T extends { classification: infer C } ? C : never : never): string {
+  switch (value) {
+    case 'high': return 'élevée';
+    case 'medium': return 'moyenne';
+    case 'low': return 'limitée';
+  }
+}
+
+function reasonLabel(code: string): string {
+  const labels: Record<string, string> = {
+    strongEvidence: 'Les fenêtres historiques disponibles soutiennent cette opportunité.',
+    partialHistory: 'L’historique est partiel : la taille proposée reste volontairement réduite.',
+    highLiquidity: 'La profondeur visible ne présente pas d’alerte de liquidité.',
+    liquidityRisk: 'La profondeur ou un écart de prix justifie une quantité plus prudente.',
+    bidAboveMaximum: 'L’ordre actuel dépasse le prix maximal autorisé par la politique.',
+    reserveRestoration: 'Cette annulation libère du capital pour restaurer la réserve.',
+    bidOutbid: 'L’ordre est dépassé par la meilleure offre visible.',
+    updateWithinMaximum: 'Le nouveau prix reste sous le maximum autorisé.',
+    incrementalCapitalAvailable: 'Le capital supplémentaire requis est disponible.',
+    incrementalCapitalUnavailable: 'Le capital supplémentaire requis n’est pas disponible.',
+    itemExposureExceeded: 'L’exposition sur cet objet dépasse la limite actuelle.',
+    safeDepthLimited: 'La quantité est limitée par la profondeur de marché actuellement sûre.',
+    positiveImmediateExit: 'La vente immédiate modélisée reste positive après les frais.',
+    positiveListingExit: 'La mise en vente modélisée reste positive après les frais.',
+    strategyExposureExceeded: 'L’exposition de la stratégie dépasse la limite actuelle.',
+    categoryExposureExceeded: 'L’exposition de la catégorie dépasse la limite actuelle.',
+    penalizedEvidence: 'Les preuves comportent une anomalie non critique prise en compte dans le classement.',
+    fullBuyEvidenceNotMet: 'Les preuves ne justifient pas une augmentation agressive de l’ordre.',
+  };
+  return labels[code] ?? 'Les preuves structurées du moteur justifient cette action.';
+}
+
+function constraintLabel(value: string): string {
+  const labels: Record<string, string> = {
+    itemExposure: 'exposition sur l’objet',
+    strategyConcentration: 'concentration de stratégie',
+    categoryConcentration: 'concentration de catégorie',
+    liquidityParticipation: 'liquidité disponible',
+    availableCash: 'capital disponible',
+    cashReserve: 'réserve de sécurité',
+    cashAfterReserve: 'capital disponible après réserve',
+  };
+  return labels[value] ?? value;
+}
+
+function tone(action: RecommendationAction): string {
+  if (['BUY', 'BUY SMALL', 'UPDATE BID'].includes(action)) return 'buy';
+  if (['LIST', 'SELL', 'SELL PARTIAL'].includes(action)) return 'sell';
+  if (['CANCEL BID', 'REDUCE'].includes(action)) return 'corrective';
+  return 'neutral';
+}
+
+function marketFreshness(timestamp: string | null): string {
+  return timestamp ? `Marché actualisé ${agePhrase(timestamp)}` : 'Marché : aucune observation récente';
+}
+
+function sourceAge(timestamp: string | null, fallback: string, prefix: string): string {
+  return timestamp ? `${prefix} ${agePhrase(timestamp)}` : fallback;
+}
+
+function agePhrase(timestamp: string): string {
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000));
+  if (elapsedSeconds < 60) return `il y a ${elapsedSeconds} s`;
+  const minutes = Math.floor(elapsedSeconds / 60);
+  if (minutes < 60) return `il y a ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  return `le ${new Date(timestamp).toLocaleString('fr-FR')}`;
+}
+
+function latestHistoryObservationAt(records: RecommendationRecord[]): string | null {
+  const timestamps = records
+    .map(record => record.history?.lastObservedAtUtc ?? null)
+    .filter((value): value is string => value !== null)
+    .map(value => ({ value, time: new Date(value).getTime() }))
+    .filter(value => Number.isFinite(value.time))
+    .sort((a, b) => b.time - a.time);
+  return timestamps[0]?.value ?? null;
+}
+
+function isExpired(timestamp: string | null): boolean {
+  const time = timestamp === null ? Number.NaN : new Date(timestamp).getTime();
+  return Number.isFinite(time) && Date.now() > time;
+}
+
+function sameMoney(left: Money | null, right: Money | null): boolean {
+  return left !== null && right !== null && left.copper === right.copper;
 }
 
 function isRecommendationResponse(value: unknown): value is RecommendationResponse {
-  if (!isRecord(value) || !['ready', 'notSynchronized', 'accountUnavailable', 'evidenceUnavailable'].includes(value.state as string)) return false;
+  if (!isRecord(value) || !['ready', 'notSynchronized', 'accountEvidenceStale', 'accountUnavailable', 'evidenceUnavailable'].includes(value.state as string)) return false;
   if (!isPolicies(value.policies) || !Array.isArray(value.actions)) return false;
+  if (!isNullableString(value.evidenceError) || !isNullableString(value.generatedAtUtc)
+    || !isNullableString(value.lastSuccessfulSyncAtUtc) || !isNullableString(value.currentOrdersObservedAtUtc)
+    || !isNullableString(value.scannerObservedAtUtc) || !isNullableString(value.accountEvidenceExpiresAtUtc)) return false;
   return value.actions.every(isRecommendationRecord)
     && (value.portfolio === null || (isRecord(value.portfolio)
       && isMoney(value.portfolio.availableCash) && isMoney(value.portfolio.totalBankroll)
@@ -198,13 +622,16 @@ function isRecommendationResponse(value: unknown): value is RecommendationRespon
 }
 
 function isRecommendationRecord(value: unknown): value is RecommendationRecord {
-  if (!isRecord(value) || !actions.includes(value.action as RecommendationAction) || !sources.includes(value.source as RecommendationSource)) return false;
+  if (!isRecord(value) || !allActions.includes(value.action as RecommendationAction) || !sources.includes(value.source as RecommendationSource)) return false;
   return typeof value.itemId === 'number' && Number.isSafeInteger(value.itemId) && value.itemId > 0
-    && typeof value.itemName === 'string' && isNonNegativeInteger(value.quantity) && isMoney(value.capital)
+    && typeof value.itemName === 'string'
+    && (value.itemIconUrl === null || value.itemIconUrl === undefined || typeof value.itemIconUrl === 'string')
+    && isNonNegativeInteger(value.quantity) && isMoney(value.capital)
     && isRecord(value.prices) && isNullableMoney(value.prices.currentOrderUnitPrice)
     && isNullableMoney(value.prices.bestBuy) && isNullableMoney(value.prices.lowestSell)
     && isNullableMoney(value.prices.plannedBid) && isNullableMoney(value.prices.plannedListPrice)
     && isNullableMoney(value.prices.maximumBid)
+    && isNullableImmediateSalePriceRange(value.prices.immediateSalePriceRange)
     && Array.isArray(value.portfolioConstraints) && value.portfolioConstraints.every(isPortfolioConstraint)
     && Array.isArray(value.reasons) && value.reasons.every(reason => isRecord(reason) && typeof reason.code === 'string' && typeof reason.message === 'string')
     && (value.economics === null || isEconomics(value.economics))
@@ -225,54 +652,45 @@ function isEconomics(value: unknown): boolean {
     && typeof value.roiDisplayPercent === 'string';
 }
 function isScore(value: unknown): boolean {
-  return isRecord(value) && isNonNegativeInteger(value.rank)
+  return isRecord(value)
+    && isNonNegativeInteger(value.rank)
     && ['totalPoints', 'basePoints', 'appliedPenaltyPoints'].every(key => typeof value[key] === 'number' && Number.isFinite(value[key]))
-    && Array.isArray(value.components) && value.components.every(component => isRecord(component)
-      && typeof component.name === 'string' && typeof component.state === 'string'
-      && ['normalizedPercent', 'maximumPoints', 'awardedPoints'].every(key => typeof component[key] === 'number' && Number.isFinite(component[key])))
+    && Array.isArray(value.components)
     && Array.isArray(value.anomalies)
-    && (value.personalEvidence === undefined || value.personalEvidence === null || isPersonalEvidence(value.personalEvidence));
-}
-function isPersonalEvidence(value: unknown): boolean {
-  return isRecord(value) && ['noHistory', 'insufficientCoverage', 'insufficientSamples', 'insufficientMetrics', 'stale', 'supported'].includes(value.state as string)
-    && isNullableNonNegativeInteger(value.knownBasisSampleCount) && (value.latestKnownBasisCompletionAtUtc === null || typeof value.latestKnownBasisCompletionAtUtc === 'string')
-    && isNullableNonNegativeInteger(value.realizedRoiSaleCount)
-    && ['minimumRealizedRoiBasisPoints', 'medianRealizedRoiBasisPoints', 'maximumRealizedRoiBasisPoints'].every(key => value[key] === null || (typeof value[key] === 'number' && Number.isFinite(value[key])))
-    && ['realizedProfitPerDayNumerator', 'realizedProfitPerDayDenominator', 'capitalTurnsPerDayNumerator', 'capitalTurnsPerDayDenominator', 'typicalHoldingDuration'].every(key => value[key] === null || typeof value[key] === 'string')
-    && typeof value.completionRateLimitation === 'string';
+    && (value.personalEvidence === undefined || value.personalEvidence === null || isRecord(value.personalEvidence));
 }
 function isHistory(value: unknown): boolean {
-  return isRecord(value) && ['insufficient', 'partial', 'strong'].includes(value.confidence as string)
-    && typeof value.commonCutoffUtc === 'string' && Array.isArray(value.windows)
-    && value.windows.every(window => isRecord(window) && isNonNegativeInteger(window.durationDays)
-      && typeof window.isAvailable === 'boolean' && isNonNegativeInteger(window.rawObservationCount)
-      && isNonNegativeInteger(window.eligibleObservationCount) && typeof window.observedSpanPercent === 'number'
+  return isRecord(value)
+    && ['insufficient', 'partial', 'strong'].includes(value.confidence as string)
+    && typeof value.commonCutoffUtc === 'string'
+    && isNullableString(value.lastObservedAtUtc)
+    && Array.isArray(value.windows)
+    && value.windows.every(window => isRecord(window)
+      && isNonNegativeInteger(window.durationDays)
+      && typeof window.isAvailable === 'boolean'
+      && isNonNegativeInteger(window.rawObservationCount)
+      && isNonNegativeInteger(window.eligibleObservationCount)
+      && typeof window.observedSpanPercent === 'number'
       && Number.isFinite(window.observedSpanPercent));
 }
 function isLiquidity(value: unknown): boolean {
-  return isRecord(value) && ['high', 'medium', 'low'].includes(value.classification as string)
+  return isRecord(value)
+    && ['high', 'medium', 'low'].includes(value.classification as string)
     && ['totalBuyQuantity', 'totalSellQuantity', 'nearBestBuyQuantity', 'nearBestSellQuantity', 'participationCapQuantity', 'safeLiquidationQuantity'].every(key => isNonNegativeInteger(value[key]))
-    && Array.isArray(value.reasons) && value.reasons.every(reason => typeof reason === 'string');
+    && Array.isArray(value.reasons);
 }
 function isPortfolioConstraint(value: unknown): boolean {
-  return isRecord(value) && typeof value.name === 'string' && isMoney(value.capitalCapacity)
-    && isNonNegativeInteger(value.quantityCapacity) && typeof value.isBinding === 'boolean';
+  return isRecord(value)
+    && typeof value.name === 'string'
+    && isMoney(value.capitalCapacity)
+    && isNonNegativeInteger(value.quantityCapacity)
+    && typeof value.isBinding === 'boolean';
 }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null; }
 function isMoney(value: unknown): value is Money { return isRecord(value) && typeof value.copper === 'string' && /^-?\d+$/.test(value.copper); }
 function isNullableMoney(value: unknown): value is Money | null { return value === null || isMoney(value); }
+function isNullableImmediateSalePriceRange(value: unknown): value is ImmediateSalePriceRange | null {
+  return value === null || (isRecord(value) && isMoney(value.lowestUnitPrice) && isMoney(value.highestUnitPrice));
+}
+function isNullableString(value: unknown): value is string | null { return value === null || typeof value === 'string'; }
 function isNonNegativeInteger(value: unknown): boolean { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0; }
-function isNullableNonNegativeInteger(value: unknown): boolean { return value === null || isNonNegativeInteger(value); }
-function copper(money: Money): string {
-  const value = BigInt(money.copper); const sign = value < 0n ? '−' : ''; const absolute = value < 0n ? -value : value;
-  return `${sign}${absolute / 10000n}g ${(absolute % 10000n) / 100n}s ${absolute % 100n}c`;
-}
-function humanize(value: string): string { return value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, character => character.toUpperCase()); }
-function sourceName(source: RecommendationSource): string {
-  switch (source) { case 'newOpportunity': return 'New opportunity'; case 'buyOrder': return 'Current buy order'; case 'sellListing': return 'Current sell listing'; case 'inventory': return 'Unlisted inventory'; }
-}
-function tone(action: RecommendationAction): string {
-  if (['BUY', 'SELL', 'LIST', 'UPDATE BID'].includes(action)) return 'act';
-  if (['CANCEL BID', 'REDUCE', 'REVIEW', 'SKIP'].includes(action)) return 'attention';
-  return 'steady';
-}

@@ -164,7 +164,8 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
                     transaction.Transaction.CompletedAtUtc)).ToArray(),
             performance is null ? [] : MapRealizedItems(performance, metadata, descending: true),
             performance is null ? [] : MapRealizedItems(performance, metadata, descending: false),
-            MapLearning(learning, metadata));
+            MapLearning(learning, metadata),
+            performance is null ? null : MapTodayWindow(performance, asOfUtc));
     }
 
     private async Task<IReadOnlyDictionary<int, string>> ReadMetadataAsync(
@@ -184,6 +185,42 @@ public sealed class PersonalDashboardService : IPersonalDashboardService
         ToDashboardMoney(window.KnownBasisPerformance?.ListingFees),
         ToDashboardMoney(window.KnownBasisPerformance?.ExchangeFees),
         window.UnknownBasisQuantity);
+
+    private static DashboardRealizedWindow MapTodayWindow(
+        PersonalPerformanceRebuild performance,
+        DateTimeOffset asOfUtc)
+    {
+        var localDate = TimeZoneInfo.ConvertTime(asOfUtc, TimeZoneInfo.Local).Date;
+        var localMidnight = DateTime.SpecifyKind(localDate, DateTimeKind.Unspecified);
+        var startUtc = new DateTimeOffset(
+            TimeZoneInfo.ConvertTimeToUtc(localMidnight, TimeZoneInfo.Local),
+            TimeSpan.Zero);
+        var endUtc = performance.Coverage.EndUtc < asOfUtc ? performance.Coverage.EndUtc : asOfUtc;
+        if (performance.Coverage.StartUtc > startUtc || endUtc < startUtc)
+        {
+            return new DashboardRealizedWindow(
+                0, RealizedPerformanceWindowStatus.InsufficientCoverage,
+                null, null, null, null, 0);
+        }
+
+        var known = performance.KnownBasisSaleAllocations
+            .Where(allocation => allocation.Match.SellCompletedAtUtc >= startUtc &&
+                                 allocation.Match.SellCompletedAtUtc < endUtc)
+            .ToArray();
+        var unknownQuantity = checked((int)performance.UnknownBasisSaleAllocations
+            .Where(allocation => allocation.Sale.SellCompletedAtUtc >= startUtc &&
+                                 allocation.Sale.SellCompletedAtUtc < endUtc)
+            .Sum(allocation => (long)allocation.Sale.UnmatchedQuantity));
+
+        return new DashboardRealizedWindow(
+            0,
+            RealizedPerformanceWindowStatus.Supported,
+            ToDashboardMoney(Sum(known.Select(allocation => allocation.NetProfit))),
+            ToDashboardMoney(Sum(known.Select(allocation => allocation.GrossSale))),
+            ToDashboardMoney(Sum(known.Select(allocation => allocation.ListingFee))),
+            ToDashboardMoney(Sum(known.Select(allocation => allocation.ExchangeFee))),
+            unknownQuantity);
+    }
 
     private static DashboardOpenInventory MapOpenInventory(
         OpenInventoryLiquidation item,

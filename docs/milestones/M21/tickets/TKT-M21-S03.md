@@ -30,7 +30,7 @@ The Signals surface displayed as `Mes Signaux` becomes the default primary surfa
 - `Pourquoi ?` expands inline beneath the same card for depth/history/personal/risk evidence; do not use a modal or persistent inspector.
 - Operational status is separate and compact: stale source, ArenaNet unavailable, sync failure, etc.
 - Freshness reflects actual relevant data-source timing rather than a fabricated uniform timestamp. The compact state names market freshness explicitly; `Données` may disclose `Compte ArenaNet` and `Historique marché` ages.
-- Show truthful next-refresh timing only when the scheduler actually knows it. While refreshing show `Actualisation en cours…`; if no precise next time exists show `Actualisation automatique`. Do not invent a countdown or progress bar.
+- Show truthful next-refresh timing only when a scheduler actually exists and knows it. While refreshing show `Actualisation en cours…`. Because the #131 MVP has no continuous Signal scheduler yet, show `Actualisation à la demande`; switch to `Actualisation automatique` only once #95 supplies a real automatic loop. Do not invent a countdown or progress bar.
 - Keep the realized-performance block in a stable location across normal, empty, degraded and corrective states. Show `Aujourd'hui` and `30 j` by default; keep `7 jours` and `90 jours` behind a compact disclosure. Open/unrealized result stays separate.
 - Validate the primary desktop composition at 1920×1080. Keep the compact left navigation and performance block in stable positions across states.
 - Preserve action-type color coding as a fast secondary cue, but never rely on color alone; explicit action text remains authoritative.

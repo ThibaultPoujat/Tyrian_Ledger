@@ -5,6 +5,7 @@ using System.Text.Json;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Gw2Api;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Infrastructure.Secrets;
 using Gw2Tp.Domain.Finance;
 
@@ -26,6 +27,7 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
     private readonly HttpClient _httpClient;
     private readonly IGw2RequestScheduler _requestScheduler;
     private readonly TimeSpan _requestTimeout;
+    private readonly SafeTransportDiagnosticBuffer? _diagnostics;
     private readonly object _credentialScopeGate = new();
     private string? _lastCredential;
     private long _credentialScope;
@@ -34,12 +36,14 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
         IGw2ApiKeySource apiKeySource,
         HttpClient httpClient,
         IGw2RequestScheduler requestScheduler,
-        TimeSpan? requestTimeout = null)
+        TimeSpan? requestTimeout = null,
+        SafeTransportDiagnosticBuffer? diagnostics = null)
     {
         _apiKeySource = apiKeySource ?? throw new ArgumentNullException(nameof(apiKeySource));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _requestScheduler = requestScheduler ?? throw new ArgumentNullException(nameof(requestScheduler));
         _requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(10);
+        _diagnostics = diagnostics;
         if (_requestTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(requestTimeout));
@@ -236,6 +240,7 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
         Func<HttpResponseMessage, CancellationToken, Task<T>> mapAsync,
         CancellationToken cancellationToken)
     {
+        var startedAt = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -268,13 +273,15 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
         {
             throw;
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException exception)
         {
+            _diagnostics?.Record(SanitizeOperation(requestPath), ClassifyTransportFailure(exception), exception, startedAt.Elapsed);
             return new Gw2ScheduledResult<Gw2ApiResult<T>>(
                 Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.TransportFailure));
         }
-        catch (IOException)
+        catch (IOException exception)
         {
+            _diagnostics?.Record(SanitizeOperation(requestPath), "IO_FAILURE", exception, startedAt.Elapsed);
             return new Gw2ScheduledResult<Gw2ApiResult<T>>(
                 Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.TransportFailure));
         }
@@ -283,8 +290,9 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
             return new Gw2ScheduledResult<Gw2ApiResult<T>>(
                 Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.InvalidPayload));
         }
-        catch (TaskCanceledException)
+        catch (TaskCanceledException exception)
         {
+            _diagnostics?.Record(SanitizeOperation(requestPath), "TIMEOUT", exception, startedAt.Elapsed);
             return new Gw2ScheduledResult<Gw2ApiResult<T>>(
                 Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.TransportFailure));
         }
@@ -293,6 +301,20 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
             return new Gw2ScheduledResult<Gw2ApiResult<T>>(
                 Gw2ApiResult<T>.Failure(Gw2ApiErrorCategory.InvalidPayload));
         }
+    }
+
+    private static string SanitizeOperation(string requestPath) =>
+        requestPath.Split('?', 2, StringSplitOptions.TrimEntries)[0];
+
+    private static string ClassifyTransportFailure(HttpRequestException exception)
+    {
+        var innerType = exception.InnerException?.GetType().Name;
+        return innerType switch
+        {
+            "SocketException" => "SOCKET_FAILURE",
+            "AuthenticationException" => "TLS_FAILURE",
+            _ => "HTTP_TRANSPORT_FAILURE",
+        };
     }
 
     private static async Task<AccountScope> MapAccountScopeAsync(

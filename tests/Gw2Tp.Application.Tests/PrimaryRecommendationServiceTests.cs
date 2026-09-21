@@ -63,9 +63,52 @@ public sealed class PrimaryRecommendationServiceTests
         Assert.Equal(1_500, result.Policies.CashReserveBasisPoints);
         Assert.Equal("FastFlip", result.Policies.Strategy);
         Assert.Equal("TradingPost", result.Policies.Category);
+        Assert.Equal(Now.AddMinutes(10), result.AccountEvidenceExpiresAtUtc);
         Assert.Equal(1, gate.AcquisitionCount);
         Assert.Equal(1, gate.DisposalCount);
         Assert.Equal(0, repository.MutationCount);
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Stale_account_evidence_suppresses_all_actions_until_a_new_sync(
+        bool staleSuccessfulSync,
+        bool staleCurrentOrders)
+    {
+        var staleAtUtc = Now - PrimaryRecommendationFreshnessPolicy.Default.PersonalSyncMaximumAge - TimeSpan.FromSeconds(1);
+        var repository = new FakeRepository
+        {
+            Profile = Profile with { LastSuccessfulSyncAtUtc = staleSuccessfulSync ? staleAtUtc : Now.AddMinutes(-1) },
+            CurrentOrders = new CurrentPersonalTradingPostOrderSnapshot(
+                staleCurrentOrders ? staleAtUtc : Now.AddMinutes(-1), []),
+        };
+        var scanner = new RecordingScanner();
+        var service = CreateService(SuccessfulPortfolio(100_000), repository, scanner: scanner);
+
+        var result = await service.GetAsync();
+
+        Assert.Equal(PrimaryRecommendationState.AccountEvidenceStale, result.State);
+        Assert.Equal("account_evidence_stale", result.EvidenceError);
+        Assert.Empty(result.Actions);
+        Assert.Null(result.Portfolio);
+        Assert.Null(scanner.Settings);
+        Assert.Equal(staleAtUtc + TimeSpan.FromMinutes(15), result.AccountEvidenceExpiresAtUtc);
+    }
+
+    [Fact]
+    public async Task Account_evidence_that_expires_during_generation_is_not_returned_ready()
+    {
+        var repository = SynchronizedRepository();
+        var clock = new SequenceClock(Now, Now, Now.AddMinutes(10).AddSeconds(1));
+        var service = CreateService(SuccessfulPortfolio(100_000), repository, clock: clock);
+
+        var result = await service.GetAsync();
+
+        Assert.Equal(PrimaryRecommendationState.AccountEvidenceStale, result.State);
+        Assert.Empty(result.Actions);
+        Assert.Null(result.Portfolio);
+        Assert.Equal(Now.AddMinutes(10), result.AccountEvidenceExpiresAtUtc);
     }
 
     [Fact]
@@ -157,6 +200,7 @@ public sealed class PrimaryRecommendationServiceTests
         var buySmall = Assert.Single(result.Actions, action =>
             action.Source == PrimaryRecommendationSource.NewOpportunity && action.ItemId == 2);
         Assert.Equal(PrimaryRecommendationAction.Buy, buy.Action);
+        Assert.Equal("https://render.guildwars2.com/file/synthetic-1.png", buy.ItemIconUrl);
         Assert.Equal(10, buy.Quantity);
         Assert.Equal(1_110, buy.Capital.Copper);
         Assert.Equal(1_110, buy.Economics!.TotalCost.Copper);
@@ -344,6 +388,55 @@ public sealed class PrimaryRecommendationServiceTests
     }
 
     [Fact]
+    public async Task Immediate_sale_uses_the_backend_simulated_price_range_for_the_suggested_quantity()
+    {
+        var repository = InventoryRepository(quantity: 100);
+        var listing = new MarketListing(
+            42,
+            [new MarketOrderLevel(3, 10, 200), new MarketOrderLevel(3, 990, 190)],
+            [new MarketOrderLevel(3, 1_000, 300)]);
+        var service = CreateService(
+            SuccessfulPortfolio(400_000),
+            repository,
+            scanner: new EmptyScanner(),
+            marketClient: new ScenarioMarketClient(listings: new Dictionary<int, MarketListing> { [42] = listing }),
+            historyService: new FakeHistoryService(new Dictionary<int, HistoricalMarketAnalytics> { [42] = History(42, true, true) }));
+
+        var result = await service.GetAsync();
+
+        var inventory = Assert.Single(result.Actions, action => action.Source == PrimaryRecommendationSource.Inventory);
+        Assert.Equal(PrimaryRecommendationAction.Sell, inventory.Action);
+        Assert.Equal(100, inventory.Quantity);
+        Assert.Equal(19_100, inventory.Economics!.GrossSaleValue.Copper);
+        var range = Assert.IsType<PrimaryRecommendationImmediateSalePriceRange>(inventory.Prices.ImmediateSalePriceRange);
+        Assert.Equal(190, range.LowestUnitPrice.Copper);
+        Assert.Equal(200, range.HighestUnitPrice.Copper);
+        Assert.Equal(0, repository.MutationCount);
+    }
+
+    [Fact]
+    public async Task Optional_icons_for_non_scanner_items_do_not_add_a_public_metadata_read()
+    {
+        var repository = InventoryRepository(quantity: 1);
+        var marketClient = new ScenarioMarketClient(listings: new Dictionary<int, MarketListing>
+        {
+            [42] = Listing(42, 100),
+        });
+        var service = CreateService(
+            SuccessfulPortfolio(100_000),
+            repository,
+            scanner: new EmptyScanner(),
+            marketClient: marketClient,
+            historyService: new FakeHistoryService(new Dictionary<int, HistoricalMarketAnalytics> { [42] = History(42, true, true) }));
+
+        var result = await service.GetAsync();
+
+        var inventory = Assert.Single(result.Actions, action => action.Source == PrimaryRecommendationSource.Inventory);
+        Assert.Null(inventory.ItemIconUrl);
+        Assert.Equal(0, marketClient.MetadataRequestCount);
+    }
+
+    [Fact]
     public async Task Composed_inventory_breach_with_zero_safe_depth_reviews_with_zero_scoped_economics()
     {
         var repository = InventoryRepository(quantity: 10);
@@ -436,7 +529,8 @@ public sealed class PrimaryRecommendationServiceTests
         RecordingGate? gate = null,
         ILiveMarketScanner? scanner = null,
         IGw2ApiClient? marketClient = null,
-        IHistoricalMarketAnalyticsService? historyService = null) => new(
+        IHistoricalMarketAnalyticsService? historyService = null,
+        IClock? clock = null) => new(
             portfolioGateway,
             repository,
             new FakeMetadataRepository(),
@@ -445,7 +539,7 @@ public sealed class PrimaryRecommendationServiceTests
             scanner ?? new EmptyScanner(),
             marketClient ?? new FakeMarketClient(listing),
             historyService ?? new FakeHistoryService(),
-            new FixedClock(Now),
+            clock ?? new FixedClock(Now),
             new OpportunityScoreService(),
             new PrimaryRecommendationPolicy());
 
@@ -530,7 +624,11 @@ public sealed class PrimaryRecommendationServiceTests
             simulator.SimulateLiquidation([new OrderBookLevel(marketQuantity, new Money(100))], 1),
             marketQuantity / 10, [], buys, sells);
         return new LiveMarketScannerCandidate(
-            new MarketItemMetadata(itemId, $"Item {itemId}", MarketItemStackPolicy.NormalStackLimit),
+            new MarketItemMetadata(
+                itemId,
+                $"Item {itemId}",
+                MarketItemStackPolicy.NormalStackLimit,
+                $"https://render.guildwars2.com/file/synthetic-{itemId}.png"),
             new MarketOrderSummary(100, 100), new MarketOrderSummary(100, 200),
             plannedBid, plannedList, profit, totalCost, new ExactRoi(profit.NetProfit, totalCost),
             new Money(168), [], liquidity);
@@ -705,6 +803,8 @@ public sealed class PrimaryRecommendationServiceTests
         private readonly IReadOnlyDictionary<int, MarketPrice> prices = prices ?? new Dictionary<int, MarketPrice>();
         private readonly IReadOnlyDictionary<int, MarketListing> listings = listings ?? new Dictionary<int, MarketListing>();
 
+        public int MetadataRequestCount { get; private set; }
+
         public Task<Gw2ApiResult<IReadOnlyList<int>>> GetPriceItemIdsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Success<IReadOnlyList<int>>(itemIds));
 
@@ -722,12 +822,16 @@ public sealed class PrimaryRecommendationServiceTests
 
         public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(
             IReadOnlyCollection<int> requestedItemIds,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(Success<IReadOnlyList<MarketItemMetadata>>(
+            CancellationToken cancellationToken = default)
+        {
+            MetadataRequestCount++;
+            return Task.FromResult(Success<IReadOnlyList<MarketItemMetadata>>(
                 requestedItemIds.Select(itemId => new MarketItemMetadata(
                     itemId,
                     $"Item {itemId}",
-                    MarketItemStackPolicy.NormalStackLimit)).ToArray()));
+                    MarketItemStackPolicy.NormalStackLimit,
+                    $"https://render.guildwars2.com/file/synthetic-{itemId}.png")).ToArray()));
+        }
 
         private static Gw2ApiResult<T> Success<T>(T value) => Gw2ApiResult<T>.Success(value);
     }
@@ -739,7 +843,13 @@ public sealed class PrimaryRecommendationServiceTests
                 listing is null || !itemIds.Contains(listing.ItemId) ? [] : [listing]));
         public Task<Gw2ApiResult<IReadOnlyList<int>>> GetPriceItemIdsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>> GetPricesAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Success(
+                itemIds.Select(itemId => new MarketItemMetadata(
+                    itemId,
+                    $"Item {itemId}",
+                    MarketItemStackPolicy.NormalStackLimit,
+                    $"https://render.guildwars2.com/file/synthetic-{itemId}.png")).ToArray()));
     }
 
     private sealed class FakeHistoryService(IReadOnlyDictionary<int, HistoricalMarketAnalytics>? histories = null) : IHistoricalMarketAnalyticsService
@@ -754,5 +864,12 @@ public sealed class PrimaryRecommendationServiceTests
     private sealed class FixedClock(DateTimeOffset utcNow) : IClock
     {
         public DateTimeOffset UtcNow { get; } = utcNow;
+    }
+
+    private sealed class SequenceClock(params DateTimeOffset[] values) : IClock
+    {
+        private int currentIndex;
+
+        public DateTimeOffset UtcNow => values[Math.Min(currentIndex++, values.Length - 1)];
     }
 }

@@ -15,6 +15,7 @@ using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Application.Investments;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Domain.Finance;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Web.Hosting;
 using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Builder;
@@ -36,6 +37,35 @@ namespace Gw2Tp.Web.Tests;
 
 public sealed class LocalHostIntegrationTests
 {
+    [Fact]
+    public async Task Diagnostic_export_requires_protected_local_read_headers()
+    {
+        const string sensitiveValue = "synthetic-sensitive-authorization-value";
+        await using var app = await StartApplicationAsync("Production");
+        app.Services.GetRequiredService<SafeTransportDiagnosticBuffer>().Record(
+            "commerce/transactions/history/buys", "HTTP_TRANSPORT_FAILURE",
+            new HttpRequestException(sensitiveValue), TimeSpan.FromMilliseconds(5));
+        using var client = app.GetTestClient();
+
+        using var missingHeader = await client.GetAsync("/api/diagnostics/export");
+        Assert.Equal(HttpStatusCode.Forbidden, missingHeader.StatusCode);
+
+        using var attacker = new HttpRequestMessage(HttpMethod.Get, "/api/diagnostics/export");
+        attacker.Headers.Add("Origin", "https://attacker.example");
+        attacker.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var rejected = await client.SendAsync(attacker);
+        Assert.Equal(HttpStatusCode.Forbidden, rejected.StatusCode);
+
+        using var trusted = new HttpRequestMessage(HttpMethod.Get, "/api/diagnostics/export");
+        trusted.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var accepted = await client.SendAsync(trusted);
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        Assert.Equal("no-store", accepted.Headers.CacheControl?.ToString());
+        var export = await accepted.Content.ReadAsStringAsync();
+        Assert.Contains("HTTP_TRANSPORT_FAILURE", export, StringComparison.Ordinal);
+        Assert.DoesNotContain(sensitiveValue, export, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task StartsWithoutArenaNetKeyAndReturnsHealthyStatus()
     {
@@ -317,6 +347,8 @@ public sealed class LocalHostIntegrationTests
         Assert.Contains("\"minimumProfit\":{\"copper\":\"1\"}", body, StringComparison.Ordinal);
         Assert.Contains("\"netProfit\":{\"copper\":\"211\"}", body, StringComparison.Ordinal);
         Assert.Contains("\"roiDisplayPercent\":\"63.75%\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"accountEvidenceExpiresAtUtc\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"immediateSalePriceRange\":{\"lowestUnitPrice\":{\"copper\":\"90\"},\"highestUnitPrice\":{\"copper\":\"100\"}}", body, StringComparison.Ordinal);
         Assert.DoesNotContain("opaque-account", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
@@ -1562,18 +1594,19 @@ public sealed class LocalHostIntegrationTests
                 3,
                 new Money(300),
                 new PrimaryRecommendationPriceState(
-                    new Money(100), new Money(99), new Money(200), new Money(100), new Money(199), new Money(90)),
+                    new Money(100), new Money(99), new Money(200), new Money(100), new Money(199), new Money(90),
+                    new PrimaryRecommendationImmediateSalePriceRange(new Money(90), new Money(100))),
                 new PrimaryRecommendationEconomics(
                     new Money(300), new Money(603), new Money(31), new Money(61),
                     new Money(511), new Money(211), new Money(331), "63.75%"),
                 new PrimaryRecommendationScore(1, 80m, 80m, 0m, [], []),
-                new PrimaryRecommendationHistory(OpportunityHistoricalConfidence.Strong, now, []),
+                new PrimaryRecommendationHistory(OpportunityHistoricalConfidence.Strong, now, now, []),
                 new PrimaryRecommendationLiquidity(PositionSizingLiquidity.High, 100, 100, 50, 50, 10, 10, []),
                 [new PositionSizingConstraint(PositionSizingConstraintName.ItemExposure, new Money(500), 5, true)],
                 [
                     new PrimaryRecommendationReason(PrimaryRecommendationReasonCode.BidAboveMaximum, "Current bid exceeds the modeled maximum."),
                     new PrimaryRecommendationReason(PrimaryRecommendationReasonCode.ReadOnlyManualAction, "Tyrian Ledger never changes Trading Post orders."),
-                ])]);
+                ])], now.AddMinutes(10));
     }
 
     private sealed class FixedPrimaryRecommendationService(PrimaryRecommendationResult result) : IPrimaryRecommendationService

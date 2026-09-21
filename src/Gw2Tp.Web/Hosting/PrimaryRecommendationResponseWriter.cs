@@ -24,7 +24,7 @@ internal static class PrimaryRecommendationResponseWriter
     private static object ToResponse(PrimaryRecommendationResult result) => new
     {
         result.State, result.EvidenceError, result.GeneratedAtUtc, result.LastSuccessfulSyncAtUtc,
-        result.CurrentOrdersObservedAtUtc, result.ScannerObservedAtUtc,
+        result.CurrentOrdersObservedAtUtc, result.ScannerObservedAtUtc, result.AccountEvidenceExpiresAtUtc,
         policies = new
         {
             result.Policies.ActionPolicyVersion,
@@ -50,7 +50,7 @@ internal static class PrimaryRecommendationResponseWriter
         actions = result.Actions.Select(action => new
         {
             action = ActionName(action.Action), action.Source, action.OrderState, action.OrderId,
-            action.ItemId, action.ItemName, action.Quantity,
+            action.ItemId, action.ItemName, action.ItemIconUrl, action.Quantity,
             capital = MoneyResponse.From(action.Capital),
             prices = new
             {
@@ -60,6 +60,11 @@ internal static class PrimaryRecommendationResponseWriter
                 plannedBid = Optional(action.Prices.PlannedBid),
                 plannedListPrice = Optional(action.Prices.PlannedListPrice),
                 maximumBid = Optional(action.Prices.MaximumBid),
+                immediateSalePriceRange = action.Prices.ImmediateSalePriceRange is { } range ? new
+                {
+                    lowestUnitPrice = MoneyResponse.From(range.LowestUnitPrice),
+                    highestUnitPrice = MoneyResponse.From(range.HighestUnitPrice),
+                } : null,
             },
             economics = action.Economics is null ? null : new
             {
