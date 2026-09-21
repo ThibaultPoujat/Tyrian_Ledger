@@ -90,9 +90,10 @@ The preferred owner sequence from here is:
 
 #129 is the preferred maintenance predecessor, but it must not delay the MVP path.
 While #129 remains open, #130 may start after #128 merges if #129 becomes
-non-trivial or would delay #131. In that fallback, agents use the documented
-session-start reconciliation/manual generated-block repair. #131 depends on
-#130, not on completion of #129.
+non-trivial or would delay #131. Once #130 closes, #131 may continue on the
+same allowed route because #131 depends on #130, not on completion of #129.
+In that fallback, agents use the documented session-start reconciliation/manual
+generated-block repair.
 
 Do not use numeric issue ordering to skip #129-#133 and begin #93 early.
 

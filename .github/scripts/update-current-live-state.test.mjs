@@ -77,17 +77,39 @@ test('the documented #129/#130 exception creates only the allowed non-blocking a
   assert.equal(state.alternate, 'TKT-M21-S02 / #130');
 });
 
+test('the non-blocking MVP route advances to #131 after #130 closes', async () => {
+  const source = await sourceFixture();
+  const operational = structuredClone(source.operational);
+  operational.issues[130].state = 'CLOSED';
+  operational.issues[131].state = 'OPEN';
+  const state = deriveLiveState({
+    index: source.index,
+    issue98: operational.issue98Body,
+    guide: source.guide,
+    ticketByIssue: source.ticketByIssue,
+    operational,
+  });
+
+  assert.equal(state.preferred, 'TKT-M21-S01 / #129');
+  assert.equal(state.alternate, 'TKT-M21-S03 / #131');
+});
+
 test('the roadmap wording remains a parseable non-blocking alternate rule', async () => {
   const index = await readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8');
-  assert.deepEqual(parseNonBlockingAlternate(index), { preferred: 129, alternate: 130, prerequisite: 128 });
+  assert.deepEqual(parseNonBlockingAlternate(index), {
+    preferred: 129,
+    alternate: 130,
+    continuation: 131,
+    prerequisite: 128,
+  });
 });
 
 test('a disagreement about the documented alternate rule fails without updating handoff state', async () => {
   const source = await sourceFixture();
   const operational = structuredClone(source.operational);
   operational.issue98Body = operational.issue98Body.replace(
-    '**MVP non-blocking exception:** #129 is preferred before #130. After #128 merges, #130 may start before #129.',
-    '**MVP non-blocking exception:** #129 is preferred before #131. After #128 merges, #131 may start before #129.',
+    '**MVP non-blocking exception:** #129 is preferred before #130. After #128 merges, #130 may start before #129. #131 depends on #130, not on completion of #129.',
+    '**MVP non-blocking exception:** #129 is preferred before #132. After #128 merges, #132 may start before #129. #131 depends on #132, not on completion of #129.',
   );
 
   assert.throws(() => deriveLiveState({

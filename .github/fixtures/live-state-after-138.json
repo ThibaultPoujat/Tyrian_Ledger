@@ -1,5 +1,5 @@
 {
-  "issue98Body": "## Current execution order\n\n1. #128 — completed\n2. #129 — live state\n3. #130 — spike\n4. #131 — MVP\n5. #132 — cleanup\n6. #133 — orchestration\n7. #93 — economics\n8. #94 — paths\n9. #95 — loop\n10. #96 — hardening\n11. #97 — evaluation\n\n**MVP non-blocking exception:** #129 is preferred before #130. After #128 merges, #130 may start before #129.\n",
+  "issue98Body": "## Current execution order\n\n1. #128 — completed\n2. #129 — live state\n3. #130 — spike\n4. #131 — MVP\n5. #132 — cleanup\n6. #133 — orchestration\n7. #93 — economics\n8. #94 — paths\n9. #95 — loop\n10. #96 — hardening\n11. #97 — evaluation\n\n**MVP non-blocking exception:** #129 is preferred before #130. After #128 merges, #130 may start before #129. #131 depends on #130, not on completion of #129.\n",
   "issues": {
     "93": { "state": "OPEN", "title": "Crafting economics", "milestoneTitle": "M21 — Signals and Crafting Intelligence" },
     "94": { "state": "OPEN", "title": "Crafting paths", "milestoneTitle": "M21 — Signals and Crafting Intelligence" },

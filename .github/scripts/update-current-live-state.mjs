@@ -21,13 +21,21 @@ export function parseNonBlockingAlternate(source) {
   const normalized = source.replace(/\s+/g, ' ');
   const preferredMatch = normalized.match(/#(\d+) is preferred before #(\d+)/i);
   const startMatch = normalized.match(/after #(\d+) merges[^.]*?#(\d+) may start/i);
-  if (!preferredMatch || !startMatch) throw new Error('The roadmap has no parseable non-blocking alternate rule.');
+  const continuationMatch = normalized.match(/#(\d+) depends on #(\d+), not on completion of #(\d+)/i);
+  if (!preferredMatch || !startMatch || !continuationMatch) {
+    throw new Error('The roadmap has no parseable non-blocking alternate rule.');
+  }
   const preferred = Number(preferredMatch[1]);
   const alternate = Number(preferredMatch[2]);
   const prerequisite = Number(startMatch[1]);
   const repeatedAlternate = Number(startMatch[2]);
-  if (alternate !== repeatedAlternate) throw new Error('The roadmap alternate rule is internally inconsistent.');
-  return { preferred, alternate, prerequisite };
+  const continuation = Number(continuationMatch[1]);
+  const continuationDependency = Number(continuationMatch[2]);
+  const continuationExclusion = Number(continuationMatch[3]);
+  if (alternate !== repeatedAlternate || alternate !== continuationDependency || preferred !== continuationExclusion) {
+    throw new Error('The roadmap alternate rule is internally inconsistent.');
+  }
+  return { preferred, alternate, continuation, prerequisite };
 }
 
 export function parseSolGates(guide) {
@@ -70,14 +78,19 @@ export function deriveLiveState({ index, issue98, guide, ticketByIssue, operatio
   const issueAlternateRule = parseNonBlockingAlternate(issue98);
   if (alternateRule.preferred !== issueAlternateRule.preferred
     || alternateRule.alternate !== issueAlternateRule.alternate
+    || alternateRule.continuation !== issueAlternateRule.continuation
     || alternateRule.prerequisite !== issueAlternateRule.prerequisite) {
     throw new Error('Issue #98 and docs/milestones/INDEX.md disagree about the non-blocking alternate rule.');
   }
-  requireIssues(operational.issues, [alternateRule.preferred, alternateRule.alternate, alternateRule.prerequisite]);
+  requireIssues(operational.issues, [
+    alternateRule.preferred,
+    alternateRule.alternate,
+    alternateRule.continuation,
+    alternateRule.prerequisite,
+  ]);
   const alternateNumber = operational.issues[alternateRule.preferred].state === 'OPEN'
-    && operational.issues[alternateRule.alternate].state === 'OPEN'
     && operational.issues[alternateRule.prerequisite].state === 'CLOSED'
-    ? alternateRule.alternate
+    ? activeNonBlockingRoute(operational.issues, alternateRule)
     : null;
 
   const gates = parseSolGates(guide);
@@ -219,6 +232,14 @@ function requireIssues(issues, numbers) {
   for (const number of numbers) {
     if (!issues[number]) throw new Error(`GitHub state is missing issue #${number}.`);
   }
+}
+
+function activeNonBlockingRoute(issues, rule) {
+  if (issues[rule.alternate].state === 'OPEN') return rule.alternate;
+  if (issues[rule.alternate].state === 'CLOSED' && issues[rule.continuation].state === 'OPEN') {
+    return rule.continuation;
+  }
+  return null;
 }
 
 async function markdownFiles(root) {
