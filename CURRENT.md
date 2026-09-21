@@ -103,10 +103,10 @@ The block between the markers is machine-owned once #129 lands. Durable prose
 outside the markers must never be rewritten by the generated-state updater.
 
 <!-- BEGIN GENERATED LIVE STATE -->
-- Last completed implementation ticket: `TKT-M21-S03 / #131`
-- Last merged implementation PR: `#138`
+- Last completed implementation ticket: `TKT-M21-S01 / #129`
+- Last merged implementation PR: `#140`
 - Active milestone: `M21 — Signals and Crafting Intelligence`
-- Preferred next implementation ticket: `TKT-M21-S01 / #129`
+- Preferred next implementation ticket: `TKT-M21-S04 / #132`
 - Allowed non-blocking alternate: `None`
 - Explicit active Sol gates: `TKT-M21-S05 / #133`, `TKT-M21-02 / #93`, `TKT-M21-03 / #94`, `TKT-M22-02 / #96`
 - Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`
