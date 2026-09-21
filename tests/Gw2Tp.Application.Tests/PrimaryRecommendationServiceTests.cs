@@ -415,6 +415,28 @@ public sealed class PrimaryRecommendationServiceTests
     }
 
     [Fact]
+    public async Task Optional_icons_for_non_scanner_items_do_not_add_a_public_metadata_read()
+    {
+        var repository = InventoryRepository(quantity: 1);
+        var marketClient = new ScenarioMarketClient(listings: new Dictionary<int, MarketListing>
+        {
+            [42] = Listing(42, 100),
+        });
+        var service = CreateService(
+            SuccessfulPortfolio(100_000),
+            repository,
+            scanner: new EmptyScanner(),
+            marketClient: marketClient,
+            historyService: new FakeHistoryService(new Dictionary<int, HistoricalMarketAnalytics> { [42] = History(42, true, true) }));
+
+        var result = await service.GetAsync();
+
+        var inventory = Assert.Single(result.Actions, action => action.Source == PrimaryRecommendationSource.Inventory);
+        Assert.Null(inventory.ItemIconUrl);
+        Assert.Equal(0, marketClient.MetadataRequestCount);
+    }
+
+    [Fact]
     public async Task Composed_inventory_breach_with_zero_safe_depth_reviews_with_zero_scoped_economics()
     {
         var repository = InventoryRepository(quantity: 10);
@@ -781,6 +803,8 @@ public sealed class PrimaryRecommendationServiceTests
         private readonly IReadOnlyDictionary<int, MarketPrice> prices = prices ?? new Dictionary<int, MarketPrice>();
         private readonly IReadOnlyDictionary<int, MarketListing> listings = listings ?? new Dictionary<int, MarketListing>();
 
+        public int MetadataRequestCount { get; private set; }
+
         public Task<Gw2ApiResult<IReadOnlyList<int>>> GetPriceItemIdsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Success<IReadOnlyList<int>>(itemIds));
 
@@ -798,13 +822,16 @@ public sealed class PrimaryRecommendationServiceTests
 
         public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(
             IReadOnlyCollection<int> requestedItemIds,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(Success<IReadOnlyList<MarketItemMetadata>>(
+            CancellationToken cancellationToken = default)
+        {
+            MetadataRequestCount++;
+            return Task.FromResult(Success<IReadOnlyList<MarketItemMetadata>>(
                 requestedItemIds.Select(itemId => new MarketItemMetadata(
                     itemId,
                     $"Item {itemId}",
                     MarketItemStackPolicy.NormalStackLimit,
                     $"https://render.guildwars2.com/file/synthetic-{itemId}.png")).ToArray()));
+        }
 
         private static Gw2ApiResult<T> Success<T>(T value) => Gw2ApiResult<T>.Success(value);
     }

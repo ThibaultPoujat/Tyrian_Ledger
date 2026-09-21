@@ -192,22 +192,8 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             var listingsTask = allItemIds.Length == 0
                 ? Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketListing>>.Success([]))
                 : marketDataClient.GetListingsAsync(allItemIds, cancellationToken);
-            var scannerItemIds = scan.Candidates.Select(candidate => candidate.Item.ItemId).ToHashSet();
-            var metadataItemIds = allItemIds.Where(itemId => !scannerItemIds.Contains(itemId)).ToArray();
-            var metadataTask = metadataItemIds.Length == 0
-                ? Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Success([]))
-                : marketDataClient.GetItemMetadataAsync(metadataItemIds, cancellationToken);
             await Task.WhenAll(historyTasks.Values).ConfigureAwait(false);
             var listingsResult = await listingsTask.ConfigureAwait(false);
-            Gw2ApiResult<IReadOnlyList<MarketItemMetadata>> metadataResult;
-            try
-            {
-                metadataResult = await metadataTask.ConfigureAwait(false);
-            }
-            catch (Exception exception) when (exception is not OutOfMemoryException and not OperationCanceledException)
-            {
-                metadataResult = Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Failure(Gw2ApiErrorCategory.UnexpectedResponse);
-            }
 
             historyByItem = historyTasks.ToDictionary(pair => pair.Key, pair => pair.Value.Result);
             if (!listingsResult.IsSuccess || listingsResult.IsPartialData || listingsResult.Value is null)
@@ -219,19 +205,10 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
                 .GroupBy(value => value.ItemId).Where(group => group.Count() == 1)
                 .ToDictionary(group => group.Key, group => group.Single());
 
-            var displayMetadata = scan.Candidates
+            displayMetadataByItem = scan.Candidates
                 .Select(candidate => candidate.Item)
                 .GroupBy(item => item.ItemId)
                 .ToDictionary(group => group.Key, group => group.First());
-            if (metadataResult.IsSuccess && !metadataResult.IsPartialData && metadataResult.Value is not null)
-            {
-                foreach (var item in metadataResult.Value)
-                {
-                    displayMetadata[item.ItemId] = item;
-                }
-            }
-
-            displayMetadataByItem = displayMetadata;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

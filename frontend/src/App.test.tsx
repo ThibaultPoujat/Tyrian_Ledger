@@ -258,6 +258,14 @@ describe('Mes Signaux MVP', () => {
     expect(screen.queryByText('Investments')).not.toBeInTheDocument();
   });
 
+  it('announces asynchronous local-host status changes politely', async () => {
+    render(<App />);
+
+    const status = await screen.findByText('Application locale connectée');
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toHaveAttribute('aria-live', 'polite');
+  });
+
   it('shows today and 30-day realized profit permanently and keeps 7/90-day values behind disclosure', async () => {
     render(<App />);
 
@@ -526,8 +534,36 @@ describe('Mes Signaux MVP', () => {
 
     fireEvent.click(freshness.closest('summary')!);
     expect(screen.getByText('Compte ArenaNet')).toBeInTheDocument();
+    expect(screen.getByText(/Synchronisé /)).toBeInTheDocument();
+    expect(screen.getByText(/Ordres relevés /)).toBeInTheDocument();
     expect(screen.getByText('Historique marché')).toBeInTheDocument();
     expect(screen.queryByText(/prochaine actualisation dans/i)).not.toBeInTheDocument();
+  });
+
+  it('uses the most recent history observation in the aggregate freshness row', async () => {
+    const recentObservation = new Date(Date.now() - 61_000).toISOString();
+    const olderObservation = new Date(Date.now() - 3_600_000).toISOString();
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        actions: [
+          {
+            ...recommendationAction(1, 'Observation ancienne'),
+            history: { ...recommendationAction(1, 'Observation ancienne').history, lastObservedAtUtc: olderObservation },
+          },
+          {
+            ...recommendationAction(2, 'Observation récente'),
+            history: { ...recommendationAction(2, 'Observation récente').history, lastObservedAtUtc: recentObservation },
+          },
+        ],
+      },
+    });
+    render(<App />);
+
+    const freshness = await screen.findByText(/Marché actualisé/);
+    fireEvent.click(freshness.closest('summary')!);
+    expect(screen.getByText('Dernier échantillon enregistré il y a 1 min')).toBeInTheDocument();
   });
 });
 

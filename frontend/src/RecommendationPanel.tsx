@@ -175,7 +175,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
       .filter(record => actionable.has(record.action)),
     [result],
   );
-  const historyCutoff = useMemo(() => oldestHistoryObservation(result?.actions ?? []), [result]);
+  const latestHistoryObservation = useMemo(() => latestHistoryObservationAt(result?.actions ?? []), [result]);
   const accountEvidenceExpired = isExpired(result?.accountEvidenceExpiresAtUtc ?? null);
   const readyForSignals = status === 'ready' && result?.state === 'ready' && !accountEvidenceExpired;
 
@@ -214,13 +214,13 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
             </div>
             <div>
               <strong>Compte ArenaNet</strong>
-              <span>{accountEvidenceExpired
-                ? 'Données expirées : synchronisation requise'
-                : sourceAge(result.lastSuccessfulSyncAtUtc, "Pas encore synchronisé", 'Synchronisé')}</span>
+              <span>{sourceAge(result.lastSuccessfulSyncAtUtc, 'Pas encore synchronisé', 'Synchronisé')}</span>
+              <span>{sourceAge(result.currentOrdersObservedAtUtc, "Aucun relevé d'ordres", 'Ordres relevés')}</span>
+              {accountEvidenceExpired && <span>Données expirées : synchronisation requise</span>}
             </div>
             <div>
               <strong>Historique marché</strong>
-              <span>{sourceAge(historyCutoff, 'Aucun échantillon exploitable', 'Dernier échantillon enregistré')}</span>
+              <span>{sourceAge(latestHistoryObservation, 'Aucun échantillon exploitable', 'Dernier échantillon enregistré')}</span>
             </div>
           </div>
         </details>
@@ -589,13 +589,13 @@ function agePhrase(timestamp: string): string {
   return `le ${new Date(timestamp).toLocaleString('fr-FR')}`;
 }
 
-function oldestHistoryObservation(records: RecommendationRecord[]): string | null {
+function latestHistoryObservationAt(records: RecommendationRecord[]): string | null {
   const timestamps = records
     .map(record => record.history?.lastObservedAtUtc ?? null)
     .filter((value): value is string => value !== null)
     .map(value => ({ value, time: new Date(value).getTime() }))
     .filter(value => Number.isFinite(value.time))
-    .sort((a, b) => a.time - b.time);
+    .sort((a, b) => b.time - a.time);
   return timestamps[0]?.value ?? null;
 }
 

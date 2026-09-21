@@ -313,7 +313,7 @@ export default function App() {
             <span>Réglages</span>
           </button>
         </nav>
-        <div className="sidebar-status">
+        <div aria-live="polite" className="sidebar-status" role="status">
           <span className={`host-dot host-dot--${hostStatus}`} aria-hidden="true" />
           {hostStatus === 'checking' && 'Application locale…'}
           {hostStatus === 'connected' && 'Application locale connectée'}
