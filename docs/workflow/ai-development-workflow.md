@@ -39,7 +39,7 @@ At session start:
 4. never infer execution order from GitHub issue numbers or review gates from risk class/issue metadata;
 5. never rewrite durable `CURRENT.md` narrative merely to repair generated live state.
 
-TKT-M21-S01 / #129 owns the deterministic post-merge automation for this block. Until it lands, the implementation/delivery agent performs the reconciliation manually. After it lands, per-field session-start reconciliation remains the fallback if automation failed or state is stale. The owner should not need to edit normal handoff state.
+TKT-M21-S01 / #129 owns the deterministic post-merge automation for this block. The workflow runs after a pull request merges to `develop` and can also be manually dispatched for recovery; it reads GitHub only for operational state, repository sources for ordering/review gates, and writes only the marked block. Per-field session-start reconciliation remains the fallback if automation failed or state is stale. The owner should not need to edit normal handoff state.
 
 ## Ticket versus session
 
