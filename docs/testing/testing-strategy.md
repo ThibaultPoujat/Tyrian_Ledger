@@ -93,11 +93,13 @@ Cover:
 Cover accessible rendering/interactions for:
 
 - account/sync/error/unknown states;
-- personal dashboard/current orders;
-- scanner/filter/detail/watchlist;
+- the `Mes Signaux` default, actionable/zero/degraded states, and concrete
+  French action fields;
+- the `Mes Signaux / Artisanat / Réglages` primary navigation, with no legacy
+  dashboard/scanner/inventory/personal-learning destination;
+- retained settings, backup/recovery and diagnostics controls;
 - historical coverage/confidence;
-- `What Should I Do?` actions/reasons;
-- investment/crafting/alert views as introduced.
+- crafting/alert views when they are introduced.
 
 Frontend tests should assert that browser code consumes backend financial
 results rather than owning a competing formula.
@@ -106,13 +108,12 @@ results rather than owning a competing formula.
 
 Playwright should focus on high-value user journeys rather than every branch:
 
-1. start/connect/status flow;
-2. sync -> dashboard/current orders;
-3. scanner -> detail/watchlist;
-4. primary recommendation/action review;
-5. restart with persisted state;
-6. backup/restore representative flow;
-7. keyboard navigation/focus/accessibility regression.
+1. start/connect/status flow and the default `Mes Signaux` surface;
+2. actionable, zero, stale and degraded Signal states;
+3. settings/account synchronization and safe diagnostics;
+4. restart with persisted state;
+5. backup/restore representative flow;
+6. keyboard navigation/focus/accessibility regression.
 
 The browser **is allowed and expected to call the loopback local API**. It must
 not call ArenaNet directly or receive the API key.
@@ -152,7 +153,8 @@ A PR must not merge with failing relevant tests for:
 - score/risk/recommendation composition;
 - crafting economics.
 
-R3 tickets receive fresh flagship XHigh review in addition to tests.
+Review model and effort are governed by `docs/workflow/model-effort-guide.md`;
+R3 does not by itself require a separate Sol review.
 
 ## No runtime LLM tests
 

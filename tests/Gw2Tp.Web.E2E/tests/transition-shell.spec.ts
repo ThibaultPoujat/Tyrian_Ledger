@@ -17,9 +17,11 @@ test('loads Mes Signaux by default and keeps account/recovery controls under Ré
   await expect(page).toHaveTitle('Tyrian Ledger | Assistant personnel de profit');
   await expect(page.getByRole('heading', { name: 'Mes Signaux', level: 1 })).toBeVisible();
   const navigation = page.getByRole('navigation', { name: 'Navigation principale' });
+  await expect(navigation.getByRole('button')).toHaveCount(3);
   await expect(navigation.getByRole('button', { name: 'Mes Signaux' })).toHaveAttribute('aria-current', 'page');
   await expect(navigation.getByRole('button', { name: /Artisanat/i })).toBeDisabled();
   await expect(navigation.getByRole('button', { name: 'Réglages' })).toBeEnabled();
+  await expect(navigation.getByRole('button', { name: /tableau de bord|scanner|inventaire|apprentissages personnels|investissements/i })).toHaveCount(0);
   await expect(page.getByText('Application locale connectée')).toBeVisible();
 
   await navigation.getByRole('button', { name: 'Réglages' }).click();
