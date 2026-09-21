@@ -94,7 +94,7 @@ test('presents the execution-first Signal flow at 1920x1080 using only mocked lo
   expect(externalRequests).toEqual([]);
 });
 
-test('keeps the primary shell fixed across normal, zero and degraded states at 1920x1080', async ({ page }) => {
+test('keeps the primary shell fixed across normal, zero, stale and degraded states at 1920x1080', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
   let response = mockRecommendations();
   await page.route('**/api/recommendations', route => route.fulfill({
@@ -120,6 +120,17 @@ test('keeps the primary shell fixed across normal, zero and degraded states at 1
   };
   await page.reload();
   await expect(page.getByText(/ArenaNet ou les données de marché sont temporairement indisponibles/)).toBeVisible();
+  await expectPrimaryLayout(page, normalLayout);
+
+  response = {
+    ...mockRecommendations(),
+    state: 'accountEvidenceStale',
+    evidenceError: 'account_evidence_stale',
+    accountEvidenceExpiresAtUtc: '2026-09-19T08:15:00Z',
+    actions: [],
+  };
+  await page.reload();
+  await expect(page.getByText(/Les données du compte ont expiré/)).toBeVisible();
   await expectPrimaryLayout(page, normalLayout);
 });
 
@@ -212,6 +223,7 @@ function mockRecommendations() {
       plannedBid: { copper: '123456' },
       plannedListPrice: { copper: '134999' },
       maximumBid: { copper: '124000' },
+      immediateSalePriceRange: null,
     },
     economics: {
       acquisitionCost: { copper: '2716032' },
@@ -257,6 +269,7 @@ function mockRecommendations() {
     lastSuccessfulSyncAtUtc: '2026-09-19T08:00:00Z',
     currentOrdersObservedAtUtc: '2026-09-19T08:00:00Z',
     scannerObservedAtUtc: '2026-09-19T08:01:00Z',
+    accountEvidenceExpiresAtUtc: '2030-09-19T08:15:00Z',
     policies: {
       actionPolicyVersion: 1,
       scorePolicyVersion: 1,

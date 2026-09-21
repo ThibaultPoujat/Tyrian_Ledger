@@ -55,6 +55,7 @@ function recommendationAction(
       plannedBid: { copper: '123456' },
       plannedListPrice: { copper: '134999' },
       maximumBid: { copper: '124000' },
+      immediateSalePriceRange: null,
     },
     economics: {
       acquisitionCost: { copper: '2716032' },
@@ -118,6 +119,7 @@ const readyRecommendations = {
   lastSuccessfulSyncAtUtc: '2026-09-19T08:00:00Z',
   currentOrdersObservedAtUtc: '2026-09-19T08:00:00Z',
   scannerObservedAtUtc: '2026-09-19T08:01:00Z',
+  accountEvidenceExpiresAtUtc: '2030-09-19T08:15:00Z',
   policies: {
     actionPolicyVersion: 1,
     scorePolicyVersion: 1,
@@ -154,6 +156,7 @@ const readyRecommendations = {
 
 type ApiOverrides = {
   dashboard?: unknown;
+  dashboardResponses?: Array<{ ok: boolean; payload: unknown }>;
   recommendations?: unknown;
   recommendationsOk?: boolean;
   health?: unknown;
@@ -163,6 +166,7 @@ type ApiOverrides = {
 
 function installFetch(overrides: ApiOverrides = {}) {
   const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+  let dashboardRequests = 0;
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     calls.push({ input, init });
     const url = String(input);
@@ -181,7 +185,12 @@ function installFetch(overrides: ApiOverrides = {}) {
       });
     }
     if (url === '/api/personal-dashboard') {
-      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(overrides.dashboard ?? dashboardBase) });
+      const response = overrides.dashboardResponses?.[Math.min(dashboardRequests, overrides.dashboardResponses.length - 1)];
+      dashboardRequests++;
+      return Promise.resolve({
+        ok: response?.ok ?? true,
+        json: vi.fn().mockResolvedValue(response?.payload ?? overrides.dashboard ?? dashboardBase),
+      });
     }
     if (url === '/api/recommendations') {
       return Promise.resolve({
@@ -263,6 +272,27 @@ describe('Mes Signaux MVP', () => {
     expect(within(performance).getByText('7 jours')).toBeInTheDocument();
     expect(within(performance).getByText('90 jours')).toBeInTheDocument();
     expect(within(performance).getByLabelText(/3 pièces d'or, 27 pièces d'argent/)).toBeInTheDocument();
+  });
+
+  it('does not present retained profit as current after a dashboard refresh fails', async () => {
+    cleanup();
+    const { calls } = installFetch({
+      dashboardResponses: [
+        { ok: true, payload: dashboardBase },
+        { ok: false, payload: {} },
+      ],
+    });
+    render(<App />);
+    await screen.findByLabelText('Profit réalisé');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Réglages' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Synchroniser les données du Comptoir' }));
+    await waitFor(() => expect(calls.filter(call => String(call.input) === '/api/personal-dashboard')).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', { name: 'Mes Signaux' }));
+
+    const performance = await screen.findByLabelText('Profit réalisé');
+    expect(within(performance).getAllByText('Indisponible')).toHaveLength(4);
+    expect(within(performance).queryByText(`Données jusqu’au ${new Date(dashboardBase.historyCoverage.endUtc).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}`)).not.toBeInTheDocument();
   });
 
   it('discloses units excluded from realized profit when acquisition basis is unknown', async () => {
@@ -388,6 +418,103 @@ describe('Mes Signaux MVP', () => {
 
     expect(await screen.findByText(/ArenaNet ou les données de marché sont temporairement indisponibles/)).toHaveAttribute('role', 'status');
     expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+  });
+
+  it('hides actions and gives an explicit state when account evidence is stale', async () => {
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        state: 'accountEvidenceStale',
+        evidenceError: 'account_evidence_stale',
+        accountEvidenceExpiresAtUtc: '2026-09-19T08:15:00Z',
+        actions: [],
+      },
+    });
+    render(<App />);
+
+    expect(await screen.findByText(/Les données du compte ont expiré/)).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+  });
+
+  it('expires open Signal cards at the backend-provided account-evidence deadline', async () => {
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        accountEvidenceExpiresAtUtc: new Date(Date.now() - 1_000).toISOString(),
+      },
+    });
+    render(<App />);
+
+    expect(await screen.findByText(/Les données du compte ont expiré/)).toHaveAttribute('role', 'status');
+    expect(screen.queryByRole('heading', { name: "Lingot d'orichalque" })).not.toBeInTheDocument();
+  });
+
+  it('uses the simulated immediate-sale range instead of the top bid for the full quantity', async () => {
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        actions: [
+          {
+            ...recommendationAction(77, 'Lot à vendre', 'SELL', 'inventory'),
+            prices: {
+              ...recommendationAction(77, 'Lot à vendre', 'SELL', 'inventory').prices,
+              immediateSalePriceRange: {
+                lowestUnitPrice: { copper: '900' },
+                highestUnitPrice: { copper: '1000' },
+              },
+            },
+          },
+        ],
+      },
+    });
+    render(<App />);
+
+    const card = (await screen.findByRole('heading', { name: 'Lot à vendre', level: 3 })).closest('article');
+    expect(within(card!).getByText('Fourchette de vente immédiate par unité (modélisée)')).toBeInTheDocument();
+    expect(within(card!).getByLabelText("9 pièces d'argent")).toBeInTheDocument();
+    expect(within(card!).getByLabelText("10 pièces d'argent")).toBeInTheDocument();
+    expect(within(card!).queryByLabelText('11 pièces d’or, 80 pièces d’argent, 56 pièces de cuivre')).not.toBeInTheDocument();
+  });
+
+  it('distinguishes account setup, permissions, and an ArenaNet outage', async () => {
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        state: 'accountUnavailable',
+        evidenceError: 'CredentialNotConfigured',
+        actions: [],
+      },
+    });
+    render(<App />);
+    expect(await screen.findByText(/Aucune clé ArenaNet n'est configurée/)).toBeInTheDocument();
+
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        state: 'accountUnavailable',
+        evidenceError: 'Forbidden',
+        actions: [],
+      },
+    });
+    render(<App />);
+    expect(await screen.findByText(/ne dispose pas des autorisations nécessaires/)).toBeInTheDocument();
+
+    cleanup();
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        state: 'accountUnavailable',
+        evidenceError: 'UpstreamUnavailable',
+        actions: [],
+      },
+    });
+    render(<App />);
+    expect(await screen.findByText(/ArenaNet est temporairement indisponible/)).toBeInTheDocument();
   });
 
   it('labels source freshness explicitly without inventing a countdown', async () => {

@@ -197,6 +197,7 @@ export default function App() {
 
   const loadDashboard = () => {
     const generation = ++dashboardRequestGeneration.current;
+    setDashboard(null);
     setDashboardStatus('loading');
     void fetch('/api/personal-dashboard', { headers: localRequestHeaders() })
       .then(async (response) => {

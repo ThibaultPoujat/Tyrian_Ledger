@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import MoneyDisplay from './MoneyDisplay';
 
 type Money = { copper: string };
-type RecommendationState = 'ready' | 'notSynchronized' | 'accountUnavailable' | 'evidenceUnavailable';
+type RecommendationState = 'ready' | 'notSynchronized' | 'accountEvidenceStale' | 'accountUnavailable' | 'evidenceUnavailable';
 type RecommendationAction =
   | 'BUY' | 'BUY SMALL' | 'WAIT' | 'KEEP BID' | 'UPDATE BID' | 'STOP BIDDING'
   | 'CANCEL BID' | 'LIST' | 'LEAVE SELL LISTING' | 'HOLD' | 'REDUCE'
   | 'SELL PARTIAL' | 'SELL' | 'SKIP' | 'REVIEW';
 type RecommendationSource = 'newOpportunity' | 'buyOrder' | 'sellListing' | 'inventory';
 type HistoryConfidence = 'insufficient' | 'partial' | 'strong';
+type ImmediateSalePriceRange = { lowestUnitPrice: Money; highestUnitPrice: Money };
 
 type RecommendationRecord = {
   action: RecommendationAction;
@@ -27,6 +28,7 @@ type RecommendationRecord = {
     plannedBid: Money | null;
     plannedListPrice: Money | null;
     maximumBid: Money | null;
+    immediateSalePriceRange: ImmediateSalePriceRange | null;
   };
   economics: {
     acquisitionCost: Money;
@@ -85,6 +87,7 @@ type RecommendationResponse = {
   lastSuccessfulSyncAtUtc: string | null;
   currentOrdersObservedAtUtc: string | null;
   scannerObservedAtUtc: string | null;
+  accountEvidenceExpiresAtUtc: string | null;
   policies: {
     actionPolicyVersion: number;
     scorePolicyVersion: number;
@@ -153,12 +156,28 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    const expiresAtMilliseconds = Date.parse(result?.accountEvidenceExpiresAtUtc ?? '');
+    if (!Number.isFinite(expiresAtMilliseconds)) return undefined;
+
+    const delayMilliseconds = expiresAtMilliseconds - Date.now() + 1;
+    if (delayMilliseconds > 2_147_483_647) return undefined;
+
+    const timer = window.setTimeout(
+      () => setFreshnessTick(tick => tick + 1),
+      Math.max(0, delayMilliseconds),
+    );
+    return () => window.clearTimeout(timer);
+  }, [result?.accountEvidenceExpiresAtUtc]);
+
   const signals = useMemo(
     () => (result?.actions ?? [])
       .filter(record => actionable.has(record.action)),
     [result],
   );
   const historyCutoff = useMemo(() => oldestHistoryObservation(result?.actions ?? []), [result]);
+  const accountEvidenceExpired = isExpired(result?.accountEvidenceExpiresAtUtc ?? null);
+  const readyForSignals = status === 'ready' && result?.state === 'ready' && !accountEvidenceExpired;
 
   return (
     <section aria-labelledby="signals-feed-title" className="signals-feed">
@@ -166,7 +185,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
         <div>
           <p className="eyebrow">Actions à effectuer dans Guild Wars 2</p>
           <h2 id="signals-feed-title">
-            {status === 'ready' && result?.state === 'ready'
+            {readyForSignals
               ? signals.length === 0
                 ? 'Aucun signal'
                 : signals.length === 1
@@ -180,7 +199,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
         </button>
       </div>
 
-      <OperationalStatus status={status} result={result} />
+      <OperationalStatus status={status} result={result} accountEvidenceExpired={accountEvidenceExpired} />
 
       {result?.state === 'ready' && (
         <details className="data-freshness">
@@ -195,7 +214,9 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
             </div>
             <div>
               <strong>Compte ArenaNet</strong>
-              <span>{sourceAge(result.lastSuccessfulSyncAtUtc, "Pas encore synchronisé", 'Synchronisé')}</span>
+              <span>{accountEvidenceExpired
+                ? 'Données expirées : synchronisation requise'
+                : sourceAge(result.lastSuccessfulSyncAtUtc, "Pas encore synchronisé", 'Synchronisé')}</span>
             </div>
             <div>
               <strong>Historique marché</strong>
@@ -205,7 +226,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
         </details>
       )}
 
-      {status === 'ready' && result?.state === 'ready' && signals.length === 0 && (
+      {readyForSignals && signals.length === 0 && (
         <div className="signals-zero-state">
           <span aria-hidden="true" className="zero-state-mark">✓</span>
           <div>
@@ -215,7 +236,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
         </div>
       )}
 
-      {status === 'ready' && result?.state === 'ready' && signals.length > 0 && (
+      {readyForSignals && signals.length > 0 && (
         <ol className="signal-list">
           {signals.map((record, index) => (
             <SignalCard
@@ -232,9 +253,11 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
 function OperationalStatus({
   status,
   result,
+  accountEvidenceExpired,
 }: {
   status: 'loading' | 'ready' | 'error';
   result: RecommendationResponse | null;
+  accountEvidenceExpired: boolean;
 }) {
   if (status === 'loading') {
     return <p aria-live="polite" className="operational-status" role="status">Chargement des données…</p>;
@@ -245,8 +268,11 @@ function OperationalStatus({
   if (result?.state === 'notSynchronized') {
     return <p className="operational-status operational-status--warning" role="status">Aucun compte synchronisé. Synchronisez vos données ArenaNet pour calculer les signaux.</p>;
   }
+  if (result?.state === 'accountEvidenceStale' || accountEvidenceExpired) {
+    return <p className="operational-status operational-status--warning" role="status">Les données du compte ont expiré. Ouvrez Réglages, synchronisez les données du Comptoir, puis actualisez les signaux.</p>;
+  }
   if (result?.state === 'accountUnavailable') {
-    return <p className="operational-status operational-status--warning" role="status">Le compte ArenaNet n'est pas disponible. Les signaux dépendant du compte sont masqués.</p>;
+    return <p className="operational-status operational-status--warning" role="status">{accountUnavailableMessage(result.evidenceError)}</p>;
   }
   if (result?.state === 'evidenceUnavailable') {
     return (
@@ -261,10 +287,39 @@ function OperationalStatus({
   return null;
 }
 
+function accountUnavailableMessage(error: string | null): string {
+  switch (error) {
+    case 'CredentialNotConfigured':
+      return "Aucune clé ArenaNet n'est configurée. Ajoutez une clé dédiée, en lecture seule, dans Réglages.";
+    case 'Unauthorized':
+      return 'La clé ArenaNet a été refusée ou révoquée. Vérifiez la connexion du compte dans Réglages.';
+    case 'Forbidden':
+      return 'La clé ArenaNet ne dispose pas des autorisations nécessaires : account, tradingpost et wallet.';
+    case 'CredentialUnavailable':
+      return "La clé ArenaNet enregistrée n'est pas accessible. Vérifiez le coffre d'identifiants du système.";
+    case 'RateLimited':
+      return 'ArenaNet limite temporairement les requêtes. Les signaux dépendant du compte sont masqués.';
+    case 'UpstreamUnavailable':
+      return 'ArenaNet est temporairement indisponible. Les signaux dépendant du compte sont masqués.';
+    case 'TransportFailure':
+      return 'La requête vers ArenaNet a échoué ou a expiré. Les signaux dépendant du compte sont masqués.';
+    case 'IncompleteData':
+      return "ArenaNet a fourni des données de compte incomplètes. Les signaux dépendant du compte sont masqués.";
+    case 'InvalidPayload':
+    case 'UnexpectedResponse':
+      return "ArenaNet a renvoyé des données de compte inattendues. Les signaux dépendant du compte sont masqués.";
+    default:
+      return "Le compte ArenaNet n'est pas disponible. Les signaux dépendant du compte sont masqués.";
+  }
+}
+
 function SignalCard({ record }: { record: RecommendationRecord }) {
   const [whyOpen, setWhyOpen] = useState(false);
   const binding = record.portfolioConstraints.filter(constraint => constraint.isBinding);
-  const price = executionPrice(record);
+  const immediateSalePriceRange = ['REDUCE', 'SELL PARTIAL', 'SELL'].includes(record.action)
+    ? record.prices.immediateSalePriceRange
+    : null;
+  const price = immediateSalePriceRange ? null : executionPrice(record);
   const maxPrice = ['BUY', 'BUY SMALL', 'UPDATE BID'].includes(record.action)
     ? record.prices.maximumBid
     : null;
@@ -293,7 +348,9 @@ function SignalCard({ record }: { record: RecommendationRecord }) {
           </div>
           <div className="execution-field execution-field--price">
             <span className="execution-label">{priceLabel(record.action)}</span>
-            {price
+            {immediateSalePriceRange
+              ? <ImmediateSalePriceRangeDisplay range={immediateSalePriceRange} />
+              : price
               ? <MoneyDisplay className="execution-price" money={price} />
               : <strong className="execution-unavailable">À vérifier</strong>}
           </div>
@@ -369,6 +426,16 @@ function ItemVisual({ url }: { url: string | null }) {
   );
 }
 
+function ImmediateSalePriceRangeDisplay({ range }: { range: ImmediateSalePriceRange }) {
+  const hasRange = range.lowestUnitPrice.copper !== range.highestUnitPrice.copper;
+  return (
+    <span className="execution-price-range">
+      <MoneyDisplay className="execution-price" money={range.lowestUnitPrice} />
+      {hasRange && <><span aria-hidden="true">–</span><MoneyDisplay className="execution-price" money={range.highestUnitPrice} /></>}
+    </span>
+  );
+}
+
 function executionPrice(record: RecommendationRecord): Money | null {
   switch (record.action) {
     case 'BUY':
@@ -380,10 +447,6 @@ function executionPrice(record: RecommendationRecord): Money | null {
       return record.prices.currentOrderUnitPrice;
     case 'LIST':
       return record.prices.plannedListPrice;
-    case 'REDUCE':
-    case 'SELL PARTIAL':
-    case 'SELL':
-      return record.prices.bestBuy;
     default:
       return null;
   }
@@ -412,7 +475,7 @@ function quantityLabel(action: RecommendationAction): string {
 function priceLabel(action: RecommendationAction): string {
   if (action === 'CANCEL BID') return "Prix actuel de l'ordre";
   if (action === 'LIST') return 'Prix de vente par unité';
-  if (['REDUCE', 'SELL PARTIAL', 'SELL'].includes(action)) return 'Prix de vente immédiate par unité';
+  if (['REDUCE', 'SELL PARTIAL', 'SELL'].includes(action)) return 'Fourchette de vente immédiate par unité (modélisée)';
   return 'Prix à saisir par unité';
 }
 
@@ -536,16 +599,21 @@ function oldestHistoryObservation(records: RecommendationRecord[]): string | nul
   return timestamps[0]?.value ?? null;
 }
 
+function isExpired(timestamp: string | null): boolean {
+  const time = timestamp === null ? Number.NaN : new Date(timestamp).getTime();
+  return Number.isFinite(time) && Date.now() > time;
+}
+
 function sameMoney(left: Money | null, right: Money | null): boolean {
   return left !== null && right !== null && left.copper === right.copper;
 }
 
 function isRecommendationResponse(value: unknown): value is RecommendationResponse {
-  if (!isRecord(value) || !['ready', 'notSynchronized', 'accountUnavailable', 'evidenceUnavailable'].includes(value.state as string)) return false;
+  if (!isRecord(value) || !['ready', 'notSynchronized', 'accountEvidenceStale', 'accountUnavailable', 'evidenceUnavailable'].includes(value.state as string)) return false;
   if (!isPolicies(value.policies) || !Array.isArray(value.actions)) return false;
   if (!isNullableString(value.evidenceError) || !isNullableString(value.generatedAtUtc)
     || !isNullableString(value.lastSuccessfulSyncAtUtc) || !isNullableString(value.currentOrdersObservedAtUtc)
-    || !isNullableString(value.scannerObservedAtUtc)) return false;
+    || !isNullableString(value.scannerObservedAtUtc) || !isNullableString(value.accountEvidenceExpiresAtUtc)) return false;
   return value.actions.every(isRecommendationRecord)
     && (value.portfolio === null || (isRecord(value.portfolio)
       && isMoney(value.portfolio.availableCash) && isMoney(value.portfolio.totalBankroll)
@@ -563,6 +631,7 @@ function isRecommendationRecord(value: unknown): value is RecommendationRecord {
     && isNullableMoney(value.prices.bestBuy) && isNullableMoney(value.prices.lowestSell)
     && isNullableMoney(value.prices.plannedBid) && isNullableMoney(value.prices.plannedListPrice)
     && isNullableMoney(value.prices.maximumBid)
+    && isNullableImmediateSalePriceRange(value.prices.immediateSalePriceRange)
     && Array.isArray(value.portfolioConstraints) && value.portfolioConstraints.every(isPortfolioConstraint)
     && Array.isArray(value.reasons) && value.reasons.every(reason => isRecord(reason) && typeof reason.code === 'string' && typeof reason.message === 'string')
     && (value.economics === null || isEconomics(value.economics))
@@ -620,5 +689,8 @@ function isPortfolioConstraint(value: unknown): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null; }
 function isMoney(value: unknown): value is Money { return isRecord(value) && typeof value.copper === 'string' && /^-?\d+$/.test(value.copper); }
 function isNullableMoney(value: unknown): value is Money | null { return value === null || isMoney(value); }
+function isNullableImmediateSalePriceRange(value: unknown): value is ImmediateSalePriceRange | null {
+  return value === null || (isRecord(value) && isMoney(value.lowestUnitPrice) && isMoney(value.highestUnitPrice));
+}
 function isNullableString(value: unknown): value is string | null { return value === null || typeof value === 'string'; }
 function isNonNegativeInteger(value: unknown): boolean { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0; }

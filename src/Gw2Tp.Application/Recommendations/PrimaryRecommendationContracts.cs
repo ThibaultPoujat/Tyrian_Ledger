@@ -3,7 +3,7 @@ using Gw2Tp.Domain.Finance;
 
 namespace Gw2Tp.Application.Recommendations;
 
-public enum PrimaryRecommendationState { Ready = 1, NotSynchronized, AccountUnavailable, EvidenceUnavailable }
+public enum PrimaryRecommendationState { Ready = 1, NotSynchronized, AccountEvidenceStale, AccountUnavailable, EvidenceUnavailable }
 public enum PrimaryRecommendationAction { Buy = 1, BuySmall, Wait, KeepBid, UpdateBid, StopBidding, CancelBid, List, LeaveSellListing, Hold, Reduce, SellPartial, Sell, Skip, Review }
 public enum PrimaryRecommendationSource { NewOpportunity = 1, BuyOrder, SellListing, Inventory }
 public enum PrimaryRecommendationOrderState { NotApplicable = 1, Competitive, Outbid, AboveMaximumBid, UndercutOneCopper, UndercutMoreThanOneCopper, MarketUnavailable }
@@ -43,7 +43,10 @@ public sealed record PrimaryRecommendationLiquidity(
     int SafeLiquidationQuantity, IReadOnlyList<LiveMarketScannerLiquidityReason> Reasons);
 public sealed record PrimaryRecommendationPriceState(
     Money? CurrentOrderUnitPrice, Money? BestBuy, Money? LowestSell,
-    Money? PlannedBid, Money? PlannedListPrice, Money? MaximumBid);
+    Money? PlannedBid, Money? PlannedListPrice, Money? MaximumBid,
+    PrimaryRecommendationImmediateSalePriceRange? ImmediateSalePriceRange = null);
+public sealed record PrimaryRecommendationImmediateSalePriceRange(
+    Money LowestUnitPrice, Money HighestUnitPrice);
 public sealed record PrimaryRecommendationScore(
     int Rank, decimal TotalPoints, decimal BasePoints, decimal AppliedPenaltyPoints,
     IReadOnlyList<OpportunityScoreComponent> Components, IReadOnlyList<OpportunityScoreAnomaly> Anomalies,
@@ -77,11 +80,21 @@ public sealed record PrimaryRecommendationResult(
     PrimaryRecommendationState State, string? EvidenceError, DateTimeOffset? GeneratedAtUtc,
     DateTimeOffset? LastSuccessfulSyncAtUtc, DateTimeOffset? CurrentOrdersObservedAtUtc,
     DateTimeOffset? ScannerObservedAtUtc, PrimaryRecommendationPolicies Policies,
-    PrimaryRecommendationPortfolio? Portfolio, IReadOnlyList<PrimaryRecommendationRecord> Actions)
+    PrimaryRecommendationPortfolio? Portfolio, IReadOnlyList<PrimaryRecommendationRecord> Actions,
+    DateTimeOffset? AccountEvidenceExpiresAtUtc = null)
 {
     public static PrimaryRecommendationResult Unavailable(
         PrimaryRecommendationState state, string? evidenceError, PrimaryRecommendationPolicies policies) =>
         new(state, evidenceError, null, null, null, null, policies, null, []);
+
+    public static PrimaryRecommendationResult AccountEvidenceStale(
+        PrimaryRecommendationPolicies policies,
+        DateTimeOffset lastSuccessfulSyncAtUtc,
+        DateTimeOffset currentOrdersObservedAtUtc,
+        DateTimeOffset accountEvidenceExpiresAtUtc) =>
+        new(PrimaryRecommendationState.AccountEvidenceStale, "account_evidence_stale", null,
+            lastSuccessfulSyncAtUtc, currentOrdersObservedAtUtc, null, policies, null, [],
+            accountEvidenceExpiresAtUtc);
 }
 
 public interface IPrimaryRecommendationService

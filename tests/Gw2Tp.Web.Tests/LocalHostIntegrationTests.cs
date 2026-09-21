@@ -347,6 +347,8 @@ public sealed class LocalHostIntegrationTests
         Assert.Contains("\"minimumProfit\":{\"copper\":\"1\"}", body, StringComparison.Ordinal);
         Assert.Contains("\"netProfit\":{\"copper\":\"211\"}", body, StringComparison.Ordinal);
         Assert.Contains("\"roiDisplayPercent\":\"63.75%\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"accountEvidenceExpiresAtUtc\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"immediateSalePriceRange\":{\"lowestUnitPrice\":{\"copper\":\"90\"},\"highestUnitPrice\":{\"copper\":\"100\"}}", body, StringComparison.Ordinal);
         Assert.DoesNotContain("opaque-account", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("credential", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("authorization", body, StringComparison.OrdinalIgnoreCase);
@@ -1592,7 +1594,8 @@ public sealed class LocalHostIntegrationTests
                 3,
                 new Money(300),
                 new PrimaryRecommendationPriceState(
-                    new Money(100), new Money(99), new Money(200), new Money(100), new Money(199), new Money(90)),
+                    new Money(100), new Money(99), new Money(200), new Money(100), new Money(199), new Money(90),
+                    new PrimaryRecommendationImmediateSalePriceRange(new Money(90), new Money(100))),
                 new PrimaryRecommendationEconomics(
                     new Money(300), new Money(603), new Money(31), new Money(61),
                     new Money(511), new Money(211), new Money(331), "63.75%"),
@@ -1603,7 +1606,7 @@ public sealed class LocalHostIntegrationTests
                 [
                     new PrimaryRecommendationReason(PrimaryRecommendationReasonCode.BidAboveMaximum, "Current bid exceeds the modeled maximum."),
                     new PrimaryRecommendationReason(PrimaryRecommendationReasonCode.ReadOnlyManualAction, "Tyrian Ledger never changes Trading Post orders."),
-                ])]);
+                ])], now.AddMinutes(10));
     }
 
     private sealed class FixedPrimaryRecommendationService(PrimaryRecommendationResult result) : IPrimaryRecommendationService
