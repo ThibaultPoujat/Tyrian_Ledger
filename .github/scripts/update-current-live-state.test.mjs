@@ -126,6 +126,20 @@ test('Sol gates come only from the model-effort guide', async () => {
   ]);
 });
 
+test('an empty future Sol-gate list is rendered as None', async () => {
+  const source = await sourceFixture();
+  const guide = source.guide.replace(/^- #(?:133|93|94|96) \/ TKT-[A-Z0-9-]+.*\n/gm, '');
+  const state = deriveLiveState({
+    index: source.index,
+    issue98: source.operational.issue98Body,
+    guide,
+    ticketByIssue: source.ticketByIssue,
+    operational: source.operational,
+  });
+
+  assert.match(renderGeneratedBlock(state), /Explicit active Sol gates: `None`/);
+});
+
 test('the generated-state writer cannot modify durable CURRENT.md prose', () => {
   const durable = 'Durable context must survive unchanged.\n';
   const current = `${durable}${begin()}\nold generated value\n${end()}\n`;
@@ -134,6 +148,7 @@ test('the generated-state writer cannot modify durable CURRENT.md prose', () => 
   assert.ok(updated.startsWith(durable));
   assert.match(updated, /- New generated value/);
   assert.throws(() => replaceGeneratedBlock('no markers', '- replacement'), /exactly one generated live-state block/);
+  assert.throws(() => replaceGeneratedBlock(`${end()}\n${begin()}`, '- replacement'), /exactly one generated live-state block/);
 });
 
 function begin() { return '<!-- BEGIN GENERATED LIVE STATE -->'; }

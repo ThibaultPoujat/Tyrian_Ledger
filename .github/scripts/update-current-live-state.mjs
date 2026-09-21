@@ -36,14 +36,15 @@ export function parseSolGates(guide) {
 
   const gates = [...section.matchAll(/^- #(\d+) \/ (TKT-[A-Z0-9-]+)/gm)]
     .map((match) => ({ number: Number(match[1]), ticket: match[2] }));
-  if (gates.length === 0) throw new Error('The model-effort guide has no parseable active Sol gates.');
   return gates;
 }
 
 export function replaceGeneratedBlock(current, generatedBlock) {
   const beginCount = current.split(beginMarker).length - 1;
   const endCount = current.split(endMarker).length - 1;
-  if (beginCount !== 1 || endCount !== 1) {
+  const beginIndex = current.indexOf(beginMarker);
+  const endIndex = current.indexOf(endMarker);
+  if (beginCount !== 1 || endCount !== 1 || beginIndex >= endIndex) {
     throw new Error('CURRENT.md must contain exactly one generated live-state block.');
   }
 
@@ -108,7 +109,7 @@ export function renderGeneratedBlock(liveState) {
     `- Active milestone: \`${liveState.milestone}\``,
     `- Preferred next implementation ticket: \`${liveState.preferred}\``,
     `- Allowed non-blocking alternate: ${liveState.alternate === 'None' ? '`None`' : `\`${liveState.alternate}\``}`,
-    `- Explicit active Sol gates: ${liveState.gates.map((gate) => `\`${gate}\``).join(', ')}`,
+    `- Explicit active Sol gates: ${liveState.gates.length === 0 ? '`None`' : liveState.gates.map((gate) => `\`${gate}\``).join(', ')}`,
     '- Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`',
   ].join('\n');
 }
