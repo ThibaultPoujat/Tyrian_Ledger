@@ -93,23 +93,86 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
-    public void Partial_verified_quantity_confirms_a_shadow_event_and_expired_repeated_mismatch_pauses_it()
+    public void Partial_listing_projects_the_canonical_fee_for_only_the_remaining_quantity()
+    {
+        var candidate = Candidate("partial-listing", 0, 50, 2,
+            resource: new PlanResourceRequirement(PlanResourceKind.Inventory, "42", 2, Money.Zero),
+            steps: [Step("listing", PlanStepAction.List, 2)]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 2, new Money(101), Now.AddSeconds(10));
+        var partial = service.ReconcileWithVerifiedState(reported, new Money(994), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("listing-1", PlanEvidenceKind.SellListing, 42, 1, new Money(101), Now.AddSeconds(5), Now.AddMinutes(1))], Now.AddMinutes(1),
+            Complete(PlanEvidenceKind.SellListing, PlanEvidenceKind.CompletedSell));
+
+        var effective = PlanOrchestrationService.ProjectEffectiveResources(new Money(994), new Dictionary<string, long> { ["2:42"] = 1 }, partial.Events);
+
+        Assert.Equal(988, effective.EffectiveCash.Copper);
+        Assert.Equal(0, effective.Quantities["2:42"]);
+    }
+
+    [Fact]
+    public void Partial_verified_quantity_keeps_only_the_unverified_cash_shadow_and_can_later_fully_confirm()
     {
         var buy = Candidate("partial", 200, 50, 2, steps: [Step("partial-step", PlanStepAction.BuyNow, 2)]);
-        var reported = service.ReportStep(service.Start(buy, Now, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }), 2, new Money(100), Now);
-        var partial = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1),
-            [new PlanVerifiedEvidence("buy-1", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100), Now.AddSeconds(1), Now.AddMinutes(1))], Now.AddMinutes(1));
+        var reported = service.ReportStep(service.Start(buy, Now, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }), 2, new Money(100), Now.AddSeconds(10));
+        var partial = service.ReconcileWithVerifiedState(reported, new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("buy-1", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100), Now.AddSeconds(5), Now.AddMinutes(1))], Now.AddMinutes(1), Complete(PlanEvidenceKind.CompletedBuy));
 
         Assert.Equal(PlanShadowEventState.PartiallyConfirmed, partial.Events[0].State);
         Assert.Equal(1, partial.Events[0].VerifiedQuantity);
+        Assert.Equal(800, PlanOrchestrationService.ProjectEffectiveResources(new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, partial.Events).EffectiveCash.Copper);
 
+        var confirmed = service.ReconcileWithVerifiedState(partial, new Money(800), new Dictionary<string, long> { ["2:42"] = 2 }, Now.AddMinutes(2),
+            [new PlanVerifiedEvidence("buy-2", PlanEvidenceKind.CompletedBuy, 42, 2, new Money(100), Now.AddSeconds(5), Now.AddMinutes(2))], Now.AddMinutes(2), Complete(PlanEvidenceKind.CompletedBuy));
+
+        Assert.Equal(PlanShadowEventState.Confirmed, confirmed.Events[0].State);
+        Assert.Equal(2, confirmed.Events[0].VerifiedQuantity);
+        Assert.Equal(800, PlanOrchestrationService.ProjectEffectiveResources(new Money(800), new Dictionary<string, long> { ["2:42"] = 2 }, confirmed.Events).EffectiveCash.Copper);
+    }
+
+    [Fact]
+    public void Only_complete_relevant_evidence_can_create_a_contradiction()
+    {
+        var buy = Candidate("contradiction", 200, 50, 2, steps: [Step("step", PlanStepAction.BuyNow, 2)]);
         var pending = service.ReportStep(service.Start(buy, Now, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }), 2, new Money(100), Now);
-        var firstMismatch = service.ReconcileWithVerifiedState(pending, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(16), [], Now.AddMinutes(16));
-        var secondMismatch = service.ReconcileWithVerifiedState(firstMismatch, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(17),
-            [new PlanVerifiedEvidence("unrelated", PlanEvidenceKind.SellListing, 42, 1, new Money(200), Now.AddMinutes(17), Now.AddMinutes(17))], Now.AddMinutes(17));
+        var firstMismatch = service.ReconcileWithVerifiedState(pending, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(16), [], Now.AddMinutes(16), Complete(PlanEvidenceKind.CompletedBuy));
+        var unrelated = service.ReconcileWithVerifiedState(firstMismatch, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(17),
+            [new PlanVerifiedEvidence("unrelated", PlanEvidenceKind.SellListing, 42, 1, new Money(200), Now.AddMinutes(17), Now.AddMinutes(17))], Now.AddMinutes(17), Complete(PlanEvidenceKind.CompletedBuy));
+        var secondMismatch = service.ReconcileWithVerifiedState(unrelated, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(18),
+            [new PlanVerifiedEvidence("wrong-price", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(101), Now.AddMinutes(1), Now.AddMinutes(18))], Now.AddMinutes(18), Complete(PlanEvidenceKind.CompletedBuy));
 
         Assert.Equal(PlanState.RecheckRequired, firstMismatch.State);
+        Assert.Equal(PlanState.RecheckRequired, unrelated.State);
         Assert.Equal(PlanState.ReconciliationRequired, secondMismatch.State);
+    }
+
+    [Fact]
+    public void Evidence_created_after_issue_but_before_terminé_confirms_a_fast_filled_buy_order()
+    {
+        var buyOrder = Candidate("fast-fill", 100, 50, 1, attention: PlanAttention.Passive,
+            steps: [Step("order", PlanStepAction.PlaceBuyOrder)]);
+        var started = service.Start(buyOrder, Now);
+        var reported = service.ReportStep(started, 1, new Money(100), Now.AddSeconds(10));
+
+        var confirmed = service.ReconcileWithVerifiedState(reported, new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("filled", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100), Now.AddSeconds(5), Now.AddMinutes(1))], Now.AddMinutes(1),
+            Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+
+        Assert.Equal(PlanShadowEventState.Confirmed, confirmed.Events[0].State);
+        Assert.Equal(PlanStepState.Confirmed, confirmed.Steps[0].State);
+        Assert.DoesNotContain(PlanOrchestrationService.OutstandingReservations(confirmed), value => value.Kind == PlanResourceKind.ExpectedIncoming);
+    }
+
+    [Fact]
+    public void Cancelling_an_unperformed_current_step_releases_resources_for_a_restart()
+    {
+        var candidate = Candidate("restart", 100, 50, 1);
+        var started = service.Start(candidate, Now);
+
+        var cancelled = service.CancelUnperformedStep(started);
+
+        Assert.Equal(PlanState.Invalid, cancelled.State);
+        Assert.Empty(PlanOrchestrationService.OutstandingReservations(cancelled));
+        Assert.Equal(PlanStepState.Current, service.Start(candidate, Now.AddMinutes(1)).Steps[0].State);
     }
 
     [Fact]
@@ -141,6 +204,25 @@ public sealed class PlanOrchestrationServiceTests
 
         Assert.Equal(PlanShadowEventState.PendingConfirmation, observed.Events[0].State);
         Assert.Equal(PlanShadowEventState.PendingConfirmation, observed.Events[1].State);
+    }
+
+    [Fact]
+    public void A_verified_transaction_is_not_reused_to_confirm_two_steps()
+    {
+        var candidate = Candidate("one-to-one", 200, 50, 1,
+            steps: [Step("first", PlanStepAction.BuyNow), Step("second", PlanStepAction.BuyNow)]);
+        var first = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
+        var second = service.ReportStep(first with
+        {
+            Steps = first.Steps.Select((step, index) => index == 1 ? step with { State = PlanStepState.Current, IssuedAtUtc = Now } : step).ToArray(),
+            CurrentStepOrdinal = 1,
+        }, 1, new Money(100), Now.AddSeconds(10));
+
+        var reconciled = service.ReconcileWithVerifiedState(second, new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("one-buy", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100), Now.AddSeconds(5), Now.AddMinutes(1))], Now.AddMinutes(1), Complete(PlanEvidenceKind.CompletedBuy));
+
+        Assert.Equal(PlanShadowEventState.Confirmed, reconciled.Events[0].State);
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled.Events[1].State);
     }
 
     [Fact]
@@ -192,4 +274,6 @@ public sealed class PlanOrchestrationServiceTests
 
     private static PlanStep Step(string id, PlanStepAction action, int quantity = 1) =>
         new(id, action, 42, "Objet", quantity, new Money(100), [], PlanStepState.Pending);
+
+    private static IReadOnlySet<PlanEvidenceKind> Complete(params PlanEvidenceKind[] kinds) => new HashSet<PlanEvidenceKind>(kinds);
 }

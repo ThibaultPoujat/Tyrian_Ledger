@@ -17,7 +17,7 @@ public sealed record PlanResourceRequirement(PlanResourceKind Kind, string Resou
 public sealed record PlanStep(
     string Id, PlanStepAction Action, int ItemId, string ItemName, int Quantity,
     Money? UnitPrice, IReadOnlyList<string> DependsOnStepIds, PlanStepState State,
-    string? ExternalIdentity = null);
+    string? ExternalIdentity = null, DateTimeOffset? IssuedAtUtc = null);
 
 public sealed record PlanCandidate(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,
@@ -39,7 +39,9 @@ public sealed record PlanExecutionEvent(
     int Quantity, Money? UnitPrice, IReadOnlyList<PlanResourceRequirement> Effects,
     PlanShadowEventState State, string? ReversesEventId, IReadOnlyList<string> DependsOnEventIds,
     DateTimeOffset? ExpectedObservableUntilUtc = null, int? VerifiedQuantity = null,
-    Money? VerifiedUnitPrice = null, PlanEvidenceKind? ExpectedEvidenceKind = null);
+    Money? VerifiedUnitPrice = null, PlanEvidenceKind? ExpectedEvidenceKind = null,
+    DateTimeOffset? IssuedAtUtc = null, string? LastRelevantEvidenceFingerprint = null,
+    IReadOnlyList<string>? VerifiedEvidenceIds = null, PlanStepAction? Action = null);
 
 public sealed record PlanRecord(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,
@@ -85,11 +87,13 @@ public interface IPlanOrchestrationService
     PlanRecord Start(PlanCandidate candidate, DateTimeOffset startedAtUtc, Money? verifiedCash = null,
         IReadOnlyDictionary<string, long>? verifiedQuantities = null);
     PlanRecord ReportStep(PlanRecord plan, int quantity, Money? unitPrice, DateTimeOffset occurredAtUtc);
+    PlanRecord CancelUnperformedStep(PlanRecord plan);
     PlanRecord UndoLastStep(PlanRecord plan, DateTimeOffset occurredAtUtc);
     PlanRecord ReconcileWithVerifiedState(PlanRecord plan, Money verifiedCash,
         IReadOnlyDictionary<string, long> verifiedQuantities, DateTimeOffset observedAtUtc,
         IReadOnlyCollection<PlanVerifiedEvidence>? evidence = null,
-        DateTimeOffset? evidenceCapturedAtUtc = null);
+        DateTimeOffset? evidenceCapturedAtUtc = null,
+        IReadOnlySet<PlanEvidenceKind>? completeEvidenceKinds = null);
     PlanRecord ApplyRefresh(PlanRecord plan, PlanCandidate? currentCandidate, bool evidenceReady);
     PlanRecord Reconcile(PlanRecord plan, IReadOnlyCollection<string> confirmedEventIds, bool materiallyContradicted);
 }

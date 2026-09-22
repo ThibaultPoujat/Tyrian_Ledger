@@ -61,7 +61,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             }
         }
         var represented = requirements.Select(Key).ToHashSet(StringComparer.Ordinal);
-        requirements.AddRange(plan.Reservations.Where(value => value.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory) && !represented.Contains(Key(value))));
+        requirements.AddRange(plan.Reservations.Where(value => value.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory) &&
+            !represented.Contains(Key(value)) && IsGenericReservationOutstanding(plan, value)));
         return requirements;
     }
 
@@ -94,7 +95,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         IReadOnlyDictionary<string, long>? verifiedQuantities = null)
     {
         if (!IsExecutable(candidate)) throw new ArgumentException("The candidate is not executable.", nameof(candidate));
-        var steps = candidate.Steps.Select((step, index) => step with { State = index == 0 ? PlanStepState.Current : PlanStepState.Pending }).ToArray();
+        var steps = candidate.Steps.Select((step, index) => step with { State = index == 0 ? PlanStepState.Current : PlanStepState.Pending,
+            IssuedAtUtc = index == 0 ? RequireUtc(startedAtUtc) : null }).ToArray();
         var state = candidate.Attention == PlanAttention.Passive && steps.Length == 0 ? PlanState.Waiting : PlanState.InProgress;
         return new PlanRecord(candidate.Id, candidate.Version, candidate.SourceOpportunityId, candidate.Attention, state,
             PlanReconciliationState.None, RequireUtc(startedAtUtc), candidate.Requirements, candidate.ModeledProfit, 0, steps, [], candidate.Utility,
@@ -114,15 +116,24 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var execution = new PlanExecutionEvent(Guid.NewGuid().ToString("N"), plan.Id, step.Id, plan.Events.Count + 1, occurred, quantity,
             effectiveUnitPrice, EffectsFor(step, quantity, effectiveUnitPrice), PlanShadowEventState.PendingConfirmation, null,
             plan.Events.Where(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed or PlanShadowEventState.Confirmed).Select(e => e.Id).ToArray(),
-            occurred.Add(DefaultObservationWindow), null, null, ExpectedEvidenceFor(step));
+            occurred.Add(DefaultObservationWindow), null, null, ExpectedEvidenceFor(step), step.IssuedAtUtc ?? plan.StartedAtUtc, Action: step.Action);
         var steps = plan.Steps.ToArray();
         steps[plan.CurrentStepOrdinal] = step with { Quantity = quantity, UnitPrice = effectiveUnitPrice,
             State = ExpectedEvidenceFor(step) is null ? PlanStepState.LocallyReported : PlanStepState.AwaitingConfirmation };
         var next = plan.CurrentStepOrdinal + 1;
-        if (next < steps.Length) steps[next] = steps[next] with { State = PlanStepState.Current };
+        if (next < steps.Length) steps[next] = steps[next] with { State = PlanStepState.Current, IssuedAtUtc = occurred };
         return plan with { Steps = steps, Events = plan.Events.Append(execution).ToArray(), CurrentStepOrdinal = next,
             State = next < steps.Length ? PlanState.InProgress : step.Action == PlanStepAction.PlaceBuyOrder ? PlanState.Waiting : PlanState.ExecutionComplete,
             ReconciliationState = PlanReconciliationState.AwaitingEvidence };
+    }
+
+    public PlanRecord CancelUnperformedStep(PlanRecord plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (plan.CurrentStepOrdinal < 0 || plan.CurrentStepOrdinal >= plan.Steps.Count || plan.Steps[plan.CurrentStepOrdinal].State != PlanStepState.Current)
+            throw new InvalidOperationException("Only the current unperformed step can be cancelled.");
+        var steps = plan.Steps.Select((step, index) => index >= plan.CurrentStepOrdinal ? step with { State = PlanStepState.Invalidated } : step).ToArray();
+        return plan with { Steps = steps, CurrentStepOrdinal = -1, State = PlanState.Invalid, ReconciliationState = PlanReconciliationState.None };
     }
 
     public PlanRecord UndoLastStep(PlanRecord plan, DateTimeOffset occurredAtUtc)
@@ -141,7 +152,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
 
     /// <summary>Applies verified account evidence to pending events without double-counting confirmed effects.</summary>
     public PlanRecord ReconcileWithVerifiedState(PlanRecord plan, Money verifiedCash, IReadOnlyDictionary<string, long> verifiedQuantities, DateTimeOffset observedAtUtc,
-        IReadOnlyCollection<PlanVerifiedEvidence>? evidence = null, DateTimeOffset? evidenceCapturedAtUtc = null)
+        IReadOnlyCollection<PlanVerifiedEvidence>? evidence = null, DateTimeOffset? evidenceCapturedAtUtc = null,
+        IReadOnlySet<PlanEvidenceKind>? completeEvidenceKinds = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(verifiedQuantities);
@@ -154,7 +166,6 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var freshCapture = evidenceCapturedAtUtc is { } captured && (plan.LastEvidenceCapturedAtUtc is null || captured > plan.LastEvidenceCapturedAtUtc.Value);
         var evidenceSet = evidence ?? [];
         var fingerprint = EvidenceFingerprint(evidenceSet);
-        var changedEvidence = freshCapture && !string.Equals(fingerprint, plan.LastEvidenceFingerprint, StringComparison.Ordinal);
         var contradictions = 0;
         var blockedByPending = false;
         foreach (var execution in plan.Events.OrderBy(value => value.Sequence))
@@ -163,16 +174,29 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             var index = Array.FindIndex(events, value => value.Id == execution.Id);
             if (execution.State == PlanShadowEventState.PendingConfirmation || execution.State == PlanShadowEventState.PartiallyConfirmed)
             {
-                if (!blockedByPending && execution.State == PlanShadowEventState.PendingConfirmation && TryMatchEvidence(plan, execution, evidenceSet, out var observedQuantity, out var observedPrice))
+                var claimedEvidenceIds = events.Where(value => value.Id != execution.Id)
+                    .SelectMany(value => value.VerifiedEvidenceIds ?? []).ToHashSet(StringComparer.Ordinal);
+                var availableEvidence = evidenceSet.Where(value => !claimedEvidenceIds.Contains(value.Identity)).ToArray();
+                var relevantFingerprint = RelevantEvidenceFingerprint(plan, execution, availableEvidence);
+                var canUseNegativeEvidence = freshCapture && HasCompleteRelevantObservation(execution, completeEvidenceKinds);
+                if (!blockedByPending && TryMatchEvidence(plan, execution, availableEvidence, out var observedQuantity, out var observedPrice, out var verifiedEvidenceIds))
                 {
-                    var nextState = observedQuantity >= execution.Quantity ? PlanShadowEventState.Confirmed : PlanShadowEventState.PartiallyConfirmed;
-                    events[index] = execution with { State = nextState, VerifiedQuantity = observedQuantity, VerifiedUnitPrice = observedPrice };
+                    var cumulativeQuantity = Math.Max(execution.VerifiedQuantity.GetValueOrDefault(), observedQuantity);
+                    var nextState = cumulativeQuantity >= execution.Quantity ? PlanShadowEventState.Confirmed : PlanShadowEventState.PartiallyConfirmed;
+                    events[index] = execution with { State = nextState, VerifiedQuantity = cumulativeQuantity, VerifiedUnitPrice = observedPrice,
+                        LastRelevantEvidenceFingerprint = freshCapture ? relevantFingerprint : execution.LastRelevantEvidenceFingerprint,
+                        VerifiedEvidenceIds = verifiedEvidenceIds };
                     if (nextState == PlanShadowEventState.PartiallyConfirmed) blockedByPending = true;
                 }
-                else if (execution.State == PlanShadowEventState.PendingConfirmation && execution.ExpectedEvidenceKind is not null)
+                else if (execution.ExpectedEvidenceKind is not null)
                 {
                     blockedByPending = true;
-                    if (changedEvidence && execution.ExpectedObservableUntilUtc is { } deadline && observed > deadline) contradictions++;
+                    if (canUseNegativeEvidence && !string.Equals(relevantFingerprint, execution.LastRelevantEvidenceFingerprint, StringComparison.Ordinal) &&
+                        execution.ExpectedObservableUntilUtc is { } deadline && observed > deadline)
+                    {
+                        contradictions++;
+                    }
+                    if (freshCapture) events[index] = execution with { LastRelevantEvidenceFingerprint = relevantFingerprint };
                 }
             }
             var effective = events[index].State switch
@@ -184,9 +208,10 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             };
             foreach (var effect in effective) Apply(expectedQuantities, ref expectedCash, effect);
         }
-        var contradictionCount = contradictions == 0 ? 0 : plan.ConsecutiveContradictionCount + 1;
+        var stillAwaitingEvidence = events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed);
+        var contradictionCount = !stillAwaitingEvidence ? 0 : contradictions == 0 ? plan.ConsecutiveContradictionCount : plan.ConsecutiveContradictionCount + 1;
         var state = plan.State;
-        var reconciliation = events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible;
+        var reconciliation = stillAwaitingEvidence ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible;
         if (contradictionCount >= 2) { state = PlanState.ReconciliationRequired; reconciliation = PlanReconciliationState.Contradicted; }
         else if (contradictions > 0) state = PlanState.RecheckRequired;
         var updatedSteps = plan.Steps.Select(step =>
@@ -291,22 +316,54 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     }
 
     private static bool TryMatchEvidence(PlanRecord plan, PlanExecutionEvent execution,
-        IReadOnlyCollection<PlanVerifiedEvidence> evidence, out int quantity, out Money unitPrice)
+        IReadOnlyCollection<PlanVerifiedEvidence> evidence, out int quantity, out Money unitPrice, out IReadOnlyList<string> verifiedEvidenceIds)
     {
         quantity = 0;
         unitPrice = Money.Zero;
+        verifiedEvidenceIds = [];
         if (execution.ExpectedEvidenceKind is not { } expectedKind) return false;
         var step = plan.Steps.FirstOrDefault(value => value.Id == execution.StepId);
         if (step is null) return false;
-        var matching = evidence.Where(value => value.Kind == expectedKind && value.ItemId == step.ItemId && value.Quantity > 0 &&
-            value.CreatedAtUtc >= execution.OccurredAtUtc && value.ObservedAtUtc >= execution.OccurredAtUtc &&
+        var issuedAt = execution.IssuedAtUtc ?? step.IssuedAtUtc ?? plan.StartedAtUtc;
+        var matching = evidence.Where(value => IsCompatibleEvidenceKind(expectedKind, value.Kind) && value.ItemId == step.ItemId && value.Quantity > 0 &&
+            value.CreatedAtUtc >= issuedAt && value.ObservedAtUtc >= execution.OccurredAtUtc &&
             (step.ExternalIdentity is null || string.Equals(step.ExternalIdentity, value.Identity, StringComparison.Ordinal)) &&
             (execution.UnitPrice is null || value.UnitPrice == execution.UnitPrice.Value))
-            .OrderByDescending(value => value.CreatedAtUtc).ThenBy(value => value.Identity, StringComparer.Ordinal).FirstOrDefault();
-        if (matching is null) return false;
-        quantity = Math.Min(execution.Quantity, matching.Quantity);
-        unitPrice = matching.UnitPrice;
+            .OrderByDescending(value => value.CreatedAtUtc).ThenBy(value => value.Identity, StringComparer.Ordinal).ToArray();
+        if (matching.Length == 0) return false;
+        quantity = Math.Min(execution.Quantity, matching.Sum(value => value.Quantity));
+        unitPrice = matching[0].UnitPrice;
+        verifiedEvidenceIds = matching.Select(value => value.Identity).Distinct(StringComparer.Ordinal).ToArray();
         return quantity > 0;
+    }
+
+    private static bool IsCompatibleEvidenceKind(PlanEvidenceKind expected, PlanEvidenceKind actual) => expected switch
+    {
+        PlanEvidenceKind.BuyOrder => actual is PlanEvidenceKind.BuyOrder or PlanEvidenceKind.CompletedBuy,
+        PlanEvidenceKind.SellListing => actual is PlanEvidenceKind.SellListing or PlanEvidenceKind.CompletedSell,
+        _ => expected == actual,
+    };
+
+    private static bool HasCompleteRelevantObservation(PlanExecutionEvent execution, IReadOnlySet<PlanEvidenceKind>? completeKinds)
+    {
+        if (execution.ExpectedEvidenceKind is not { } expected || completeKinds is null) return false;
+        return expected switch
+        {
+            PlanEvidenceKind.BuyOrder => completeKinds.Contains(PlanEvidenceKind.BuyOrder) && completeKinds.Contains(PlanEvidenceKind.CompletedBuy),
+            PlanEvidenceKind.SellListing => completeKinds.Contains(PlanEvidenceKind.SellListing) && completeKinds.Contains(PlanEvidenceKind.CompletedSell),
+            _ => completeKinds.Contains(expected),
+        };
+    }
+
+    private static string RelevantEvidenceFingerprint(PlanRecord plan, PlanExecutionEvent execution, IEnumerable<PlanVerifiedEvidence> evidence)
+    {
+        if (execution.ExpectedEvidenceKind is not { } expected) return string.Empty;
+        var step = plan.Steps.FirstOrDefault(value => value.Id == execution.StepId);
+        if (step is null) return string.Empty;
+        var issuedAt = execution.IssuedAtUtc ?? step.IssuedAtUtc ?? plan.StartedAtUtc;
+        return EvidenceFingerprint(evidence.Where(value => IsCompatibleEvidenceKind(expected, value.Kind) && value.ItemId == step.ItemId &&
+            value.CreatedAtUtc >= issuedAt && value.ObservedAtUtc >= execution.OccurredAtUtc &&
+            (step.ExternalIdentity is null || string.Equals(step.ExternalIdentity, value.Identity, StringComparison.Ordinal))));
     }
 
     private static PlanEvidenceKind? ExpectedEvidenceFor(PlanStep step) => step.Action switch
@@ -341,15 +398,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         {
             return execution.Effects;
         }
-        return execution.Effects.Select(effect =>
-        {
-            if (effect.Quantity == 0) return effect;
-            var sign = effect.Quantity < 0 ? -1 : 1;
-            var quantity = checked(sign * verifiedQuantity);
-            var cash = effect.Cash;
-            if (cash.Copper != 0) cash = new Money(checked(cash.Copper * verifiedQuantity / execution.Quantity));
-            return effect with { Quantity = quantity, Cash = cash };
-        });
+        return ScaleEffects(execution, verifiedQuantity);
     }
 
     private static IEnumerable<PlanResourceRequirement> ResidualEffects(PlanExecutionEvent execution)
@@ -358,14 +407,45 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var observed = execution.State == PlanShadowEventState.PartiallyConfirmed ? execution.VerifiedQuantity.GetValueOrDefault() : 0;
         var remaining = Math.Max(0, execution.Quantity - observed);
         if (remaining == execution.Quantity) return execution.Effects;
+        return ScaleEffects(execution, remaining);
+    }
+
+    private static IEnumerable<PlanResourceRequirement> ScaleEffects(PlanExecutionEvent execution, int quantity)
+    {
+        if (execution.Quantity <= 0) return execution.Effects;
+        if (execution.Action is PlanStepAction.List or PlanStepAction.Relist && execution.UnitPrice is { } listingPrice)
+        {
+            var fee = Gw2TradingPostFeePolicy.Create().CalculateFees(new Money(checked(listingPrice.Copper * quantity))).ListingFee;
+            return execution.Effects.Select(effect => effect.Kind == PlanResourceKind.Cash
+                ? effect with { Cash = -fee }
+                : effect with { Quantity = effect.Quantity == 0 ? 0 : checked(effect.Quantity * quantity / execution.Quantity) });
+        }
+        if (execution.Action == PlanStepAction.SellNow && execution.UnitPrice is { } salePrice)
+        {
+            var gross = new Money(checked(salePrice.Copper * quantity));
+            var fees = Gw2TradingPostFeePolicy.Create().CalculateFees(gross);
+            return execution.Effects.Select(effect => effect.Kind == PlanResourceKind.Cash
+                ? effect with { Cash = gross - fees.ListingFee - fees.ExchangeFee }
+                : effect with { Quantity = effect.Quantity == 0 ? 0 : checked(effect.Quantity * quantity / execution.Quantity) });
+        }
         return execution.Effects.Select(effect =>
         {
-            if (effect.Quantity == 0) return effect;
-            var quantity = checked(effect.Quantity * remaining / execution.Quantity);
-            var cash = effect.Cash.Copper == 0 ? effect.Cash : new Money(checked(effect.Cash.Copper * remaining / execution.Quantity));
-            return effect with { Quantity = quantity, Cash = cash };
+            var scaledQuantity = effect.Quantity == 0 ? 0 : checked(effect.Quantity * quantity / execution.Quantity);
+            var scaledCash = effect.Cash.Copper == 0 ? effect.Cash : new Money(checked(effect.Cash.Copper * quantity / execution.Quantity));
+            return effect with { Quantity = scaledQuantity, Cash = scaledCash };
         });
     }
+
+    private static bool IsGenericReservationOutstanding(PlanRecord plan, PlanResourceRequirement requirement) => requirement.Kind switch
+    {
+        PlanResourceKind.ExpectedIncoming => plan.Steps.Any(step => step.Action == PlanStepAction.PlaceBuyOrder &&
+            string.Equals(step.ItemId.ToString(System.Globalization.CultureInfo.InvariantCulture), requirement.ResourceId, StringComparison.Ordinal) &&
+            step.State is not PlanStepState.Confirmed),
+        PlanResourceKind.OpenOrderExposure => plan.Steps.Any(step => step.Action == PlanStepAction.CancelBuyOrder &&
+            string.Equals(step.ExternalIdentity, requirement.ResourceId, StringComparison.Ordinal) &&
+            step.State is PlanStepState.Pending or PlanStepState.Current),
+        _ => true,
+    };
 
     private static string Key(PlanResourceRequirement requirement) => $"{(int)requirement.Kind}:{requirement.ResourceId}";
     private static DateTimeOffset RequireUtc(DateTimeOffset value) => value.Offset == TimeSpan.Zero ? value : throw new ArgumentException("Timestamp must be UTC.", nameof(value));
