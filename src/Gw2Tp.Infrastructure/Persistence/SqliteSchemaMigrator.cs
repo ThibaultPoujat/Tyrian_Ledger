@@ -5,7 +5,7 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFactory)
 {
-    private const int LatestVersion = 8;
+    private const int LatestVersion = 9;
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> LatestSchemaColumns =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
@@ -100,6 +100,10 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             {
                 "account_profile_id", "discipline", "rating", "is_active",
             },
+            ["execution_plans"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "plan_id", "account_profile_id", "state", "payload_json", "updated_at_utc",
+            },
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, SqliteColumnDefinition>> LatestColumnDefinitions =
@@ -125,6 +129,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_material_entries"] = Columns(("account_profile_id", "INTEGER", true, 1), ("item_id", "INTEGER", true, 2), ("category_id", "INTEGER", true, 0), ("binding", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0)),
             ["account_crafting_recipe_unlocks"] = Columns(("account_profile_id", "INTEGER", true, 1), ("recipe_id", "INTEGER", true, 2)),
             ["account_crafting_disciplines"] = Columns(("account_profile_id", "INTEGER", true, 1), ("discipline", "TEXT", true, 2), ("rating", "INTEGER", true, 0), ("is_active", "INTEGER", true, 0)),
+            ["execution_plans"] = Columns(("plan_id", "TEXT", true, 1), ("account_profile_id", "INTEGER", true, 0), ("state", "INTEGER", true, 0), ("payload_json", "TEXT", true, 0), ("updated_at_utc", "TEXT", true, 0)),
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<SqliteIndexDefinition>> RequiredIndexes =
@@ -143,6 +148,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_material_entries"] = [new(null, true, ["account_profile_id", "item_id"])],
             ["account_crafting_recipe_unlocks"] = [new(null, true, ["account_profile_id", "recipe_id"])],
             ["account_crafting_disciplines"] = [new(null, true, ["account_profile_id", "discipline"], "BINARY")],
+            ["execution_plans"] = [new(null, true, ["plan_id"], "BINARY"), new("ix_execution_plans_account_state", false, ["account_profile_id", "state"])],
         };
 
     private static readonly IReadOnlyList<SqliteForeignKeyDefinition> RequiredForeignKeys =
@@ -162,6 +168,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         new("account_crafting_material_entries", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
         new("account_crafting_recipe_unlocks", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
         new("account_crafting_disciplines", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
+        new("execution_plans", "account_profile_id", "account_profiles", "id"),
     ];
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> RequiredCheckConstraints =
@@ -185,6 +192,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_material_entries"] = Checks("account_profile_id>0", "item_id>0", "category_id>0", "bindingbetween0and3", "quantity>=0"),
             ["account_crafting_recipe_unlocks"] = Checks("account_profile_id>0", "recipe_id>0"),
             ["account_crafting_disciplines"] = Checks("account_profile_id>0", "length(discipline)>0", "rating>=0", "is_activein(0,1)"),
+            ["execution_plans"] = Checks("length(plan_id)>0", "account_profile_id>0", "statebetween1and7", "length(payload_json)>0"),
         };
 
     // Version 6 was briefly published with this stricter equivalent constraint.
@@ -473,6 +481,23 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                     REFERENCES account_crafting_snapshots(account_profile_id) ON DELETE RESTRICT,
                 PRIMARY KEY (account_profile_id, discipline)
             );
+            """),
+        new(
+            9,
+            "execution_plan_shadow_schema",
+            """
+            CREATE TABLE execution_plans (
+                plan_id TEXT NOT NULL COLLATE BINARY CHECK (length(plan_id) > 0),
+                account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
+                state INTEGER NOT NULL CHECK (state BETWEEN 1 AND 7),
+                payload_json TEXT NOT NULL CHECK (length(payload_json) > 0),
+                updated_at_utc TEXT NOT NULL,
+                CONSTRAINT fk_execution_plans_account FOREIGN KEY (account_profile_id)
+                    REFERENCES account_profiles(id) ON DELETE RESTRICT,
+                PRIMARY KEY (plan_id)
+            );
+            CREATE INDEX ix_execution_plans_account_state
+                ON execution_plans (account_profile_id, state);
             """),
     ];
 
@@ -897,6 +922,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_material_entries"] = $"account_profile_id <= 0 OR item_id <= 0 OR item_id > {Int32Maximum} OR category_id <= 0 OR category_id > {Int32Maximum} OR binding NOT BETWEEN 0 AND 3 OR quantity < 0 OR quantity > {Int32Maximum}",
             ["account_crafting_recipe_unlocks"] = $"account_profile_id <= 0 OR recipe_id <= 0 OR recipe_id > {Int32Maximum}",
             ["account_crafting_disciplines"] = $"account_profile_id <= 0 OR trim(discipline) = '' OR rating < 0 OR rating > {Int32Maximum} OR is_active NOT IN (0, 1)",
+            ["execution_plans"] = $"trim(plan_id) = '' OR account_profile_id <= 0 OR state NOT BETWEEN 1 AND 7 OR trim(payload_json) = ''",
             ["schema_migrations"] = "version <= 0 OR trim(name) = ''",
             ["user_settings"] = $"singleton_id <> 1 OR settings_version <= 0 OR settings_version > {Int32Maximum} OR (minimum_profit_in_copper IS NOT NULL AND (minimum_profit_in_copper < 0 OR minimum_profit_in_copper > {Int32Maximum})) OR (minimum_roi_basis_points IS NOT NULL AND (minimum_roi_basis_points < 0 OR minimum_roi_basis_points > 10000)) OR (cash_reserve_basis_points IS NOT NULL AND (cash_reserve_basis_points < 0 OR cash_reserve_basis_points > 10000))",
         };

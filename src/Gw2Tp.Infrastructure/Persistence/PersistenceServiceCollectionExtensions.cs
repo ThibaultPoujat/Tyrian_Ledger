@@ -2,6 +2,7 @@ using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Crafting;
+using Gw2Tp.Application.Plans;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -34,6 +35,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<IWatchlistRepository, SqliteWatchlistRepository>();
         services.AddSingleton<IInvestmentPositionRepository, SqliteInvestmentPositionRepository>();
         services.AddSingleton<IAccountCraftingSnapshotRepository, SqliteAccountCraftingSnapshotRepository>();
+        services.AddSingleton<IPlanRepository, SqlitePlanRepository>();
         services.AddSingleton<IMarketHistoryRepository, SqliteMarketHistoryRepository>();
         services.AddSingleton<IMarketHistoryStatusService, SqliteMarketHistoryStatusService>();
         services.AddSingleton<ILocalDataRecoveryService, SqliteLocalDataRecoveryService>();

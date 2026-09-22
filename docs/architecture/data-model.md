@@ -175,6 +175,16 @@ responses, character names, and credentials are never retained. Replacing a
 snapshot deletes its prior child rows transactionally, so the database does
 not accumulate a private account-inventory history.
 
+### M21 execution plans and local shadow
+
+Migration 9 adds the account-profile-scoped `execution_plans` table. Its
+validated JSON payload contains the typed plan, explicit reservations, ordered
+manual steps, and local reversible execution-shadow events; it never stores an
+ArenaNet credential, raw account payload, or browser-owned financial result.
+The row is updated transactionally with each local transition, while the event
+sequence remains in the plan payload for deterministic reconstruction and later
+reconciliation with verified account evidence.
+
 No migration in M14 creates a credential, API-key, authorization,
 token, raw-upstream-payload, accounting, market-history, position, or
 recommendation table.

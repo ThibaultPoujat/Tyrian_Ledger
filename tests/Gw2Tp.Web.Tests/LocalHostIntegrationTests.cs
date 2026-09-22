@@ -101,7 +101,7 @@ public sealed class LocalHostIntegrationTests
                 await connection.OpenAsync();
                 await using var command = connection.CreateCommand();
                 command.CommandText = "SELECT COUNT(*) FROM schema_migrations;";
-                Assert.Equal(8L, await command.ExecuteScalarAsync());
+                Assert.Equal(9L, await command.ExecuteScalarAsync());
             }
 
         }

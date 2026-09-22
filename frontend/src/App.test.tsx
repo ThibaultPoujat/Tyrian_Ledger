@@ -251,8 +251,9 @@ describe('Mes Signaux MVP', () => {
 
     expect(await screen.findByRole('heading', { name: 'Mes Signaux', level: 1 })).toBeInTheDocument();
     const navigation = screen.getByRole('navigation', { name: 'Navigation principale' });
-    expect(within(navigation).getAllByRole('button')).toHaveLength(3);
+    expect(within(navigation).getAllByRole('button')).toHaveLength(4);
     expect(within(navigation).getByRole('button', { name: 'Mes Signaux' })).toHaveAttribute('aria-current', 'page');
+    expect(within(navigation).getByRole('button', { name: 'Plans' })).toBeEnabled();
     expect(within(navigation).getByRole('button', { name: /Artisanat/i })).toBeDisabled();
     expect(within(navigation).getByRole('button', { name: /Réglages/i })).toBeEnabled();
     expect(within(navigation).queryByRole('button', { name: /tableau de bord|scanner|inventaire|apprentissages personnels|investissements/i })).not.toBeInTheDocument();

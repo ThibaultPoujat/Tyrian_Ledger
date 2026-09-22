@@ -917,3 +917,14 @@ p { color: var(--muted); line-height: 1.58; }
     margin-left: 0;
   }
 }
+
+@media (max-width: 420px) {
+  .nav-item {
+    min-width: 2.35rem;
+    justify-content: center;
+    padding-inline: 0.35rem;
+  }
+
+  .nav-item > span:first-child { display: inline; }
+  .nav-item > span:last-child { display: none; }
+}
