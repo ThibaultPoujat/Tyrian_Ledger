@@ -200,7 +200,7 @@ public sealed class PlanOrchestrationServiceTests
         var reported = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
 
         var reconciled = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(1),
-            [], Now.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder));
+            [], Now.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
 
         Assert.Equal(PlanShadowEventState.Confirmed, reconciled.Events[0].State);
         Assert.Equal(PlanStepState.Confirmed, reconciled.Steps[0].State);
@@ -216,10 +216,60 @@ public sealed class PlanOrchestrationServiceTests
 
         var reconciled = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(1),
             [new PlanVerifiedEvidence("BuyOrder:7", PlanEvidenceKind.BuyOrder, 42, 1, new Money(100), Now.AddSeconds(1), Now.AddMinutes(1), "order-7")],
-            Now.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder));
+            Now.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
 
         Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled.Events[0].State);
         Assert.Equal(PlanStepState.AwaitingConfirmation, reconciled.Steps[0].State);
+    }
+
+    [Fact]
+    public void A_completed_buy_that_can_belong_to_the_cancelled_order_pauses_the_plan_instead_of_confirming_cancellation()
+    {
+        var candidate = Candidate("cancel-filled", 0, 50, 1,
+            steps: [new PlanStep("cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 2, new Money(100), [], PlanStepState.Pending, "order-7")]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 2, new Money(100), Now);
+
+        var reconciled = service.ReconcileWithVerifiedState(reported, new Money(800), new Dictionary<string, long> { ["2:42"] = 2 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("CompletedBuy:7", PlanEvidenceKind.CompletedBuy, 42, 2, new Money(100), Now.AddSeconds(1), Now.AddMinutes(1), "order-7")],
+            Now.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled.Events[0].State);
+        Assert.Equal(PlanState.ReconciliationRequired, reconciled.State);
+        Assert.Equal(PlanReconciliationState.Contradicted, reconciled.ReconciliationState);
+    }
+
+    [Fact]
+    public void Two_complete_post_deadline_observations_of_a_still_visible_order_pause_cancellation()
+    {
+        var candidate = Candidate("cancel-persistent", 0, 50, 1,
+            steps: [new PlanStep("cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending, "order-7")]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
+        var current = new PlanVerifiedEvidence("BuyOrder:7", PlanEvidenceKind.BuyOrder, 42, 1, new Money(100), Now.AddDays(-1), Now.AddMinutes(16), "order-7");
+
+        var first = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(16),
+            [current], Now.AddMinutes(16), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        var second = service.ReconcileWithVerifiedState(first, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(17),
+            [current with { ObservedAtUtc = Now.AddMinutes(17) }], Now.AddMinutes(17), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+
+        Assert.Equal(PlanState.RecheckRequired, first.State);
+        Assert.Equal(PlanState.ReconciliationRequired, second.State);
+        Assert.Equal(PlanReconciliationState.Contradicted, second.ReconciliationState);
+    }
+
+    [Fact]
+    public void Undo_after_cancelling_a_later_step_restores_an_executable_plan()
+    {
+        var candidate = Candidate("cancel-undo", 100, 50, 1,
+            steps: [Step("buy", PlanStepAction.BuyNow), Step("list", PlanStepAction.List)]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
+        var cancelled = service.CancelUnperformedStep(reported);
+
+        var undone = service.UndoLastStep(cancelled, Now.AddMinutes(1));
+        var reconciled = service.ReconcileWithVerifiedState(undone, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(2));
+
+        Assert.False(undone.IsCancelled);
+        Assert.Equal(PlanState.InProgress, reconciled.State);
+        Assert.Equal(PlanStepState.Current, reconciled.Steps[0].State);
     }
 
     [Fact]

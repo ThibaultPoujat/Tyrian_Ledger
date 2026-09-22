@@ -292,7 +292,8 @@ internal sealed class PlanEndpointService(
                 }
                 completeKinds.Add(kind);
                 entries.AddRange(pages.SelectMany(page => page.Transactions).Where(tx => tx.Quantity > 0 && tx.ItemId > 0 && tx.PriceInCopper >= 0)
-                    .Select(tx => new PlanVerifiedEvidence($"{kind}:{tx.TransactionId}", kind, tx.ItemId, tx.Quantity, new Money(tx.PriceInCopper), tx.CreatedAtUtc, captured,
+                    .Select(tx => new PlanVerifiedEvidence($"{kind}:{tx.TransactionId}", kind, tx.ItemId, tx.Quantity, new Money(tx.PriceInCopper),
+                        kind is PlanEvidenceKind.CompletedBuy or PlanEvidenceKind.CompletedSell ? tx.PurchasedAtUtc ?? tx.CreatedAtUtc : tx.CreatedAtUtc, captured,
                         tx.TransactionId.ToString(System.Globalization.CultureInfo.InvariantCulture))));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
