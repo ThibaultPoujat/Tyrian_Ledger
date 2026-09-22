@@ -98,7 +98,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var steps = candidate.Steps.Select((step, index) => step with { State = index == 0 ? PlanStepState.Current : PlanStepState.Pending,
             IssuedAtUtc = index == 0 ? RequireUtc(startedAtUtc) : null }).ToArray();
         var state = candidate.Attention == PlanAttention.Passive && steps.Length == 0 ? PlanState.Waiting : PlanState.InProgress;
-        return new PlanRecord(candidate.Id, candidate.Version, candidate.SourceOpportunityId, candidate.Attention, state,
+        return new PlanRecord(Guid.NewGuid().ToString("N"), candidate.Version, candidate.SourceOpportunityId, candidate.Attention, state,
             PlanReconciliationState.None, RequireUtc(startedAtUtc), candidate.Requirements, candidate.ModeledProfit, 0, steps, [], candidate.Utility,
             PlanHysteresisPolicy.Default, verifiedCash,
             verifiedQuantities is null ? null : new Dictionary<string, long>(verifiedQuantities, StringComparer.Ordinal), 0, startedAtUtc);
@@ -133,7 +133,15 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         if (plan.CurrentStepOrdinal < 0 || plan.CurrentStepOrdinal >= plan.Steps.Count || plan.Steps[plan.CurrentStepOrdinal].State != PlanStepState.Current)
             throw new InvalidOperationException("Only the current unperformed step can be cancelled.");
         var steps = plan.Steps.Select((step, index) => index >= plan.CurrentStepOrdinal ? step with { State = PlanStepState.Invalidated } : step).ToArray();
-        return plan with { Steps = steps, CurrentStepOrdinal = -1, State = PlanState.Invalid, ReconciliationState = PlanReconciliationState.None };
+        var hasUnresolvedPriorExecution = plan.Events.Any(value => value.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed);
+        return plan with
+        {
+            Steps = steps,
+            CurrentStepOrdinal = -1,
+            State = hasUnresolvedPriorExecution ? PlanState.ReconciliationRequired : PlanState.Invalid,
+            ReconciliationState = hasUnresolvedPriorExecution ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.None,
+            IsCancelled = true,
+        };
     }
 
     public PlanRecord UndoLastStep(PlanRecord plan, DateTimeOffset occurredAtUtc)
@@ -179,7 +187,18 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                 var availableEvidence = evidenceSet.Where(value => !claimedEvidenceIds.Contains(value.Identity)).ToArray();
                 var relevantFingerprint = RelevantEvidenceFingerprint(plan, execution, availableEvidence);
                 var canUseNegativeEvidence = freshCapture && HasCompleteRelevantObservation(execution, completeEvidenceKinds);
-                if (!blockedByPending && TryMatchEvidence(plan, execution, availableEvidence, out var observedQuantity, out var observedPrice, out var verifiedEvidenceIds))
+                if (!blockedByPending && IsConfirmedCancellation(plan, execution, availableEvidence, freshCapture, completeEvidenceKinds))
+                {
+                    events[index] = execution with
+                    {
+                        State = PlanShadowEventState.Confirmed,
+                        VerifiedQuantity = execution.Quantity,
+                        VerifiedUnitPrice = execution.UnitPrice,
+                        LastRelevantEvidenceFingerprint = freshCapture ? relevantFingerprint : execution.LastRelevantEvidenceFingerprint,
+                        VerifiedEvidenceIds = [],
+                    };
+                }
+                else if (!blockedByPending && TryMatchEvidence(plan, execution, availableEvidence, out var observedQuantity, out var observedPrice, out var verifiedEvidenceIds))
                 {
                     var cumulativeQuantity = Math.Max(execution.VerifiedQuantity.GetValueOrDefault(), observedQuantity);
                     var nextState = cumulativeQuantity >= execution.Quantity ? PlanShadowEventState.Confirmed : PlanShadowEventState.PartiallyConfirmed;
@@ -212,7 +231,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var contradictionCount = !stillAwaitingEvidence ? 0 : contradictions == 0 ? plan.ConsecutiveContradictionCount : plan.ConsecutiveContradictionCount + 1;
         var state = plan.State;
         var reconciliation = stillAwaitingEvidence ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible;
-        if (contradictionCount >= 2) { state = PlanState.ReconciliationRequired; reconciliation = PlanReconciliationState.Contradicted; }
+        if (plan.IsCancelled && !stillAwaitingEvidence) { state = PlanState.Invalid; reconciliation = PlanReconciliationState.Compatible; }
+        else if (contradictionCount >= 2) { state = PlanState.ReconciliationRequired; reconciliation = PlanReconciliationState.Contradicted; }
         else if (contradictions > 0) state = PlanState.RecheckRequired;
         var updatedSteps = plan.Steps.Select(step =>
         {
@@ -321,13 +341,13 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         quantity = 0;
         unitPrice = Money.Zero;
         verifiedEvidenceIds = [];
-        if (execution.ExpectedEvidenceKind is not { } expectedKind) return false;
+        if (execution.ExpectedEvidenceKind is not { } expectedKind || execution.Action == PlanStepAction.CancelBuyOrder) return false;
         var step = plan.Steps.FirstOrDefault(value => value.Id == execution.StepId);
         if (step is null) return false;
         var issuedAt = execution.IssuedAtUtc ?? step.IssuedAtUtc ?? plan.StartedAtUtc;
         var matching = evidence.Where(value => IsCompatibleEvidenceKind(expectedKind, value.Kind) && value.ItemId == step.ItemId && value.Quantity > 0 &&
             value.CreatedAtUtc >= issuedAt && value.ObservedAtUtc >= execution.OccurredAtUtc &&
-            (step.ExternalIdentity is null || string.Equals(step.ExternalIdentity, value.Identity, StringComparison.Ordinal)) &&
+            (step.ExternalIdentity is null || string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal)) &&
             (execution.UnitPrice is null || value.UnitPrice == execution.UnitPrice.Value))
             .OrderByDescending(value => value.CreatedAtUtc).ThenBy(value => value.Identity, StringComparer.Ordinal).ToArray();
         if (matching.Length == 0) return false;
@@ -347,6 +367,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     private static bool HasCompleteRelevantObservation(PlanExecutionEvent execution, IReadOnlySet<PlanEvidenceKind>? completeKinds)
     {
         if (execution.ExpectedEvidenceKind is not { } expected || completeKinds is null) return false;
+        if (execution.Action == PlanStepAction.CancelBuyOrder) return completeKinds.Contains(PlanEvidenceKind.BuyOrder);
         return expected switch
         {
             PlanEvidenceKind.BuyOrder => completeKinds.Contains(PlanEvidenceKind.BuyOrder) && completeKinds.Contains(PlanEvidenceKind.CompletedBuy),
@@ -361,14 +382,21 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var step = plan.Steps.FirstOrDefault(value => value.Id == execution.StepId);
         if (step is null) return string.Empty;
         var issuedAt = execution.IssuedAtUtc ?? step.IssuedAtUtc ?? plan.StartedAtUtc;
+        if (execution.Action == PlanStepAction.CancelBuyOrder)
+        {
+            return EvidenceFingerprint(evidence.Where(value => value.Kind == PlanEvidenceKind.BuyOrder && value.ItemId == step.ItemId &&
+                value.CreatedAtUtc >= issuedAt && value.ObservedAtUtc >= execution.OccurredAtUtc &&
+                string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal)));
+        }
         return EvidenceFingerprint(evidence.Where(value => IsCompatibleEvidenceKind(expected, value.Kind) && value.ItemId == step.ItemId &&
             value.CreatedAtUtc >= issuedAt && value.ObservedAtUtc >= execution.OccurredAtUtc &&
-            (step.ExternalIdentity is null || string.Equals(step.ExternalIdentity, value.Identity, StringComparison.Ordinal))));
+            (step.ExternalIdentity is null || string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal))));
     }
 
     private static PlanEvidenceKind? ExpectedEvidenceFor(PlanStep step) => step.Action switch
     {
         PlanStepAction.PlaceBuyOrder => PlanEvidenceKind.BuyOrder,
+        PlanStepAction.CancelBuyOrder => PlanEvidenceKind.BuyOrder,
         PlanStepAction.List or PlanStepAction.Relist => PlanEvidenceKind.SellListing,
         PlanStepAction.BuyNow => PlanEvidenceKind.CompletedBuy,
         PlanStepAction.SellNow => PlanEvidenceKind.CompletedSell,
@@ -385,6 +413,17 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     private static string EvidenceFingerprint(IEnumerable<PlanVerifiedEvidence> evidence) => string.Join('|', evidence
         .OrderBy(value => value.Kind).ThenBy(value => value.Identity, StringComparer.Ordinal)
         .Select(value => $"{value.Kind}:{value.Identity}:{value.ItemId}:{value.Quantity}:{value.UnitPrice.Copper}:{value.CreatedAtUtc.UtcTicks}"));
+
+    private static bool IsConfirmedCancellation(PlanRecord plan, PlanExecutionEvent execution,
+        IReadOnlyCollection<PlanVerifiedEvidence> evidence, bool freshCapture, IReadOnlySet<PlanEvidenceKind>? completeKinds)
+    {
+        if (execution.Action != PlanStepAction.CancelBuyOrder || !freshCapture || !HasCompleteRelevantObservation(execution, completeKinds)) return false;
+        var step = plan.Steps.FirstOrDefault(value => value.Id == execution.StepId);
+        if (string.IsNullOrWhiteSpace(step?.ExternalIdentity)) return false;
+        return !evidence.Any(value => value.Kind == PlanEvidenceKind.BuyOrder && value.ItemId == step.ItemId &&
+            value.ObservedAtUtc >= execution.OccurredAtUtc &&
+            string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal));
+    }
 
     private static void Apply(Dictionary<string, long> quantities, ref Money cash, PlanResourceRequirement effect)
     {
@@ -443,7 +482,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             step.State is not PlanStepState.Confirmed),
         PlanResourceKind.OpenOrderExposure => plan.Steps.Any(step => step.Action == PlanStepAction.CancelBuyOrder &&
             string.Equals(step.ExternalIdentity, requirement.ResourceId, StringComparison.Ordinal) &&
-            step.State is PlanStepState.Pending or PlanStepState.Current),
+            step.State is PlanStepState.Pending or PlanStepState.Current or PlanStepState.AwaitingConfirmation or PlanStepState.PartiallyConfirmed),
         _ => true,
     };
 

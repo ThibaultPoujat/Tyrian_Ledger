@@ -56,7 +56,7 @@ internal sealed class SqlitePlanRepository(
             {
                 var existing = JsonSerializer.Deserialize<PlanRecord>(reader.GetString(1), SerializerOptions)
                     ?? throw new InvalidDataException("The stored plan payload is invalid.");
-                if (existing.Id == plan.Id)
+                if (existing.SourceOpportunityId == plan.SourceOpportunityId)
                 {
                     await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                     return PlanStartResult.AlreadyStarted;

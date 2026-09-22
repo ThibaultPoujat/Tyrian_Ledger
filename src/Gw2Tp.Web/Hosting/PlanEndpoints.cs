@@ -76,7 +76,7 @@ internal sealed class PlanEndpointService(
         if (outcome == PlanStartResult.ResourcesUnavailable) return Results.Conflict(new { error = "plan_resources_unavailable" });
         if (outcome == PlanStartResult.AlreadyStarted)
         {
-            var existing = await FindAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
+            var existing = await FindByCandidateAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
             return existing is null ? Results.Conflict(new { error = "plan_already_started" }) : Results.Json(new { state = "already_started", plan = ToResponse(existing) });
         }
         return Results.Json(new { state = "started", plan = ToResponse(plan) });
@@ -172,7 +172,7 @@ internal sealed class PlanEndpointService(
             var observedAt = context.Snapshot.CapturedAtUtc ?? DateTimeOffset.UtcNow;
             var reconciled = orchestration.ReconcileWithVerifiedState(plan, context.Snapshot.AvailableCash, context.VerifiedQuantities, observedAt,
                 context.Evidence, context.EvidenceCapturedAtUtc, context.CompleteEvidenceKinds);
-            var candidate = context.Candidates.SingleOrDefault(value => value.Id == plan.Id);
+            var candidate = context.Candidates.SingleOrDefault(value => value.SourceOpportunityId == plan.SourceOpportunityId);
             reconciled = orchestration.ApplyRefresh(reconciled, candidate, context.Recommendations?.State == PrimaryRecommendationState.Ready);
             try
             {
@@ -193,6 +193,9 @@ internal sealed class PlanEndpointService(
 
     private async Task<PlanRecord?> FindAsync(long profileId, string planId, CancellationToken cancellationToken) =>
         (await repository.GetStartedAsync(profileId, cancellationToken).ConfigureAwait(false)).SingleOrDefault(plan => plan.Id == planId);
+
+    private async Task<PlanRecord?> FindByCandidateAsync(long profileId, string candidateId, CancellationToken cancellationToken) =>
+        (await repository.GetStartedAsync(profileId, cancellationToken).ConfigureAwait(false)).SingleOrDefault(plan => plan.SourceOpportunityId == candidateId);
 
     private static bool IsActionable(PrimaryRecommendationRecord record) => record.Action is PrimaryRecommendationAction.Buy or PrimaryRecommendationAction.BuySmall or PrimaryRecommendationAction.UpdateBid or PrimaryRecommendationAction.CancelBid or PrimaryRecommendationAction.List or PrimaryRecommendationAction.Reduce or PrimaryRecommendationAction.SellPartial or PrimaryRecommendationAction.Sell;
 
@@ -289,7 +292,8 @@ internal sealed class PlanEndpointService(
                 }
                 completeKinds.Add(kind);
                 entries.AddRange(pages.SelectMany(page => page.Transactions).Where(tx => tx.Quantity > 0 && tx.ItemId > 0 && tx.PriceInCopper >= 0)
-                    .Select(tx => new PlanVerifiedEvidence($"{kind}:{tx.TransactionId}", kind, tx.ItemId, tx.Quantity, new Money(tx.PriceInCopper), tx.CreatedAtUtc, captured)));
+                    .Select(tx => new PlanVerifiedEvidence($"{kind}:{tx.TransactionId}", kind, tx.ItemId, tx.Quantity, new Money(tx.PriceInCopper), tx.CreatedAtUtc, captured,
+                        tx.TransactionId.ToString(System.Globalization.CultureInfo.InvariantCulture))));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch { }

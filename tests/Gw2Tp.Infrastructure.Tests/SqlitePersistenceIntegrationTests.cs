@@ -78,6 +78,31 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Cancelling_an_unperformed_plan_allows_a_new_execution_for_the_same_opportunity_without_erasing_history()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("plan-restart-account", FirstObservedAtUtc);
+        var candidate = new PlanCandidate("proposal:restart", 1, "opportunity:restart", PlanAttention.Active,
+            [new PlanStep("proposal:restart:1", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending)],
+            [new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(100))], Money.Zero, new Money(100), 0, 0, 1, 1, true, []);
+        var orchestration = new PlanOrchestrationService();
+        var first = orchestration.Start(candidate, FirstObservedAtUtc);
+
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, first, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+        var cancelled = orchestration.CancelUnperformedStep(first with { Revision = 1 });
+        await database.Plans.SaveAsync(account.Id, cancelled);
+
+        var restarted = orchestration.Start(candidate, SecondObservedAtUtc);
+        Assert.NotEqual(first.Id, restarted.Id);
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, restarted, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+
+        var active = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(restarted.Id, active.Id);
+        Assert.Equal("opportunity:restart", active.SourceOpportunityId);
+        Assert.Equal(2, await database.GetTableCountAsync("execution_plans"));
+    }
+
+    [Fact]
     public async Task Version_two_database_upgrades_to_version_three_without_losing_completed_history()
     {
         await using var database = await TestDatabase.CreateAsync(migrate: false);

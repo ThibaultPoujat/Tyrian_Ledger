@@ -176,6 +176,53 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public void Cancelling_a_later_unperformed_step_keeps_earlier_pending_shadow_effects_until_reconciled()
+    {
+        var candidate = Candidate("cancel-suffix", 100, 50, 1,
+            steps: [Step("buy", PlanStepAction.BuyNow), Step("list", PlanStepAction.List)]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
+
+        var cancelled = service.CancelUnperformedStep(reported);
+        var effective = PlanOrchestrationService.ProjectEffectiveResources(new Money(1_000), new Dictionary<string, long>(), cancelled.Events);
+
+        Assert.Equal(PlanState.ReconciliationRequired, cancelled.State);
+        Assert.Equal(PlanReconciliationState.AwaitingEvidence, cancelled.ReconciliationState);
+        Assert.Equal(PlanStepState.AwaitingConfirmation, cancelled.Steps[0].State);
+        Assert.Equal(PlanStepState.Invalidated, cancelled.Steps[1].State);
+        Assert.Equal(900, effective.EffectiveCash.Copper);
+    }
+
+    [Fact]
+    public void Complete_current_buy_order_observation_confirms_a_reported_bid_cancellation_by_absence()
+    {
+        var candidate = Candidate("cancel-bid", 0, 50, 1,
+            steps: [new PlanStep("cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending, "order-7")]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
+
+        var reconciled = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(1),
+            [], Now.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder));
+
+        Assert.Equal(PlanShadowEventState.Confirmed, reconciled.Events[0].State);
+        Assert.Equal(PlanStepState.Confirmed, reconciled.Steps[0].State);
+        Assert.Equal(PlanReconciliationState.Compatible, reconciled.ReconciliationState);
+    }
+
+    [Fact]
+    public void A_still_visible_current_buy_order_does_not_confirm_a_reported_bid_cancellation()
+    {
+        var candidate = Candidate("cancel-still-visible", 0, 50, 1,
+            steps: [new PlanStep("cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending, "order-7")]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
+
+        var reconciled = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("BuyOrder:7", PlanEvidenceKind.BuyOrder, 42, 1, new Money(100), Now.AddSeconds(1), Now.AddMinutes(1), "order-7")],
+            Now.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder));
+
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled.Events[0].State);
+        Assert.Equal(PlanStepState.AwaitingConfirmation, reconciled.Steps[0].State);
+    }
+
+    [Fact]
     public void Reconciliation_carries_confirmed_effects_into_the_next_pending_step()
     {
         var candidate = Candidate("chain", 100, 50, 1,

@@ -55,11 +55,13 @@ public sealed record PlanRecord(
     DateTimeOffset? LastObservedAtUtc = null,
     DateTimeOffset? LastEvidenceCapturedAtUtc = null,
     string? LastEvidenceFingerprint = null,
-    long Revision = 0);
+    long Revision = 0,
+    bool IsCancelled = false);
 
 public sealed record PlanVerifiedEvidence(
     string Identity, PlanEvidenceKind Kind, int ItemId, int Quantity, Money UnitPrice,
-    DateTimeOffset CreatedAtUtc, DateTimeOffset ObservedAtUtc);
+    DateTimeOffset CreatedAtUtc, DateTimeOffset ObservedAtUtc,
+    string? ExternalIdentity = null);
 
 public sealed class PlanConcurrencyException : InvalidOperationException
 {
