@@ -40,14 +40,15 @@ Business logic must never depend on displayed/localized strings.
 
 ## Approved visual and interaction direction
 
-### Primary navigation
+### Future primary navigation
 
-Post-plan-engine navigation direction:
+After #133 implements the shared plan engine, the planned navigation direction
+may become:
 
 `Mes Signaux / Plans / Artisanat / Réglages`
 
 - `Mes Signaux` remains the default/home attention surface.
-- `Plans` becomes first class when #133 implements the shared started-plan
+- `Plans` becomes first class only when #133 implements the shared started-plan
   execution model.
 - `Artisanat` is a guided profit/action workspace, not a recipe browser.
 - `Réglages` owns account/data/recovery/diagnostic controls.

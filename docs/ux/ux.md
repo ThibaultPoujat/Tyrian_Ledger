@@ -27,12 +27,9 @@ translation would reduce clarity.
 
 Target displayed primary navigation:
 
-`Mes Signaux / Plans / Artisanat / Réglages`
+`Mes Signaux / Artisanat / Réglages`
 
 - `Mes Signaux` is the default/home Signals destination.
-- `Plans` is the first-class destination for started/manual execution paths once
-  #133 implements the shared plan engine. Before that implementation it must not
-  be exposed as a fake functional destination.
 - `Artisanat` is the displayed label for the guided crafting-for-profit
   workspace. Until implemented it may be visible but disabled/clearly marked
   unavailable; do not create a fake empty workspace.
@@ -44,6 +41,11 @@ Dashboard, Scanner, Investments, raw Inventory and Personal Learning are not
 primary navigation destinations. Temporary diagnostic/support routes may remain
 until the dedicated post-MVP cleanup ticket verifies that their useful
 capabilities have been absorbed elsewhere.
+
+After #133 implements the shared plan engine, a first-class `Plans` destination
+may be introduced as a deliberate post-MVP navigation transition. It is not a
+current target destination and must not be exposed before its typed execution
+model exists.
 
 ## Visual direction
 
@@ -69,8 +71,8 @@ that record differ on the first `Mes Signaux` implementation, the spike's
 explicit owner-reviewed decisions govern #131.
 
 For the post-MVP visual and interaction direction, use
-`docs/ux/tyrian-ledger-visual-reference.md` and its repository snapshots. The
-published ChatGPT Sites prototype is a visual/interaction reference only:
+`docs/ux/tyrian-ledger-visual-reference.md` and the live prototype when it is
+available. The published ChatGPT Sites prototype is a visual/interaction reference only:
 repository UX/spec/domain contracts remain authoritative for Signal eligibility,
 financial calculations, freshness, confidence semantics, plan lifecycle and
 reconciliation.
