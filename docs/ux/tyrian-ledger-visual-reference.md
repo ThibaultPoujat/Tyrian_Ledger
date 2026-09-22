@@ -8,8 +8,6 @@ Live prototype:
 
 - https://tyrian-ledger-concept.thibault-poujat.chatgpt.site/
 
-Stable repository snapshots live under `docs/ux/reference/`.
-
 ## Purpose
 
 This document records the owner-approved visual and interaction direction that
@@ -227,19 +225,15 @@ interaction model, desktop density and action-family recognizability while
 using the real application's components, accessibility rules and backend
 contracts.
 
-## Stable screenshot set
+## Visual artifact availability
 
-Representative approved-direction snapshots:
+Codex is expected to inspect the live prototype directly when browser access is
+available. The owner-approved repository documents remain sufficient to continue
+implementation if the external prototype is temporarily unavailable.
 
-- `reference/signals.png` — normal Signals hierarchy and action-family cards;
-- `reference/signals-degraded.png` — degraded source-state concept;
-- `reference/plans.png` — started corrective Plan and recognition states;
-- `reference/crafting.png` — guided crafting workspace;
-- `reference/settings.png` — account/public-history/diagnostic separation;
-- `reference/zero-state.png` — successful no-attention state.
-
-The screenshots are visual references only and inherit all authority limitations
-in this document.
+When reviewing a UI change, capture fresh screenshots from the real application
+or the live prototype as review evidence rather than treating old prototype
+screenshots as executable specification.
 
 ## Codex implementation instruction
 
