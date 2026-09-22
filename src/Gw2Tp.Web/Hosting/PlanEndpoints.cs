@@ -34,9 +34,18 @@ internal sealed class PlanEndpointService(
     {
         var context = await BuildContextAsync(cancellationToken).ConfigureAwait(false);
         if (context is null) return new { state = "unavailable", proposals = Array.Empty<object>(), plans = Array.Empty<object>() };
-        var selection = await orchestration.SelectAsync(context.Candidates, context.Recommendations.Portfolio!.AvailableCash,
-            context.Recommendations.Portfolio.CashReserve, cancellationToken).ConfigureAwait(false);
         var plans = await repository.GetStartedAsync(context.Profile.Id, cancellationToken).ConfigureAwait(false);
+        var reservations = plans.SelectMany(plan => plan.Reservations).ToArray();
+        var reservedCash = reservations.Aggregate(Money.Zero, (total, requirement) => total + requirement.Cash);
+        var reservedResourceKeys = reservations.Where(requirement => requirement.Quantity > 0)
+            .Select(ResourceKey).ToHashSet(StringComparer.Ordinal);
+        var candidates = context.Candidates.Where(candidate => !candidate.Requirements
+            .Where(requirement => requirement.Quantity > 0).Any(requirement => reservedResourceKeys.Contains(ResourceKey(requirement)))).ToArray();
+        var availableAfterReservations = context.Recommendations.Portfolio!.AvailableCash - reservedCash;
+        var selection = availableAfterReservations.Copper < context.Recommendations.Portfolio.CashReserve.Copper
+            ? new PlanBundleSelection([], Money.Zero, 0, candidates.Select(candidate => candidate.Id).OrderBy(id => id, StringComparer.Ordinal).ToArray(), Money.Zero)
+            : await orchestration.SelectAsync(candidates, availableAfterReservations,
+                context.Recommendations.Portfolio.CashReserve, cancellationToken).ConfigureAwait(false);
         return new { state = "ready", proposals = selection.Plans.Select(ToResponse), excludedCandidateIds = selection.ExcludedCandidateIds,
             intentionallyFreeCash = selection.IntentionallyFreeCash, plans = plans.Select(ToResponse) };
     }
