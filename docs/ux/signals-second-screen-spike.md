@@ -2,7 +2,14 @@
 
 GitHub issue: #130
 
-Status: **Owner-reviewed and ready for implementation handoff**
+Status: **Owner-reviewed and implemented for the first Signals MVP**
+
+> Post-MVP note (2026-09-22): this document remains the historical decision
+> record for #130/#131. Later owner-approved navigation, Plan, action-family and
+> visual direction is governed by `docs/ux/ux.md` and
+> `docs/ux/tyrian-ledger-visual-reference.md`. In particular, the future
+> first-class `Plans` destination and started-plan interactions belong to #133
+> and were intentionally outside this spike.
 
 This document is the lightweight prototype and durable UX decision record for the
 first Signals experience displayed as `Mes Signaux`. It is intentionally
