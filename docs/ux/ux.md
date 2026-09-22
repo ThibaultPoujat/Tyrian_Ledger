@@ -25,7 +25,7 @@ translation would reduce clarity.
 
 ## Primary navigation
 
-Target displayed primary navigation:
+Current implemented navigation before #133:
 
 `Mes Signaux / Artisanat / Réglages`
 
@@ -41,6 +41,14 @@ Dashboard, Scanner, Investments, raw Inventory and Personal Learning are not
 primary navigation destinations. Temporary diagnostic/support routes may remain
 until the dedicated post-MVP cleanup ticket verifies that their useful
 capabilities have been absorbed elsewhere.
+
+After #133 implements the shared typed plan engine, the approved target becomes:
+
+`Mes Signaux / Plans / Artisanat / Réglages`
+
+`Plans` is a first-class destination for started/manual execution paths that
+still require lifecycle or reconciliation work. It must not be exposed as a fake
+functional destination before that typed execution model exists.
 
 ## Visual direction
 
@@ -65,6 +73,13 @@ For the first Signals MVP, the owner-reviewed decision record is
 that record differ on the first `Mes Signaux` implementation, the spike's
 explicit owner-reviewed decisions govern #131.
 
+For the post-MVP visual and interaction direction, use
+`docs/ux/tyrian-ledger-visual-reference.md` and the live prototype when it is
+available. The published ChatGPT Sites prototype is a visual/interaction reference only:
+repository UX/spec/domain contracts remain authoritative for Signal eligibility,
+financial calculations, freshness, confidence semantics, plan lifecycle and
+reconciliation.
+
 ## Signals surface (`Mes Signaux`)
 
 ### Attention gate
@@ -81,6 +96,16 @@ show stale data, missing permission, sync failure or ArenaNet unavailability
 without presenting those as economic actions.
 
 ### Signal card
+
+Signal presentation is intentionally hierarchical rather than uniform:
+
+- one corrective/time-sensitive action may receive dominant `Prioritaire`
+  treatment when it truly deserves first attention;
+- other eligible actions stay compact and scannable;
+- different action families should be recognizable at a glance through a
+  coherent combination of iconography, internal layout, emphasized metrics and
+  action text; color may reinforce the distinction but must never be the only
+  cue.
 
 Default Signal cards are deliberately compact, but **execution information has
 the strongest visual priority**. First view should show:
@@ -122,6 +147,12 @@ Detailed ROI, depth, spread, history, personal evidence, anomaly flags and risk
 constraints live behind `Pourquoi ?` unless one is itself the reason the action
 must change immediately.
 
+The normal surface may explain its deliberate quietness with compact copy
+equivalent to `Pourquoi si peu de signaux ?`: waiting, holding and ordinary
+fluctuations are not work. Such explanation must not turn hidden candidates into
+a monitoring dashboard, and any displayed counts must reflect real eligible or
+tracked populations rather than decorative prototype numbers.
+
 Displayed action copy validated by the spike includes
 `ACHETER MAINTENANT`, `PLACER UN ORDRE D'ACHAT`,
 `METTRE À JOUR L'ORDRE D'ACHAT`, `ANNULER L'ORDRE D'ACHAT`,
@@ -148,8 +179,10 @@ Passive/Active paths rather than an arbitrary top-N list.
 
 ## Performance placement
 
-On `Mes Signaux`, keep the realized-performance block anchored in the same
-screen position across normal, empty, degraded and corrective states.
+On desktop, prefer the compact left sidebar as the stable home for realized
+performance so it remains visible without competing with the next action. Keep
+the realized-performance block anchored in the same screen position across
+normal, empty, degraded and corrective states.
 
 Show **today's realized profit** and **30-day realized profit** by default.
 7-day and 90-day realized results remain available behind a compact disclosure
@@ -179,6 +212,11 @@ Use explicit source meanings rather than terse ambiguous labels:
 - `Compte ArenaNet synchronisé il y a …`;
 - `Historique marché — dernier échantillon enregistré il y a …`.
 
+Compact status pills may shorten those labels when the meaning remains explicit,
+for example `Marché · 42 s`, `Compte ArenaNet · 2 min`, or historical coverage
+such as `30 j complets · 90 j partiels`. History coverage and history recency
+are not interchangeable; expose the one that actually supports the decision.
+
 The compact default may show current market freshness plus a `Données`
 disclosure for account/history detail. Show a next-refresh countdown only when
 a scheduler genuinely exists and knows the next planned refresh time. Use
@@ -196,6 +234,14 @@ Use understandable French degraded states and preserve the difference between:
 - stale retained data;
 - upstream unavailable;
 - local error.
+
+The current Signals MVP treats stale ArenaNet account evidence as a separate
+operational state and suppresses actions conservatively. A future typed
+action-source dependency model may refine that gate by withholding only Signals
+that require stale balances, inventory, positions or open orders while retaining
+a genuinely independent market/history Signal. It must not keep an
+account-dependent action visible merely because another source is healthy, and
+it must not be inferred only from displayed UI strings.
 
 ## Passive and Active paths
 
@@ -255,11 +301,17 @@ A normal step offers one simple `Terminé` confirmation. Secondary exceptional
 controls allow recording a different quantity/price or saying the action was not
 performed.
 
-Completed-step presentation may subtly distinguish:
+Completed-step presentation should map the human interaction to explicit typed
+state, for example:
 
-- current instruction;
-- locally recorded / awaiting ArenaNet confirmation;
-- confirmed by ArenaNet.
+- action required;
+- locally reported as done;
+- awaiting ArenaNet confirmation;
+- confirmed by ArenaNet;
+- discrepancy detected / reconciliation required.
+
+Displayed French may be concise, but business logic must never infer lifecycle
+state from those strings.
 
 At minimum, provide `Annuler la dernière étape` for an unconfirmed local event.
 If undoing an earlier event would invalidate later locally recorded steps, say so
@@ -298,12 +350,21 @@ Organize configuration around user goals rather than backend subsystems:
 - sync/refresh and data-source health;
 - bankroll reserve/risk/concentration policy;
 - alert/notification controls;
-- history/collection status and advanced diagnostics;
+- public market-history cache/coverage/recovery, kept conceptually separate from
+  personal ArenaNet/account data;
+- advanced diagnostics;
 - backup/restore/clear-local-data with explicit destructive confirmation.
 
 The API key value never appears in normal UI after storage.
 
-## Supporting evidence and personal learning
+## Contextual evidence and personal learning
+
+Evidence/history is contextual support for a decision, not a competing primary
+navigation destination. A Signal or Plan may open `Pourquoi ?` and then a
+relevant-history view that contains only useful evidence for that decision, such
+as restrained charting, coverage, behavior/stability, source freshness and
+important missing evidence. Avoid turning Tyrian Ledger into a chart-heavy
+trading terminal.
 
 Personal learning should improve ranking silently when evidence is sufficient.
 The user should not need to operate a large Personal Learning table.

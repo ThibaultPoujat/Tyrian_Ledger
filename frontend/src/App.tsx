@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './App.css';
 import RecommendationPanel from './RecommendationPanel';
 import MoneyDisplay from './MoneyDisplay';
@@ -36,44 +36,9 @@ const clearConfirmationText = 'EFFACER LES DONNÉES PERSONNELLES';
 
 type Dashboard = {
   state: 'ready' | 'notSynchronized' | 'accountUnavailable';
-  accountError: string | null;
-  lastSuccessfulSyncAtUtc: string | null;
-  currentOrdersObservedAtUtc: string | null;
   historyCoverage: { startUtc: string | null; endUtc: string | null } | null;
-  marketState: 'available' | 'unavailable';
-  isFeeRoundingExternallyVerified: boolean;
   realizedWindows: Array<{ days: number; status: 'supported' | 'insufficientCoverage'; netProfit: Money | null; unknownBasisQuantity: number }>;
   todayRealized: { days: number; status: 'supported' | 'insufficientCoverage'; netProfit: Money | null; unknownBasisQuantity: number } | null;
-  openAcquisitionBasis: Money | null;
-  netLiquidationValue: Money | null;
-  unrealizedProfit: Money | null;
-  isOpenInventoryFullyValued: boolean | null;
-  openInventory: Array<{ itemId: number; itemName: string; quantity: number; acquisitionBasis: Money; liquidationStatus: string; unliquidatedQuantity: number; netLiquidationValue: Money | null; unrealizedProfit: Money | null }>;
-  currentBuyCapital: Money;
-  currentSellGrossValue: Money;
-  currentSellNetValue: Money;
-  currentOrders: Array<{ orderId: string; side: 'buy' | 'sell'; itemId: number; itemName: string; quantity: number; unitPrice: Money; marketComparisonStatus: 'available' | 'missingSide' | 'unavailable'; currentMarketUnitPrice: Money | null }>;
-  recentTrades: Array<{ transactionId: string; side: 'buy' | 'sell'; itemName: string; quantity: number; unitPrice: Money; completedAtUtc: string }>;
-  bestRealizedItems: Array<{ itemId: number; itemName: string; quantity: number; netProfit: Money }>;
-  worstRealizedItems: Array<{ itemId: number; itemName: string; quantity: number; netProfit: Money }>;
-  personalLearning: {
-    status: 'insufficientCoverage' | 'insufficientSamples' | 'insufficientMetrics' | 'stale' | 'supported';
-    timestampLimitation: string;
-    minimumKnownBasisSamples: number;
-    exactSourceTimestampCount: number;
-    intervalCensoredCompletionCount: number;
-    unknownOrderTimingCount: number;
-    observedQuantityReductionCount: number;
-    fillTiming: Array<{ side: 'buy' | 'sell'; exactSourceTimestampCount: number; averageSourceDuration: string | null; intervalCensoredCompletionCount: number; averageConfirmationWindow: string | null }>;
-    items: Array<{ itemId: number; itemName: string; status: 'insufficientCoverage' | 'insufficientSamples' | 'insufficientMetrics' | 'stale' | 'supported'; exactSourceTimestampCount: number; intervalCensoredCompletionCount: number; unknownOrderTimingCount: number; observedQuantityReductionCount: number; knownBasisSampleCount: number | null; averageHoldingDuration: string | null; realizedProfitPerDay: { numerator: string; denominator: string } | null; capitalTurns: { numerator: string; denominator: string } | null }>;
-    knownBasisSampleCount: number | null;
-    latestKnownBasisCompletionAtUtc: string | null;
-    netProfit: Money | null;
-    matchedAcquisitionBasis: Money | null;
-    averageHoldingDuration: string | null;
-    realizedProfitPerDay: { numerator: string; denominator: string } | null;
-    capitalTurns: { numerator: string; denominator: string } | null;
-  } | null;
 };
 
 function isAccountConnectionResponse(payload: unknown): payload is AccountConnectionResponse {
@@ -420,35 +385,9 @@ function PerformanceSummary({ dashboard, status }: { dashboard: Dashboard | null
 function isDashboard(payload: unknown): payload is Dashboard {
   if (!isRecord(payload)) return false;
   return isOneOf(payload.state, ['ready', 'notSynchronized', 'accountUnavailable'])
-    && isNullableString(payload.accountError)
-    && isNullableString(payload.lastSuccessfulSyncAtUtc)
-    && isNullableString(payload.currentOrdersObservedAtUtc)
     && isNullableHistoryCoverage(payload.historyCoverage)
-    && isOneOf(payload.marketState, ['available', 'unavailable'])
-    && typeof payload.isFeeRoundingExternallyVerified === 'boolean'
     && isArrayOf(payload.realizedWindows, isRealizedWindow)
-    && (payload.todayRealized === null || payload.todayRealized === undefined || isRealizedWindow(payload.todayRealized))
-    && isNullableMoney(payload.openAcquisitionBasis)
-    && isNullableMoney(payload.netLiquidationValue)
-    && isNullableMoney(payload.unrealizedProfit)
-    && (typeof payload.isOpenInventoryFullyValued === 'boolean' || payload.isOpenInventoryFullyValued === null)
-    && isArrayOf(payload.openInventory, isOpenInventory)
-    && isMoney(payload.currentBuyCapital)
-    && isMoney(payload.currentSellGrossValue)
-    && isMoney(payload.currentSellNetValue)
-    && isArrayOf(payload.currentOrders, isCurrentOrder)
-    && isArrayOf(payload.recentTrades, isRecentTrade)
-    && isArrayOf(payload.bestRealizedItems, isRealizedItem)
-    && isArrayOf(payload.worstRealizedItems, isRealizedItem)
-    && (payload.personalLearning === null || isPersonalLearning(payload.personalLearning));
-}
-
-function copper(money: Money | null): string {
-  if (money === null) return 'Unavailable';
-  const value = BigInt(money.copper);
-  const sign = value < 0n ? '−' : '';
-  const absolute = value < 0n ? -value : value;
-  return `${sign}${absolute / 10000n}g ${(absolute % 10000n) / 100n}s ${absolute % 100n}c`;
+    && (payload.todayRealized === null || isRealizedWindow(payload.todayRealized));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -461,10 +400,6 @@ function isOneOf<T extends string>(value: unknown, values: readonly T[]): value 
 
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
-}
-
-function isDecimalIdentifier(value: unknown): value is string {
-  return typeof value === 'string' && /^\d+$/.test(value);
 }
 
 function isMoney(value: unknown): value is Money {
@@ -494,182 +429,6 @@ function isRealizedWindow(value: unknown): boolean {
     && isNullableMoney(value.netProfit)
     && isNonNegativeInteger(value.unknownBasisQuantity);
 }
-
-function isOpenInventory(value: unknown): boolean {
-  return isRecord(value)
-    && isNonNegativeInteger(value.itemId)
-    && typeof value.itemName === 'string'
-    && isNonNegativeInteger(value.quantity)
-    && isMoney(value.acquisitionBasis)
-    && isOneOf(value.liquidationStatus, ['fullyValued', 'insufficientBuyDepth', 'evidenceMissing'])
-    && isNonNegativeInteger(value.unliquidatedQuantity)
-    && isNullableMoney(value.netLiquidationValue)
-    && isNullableMoney(value.unrealizedProfit);
-}
-
-function isCurrentOrder(value: unknown): boolean {
-  return isRecord(value)
-    && isDecimalIdentifier(value.orderId)
-    && isOneOf(value.side, ['buy', 'sell'])
-    && isNonNegativeInteger(value.itemId)
-    && typeof value.itemName === 'string'
-    && isNonNegativeInteger(value.quantity)
-    && isMoney(value.unitPrice)
-    && isOneOf(value.marketComparisonStatus, ['available', 'missingSide', 'unavailable'])
-    && isNullableMoney(value.currentMarketUnitPrice);
-}
-
-function isRecentTrade(value: unknown): boolean {
-  return isRecord(value)
-    && isDecimalIdentifier(value.transactionId)
-    && isOneOf(value.side, ['buy', 'sell'])
-    && typeof value.itemName === 'string'
-    && isNonNegativeInteger(value.quantity)
-    && isMoney(value.unitPrice)
-    && typeof value.completedAtUtc === 'string';
-}
-
-function isRealizedItem(value: unknown): boolean {
-  return isRecord(value)
-    && isNonNegativeInteger(value.itemId)
-    && typeof value.itemName === 'string'
-    && isNonNegativeInteger(value.quantity)
-    && isMoney(value.netProfit);
-}
-
-function isExactRate(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.numerator === 'string'
-    && typeof value.denominator === 'string'
-    && /^-?\d+$/.test(value.numerator)
-    && /^\d+$/.test(value.denominator)
-    && BigInt(value.denominator) > 0n;
-}
-
-function isPersonalLearning(value: unknown): boolean {
-  return isRecord(value)
-    && isOneOf(value.status, ['insufficientCoverage', 'insufficientSamples', 'insufficientMetrics', 'stale', 'supported'])
-    && typeof value.timestampLimitation === 'string'
-    && isNonNegativeInteger(value.minimumKnownBasisSamples)
-    && isNonNegativeInteger(value.exactSourceTimestampCount)
-    && isNonNegativeInteger(value.intervalCensoredCompletionCount)
-    && isNonNegativeInteger(value.unknownOrderTimingCount)
-    && isNonNegativeInteger(value.observedQuantityReductionCount)
-    && isArrayOf(value.fillTiming, isFillTiming)
-    && isArrayOf(value.items, isPersonalLearningItem)
-    && (value.knownBasisSampleCount === null || isNonNegativeInteger(value.knownBasisSampleCount))
-    && isNullableString(value.latestKnownBasisCompletionAtUtc)
-    && isNullableMoney(value.netProfit)
-    && isNullableMoney(value.matchedAcquisitionBasis)
-    && isNullableString(value.averageHoldingDuration)
-    && (value.realizedProfitPerDay === null || isExactRate(value.realizedProfitPerDay))
-    && (value.capitalTurns === null || isExactRate(value.capitalTurns));
-}
-
-function isFillTiming(value: unknown): boolean {
-  return isRecord(value)
-    && isOneOf(value.side, ['buy', 'sell'])
-    && isNonNegativeInteger(value.exactSourceTimestampCount)
-    && isNullableString(value.averageSourceDuration)
-    && isNonNegativeInteger(value.intervalCensoredCompletionCount)
-    && isNullableString(value.averageConfirmationWindow);
-}
-
-function isPersonalLearningItem(value: unknown): boolean {
-  return isRecord(value)
-    && isNonNegativeInteger(value.itemId)
-    && typeof value.itemName === 'string'
-    && isOneOf(value.status, ['insufficientCoverage', 'insufficientSamples', 'insufficientMetrics', 'stale', 'supported'])
-    && isNonNegativeInteger(value.exactSourceTimestampCount)
-    && isNonNegativeInteger(value.intervalCensoredCompletionCount)
-    && isNonNegativeInteger(value.unknownOrderTimingCount)
-    && isNonNegativeInteger(value.observedQuantityReductionCount)
-    && (value.knownBasisSampleCount === null || isNonNegativeInteger(value.knownBasisSampleCount))
-    && isNullableString(value.averageHoldingDuration)
-    && (value.realizedProfitPerDay === null || isExactRate(value.realizedProfitPerDay))
-    && (value.capitalTurns === null || isExactRate(value.capitalTurns));
-}
-
-function exactRate(value: { numerator: string; denominator: string } | null, suffix: string): string {
-  if (value === null) return 'Unavailable';
-  const numerator = BigInt(value.numerator);
-  const denominator = BigInt(value.denominator);
-  const negative = numerator < 0n;
-  const scaled = (negative ? -numerator : numerator) * 100n / denominator;
-  return `${negative ? '−' : ''}${scaled / 100n}.${(scaled % 100n).toString().padStart(2, '0')} ${suffix}`;
-}
-
-function personalLearningStatus(status: NonNullable<Dashboard['personalLearning']>['status']): string {
-  switch (status) {
-    case 'supported': return 'Sufficient recent known-basis evidence';
-    case 'stale': return 'Evidence is stale; it is not strong current evidence';
-    case 'insufficientSamples': return 'Too few known-basis outcomes for strong evidence';
-    case 'insufficientMetrics': return 'Turnover metrics cannot be calculated from the retained outcomes';
-    case 'insufficientCoverage': return 'Continuous completed-history coverage is not available';
-  }
-}
-
-function timestamp(value: string | null): string {
-  return value === null ? 'Not yet recorded' : new Date(value).toLocaleString();
-}
-
-function DashboardPanel({ dashboard, status }: { dashboard: Dashboard | null; status: 'loading' | 'error' | 'ready' }) {
-  if (status === 'loading') return <section className="dashboard-panel" aria-busy="true"><h2>Loading personal dashboard…</h2></section>;
-  if (status === 'error' || dashboard === null) return <section className="dashboard-panel" role="alert"><h2>Dashboard unavailable</h2><p>The local dashboard could not be read. Check the local host and try again.</p></section>;
-  if (dashboard.state === 'accountUnavailable') return <section className="dashboard-panel"><h2>Connect an account to view your dashboard</h2><p>Account access is unavailable ({dashboard.accountError ?? 'unknown error'}). Your browser never receives the key.</p></section>;
-  if (dashboard.state === 'notSynchronized') return <section className="dashboard-panel"><h2>No personal data yet</h2><p>Synchronize a valid Trading Post account to create the first local snapshot.</p></section>;
-
-  const coverage = dashboard.historyCoverage;
-  return <section className="dashboard-panel" aria-labelledby="performance-title">
-    <div className="dashboard-heading"><div><p className="eyebrow">Retained evidence</p><h2 id="performance-title">Performance and current orders</h2></div><p className="sync-time">Last sync: {timestamp(dashboard.lastSuccessfulSyncAtUtc)}</p></div>
-    {coverage === null || coverage.startUtc === null || coverage.endUtc === null ? <p className="notice">Continuous history coverage is not available. No realized performance claim is shown.</p> : <p className="notice">History coverage: {timestamp(coverage.startUtc)} to {timestamp(coverage.endUtc)}.</p>}
-    {!dashboard.isFeeRoundingExternallyVerified && <p className="notice">Fee-derived values use the current modeled rounding policy and remain provisional.</p>}
-    <div className="metric-grid">
-      {dashboard.realizedWindows.map((window) => <section key={window.days}><h3>{window.days}-day realized P&amp;L</h3><strong>{window.status === 'supported' ? copper(window.netProfit) : 'Insufficient coverage'}</strong>{window.unknownBasisQuantity > 0 && <p>{window.unknownBasisQuantity} sold without known basis, excluded.</p>}</section>)}
-      <section><h3>Open acquisition basis</h3><strong>{copper(dashboard.openAcquisitionBasis)}</strong></section>
-      <section><h3>Unrealized P&amp;L</h3><strong>{dashboard.isOpenInventoryFullyValued ? copper(dashboard.unrealizedProfit) : 'Not fully valued'}</strong></section>
-      <section><h3>Capital in buy orders</h3><strong>{copper(dashboard.currentBuyCapital)}</strong></section>
-      <section><h3>Current sell listings</h3><strong>{copper(dashboard.currentSellGrossValue)} gross</strong><p>{copper(dashboard.currentSellNetValue)} modeled net</p></section>
-    </div>
-    {dashboard.personalLearning !== null && <section className="dashboard-learning" aria-labelledby="learning-title">
-      <div><p className="eyebrow">Personal learning</p><h3 id="learning-title">Fill time and capital turnover</h3></div>
-      <p className="notice">{dashboard.personalLearning.timestampLimitation}</p>
-      <p aria-live="polite"><strong>{personalLearningStatus(dashboard.personalLearning.status)}</strong> {dashboard.personalLearning.knownBasisSampleCount ?? 0} portfolio-wide known-basis completed outcome{(dashboard.personalLearning.knownBasisSampleCount ?? 0) === 1 ? '' : 's'} retained. Each market requires {dashboard.personalLearning.minimumKnownBasisSamples} outcomes for strong evidence.</p>
-      <div className="metric-grid">
-        {dashboard.personalLearning.fillTiming.map((timing) => <section key={timing.side}><h3>{timing.side === 'buy' ? 'Buy' : 'Sell'} timing</h3><strong>{timing.averageSourceDuration ?? 'Unavailable'}</strong><p>{timing.exactSourceTimestampCount} source-timestamp duration{timing.exactSourceTimestampCount === 1 ? '' : 's'}; {timing.intervalCensoredCompletionCount} local confirmation window{timing.intervalCensoredCompletionCount === 1 ? '' : 's'} ({timing.averageConfirmationWindow ?? 'unavailable'} average).</p></section>)}
-        <section><h3>Local confirmation windows</h3><strong>{dashboard.personalLearning.intervalCensoredCompletionCount}</strong><p>Polling supplies bounds only; no window claims an exact fill time.</p></section>
-        <section><h3>Observed quantity reductions</h3><strong>{dashboard.personalLearning.observedQuantityReductionCount}</strong><p>Independent snapshot evidence; it does not claim a completed fill.</p></section>
-        <section><h3>Unknown order timing</h3><strong>{dashboard.personalLearning.unknownOrderTimingCount}</strong><p>Disappearance from polling is never counted as a fill.</p></section>
-        <section><h3>Average capital lock</h3><strong>{dashboard.personalLearning.averageHoldingDuration ?? 'Unavailable'}</strong><p>Known FIFO acquisition to completed sale.</p></section>
-        <section><h3>Realized profit/day</h3><strong>{exactRate(dashboard.personalLearning.realizedProfitPerDay, 'c/day')}</strong><p>Exact retained-evidence ratio, displayed to two truncated decimals.</p></section>
-        <section><h3>Capital turns</h3><strong>{exactRate(dashboard.personalLearning.capitalTurns, 'turns')}</strong><p>Time-weighted matched capital over the measured interval.</p></section>
-      </div>
-      <DashboardTable title="Personal market evidence" columns={['Item', 'Evidence strength', 'Known-basis outcomes', 'Average capital lock', 'Profit/day', 'Capital turns', 'Observed timing']}>
-        {dashboard.personalLearning.items.length === 0 ? <tr><td colSpan={7}>No item-level personal evidence is retained yet.</td></tr> : dashboard.personalLearning.items.map((item) => <tr key={item.itemId}><td>{item.itemName}</td><td>{personalLearningStatus(item.status)}</td><td>{item.knownBasisSampleCount ?? 0}</td><td>{item.averageHoldingDuration ?? 'Unavailable'}</td><td>{exactRate(item.realizedProfitPerDay, 'c/day')}</td><td>{exactRate(item.capitalTurns, 'turns')}</td><td>{item.exactSourceTimestampCount} source / {item.intervalCensoredCompletionCount} bounded / {item.observedQuantityReductionCount} reductions / {item.unknownOrderTimingCount} unknown</td></tr>)}
-      </DashboardTable>
-    </section>}
-    <DashboardTable title="Current orders" columns={['Side', 'Item', 'Quantity', 'Your price', 'Current market']}>
-      {dashboard.currentOrders.length === 0 ? <tr><td colSpan={5}>No current orders in the latest sync.</td></tr> : dashboard.currentOrders.map((order) => <tr key={order.orderId}><td>{order.side}</td><td>{order.itemName}</td><td>{order.quantity}</td><td>{copper(order.unitPrice)}</td><td>{order.marketComparisonStatus === 'available' ? copper(order.currentMarketUnitPrice) : order.marketComparisonStatus === 'missingSide' ? 'No comparable orders' : 'Market unavailable'}</td></tr>)}
-    </DashboardTable>
-    <DashboardTable title="Recent completed trades" columns={['Side', 'Item', 'Quantity', 'Price', 'Completed']}>
-      {dashboard.recentTrades.length === 0 ? <tr><td colSpan={5}>No completed trades are retained yet.</td></tr> : dashboard.recentTrades.map((trade) => <tr key={trade.transactionId}><td>{trade.side}</td><td>{trade.itemName}</td><td>{trade.quantity}</td><td>{copper(trade.unitPrice)}</td><td>{timestamp(trade.completedAtUtc)}</td></tr>)}
-    </DashboardTable>
-    <div className="dashboard-split"><DashboardItems title="Best realized items" items={dashboard.bestRealizedItems} /><DashboardItems title="Worst realized items" items={dashboard.worstRealizedItems} /></div>
-    {dashboard.openInventory.length > 0 && <DashboardTable title="Open inventory" columns={['Item', 'Quantity', 'Basis', 'Liquidation state', 'Unrealized P&L']}>
-      {dashboard.openInventory.map((item) => <tr key={item.itemId}><td>{item.itemName}</td><td>{item.quantity}</td><td>{copper(item.acquisitionBasis)}</td><td>{item.liquidationStatus === 'fullyValued' ? 'Fully valued' : item.liquidationStatus === 'insufficientBuyDepth' ? `Insufficient buy depth (${item.unliquidatedQuantity} remaining)` : 'Market evidence missing'}</td><td>{copper(item.unrealizedProfit)}</td></tr>)}
-    </DashboardTable>}
-  </section>;
-}
-
-function DashboardTable({ title, columns, children }: { title: string; columns: string[]; children: ReactNode }) {
-  return <section className="dashboard-table"><h3>{title}</h3><div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column} scope="col">{column}</th>)}</tr></thead><tbody>{children}</tbody></table></div></section>;
-}
-
-function DashboardItems({ title, items }: { title: string; items: Dashboard['bestRealizedItems'] }) {
-  return <section className="dashboard-items"><h3>{title}</h3>{items.length === 0 ? <p>No known-basis realized sales yet.</p> : <ol>{items.map((item) => <li key={item.itemId}><span>{item.itemName} ({item.quantity})</span><strong>{copper(item.netProfit)}</strong></li>)}</ol>}</section>;
-}
-
-void DashboardPanel;
 
 function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () => void }) {
   const [location, setLocation] = useState<LocalDataLocationState>({ kind: 'loading' });

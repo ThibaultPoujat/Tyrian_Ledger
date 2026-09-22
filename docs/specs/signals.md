@@ -44,9 +44,11 @@ renders them in French.
 
 The primary daily **Signals** surface is displayed to the user as **`Mes Signaux`**.
 
-Target displayed primary navigation:
+Target displayed primary navigation after the shared plan engine is available:
 
 - `Mes Signaux` — what manual action is worth performing now;
+- `Plans` — started/manual execution paths that still have lifecycle or
+  reconciliation work;
 - `Artisanat` — deliberate guided crafting-for-profit workspace;
 - `Réglages` — API/account, refresh/health, risk/bankroll policy, alerts,
   backup/recovery, data health and advanced diagnostics.
@@ -56,9 +58,14 @@ and raw history remain supporting engines/evidence. They are not competing
 primary destinations. Diagnostic access may remain where useful, but the normal
 user should not need to operate those engines directly.
 
-`Mes Signaux` is the default/home destination. Until the crafting workspace is
-implemented, `Artisanat` may be visible but disabled/clearly unavailable rather
-than opening a fake empty workspace.
+`Mes Signaux` is the default/home destination. `Plans` must not be exposed as a
+fake functional destination before #133 implements its typed plan state. Until
+the crafting workspace is implemented, `Artisanat` may be visible but
+disabled/clearly unavailable rather than opening a fake empty workspace.
+
+Visual/interaction direction is recorded in `docs/ux/ux.md` and
+`docs/ux/tyrian-ledger-visual-reference.md`. Those references do not override
+the semantic/domain rules in this specification.
 
 ## 4. Canonical internal vocabulary
 
@@ -164,7 +171,13 @@ Exact final copy is a UX decision; semantics remain backend-authoritative.
 
 ## 7. Signal-card information hierarchy
 
-The default card is intentionally small. It makes these scannable first:
+The normal secondary card is intentionally small. One truly corrective or
+time-sensitive action may receive dominant priority treatment, while other
+eligible actions remain compact. Distinct action families may use different
+iconography/layout emphasis for fast recognition, but explicit action semantics
+remain structured and color is never the only cue.
+
+The card makes these scannable first:
 
 - concrete action;
 - item;
@@ -188,7 +201,8 @@ The first usable Signals MVP deliberately arrives before the full plan engine. I
 reuses existing recommendation/accounting/history/personal-ranking engines and:
 
 - makes `Mes Signaux` the home page;
-- introduces displayed navigation `Mes Signaux / Artisanat / Réglages`;
+- introduced the first-MVP navigation `Mes Signaux / Artisanat / Réglages`;
+  the post-#133 target adds the functional `Plans` destination;
 - applies the attention gate to hide no-action noise;
 - uses minimal cards plus `Pourquoi ?`;
 - displays truthful operational freshness/health;

@@ -14,23 +14,20 @@ runtime described below.
 
 ## Product outcome
 
-Tyrian Ledger should answer four practical questions:
+Tyrian Ledger should support three practical outcomes:
 
-1. **How am I actually doing?**
-   Reconcile personal Trading Post history into reproducible realized profit,
-   open cost basis, current orders, unrealized value, and 7/30/90-day results.
-2. **What markets are worth my capital now?**
-   Scan current prices and order books using exact fees, depth, liquidity,
-   historical spread persistence, stability, and personal turnover evidence.
-3. **What should I do next?**
-   Produce deterministic, explainable manual actions such as `BUY`,
-   `UPDATE BID`, `STOP BIDDING`, `LEAVE SELL LISTING`, `HOLD`,
-   `SELL PARTIAL`, and `SKIP`, including prices, quantities, risk limits, and
-   reasons.
-4. **What should I learn over time?**
-   Build an owned historical market dataset, measure which strategies and
-   markets work for this player, track medium/long-term positions, and later
-   analyze crafting with real opportunity cost.
+1. **Act on the small set of worthwhile manual actions.**
+   The default `Mes Signaux` surface presents only actionable Signals, with
+   deterministic prices, quantities, modeled results, confidence, freshness,
+   and an explanation. No-action analysis remains silent.
+2. **Understand realized performance and evidence.**
+   Reconciled Trading Post history, current market data, order-book depth,
+   owned history, FIFO accounting, scoring, sizing, and personal evidence stay
+   deterministic supporting inputs rather than competing user destinations.
+3. **Operate the local assistant safely.**
+   `Réglages` groups account connection, synchronization, local backup and
+   recovery, and safe diagnostics. `Artisanat` is reserved for the later guided
+   crafting-for-profit workspace.
 
 ## Target runtime
 
@@ -154,16 +151,19 @@ M0-M11 are project history. The personal trading-assistant pivot continues the
 sequence at **M12** and is planned through **M22**. See
 `docs/milestones/INDEX.md` for the authoritative dependency order.
 
-The key product checkpoint is M19: by its end, the application should combine
+The first usable Signals checkpoint is M21/S03: the application combines
 personal state, live market evidence, owned history, and risk limits into the
-primary **What Should I Do?** screen.
+default `Mes Signaux` surface. Scanner, dashboard, inventory, personal-learning
+and investment engines remain supporting evidence, not alternative primary
+journeys or retained presentation destinations.
 
 ## Codex workflow
 
 One implementation ticket is one bounded implementation session. The agent
 works on a dedicated branch/worktree, validates the ticket, opens a pull
 request, writes a short **functional summary** of what changed for the user,
-and stops. A fresh independent review session then evaluates the PR.
+and stops. The review path, including the independent same-run review required
+for NORMAL tickets, is defined by `docs/workflow/model-effort-guide.md`.
 
 Use `.codex/skills/tyrian-pr-review/SKILL.md` for the standard review procedure.
 The owner merges only after acceptance criteria, tests, review findings, and
@@ -171,10 +171,10 @@ functional behavior are satisfactory.
 
 ## Current implementation state
 
-M12 removed the static Pages product and recorded a clean quality baseline.
-TKT-M13-01 adds the local ASP.NET Core runtime foundation without adding an
-ArenaNet key, account data, persistence, trading, or recommendation features.
-`CURRENT.md` identifies the next permitted ticket.
+M12 removed the static Pages product. M13-M21 established the loopback runtime,
+durable local evidence engines, and the first `Mes Signaux` MVP. `CURRENT.md`
+contains the derived live handoff state; issue #98 and
+`docs/milestones/INDEX.md` remain authoritative for execution order.
 
 ## Normative language
 
