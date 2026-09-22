@@ -25,7 +25,7 @@ translation would reduce clarity.
 
 ## Primary navigation
 
-Target displayed primary navigation:
+Current implemented navigation before #133:
 
 `Mes Signaux / Artisanat / Réglages`
 
@@ -42,10 +42,13 @@ primary navigation destinations. Temporary diagnostic/support routes may remain
 until the dedicated post-MVP cleanup ticket verifies that their useful
 capabilities have been absorbed elsewhere.
 
-After #133 implements the shared plan engine, a first-class `Plans` destination
-may be introduced as a deliberate post-MVP navigation transition. It is not a
-current target destination and must not be exposed before its typed execution
-model exists.
+After #133 implements the shared typed plan engine, the approved target becomes:
+
+`Mes Signaux / Plans / Artisanat / Réglages`
+
+`Plans` is a first-class destination for started/manual execution paths that
+still require lifecycle or reconciliation work. It must not be exposed as a fake
+functional destination before that typed execution model exists.
 
 ## Visual direction
 
