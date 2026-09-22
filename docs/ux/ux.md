@@ -235,12 +235,13 @@ Use understandable French degraded states and preserve the difference between:
 - upstream unavailable;
 - local error.
 
-Eligibility must respect the dependency of each action on each source. If ArenaNet
-account evidence is too stale to trust balances, inventory, positions or open
-orders, withhold only Signals that require those facts; a market/history-only
-Signal may remain eligible when its own evidence is sufficiently fresh. The UI
-must not keep an account-dependent action visible merely because another source
-is healthy.
+The current Signals MVP treats stale ArenaNet account evidence as a separate
+operational state and suppresses actions conservatively. A future typed
+action-source dependency model may refine that gate by withholding only Signals
+that require stale balances, inventory, positions or open orders while retaining
+a genuinely independent market/history Signal. It must not keep an
+account-dependent action visible merely because another source is healthy, and
+it must not be inferred only from displayed UI strings.
 
 ## Passive and Active paths
 
