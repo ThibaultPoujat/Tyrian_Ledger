@@ -102,7 +102,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             },
             ["execution_plans"] = new HashSet<string>(StringComparer.Ordinal)
             {
-                "plan_id", "account_profile_id", "state", "payload_json", "updated_at_utc",
+                "plan_id", "account_profile_id", "state", "payload_json", "updated_at_utc", "revision",
             },
         };
 
@@ -129,7 +129,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_material_entries"] = Columns(("account_profile_id", "INTEGER", true, 1), ("item_id", "INTEGER", true, 2), ("category_id", "INTEGER", true, 0), ("binding", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0)),
             ["account_crafting_recipe_unlocks"] = Columns(("account_profile_id", "INTEGER", true, 1), ("recipe_id", "INTEGER", true, 2)),
             ["account_crafting_disciplines"] = Columns(("account_profile_id", "INTEGER", true, 1), ("discipline", "TEXT", true, 2), ("rating", "INTEGER", true, 0), ("is_active", "INTEGER", true, 0)),
-            ["execution_plans"] = Columns(("plan_id", "TEXT", true, 1), ("account_profile_id", "INTEGER", true, 0), ("state", "INTEGER", true, 0), ("payload_json", "TEXT", true, 0), ("updated_at_utc", "TEXT", true, 0)),
+            ["execution_plans"] = Columns(("plan_id", "TEXT", true, 1), ("account_profile_id", "INTEGER", true, 0), ("state", "INTEGER", true, 0), ("payload_json", "TEXT", true, 0), ("updated_at_utc", "TEXT", true, 0), ("revision", "INTEGER", true, 0)),
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<SqliteIndexDefinition>> RequiredIndexes =
@@ -192,7 +192,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_material_entries"] = Checks("account_profile_id>0", "item_id>0", "category_id>0", "bindingbetween0and3", "quantity>=0"),
             ["account_crafting_recipe_unlocks"] = Checks("account_profile_id>0", "recipe_id>0"),
             ["account_crafting_disciplines"] = Checks("account_profile_id>0", "length(discipline)>0", "rating>=0", "is_activein(0,1)"),
-            ["execution_plans"] = Checks("length(plan_id)>0", "account_profile_id>0", "statebetween1and7", "length(payload_json)>0"),
+            ["execution_plans"] = Checks("length(plan_id)>0", "account_profile_id>0", "statebetween1and7", "length(payload_json)>0", "revision>=0"),
         };
 
     // Version 6 was briefly published with this stricter equivalent constraint.
@@ -492,6 +492,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 state INTEGER NOT NULL CHECK (state BETWEEN 1 AND 7),
                 payload_json TEXT NOT NULL CHECK (length(payload_json) > 0),
                 updated_at_utc TEXT NOT NULL,
+                revision INTEGER NOT NULL CHECK (revision >= 0),
                 CONSTRAINT fk_execution_plans_account FOREIGN KEY (account_profile_id)
                     REFERENCES account_profiles(id) ON DELETE RESTRICT,
                 PRIMARY KEY (plan_id)

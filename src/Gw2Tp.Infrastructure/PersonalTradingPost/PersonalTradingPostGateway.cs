@@ -96,7 +96,7 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
             }
 
             return Gw2ApiResult<AccountPortfolioSnapshot>.Success(
-                new AccountPortfolioSnapshot(account.Value, wallet.Value));
+                new AccountPortfolioSnapshot(account.Value, wallet.Value, null, DateTimeOffset.UtcNow));
         }
         catch (Gw2RequestSchedulerCapacityExceededException)
         {

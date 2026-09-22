@@ -47,7 +47,8 @@ public interface IAccountPortfolioGateway
 public sealed record AccountPortfolioSnapshot(
     AccountScope AccountScope,
     Money AvailableCash,
-    IReadOnlyDictionary<string, long>? VerifiedQuantities = null);
+    IReadOnlyDictionary<string, long>? VerifiedQuantities = null,
+    DateTimeOffset? CapturedAtUtc = null);
 
 /// <summary>
 /// Stable opaque identity used to scope local personal data. Account names and

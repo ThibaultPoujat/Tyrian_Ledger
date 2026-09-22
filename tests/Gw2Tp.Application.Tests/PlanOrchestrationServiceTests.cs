@@ -97,14 +97,16 @@ public sealed class PlanOrchestrationServiceTests
     {
         var buy = Candidate("partial", 200, 50, 2, steps: [Step("partial-step", PlanStepAction.BuyNow, 2)]);
         var reported = service.ReportStep(service.Start(buy, Now, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }), 2, new Money(100), Now);
-        var partial = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1));
+        var partial = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("buy-1", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100), Now.AddSeconds(1), Now.AddMinutes(1))], Now.AddMinutes(1));
 
-        Assert.Equal(PlanShadowEventState.Confirmed, partial.Events[0].State);
+        Assert.Equal(PlanShadowEventState.PartiallyConfirmed, partial.Events[0].State);
         Assert.Equal(1, partial.Events[0].VerifiedQuantity);
 
         var pending = service.ReportStep(service.Start(buy, Now, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }), 2, new Money(100), Now);
-        var firstMismatch = service.ReconcileWithVerifiedState(pending, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(16));
-        var secondMismatch = service.ReconcileWithVerifiedState(firstMismatch, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(17));
+        var firstMismatch = service.ReconcileWithVerifiedState(pending, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(16), [], Now.AddMinutes(16));
+        var secondMismatch = service.ReconcileWithVerifiedState(firstMismatch, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(17),
+            [new PlanVerifiedEvidence("unrelated", PlanEvidenceKind.SellListing, 42, 1, new Money(200), Now.AddMinutes(17), Now.AddMinutes(17))], Now.AddMinutes(17));
 
         Assert.Equal(PlanState.RecheckRequired, firstMismatch.State);
         Assert.Equal(PlanState.ReconciliationRequired, secondMismatch.State);
@@ -117,12 +119,44 @@ public sealed class PlanOrchestrationServiceTests
             steps: [Step("buy", PlanStepAction.BuyNow), Step("list", PlanStepAction.List)]);
         var started = service.Start(candidate, Now, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 });
         var first = service.ReportStep(started, 1, new Money(100), Now);
-        var firstConfirmed = service.ReconcileWithVerifiedState(first, new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1));
+        var firstConfirmed = service.ReconcileWithVerifiedState(first, new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("buy-1", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100), Now.AddSeconds(1), Now.AddMinutes(1))], Now.AddMinutes(1));
         var second = service.ReportStep(firstConfirmed, 1, new Money(200), Now.AddMinutes(2));
-        var secondConfirmed = service.ReconcileWithVerifiedState(second, new Money(890), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(3));
+        var secondConfirmed = service.ReconcileWithVerifiedState(second, new Money(890), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(3),
+            [new PlanVerifiedEvidence("sell-1", PlanEvidenceKind.SellListing, 42, 1, new Money(200), Now.AddMinutes(2).AddSeconds(1), Now.AddMinutes(3))], Now.AddMinutes(3));
 
         Assert.Equal(PlanShadowEventState.Confirmed, secondConfirmed.Events[1].State);
         Assert.Equal(PlanReconciliationState.Compatible, secondConfirmed.ReconciliationState);
+    }
+
+    [Fact]
+    public void Reconciliation_never_confirms_a_later_step_while_an_earlier_step_is_pending()
+    {
+        var candidate = Candidate("ordered", 100, 50, 1,
+            steps: [Step("buy", PlanStepAction.BuyNow), Step("list", PlanStepAction.List)]);
+        var first = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
+        var second = service.ReportStep(first with { Steps = first.Steps.Select((step, index) => index == 1 ? step with { State = PlanStepState.Current } : step).ToArray(), CurrentStepOrdinal = 1 }, 1, new Money(200), Now.AddMinutes(1));
+        var observed = service.ReconcileWithVerifiedState(second, new Money(800), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(2),
+            [new PlanVerifiedEvidence("listing", PlanEvidenceKind.SellListing, 42, 1, new Money(200), Now.AddMinutes(1).AddSeconds(1), Now.AddMinutes(2))], Now.AddMinutes(2));
+
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, observed.Events[0].State);
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, observed.Events[1].State);
+    }
+
+    [Fact]
+    public void Undo_pauses_when_a_confirmed_dependent_event_would_make_history_impossible()
+    {
+        var candidate = Candidate("undo-dependent", 100, 50, 1,
+            steps: [Step("buy", PlanStepAction.BuyNow), Step("list", PlanStepAction.List)]);
+        var first = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
+        var dependent = new PlanExecutionEvent("dependent", first.Id, "list", 2, Now.AddMinutes(2), 1, new Money(200), [],
+            PlanShadowEventState.Confirmed, null, [first.Events[0].Id]);
+        var withDependent = first with { Events = first.Events.Append(dependent).ToArray() };
+
+        var undone = service.UndoLastStep(withDependent, Now.AddMinutes(3));
+
+        Assert.Equal(PlanState.ReconciliationRequired, undone.State);
+        Assert.Equal(PlanReconciliationState.Contradicted, undone.ReconciliationState);
     }
 
     [Fact]

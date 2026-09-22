@@ -17,7 +17,7 @@ internal sealed class SqlitePlanRepository(
         await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT payload_json FROM execution_plans WHERE account_profile_id = $accountProfileId AND state IN (2, 3, 4, 5, 6) ORDER BY updated_at_utc, plan_id;";
+        command.CommandText = "SELECT payload_json, revision FROM execution_plans WHERE account_profile_id = $accountProfileId AND state IN (2, 3, 4, 5, 6) ORDER BY updated_at_utc, plan_id;";
         command.Parameters.AddWithValue("$accountProfileId", accountProfileId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         var plans = new List<PlanRecord>();
@@ -25,7 +25,7 @@ internal sealed class SqlitePlanRepository(
         {
             var plan = JsonSerializer.Deserialize<PlanRecord>(reader.GetString(0), SerializerOptions)
                 ?? throw new InvalidDataException("The stored plan payload is invalid.");
-            plans.Add(plan);
+            plans.Add(plan with { Revision = reader.GetInt64(1) });
         }
         return plans;
     }
@@ -72,7 +72,7 @@ internal sealed class SqlitePlanRepository(
         var candidateCash = plan.Reservations
             .Aggregate(Gw2Tp.Domain.Finance.Money.Zero, (total, value) => total + value.Cash);
         if ((effective.EffectiveCash - hardReserve - reservedCash - candidateCash).Copper < 0 ||
-            HasResourceConflict(plan, reservations, verifiedQuantities))
+            HasResourceConflict(plan, reservations, effective.Quantities))
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
             return PlanStartResult.ResourcesUnavailable;
@@ -81,14 +81,16 @@ internal sealed class SqlitePlanRepository(
         await using var insert = connection.CreateCommand();
         insert.Transaction = transaction;
         insert.CommandText = """
-            INSERT INTO execution_plans (plan_id, account_profile_id, state, payload_json, updated_at_utc)
-            VALUES ($planId, $accountProfileId, $state, $payload, $updatedAtUtc);
+            INSERT INTO execution_plans (plan_id, account_profile_id, state, payload_json, updated_at_utc, revision)
+            VALUES ($planId, $accountProfileId, $state, $payload, $updatedAtUtc, $revision);
             """;
         insert.Parameters.AddWithValue("$planId", plan.Id);
         insert.Parameters.AddWithValue("$accountProfileId", accountProfileId);
         insert.Parameters.AddWithValue("$state", (int)plan.State);
-        insert.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(plan, SerializerOptions));
+        var started = plan with { Revision = 1 };
+        insert.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(started, SerializerOptions));
         insert.Parameters.AddWithValue("$updatedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(DateTimeOffset.UtcNow, "updatedAtUtc"));
+        insert.Parameters.AddWithValue("$revision", 1L);
         await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return PlanStartResult.Started;
@@ -99,27 +101,29 @@ internal sealed class SqlitePlanRepository(
         if (accountProfileId <= 0) throw new ArgumentOutOfRangeException(nameof(accountProfileId));
         ArgumentNullException.ThrowIfNull(plan);
         if (string.IsNullOrWhiteSpace(plan.Id) || plan.StartedAtUtc.Offset != TimeSpan.Zero) throw new ArgumentException("The plan has invalid durable identity or time.", nameof(plan));
-        var payload = JsonSerializer.Serialize(plan, SerializerOptions);
+        var nextRevision = checked(plan.Revision + 1);
+        var updated = plan with { Revision = nextRevision };
+        var payload = JsonSerializer.Serialize(updated, SerializerOptions);
         await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
-            INSERT INTO execution_plans (plan_id, account_profile_id, state, payload_json, updated_at_utc)
-            VALUES ($planId, $accountProfileId, $state, $payload, $updatedAtUtc)
-            ON CONFLICT(plan_id) DO UPDATE SET state = excluded.state, payload_json = excluded.payload_json,
-                updated_at_utc = excluded.updated_at_utc
-            WHERE execution_plans.account_profile_id = excluded.account_profile_id;
+            UPDATE execution_plans
+            SET state = $state, payload_json = $payload, updated_at_utc = $updatedAtUtc, revision = $nextRevision
+            WHERE plan_id = $planId AND account_profile_id = $accountProfileId AND revision = $expectedRevision;
             """;
         command.Parameters.AddWithValue("$planId", plan.Id);
         command.Parameters.AddWithValue("$accountProfileId", accountProfileId);
-        command.Parameters.AddWithValue("$state", (int)plan.State);
+        command.Parameters.AddWithValue("$state", (int)updated.State);
         command.Parameters.AddWithValue("$payload", payload);
         command.Parameters.AddWithValue("$updatedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(DateTimeOffset.UtcNow, "updatedAtUtc"));
+        command.Parameters.AddWithValue("$expectedRevision", plan.Revision);
+        command.Parameters.AddWithValue("$nextRevision", nextRevision);
         if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
         {
-            throw new InvalidOperationException("The execution plan belongs to a different account scope.");
+            throw new PlanConcurrencyException();
         }
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -137,7 +141,7 @@ internal sealed class SqlitePlanRepository(
             {
                 if (checked(used + requirement.Quantity) > capacity) return true;
             }
-            else if (used > 0)
+            else if (requirement.Kind == PlanResourceKind.Inventory || used > 0)
             {
                 return true;
             }

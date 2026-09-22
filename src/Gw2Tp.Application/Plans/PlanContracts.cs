@@ -5,17 +5,19 @@ namespace Gw2Tp.Application.Plans;
 public enum PlanAttention { Passive = 1, Active }
 public enum PlanState { Proposed = 1, InProgress, Waiting, RecheckRequired, ReconciliationRequired, ExecutionComplete, Invalid }
 public enum PlanStepAction { BuyNow = 1, PlaceBuyOrder, CancelBuyOrder, List, Relist, SellNow, Craft }
-public enum PlanStepState { Pending = 1, Current, LocallyReported, AwaitingConfirmation, Confirmed, RecheckRequired, Invalidated }
-public enum PlanShadowEventState { PendingConfirmation = 1, Confirmed, Reversed, Invalidated }
+public enum PlanStepState { Pending = 1, Current, LocallyReported, AwaitingConfirmation, Confirmed, PartiallyConfirmed, RecheckRequired, Invalidated }
+public enum PlanShadowEventState { PendingConfirmation = 1, Confirmed, PartiallyConfirmed, Reversed, Invalidated }
 public enum PlanReconciliationState { None = 1, AwaitingEvidence, Compatible, Contradicted }
 public enum PlanResourceKind { Cash = 1, Inventory, OpenOrderExposure, Position, ExpectedIncoming }
+public enum PlanEvidenceKind { BuyOrder = 1, SellListing, CompletedBuy, CompletedSell }
 
 /// <summary>Versioned, typed resource demand. Money is always exact copper.</summary>
 public sealed record PlanResourceRequirement(PlanResourceKind Kind, string ResourceId, long Quantity, Money Cash);
 
 public sealed record PlanStep(
     string Id, PlanStepAction Action, int ItemId, string ItemName, int Quantity,
-    Money? UnitPrice, IReadOnlyList<string> DependsOnStepIds, PlanStepState State);
+    Money? UnitPrice, IReadOnlyList<string> DependsOnStepIds, PlanStepState State,
+    string? ExternalIdentity = null);
 
 public sealed record PlanCandidate(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,
@@ -37,7 +39,7 @@ public sealed record PlanExecutionEvent(
     int Quantity, Money? UnitPrice, IReadOnlyList<PlanResourceRequirement> Effects,
     PlanShadowEventState State, string? ReversesEventId, IReadOnlyList<string> DependsOnEventIds,
     DateTimeOffset? ExpectedObservableUntilUtc = null, int? VerifiedQuantity = null,
-    Money? VerifiedUnitPrice = null);
+    Money? VerifiedUnitPrice = null, PlanEvidenceKind? ExpectedEvidenceKind = null);
 
 public sealed record PlanRecord(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,
@@ -48,7 +50,19 @@ public sealed record PlanRecord(
     Money? BaselineVerifiedCash = null,
     IReadOnlyDictionary<string, long>? BaselineVerifiedQuantities = null,
     int ConsecutiveContradictionCount = 0,
-    DateTimeOffset? LastObservedAtUtc = null);
+    DateTimeOffset? LastObservedAtUtc = null,
+    DateTimeOffset? LastEvidenceCapturedAtUtc = null,
+    string? LastEvidenceFingerprint = null,
+    long Revision = 0);
+
+public sealed record PlanVerifiedEvidence(
+    string Identity, PlanEvidenceKind Kind, int ItemId, int Quantity, Money UnitPrice,
+    DateTimeOffset CreatedAtUtc, DateTimeOffset ObservedAtUtc);
+
+public sealed class PlanConcurrencyException : InvalidOperationException
+{
+    public PlanConcurrencyException() : base("The plan changed while it was being updated.") { }
+}
 
 public enum PlanStartResult { Started = 1, AlreadyStarted, ResourcesUnavailable }
 
@@ -73,7 +87,9 @@ public interface IPlanOrchestrationService
     PlanRecord ReportStep(PlanRecord plan, int quantity, Money? unitPrice, DateTimeOffset occurredAtUtc);
     PlanRecord UndoLastStep(PlanRecord plan, DateTimeOffset occurredAtUtc);
     PlanRecord ReconcileWithVerifiedState(PlanRecord plan, Money verifiedCash,
-        IReadOnlyDictionary<string, long> verifiedQuantities, DateTimeOffset observedAtUtc);
+        IReadOnlyDictionary<string, long> verifiedQuantities, DateTimeOffset observedAtUtc,
+        IReadOnlyCollection<PlanVerifiedEvidence>? evidence = null,
+        DateTimeOffset? evidenceCapturedAtUtc = null);
     PlanRecord ApplyRefresh(PlanRecord plan, PlanCandidate? currentCandidate, bool evidenceReady);
     PlanRecord Reconcile(PlanRecord plan, IReadOnlyCollection<string> confirmedEventIds, bool materiallyContradicted);
 }
