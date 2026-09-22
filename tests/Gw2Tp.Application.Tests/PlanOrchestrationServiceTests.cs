@@ -111,6 +111,21 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public void Reconciliation_carries_confirmed_effects_into_the_next_pending_step()
+    {
+        var candidate = Candidate("chain", 100, 50, 1,
+            steps: [Step("buy", PlanStepAction.BuyNow), Step("list", PlanStepAction.List)]);
+        var started = service.Start(candidate, Now, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 });
+        var first = service.ReportStep(started, 1, new Money(100), Now);
+        var firstConfirmed = service.ReconcileWithVerifiedState(first, new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1));
+        var second = service.ReportStep(firstConfirmed, 1, new Money(200), Now.AddMinutes(2));
+        var secondConfirmed = service.ReconcileWithVerifiedState(second, new Money(890), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(3));
+
+        Assert.Equal(PlanShadowEventState.Confirmed, secondConfirmed.Events[1].State);
+        Assert.Equal(PlanReconciliationState.Compatible, secondConfirmed.ReconciliationState);
+    }
+
+    [Fact]
     public void Passive_empty_plan_enters_waiting_and_material_refresh_does_not_rewrite_the_step()
     {
         var waiting = new PlanCandidate("waiting", 1, "waiting", PlanAttention.Passive, [], [], Money.Zero, Money.Zero, 0, 0, 0, 1, true, []);

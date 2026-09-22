@@ -146,9 +146,10 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var contradictions = 0;
         foreach (var execution in plan.Events.OrderBy(value => value.Sequence))
         {
-            if (execution.State != PlanShadowEventState.PendingConfirmation) continue;
             var priorQuantities = new Dictionary<string, long>(expectedQuantities, StringComparer.Ordinal);
-            foreach (var effect in execution.Effects) Apply(expectedQuantities, ref expectedCash, effect);
+            if (execution.State is not (PlanShadowEventState.PendingConfirmation or PlanShadowEventState.Confirmed)) continue;
+            foreach (var effect in EffectiveEffects(execution)) Apply(expectedQuantities, ref expectedCash, effect);
+            if (execution.State != PlanShadowEventState.PendingConfirmation) continue;
             if (MatchesExactly(expectedCash, expectedQuantities, verifiedCash, verifiedQuantities, execution.Effects) || MatchesCompatibleQuantity(execution, priorQuantities, verifiedQuantities))
             {
                 var index = Array.FindIndex(events, value => value.Id == execution.Id);
@@ -268,6 +269,23 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     {
         if (effect.Kind == PlanResourceKind.Cash) cash += effect.Cash;
         else if (effect.Quantity != 0) quantities[Key(effect)] = checked(quantities.GetValueOrDefault(Key(effect)) + effect.Quantity);
+    }
+
+    private static IEnumerable<PlanResourceRequirement> EffectiveEffects(PlanExecutionEvent execution)
+    {
+        if (execution.State != PlanShadowEventState.Confirmed || execution.VerifiedQuantity is not { } verifiedQuantity || execution.Quantity <= 0)
+        {
+            return execution.Effects;
+        }
+        return execution.Effects.Select(effect =>
+        {
+            if (effect.Quantity == 0) return effect;
+            var sign = effect.Quantity < 0 ? -1 : 1;
+            var quantity = checked(sign * verifiedQuantity);
+            var cash = effect.Cash;
+            if (cash.Copper != 0) cash = new Money(checked(cash.Copper * verifiedQuantity / execution.Quantity));
+            return effect with { Quantity = quantity, Cash = cash };
+        });
     }
 
     private static string Key(PlanResourceRequirement requirement) => $"{(int)requirement.Kind}:{requirement.ResourceId}";
