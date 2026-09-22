@@ -40,10 +40,14 @@ public interface IAccountPortfolioGateway
 }
 
 /// <summary>
-/// Normalized portfolio identity and Coin balance. The account identifier is an
+/// Normalized portfolio identity, Coin balance and optional verified resource
+/// quantities. Resource keys are local typed keys; the account identifier is an
 /// opaque local scoping value and must never be returned to the browser.
 /// </summary>
-public sealed record AccountPortfolioSnapshot(AccountScope AccountScope, Money AvailableCash);
+public sealed record AccountPortfolioSnapshot(
+    AccountScope AccountScope,
+    Money AvailableCash,
+    IReadOnlyDictionary<string, long>? VerifiedQuantities = null);
 
 /// <summary>
 /// Stable opaque identity used to scope local personal data. Account names and

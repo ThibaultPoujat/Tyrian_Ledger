@@ -35,14 +35,22 @@ public sealed record PlanHysteresisPolicy(int Version, int MaterialImprovementBa
 public sealed record PlanExecutionEvent(
     string Id, string PlanId, string StepId, long Sequence, DateTimeOffset OccurredAtUtc,
     int Quantity, Money? UnitPrice, IReadOnlyList<PlanResourceRequirement> Effects,
-    PlanShadowEventState State, string? ReversesEventId, IReadOnlyList<string> DependsOnEventIds);
+    PlanShadowEventState State, string? ReversesEventId, IReadOnlyList<string> DependsOnEventIds,
+    DateTimeOffset? ExpectedObservableUntilUtc = null, int? VerifiedQuantity = null,
+    Money? VerifiedUnitPrice = null);
 
 public sealed record PlanRecord(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,
     PlanState State, PlanReconciliationState ReconciliationState, DateTimeOffset StartedAtUtc,
     IReadOnlyList<PlanResourceRequirement> Reservations, Money ModeledProfit,
     int CurrentStepOrdinal, IReadOnlyList<PlanStep> Steps, IReadOnlyList<PlanExecutionEvent> Events,
-    long BaselineUtility, PlanHysteresisPolicy HysteresisPolicy);
+    long BaselineUtility, PlanHysteresisPolicy HysteresisPolicy,
+    Money? BaselineVerifiedCash = null,
+    IReadOnlyDictionary<string, long>? BaselineVerifiedQuantities = null,
+    int ConsecutiveContradictionCount = 0,
+    DateTimeOffset? LastObservedAtUtc = null);
+
+public enum PlanStartResult { Started = 1, AlreadyStarted, ResourcesUnavailable }
 
 public sealed record PlanEffectiveResources(Money VerifiedCash, Money EffectiveCash,
     IReadOnlyDictionary<string, long> Quantities);
@@ -50,14 +58,22 @@ public sealed record PlanEffectiveResources(Money VerifiedCash, Money EffectiveC
 public interface IPlanRepository
 {
     Task<IReadOnlyList<PlanRecord>> GetStartedAsync(long accountProfileId, CancellationToken cancellationToken = default);
+    Task<PlanStartResult> TryStartAsync(long accountProfileId, PlanRecord plan, Money verifiedCash,
+        Money hardReserve, IReadOnlyDictionary<string, long> verifiedQuantities,
+        CancellationToken cancellationToken = default);
     Task SaveAsync(long accountProfileId, PlanRecord plan, CancellationToken cancellationToken = default);
 }
 
 public interface IPlanOrchestrationService
 {
-    Task<PlanBundleSelection> SelectAsync(IReadOnlyList<PlanCandidate> candidates, Money availableCash, Money hardReserve, CancellationToken cancellationToken = default);
-    PlanRecord Start(PlanCandidate candidate, DateTimeOffset startedAtUtc);
+    Task<PlanBundleSelection> SelectAsync(IReadOnlyList<PlanCandidate> candidates, Money availableCash, Money hardReserve,
+        CancellationToken cancellationToken = default, IReadOnlyDictionary<string, long>? availableQuantities = null);
+    PlanRecord Start(PlanCandidate candidate, DateTimeOffset startedAtUtc, Money? verifiedCash = null,
+        IReadOnlyDictionary<string, long>? verifiedQuantities = null);
     PlanRecord ReportStep(PlanRecord plan, int quantity, Money? unitPrice, DateTimeOffset occurredAtUtc);
     PlanRecord UndoLastStep(PlanRecord plan, DateTimeOffset occurredAtUtc);
+    PlanRecord ReconcileWithVerifiedState(PlanRecord plan, Money verifiedCash,
+        IReadOnlyDictionary<string, long> verifiedQuantities, DateTimeOffset observedAtUtc);
+    PlanRecord ApplyRefresh(PlanRecord plan, PlanCandidate? currentCandidate, bool evidenceReady);
     PlanRecord Reconcile(PlanRecord plan, IReadOnlyCollection<string> confirmedEventIds, bool materiallyContradicted);
 }

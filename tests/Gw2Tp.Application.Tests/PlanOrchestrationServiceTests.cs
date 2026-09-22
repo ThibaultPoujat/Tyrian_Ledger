@@ -38,6 +38,29 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public async Task Selection_uses_verified_inventory_capacity_instead_of_treating_every_shared_stack_as_a_conflict()
+    {
+        var first = Candidate("inventory-two", 0, 50, 2, resource: new PlanResourceRequirement(PlanResourceKind.Inventory, "42", 2, Money.Zero));
+        var second = Candidate("inventory-three", 0, 40, 3, resource: new PlanResourceRequirement(PlanResourceKind.Inventory, "42", 3, Money.Zero));
+
+        var result = await service.SelectAsync([first, second], new Money(1_000), Money.Zero,
+            availableQuantities: new Dictionary<string, long> { ["2:42"] = 10 });
+
+        Assert.Equal(["inventory-two", "inventory-three"], result.Plans.Select(plan => plan.Id));
+    }
+
+    [Fact]
+    public async Task Selection_preselects_by_utility_so_a_late_high_value_candidate_is_not_lost()
+    {
+        var candidates = Enumerable.Range(0, 20).Select(index => Candidate($"low-{index:00}", 1, 1, 1)).ToList();
+        candidates.Add(Candidate("late-high", 1, 1_000, 1));
+
+        var result = await service.SelectAsync(candidates, new Money(100), Money.Zero);
+
+        Assert.Contains(result.Plans, plan => plan.Id == "late-high");
+    }
+
+    [Fact]
     public void Report_and_undo_restore_the_current_step_without_erasing_event_history()
     {
         var plan = service.Start(Candidate("undo", 100, 50, 10), Now);
@@ -50,9 +73,53 @@ public sealed class PlanOrchestrationServiceTests
         Assert.Single(undone.Events);
         Assert.Equal(PlanShadowEventState.Reversed, undone.Events[0].State);
         Assert.Equal(900, projected.EffectiveCash.Copper);
+        Assert.Empty(PlanOrchestrationService.OutstandingReservations(reported));
         Assert.Equal(1_000, restored.EffectiveCash.Copper);
         Assert.Equal(0, undone.CurrentStepOrdinal);
         Assert.Equal(PlanStepState.Current, undone.Steps[0].State);
+        Assert.Equal(100, PlanOrchestrationService.OutstandingReservations(undone).Single(value => value.Kind == PlanResourceKind.Cash).Cash.Copper);
+    }
+
+    [Fact]
+    public void Listing_shadow_effect_uses_the_canonical_non_refundable_listing_fee()
+    {
+        var candidate = Candidate("listing", 0, 50, 2,
+            resource: new PlanResourceRequirement(PlanResourceKind.Inventory, "42", 2, Money.Zero),
+            steps: [Step("listing-step", PlanStepAction.List, 2)]);
+
+        var reported = service.ReportStep(service.Start(candidate, Now), 2, new Money(100), Now);
+
+        Assert.Equal(-10, reported.Events[0].Effects.Single(effect => effect.Kind == PlanResourceKind.Cash).Cash.Copper);
+    }
+
+    [Fact]
+    public void Partial_verified_quantity_confirms_a_shadow_event_and_expired_repeated_mismatch_pauses_it()
+    {
+        var buy = Candidate("partial", 200, 50, 2, steps: [Step("partial-step", PlanStepAction.BuyNow, 2)]);
+        var reported = service.ReportStep(service.Start(buy, Now, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }), 2, new Money(100), Now);
+        var partial = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(1));
+
+        Assert.Equal(PlanShadowEventState.Confirmed, partial.Events[0].State);
+        Assert.Equal(1, partial.Events[0].VerifiedQuantity);
+
+        var pending = service.ReportStep(service.Start(buy, Now, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }), 2, new Money(100), Now);
+        var firstMismatch = service.ReconcileWithVerifiedState(pending, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(16));
+        var secondMismatch = service.ReconcileWithVerifiedState(firstMismatch, new Money(1_000), new Dictionary<string, long> { ["2:42"] = 0 }, Now.AddMinutes(17));
+
+        Assert.Equal(PlanState.RecheckRequired, firstMismatch.State);
+        Assert.Equal(PlanState.ReconciliationRequired, secondMismatch.State);
+    }
+
+    [Fact]
+    public void Passive_empty_plan_enters_waiting_and_material_refresh_does_not_rewrite_the_step()
+    {
+        var waiting = new PlanCandidate("waiting", 1, "waiting", PlanAttention.Passive, [], [], Money.Zero, Money.Zero, 0, 0, 0, 1, true, []);
+        Assert.Equal(PlanState.Waiting, service.Start(waiting, Now).State);
+
+        var plan = service.Start(Candidate("freeze", 100, 50, 1), Now);
+        var changed = service.ApplyRefresh(plan, Candidate("freeze", 200, 50, 2), evidenceReady: true);
+        Assert.Equal(PlanState.RecheckRequired, changed.State);
+        Assert.Equal(1, changed.Steps[0].Quantity);
     }
 
     [Fact]

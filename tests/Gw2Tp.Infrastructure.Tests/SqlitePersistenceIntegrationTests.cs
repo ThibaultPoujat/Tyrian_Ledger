@@ -4,6 +4,8 @@ using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
+using Gw2Tp.Application.Plans;
+using Gw2Tp.Domain.Finance;
 using Gw2Tp.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -51,6 +53,28 @@ public sealed class SqlitePersistenceIntegrationTests
                 "watchlist_entries",
             ],
             await database.GetTableNamesAsync());
+    }
+
+    [Fact]
+    public async Task Plan_start_is_atomic_and_repeated_identity_is_idempotent()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("plan-account", FirstObservedAtUtc);
+        var plan = new PlanRecord(
+            "plan:atomic", 1, "opportunity:atomic", PlanAttention.Active, PlanState.InProgress,
+            PlanReconciliationState.None, FirstObservedAtUtc,
+            [new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(100))],
+            new Money(10), 0,
+            [new PlanStep("plan:atomic:1", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Current)],
+            [], 10, PlanHysteresisPolicy.Default);
+
+        var outcomes = await Task.WhenAll(
+            database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), new Money(100), new Dictionary<string, long>()),
+            database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), new Money(100), new Dictionary<string, long>()));
+
+        Assert.Equal(1, outcomes.Count(outcome => outcome == PlanStartResult.Started));
+        Assert.Equal(1, outcomes.Count(outcome => outcome == PlanStartResult.AlreadyStarted));
+        Assert.Single(await database.Plans.GetStartedAsync(account.Id));
     }
 
     [Fact]
@@ -1397,6 +1421,7 @@ public sealed class SqlitePersistenceIntegrationTests
             Watchlist = new SqliteWatchlistRepository(factory, Gate);
             Investments = new SqliteInvestmentPositionRepository(factory, Gate);
             Crafting = new SqliteAccountCraftingSnapshotRepository(factory, Gate);
+            Plans = new SqlitePlanRepository(factory, Gate);
             History = new SqliteMarketHistoryRepository(factory, Gate);
             Recovery = new SqliteLocalDataRecoveryService(factory, Gate, OperationGate);
         }
@@ -1422,6 +1447,8 @@ public sealed class SqlitePersistenceIntegrationTests
         public SqliteInvestmentPositionRepository Investments { get; }
 
         public SqliteAccountCraftingSnapshotRepository Crafting { get; }
+
+        public SqlitePlanRepository Plans { get; }
 
         public SqliteMarketHistoryRepository History { get; }
 
