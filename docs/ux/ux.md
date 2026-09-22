@@ -232,6 +232,13 @@ Use understandable French degraded states and preserve the difference between:
 - upstream unavailable;
 - local error.
 
+Eligibility must respect the dependency of each action on each source. If ArenaNet
+account evidence is too stale to trust balances, inventory, positions or open
+orders, withhold only Signals that require those facts; a market/history-only
+Signal may remain eligible when its own evidence is sufficiently fresh. The UI
+must not keep an account-dependent action visible merely because another source
+is healthy.
+
 ## Passive and Active paths
 
 Passive/Active paths arrive after the initial MVP and represent attention/time,
