@@ -4,6 +4,8 @@ using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
+using Gw2Tp.Application.Plans;
+using Gw2Tp.Domain.Finance;
 using Gw2Tp.Infrastructure.Persistence;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -25,7 +27,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Migrator.MigrateAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], await database.GetMigrationVersionsAsync());
         Assert.Equal(
             [
                 "account_crafting_bank_entries",
@@ -38,6 +40,7 @@ public sealed class SqlitePersistenceIntegrationTests
                 "current_order_sync_batches",
                 "current_tp_order_observations",
                 "current_tp_orders",
+                "execution_plans",
                 "investment_position_exits",
                 "investment_position_targets",
                 "investment_positions",
@@ -53,6 +56,110 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Plan_start_is_atomic_and_repeated_identity_is_idempotent()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("plan-account", FirstObservedAtUtc);
+        var plan = new PlanRecord(
+            "plan:atomic", 1, "opportunity:atomic", PlanAttention.Active, PlanState.InProgress,
+            PlanReconciliationState.None, FirstObservedAtUtc,
+            [new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(100))],
+            new Money(10), 0,
+            [new PlanStep("plan:atomic:1", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Current)],
+            [], 10, PlanHysteresisPolicy.Default);
+
+        var outcomes = await Task.WhenAll(
+            database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), new Money(100), new Dictionary<string, long>()),
+            database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), new Money(100), new Dictionary<string, long>()));
+
+        Assert.Equal(1, outcomes.Count(outcome => outcome == PlanStartResult.Started));
+        Assert.Equal(1, outcomes.Count(outcome => outcome == PlanStartResult.AlreadyStarted));
+        Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+    }
+
+    [Fact]
+    public async Task Cancelling_an_unperformed_plan_allows_a_new_execution_for_the_same_opportunity_without_erasing_history()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("plan-restart-account", FirstObservedAtUtc);
+        var candidate = new PlanCandidate("proposal:restart", 1, "opportunity:restart", PlanAttention.Active,
+            [new PlanStep("proposal:restart:1", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending)],
+            [new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(100))], Money.Zero, new Money(100), 0, 0, 1, 1, true, []);
+        var orchestration = new PlanOrchestrationService();
+        var first = orchestration.Start(candidate, FirstObservedAtUtc);
+
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, first, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+        var cancelled = orchestration.CancelUnperformedStep(first with { Revision = 1 });
+        await database.Plans.SaveAsync(account.Id, cancelled);
+
+        var restarted = orchestration.Start(candidate, SecondObservedAtUtc);
+        Assert.NotEqual(first.Id, restarted.Id);
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, restarted, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+
+        var active = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(restarted.Id, active.Id);
+        Assert.Equal("opportunity:restart", active.SourceOpportunityId);
+        Assert.Equal(2, await database.GetTableCountAsync("execution_plans"));
+    }
+
+    [Fact]
+    public async Task Late_fill_on_a_terminal_cancelled_execution_does_not_block_or_duplicate_a_restarted_opportunity()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("plan-late-fill-restart", FirstObservedAtUtc);
+        var candidate = new PlanCandidate("proposal:late-fill-restart", 1, "opportunity:late-fill-restart", PlanAttention.Active,
+            [
+                new PlanStep("proposal:late-fill-restart:cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending, "order-7"),
+                new PlanStep("proposal:late-fill-restart:replace", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending),
+            ],
+            [new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(100))], Money.Zero, new Money(100), 0, 0, 1, 1, true, []);
+        var orchestration = new PlanOrchestrationService();
+        var first = orchestration.Start(candidate, FirstObservedAtUtc);
+
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, first, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+        var reported = orchestration.ReportStep(first with { Revision = 1 }, 1, new Money(100), FirstObservedAtUtc.AddSeconds(10));
+        await database.Plans.SaveAsync(account.Id, reported);
+        var cancelled = orchestration.CancelUnperformedStep(reported with { Revision = 2 });
+        await database.Plans.SaveAsync(account.Id, cancelled);
+        var firstAbsence = orchestration.ReconcileWithVerifiedState(cancelled with { Revision = 3 }, new Money(1_000), new Dictionary<string, long>(), FirstObservedAtUtc.AddMinutes(1),
+            [], FirstObservedAtUtc.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        await database.Plans.SaveAsync(account.Id, firstAbsence);
+        var terminal = orchestration.ReconcileWithVerifiedState(firstAbsence with { Revision = 4 }, new Money(1_000), new Dictionary<string, long>(), FirstObservedAtUtc.AddMinutes(16),
+            [], FirstObservedAtUtc.AddMinutes(16), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        await database.Plans.SaveAsync(account.Id, terminal);
+
+        var restarted = orchestration.Start(candidate, SecondObservedAtUtc);
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, restarted, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+
+        var reopened = orchestration.ReconcileWithVerifiedState(terminal with { Revision = 5 }, new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, FirstObservedAtUtc.AddMinutes(17),
+            [new PlanVerifiedEvidence("CompletedBuy:7", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100), FirstObservedAtUtc.AddSeconds(5), FirstObservedAtUtc.AddMinutes(17), "order-7")],
+            FirstObservedAtUtc.AddMinutes(17), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        await database.Plans.SaveAsync(account.Id, reopened);
+
+        Assert.True(reopened.IsReconciliationOnly);
+        var active = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(restarted.Id, active.Id);
+        Assert.Equal(PlanStartResult.AlreadyStarted, await database.Plans.TryStartAsync(account.Id, orchestration.Start(candidate, FirstObservedAtUtc.AddMinutes(18)), new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+    }
+
+    [Fact]
+    public async Task Recently_terminal_cancelled_execution_remains_available_only_for_bounded_reconciliation()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("plan-reconciliation-retention", FirstObservedAtUtc);
+        var retainedAt = DateTimeOffset.UtcNow;
+        var retained = TerminalCancelledPlan("plan:retained", "opportunity:retained", retainedAt, retainedAt + PlanOrchestrationService.CancellationReconciliationRetentionWindow);
+        var expired = TerminalCancelledPlan("plan:expired", "opportunity:expired", retainedAt, retainedAt - TimeSpan.FromSeconds(1));
+
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, retained, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, expired, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+
+        Assert.Empty(await database.Plans.GetStartedAsync(account.Id));
+        var reconciliationCandidates = await database.Plans.GetReconciliationCandidatesAsync(account.Id);
+        Assert.Equal("plan:retained", Assert.Single(reconciliationCandidates).Id);
+    }
+
+    [Fact]
     public async Task Version_two_database_upgrades_to_version_three_without_losing_completed_history()
     {
         await using var database = await TestDatabase.CreateAsync(migrate: false);
@@ -63,7 +170,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await database.Migrator.MigrateAsync();
 
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], await database.GetMigrationVersionsAsync());
         var stored = Assert.Single(await database.PersonalTradingPost.GetCompletedTransactionsAsync(account));
         Assert.Equal(transaction, stored.Transaction);
         Assert.Contains("last_sync_outcome", await database.GetAccountProfileColumnNamesAsync());
@@ -1215,7 +1322,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await using var backup = File.OpenRead(olderBackupPath);
         Assert.Equal(LocalDataRestoreOutcome.Restored, (await database.Recovery.RestoreAsync(backup)).Outcome);
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], await database.GetMigrationVersionsAsync());
     }
 
     [Fact]
@@ -1266,7 +1373,7 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(1, await database.GetTableCountAsync("market_order_book_snapshots"));
         Assert.Equal(1, await database.GetTableCountAsync("market_order_book_levels"));
         Assert.Equal([84], (await database.Watchlist.GetAllAsync()).Select(entry => entry.ItemId));
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], await database.GetMigrationVersionsAsync());
         Assert.True(File.Exists(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)));
         Assert.False(File.Exists(staleIncomingPath));
         Assert.False(File.Exists(staleDatabasePath));
@@ -1283,7 +1390,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Recovery.CleanupStaleRestoreArtifactsAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], await database.GetMigrationVersionsAsync());
     }
 
     private static CompletedPersonalTradingPostTransaction CompletedTransaction(
@@ -1306,6 +1413,18 @@ public sealed class SqlitePersistenceIntegrationTests
         int itemId,
         int unitPrice,
         int quantity) => new(id, side, itemId, unitPrice, quantity, FirstObservedAtUtc);
+
+    private static PlanRecord TerminalCancelledPlan(string planId, string opportunityId, DateTimeOffset capturedAtUtc, DateTimeOffset retentionExpiresAtUtc)
+    {
+        var step = new PlanStep($"{planId}:cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Confirmed, "order-7");
+        var execution = new PlanExecutionEvent($"{planId}:event", planId, step.Id, 1, capturedAtUtc, 1, new Money(100), [],
+            PlanShadowEventState.Confirmed, null, [], Action: PlanStepAction.CancelBuyOrder);
+        return new PlanRecord(planId, 1, opportunityId, PlanAttention.Active, PlanState.Invalid, PlanReconciliationState.Compatible,
+            capturedAtUtc, [], Money.Zero, -1, [step], [execution], 0, PlanHysteresisPolicy.Default,
+            LastEvidenceCapturedAtUtc: capturedAtUtc, IsCancelled: true, CancellationReconciliationExpiresAtUtc: retentionExpiresAtUtc);
+    }
+
+    private static IReadOnlySet<PlanEvidenceKind> Complete(params PlanEvidenceKind[] kinds) => new HashSet<PlanEvidenceKind>(kinds);
 
     private static string FindRepositoryRoot()
     {
@@ -1396,6 +1515,7 @@ public sealed class SqlitePersistenceIntegrationTests
             Watchlist = new SqliteWatchlistRepository(factory, Gate);
             Investments = new SqliteInvestmentPositionRepository(factory, Gate);
             Crafting = new SqliteAccountCraftingSnapshotRepository(factory, Gate);
+            Plans = new SqlitePlanRepository(factory, Gate);
             History = new SqliteMarketHistoryRepository(factory, Gate);
             Recovery = new SqliteLocalDataRecoveryService(factory, Gate, OperationGate);
         }
@@ -1421,6 +1541,8 @@ public sealed class SqlitePersistenceIntegrationTests
         public SqliteInvestmentPositionRepository Investments { get; }
 
         public SqliteAccountCraftingSnapshotRepository Crafting { get; }
+
+        public SqlitePlanRepository Plans { get; }
 
         public SqliteMarketHistoryRepository History { get; }
 

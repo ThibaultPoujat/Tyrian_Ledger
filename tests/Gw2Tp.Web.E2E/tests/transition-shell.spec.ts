@@ -17,8 +17,9 @@ test('loads Mes Signaux by default and keeps account/recovery controls under Ré
   await expect(page).toHaveTitle('Tyrian Ledger | Assistant personnel de profit');
   await expect(page.getByRole('heading', { name: 'Mes Signaux', level: 1 })).toBeVisible();
   const navigation = page.getByRole('navigation', { name: 'Navigation principale' });
-  await expect(navigation.getByRole('button')).toHaveCount(3);
+  await expect(navigation.getByRole('button')).toHaveCount(4);
   await expect(navigation.getByRole('button', { name: 'Mes Signaux' })).toHaveAttribute('aria-current', 'page');
+  await expect(navigation.getByRole('button', { name: 'Plans' })).toBeEnabled();
   await expect(navigation.getByRole('button', { name: /Artisanat/i })).toBeDisabled();
   await expect(navigation.getByRole('button', { name: 'Réglages' })).toBeEnabled();
   await expect(navigation.getByRole('button', { name: /tableau de bord|scanner|inventaire|apprentissages personnels|investissements/i })).toHaveCount(0);
@@ -44,6 +45,27 @@ test('exports local diagnostics from Réglages through the protected read', asyn
   await page.getByRole('button', { name: 'Exporter le diagnostic' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe('tyrian-ledger-diagnostic.txt');
+});
+
+test('opens the functional French Plans destination from typed local state', async ({ page }) => {
+  await page.route('**/api/plans', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      state: 'ready',
+      proposals: [{
+        id: 'candidate-1', attention: 'Active', modeledProfit: { copper: '1200' }, committedCapital: { copper: '5000' }, interactionSeconds: 600,
+        steps: [{ id: 'step-1', action: 'BuyNow', itemName: 'Objet vérifié', quantity: 2, unitPrice: { copper: '2500' }, state: 'Pending' }],
+      }],
+      plans: [],
+    }),
+  }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Plans' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Plans', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Plans compatibles disponibles', level: 3 })).toBeVisible();
+  await expect(page.getByText('ACHETER MAINTENANT')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Démarrer' })).toBeVisible();
 });
 
 test('presents the execution-first Signal flow at 1920x1080 using only mocked local evidence', async ({ page }) => {

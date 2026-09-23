@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
 import RecommendationPanel from './RecommendationPanel';
+import PlanPanel from './PlanPanel';
 import MoneyDisplay from './MoneyDisplay';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
@@ -129,7 +130,7 @@ export default function App() {
   const [dashboardStatus, setDashboardStatus] = useState<'loading' | 'error' | 'ready'>('loading');
   const [syncStatus, setSyncStatus] = useState<string>('idle');
   const [localDataRefreshGeneration, setLocalDataRefreshGeneration] = useState(0);
-  const [activeView, setActiveView] = useState<'signals' | 'settings'>('signals');
+  const [activeView, setActiveView] = useState<'signals' | 'plans' | 'settings'>('signals');
   const dashboardRequestGeneration = useRef(0);
 
   useEffect(() => {
@@ -256,6 +257,7 @@ export default function App() {
         </div>
         <nav aria-label="Navigation principale" className="primary-navigation">
           <button
+            aria-label="Mes Signaux"
             aria-current={activeView === 'signals' ? 'page' : undefined}
             className={activeView === 'signals' ? 'nav-item nav-item--active' : 'nav-item'}
             onClick={() => setActiveView('signals')}
@@ -264,11 +266,22 @@ export default function App() {
             <span aria-hidden="true">◆</span>
             <span>Mes Signaux</span>
           </button>
-          <button className="nav-item" disabled type="button">
+          <button
+            aria-label="Plans"
+            aria-current={activeView === 'plans' ? 'page' : undefined}
+            className={activeView === 'plans' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => setActiveView('plans')}
+            type="button"
+          >
             <span aria-hidden="true">◇</span>
+            <span>Plans</span>
+          </button>
+          <button aria-label="Artisanat — bientôt" className="nav-item" disabled type="button">
+            <span aria-hidden="true">⌁</span>
             <span>Artisanat <small>Bientôt</small></span>
           </button>
           <button
+            aria-label="Réglages"
             aria-current={activeView === 'settings' ? 'page' : undefined}
             className={activeView === 'settings' ? 'nav-item nav-item--active' : 'nav-item'}
             onClick={() => setActiveView('settings')}
@@ -298,6 +311,11 @@ export default function App() {
               <PerformanceSummary dashboard={dashboard} status={dashboardStatus} />
             </header>
             <RecommendationPanel refreshGeneration={localDataRefreshGeneration} />
+          </>
+        ) : activeView === 'plans' ? (
+          <>
+            <header className="signals-header"><div><p className="eyebrow">Exécution guidée</p><h1>Plans</h1><p className="page-introduction">Une action utile à la fois, avec une réconciliation explicite.</p></div></header>
+            <PlanPanel />
           </>
         ) : (
           <section aria-labelledby="settings-title" className="settings-view">

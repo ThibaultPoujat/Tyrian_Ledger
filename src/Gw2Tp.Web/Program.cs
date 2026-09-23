@@ -10,6 +10,7 @@ using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Application.Investments;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.Plans;
 using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Infrastructure.Persistence;
@@ -68,6 +69,9 @@ public static class Program
         builder.Services.AddSingleton<IOpportunityScoreService, OpportunityScoreService>();
         builder.Services.AddSingleton<IPrimaryRecommendationPolicy, PrimaryRecommendationPolicy>();
         builder.Services.AddSingleton<IPrimaryRecommendationService, PrimaryRecommendationService>();
+        builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
+        builder.Services.AddSingleton<PlanEndpointService>();
+        builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
         builder.Services.AddSingleton<IInvestmentPortfolioService, InvestmentPortfolioService>();
         builder.Services.AddSingleton<IAccountCraftingSnapshotService, AccountCraftingSnapshotService>();
         builder.Services.AddSingleton<IMarketHistoryCollectionDelay>(SystemMarketHistoryCollectionDelay.Instance);
@@ -258,6 +262,7 @@ public static class Program
         app.MapInvestmentEndpoints();
         app.MapMarketHistoryCollectorEndpoints();
         app.MapHistoricalMarketAnalyticsEndpoint();
+        app.MapPlanEndpoints();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 
         MapFrontend(app, builder.Configuration);
