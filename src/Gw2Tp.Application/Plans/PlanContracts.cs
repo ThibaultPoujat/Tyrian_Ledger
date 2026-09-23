@@ -57,7 +57,9 @@ public sealed record PlanRecord(
     DateTimeOffset? LastEvidenceCapturedAtUtc = null,
     string? LastEvidenceFingerprint = null,
     long Revision = 0,
-    bool IsCancelled = false);
+    bool IsCancelled = false,
+    DateTimeOffset? CancellationReconciliationExpiresAtUtc = null,
+    bool IsReconciliationOnly = false);
 
 public sealed record PlanVerifiedEvidence(
     string Identity, PlanEvidenceKind Kind, int ItemId, int Quantity, Money UnitPrice,

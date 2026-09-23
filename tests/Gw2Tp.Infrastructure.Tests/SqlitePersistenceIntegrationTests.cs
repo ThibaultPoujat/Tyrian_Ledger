@@ -103,13 +103,53 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Late_fill_on_a_terminal_cancelled_execution_does_not_block_or_duplicate_a_restarted_opportunity()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("plan-late-fill-restart", FirstObservedAtUtc);
+        var candidate = new PlanCandidate("proposal:late-fill-restart", 1, "opportunity:late-fill-restart", PlanAttention.Active,
+            [
+                new PlanStep("proposal:late-fill-restart:cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending, "order-7"),
+                new PlanStep("proposal:late-fill-restart:replace", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending),
+            ],
+            [new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(100))], Money.Zero, new Money(100), 0, 0, 1, 1, true, []);
+        var orchestration = new PlanOrchestrationService();
+        var first = orchestration.Start(candidate, FirstObservedAtUtc);
+
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, first, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+        var reported = orchestration.ReportStep(first with { Revision = 1 }, 1, new Money(100), FirstObservedAtUtc.AddSeconds(10));
+        await database.Plans.SaveAsync(account.Id, reported);
+        var cancelled = orchestration.CancelUnperformedStep(reported with { Revision = 2 });
+        await database.Plans.SaveAsync(account.Id, cancelled);
+        var firstAbsence = orchestration.ReconcileWithVerifiedState(cancelled with { Revision = 3 }, new Money(1_000), new Dictionary<string, long>(), FirstObservedAtUtc.AddMinutes(1),
+            [], FirstObservedAtUtc.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        await database.Plans.SaveAsync(account.Id, firstAbsence);
+        var terminal = orchestration.ReconcileWithVerifiedState(firstAbsence with { Revision = 4 }, new Money(1_000), new Dictionary<string, long>(), FirstObservedAtUtc.AddMinutes(16),
+            [], FirstObservedAtUtc.AddMinutes(16), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        await database.Plans.SaveAsync(account.Id, terminal);
+
+        var restarted = orchestration.Start(candidate, SecondObservedAtUtc);
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, restarted, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+
+        var reopened = orchestration.ReconcileWithVerifiedState(terminal with { Revision = 5 }, new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, FirstObservedAtUtc.AddMinutes(17),
+            [new PlanVerifiedEvidence("CompletedBuy:7", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100), FirstObservedAtUtc.AddSeconds(5), FirstObservedAtUtc.AddMinutes(17), "order-7")],
+            FirstObservedAtUtc.AddMinutes(17), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        await database.Plans.SaveAsync(account.Id, reopened);
+
+        Assert.True(reopened.IsReconciliationOnly);
+        var active = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(restarted.Id, active.Id);
+        Assert.Equal(PlanStartResult.AlreadyStarted, await database.Plans.TryStartAsync(account.Id, orchestration.Start(candidate, FirstObservedAtUtc.AddMinutes(18)), new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+    }
+
+    [Fact]
     public async Task Recently_terminal_cancelled_execution_remains_available_only_for_bounded_reconciliation()
     {
         await using var database = await TestDatabase.CreateAsync();
         var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("plan-reconciliation-retention", FirstObservedAtUtc);
         var retainedAt = DateTimeOffset.UtcNow;
-        var retained = TerminalCancelledPlan("plan:retained", "opportunity:retained", retainedAt);
-        var expired = TerminalCancelledPlan("plan:expired", "opportunity:expired", retainedAt - PlanOrchestrationService.CancellationReconciliationRetentionWindow - TimeSpan.FromSeconds(1));
+        var retained = TerminalCancelledPlan("plan:retained", "opportunity:retained", retainedAt, retainedAt + PlanOrchestrationService.CancellationReconciliationRetentionWindow);
+        var expired = TerminalCancelledPlan("plan:expired", "opportunity:expired", retainedAt, retainedAt - TimeSpan.FromSeconds(1));
 
         Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, retained, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
         Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, expired, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
@@ -1374,15 +1414,17 @@ public sealed class SqlitePersistenceIntegrationTests
         int unitPrice,
         int quantity) => new(id, side, itemId, unitPrice, quantity, FirstObservedAtUtc);
 
-    private static PlanRecord TerminalCancelledPlan(string planId, string opportunityId, DateTimeOffset capturedAtUtc)
+    private static PlanRecord TerminalCancelledPlan(string planId, string opportunityId, DateTimeOffset capturedAtUtc, DateTimeOffset retentionExpiresAtUtc)
     {
         var step = new PlanStep($"{planId}:cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Confirmed, "order-7");
         var execution = new PlanExecutionEvent($"{planId}:event", planId, step.Id, 1, capturedAtUtc, 1, new Money(100), [],
             PlanShadowEventState.Confirmed, null, [], Action: PlanStepAction.CancelBuyOrder);
         return new PlanRecord(planId, 1, opportunityId, PlanAttention.Active, PlanState.Invalid, PlanReconciliationState.Compatible,
             capturedAtUtc, [], Money.Zero, -1, [step], [execution], 0, PlanHysteresisPolicy.Default,
-            LastEvidenceCapturedAtUtc: capturedAtUtc, IsCancelled: true);
+            LastEvidenceCapturedAtUtc: capturedAtUtc, IsCancelled: true, CancellationReconciliationExpiresAtUtc: retentionExpiresAtUtc);
     }
+
+    private static IReadOnlySet<PlanEvidenceKind> Complete(params PlanEvidenceKind[] kinds) => new HashSet<PlanEvidenceKind>(kinds);
 
     private static string FindRepositoryRoot()
     {

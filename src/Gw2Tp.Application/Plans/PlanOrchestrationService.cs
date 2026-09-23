@@ -14,8 +14,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     {
         ArgumentNullException.ThrowIfNull(plan);
         var now = RequireUtc(nowUtc);
-        return plan.State == PlanState.Invalid && plan.IsCancelled && plan.LastEvidenceCapturedAtUtc is { } captured &&
-            now >= captured && now - captured <= CancellationReconciliationRetentionWindow &&
+        return plan.State == PlanState.Invalid && plan.IsCancelled && plan.CancellationReconciliationExpiresAtUtc is { } expiresAt &&
+            now <= RequireUtc(expiresAt) &&
             plan.Events.Any(value => value.Action == PlanStepAction.CancelBuyOrder && value.State == PlanShadowEventState.Confirmed);
     }
 
@@ -276,7 +276,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var contradictionCount = !stillAwaitingEvidence ? 0 : contradictions == 0 ? plan.ConsecutiveContradictionCount : plan.ConsecutiveContradictionCount + 1;
         var state = plan.State;
         var reconciliation = stillAwaitingEvidence ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible;
-        if (cancellationEvidenceConflict) { state = PlanState.ReconciliationRequired; reconciliation = PlanReconciliationState.Contradicted; }
+        var isReconciliationOnly = plan.IsReconciliationOnly || (plan.IsCancelled && cancellationEvidenceConflict);
+        if (cancellationEvidenceConflict || plan.IsReconciliationOnly) { state = PlanState.ReconciliationRequired; reconciliation = PlanReconciliationState.Contradicted; }
         else if (plan.IsCancelled && !stillAwaitingEvidence) { state = PlanState.Invalid; reconciliation = PlanReconciliationState.Compatible; }
         else if (contradictionCount >= 2) { state = PlanState.ReconciliationRequired; reconciliation = PlanReconciliationState.Contradicted; }
         else if (contradictions > 0) state = PlanState.RecheckRequired;
@@ -291,9 +292,16 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             };
         }).ToArray();
         if (!stillAwaitingEvidence && state == PlanState.RecheckRequired) state = CompatibleLifecycleState(plan, updatedSteps);
+        var cancellationRetentionExpiresAt = plan.CancellationReconciliationExpiresAtUtc;
+        if (state == PlanState.Invalid && plan.IsCancelled && cancellationRetentionExpiresAt is null &&
+            events.Any(value => value.Action == PlanStepAction.CancelBuyOrder && value.State == PlanShadowEventState.Confirmed))
+        {
+            cancellationRetentionExpiresAt = RequireUtc(evidenceCapturedAtUtc ?? observed) + CancellationReconciliationRetentionWindow;
+        }
         return plan with { Events = events, Steps = updatedSteps, State = state, ReconciliationState = reconciliation, BaselineVerifiedCash = baselineCash,
             BaselineVerifiedQuantities = new Dictionary<string, long>(baselineQuantities, StringComparer.Ordinal), ConsecutiveContradictionCount = contradictionCount, LastObservedAtUtc = observed,
-            LastEvidenceCapturedAtUtc = freshCapture ? evidenceCapturedAtUtc : plan.LastEvidenceCapturedAtUtc, LastEvidenceFingerprint = freshCapture ? fingerprint : plan.LastEvidenceFingerprint };
+            LastEvidenceCapturedAtUtc = freshCapture ? evidenceCapturedAtUtc : plan.LastEvidenceCapturedAtUtc, LastEvidenceFingerprint = freshCapture ? fingerprint : plan.LastEvidenceFingerprint,
+            CancellationReconciliationExpiresAtUtc = cancellationRetentionExpiresAt, IsReconciliationOnly = isReconciliationOnly };
     }
 
     /// <summary>Freezes the current step and marks it for recheck only on material evidence loss.</summary>
@@ -505,9 +513,11 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     private static PlanState CompatibleLifecycleState(PlanRecord plan, IReadOnlyList<PlanStep>? updatedSteps)
     {
         var steps = updatedSteps ?? plan.Steps;
-        return plan.CurrentStepOrdinal >= 0 && plan.CurrentStepOrdinal < steps.Count && steps[plan.CurrentStepOrdinal].State == PlanStepState.Current
-            ? PlanState.InProgress
-            : plan.Attention == PlanAttention.Passive ? PlanState.Waiting : PlanState.ExecutionComplete;
+        if (plan.CurrentStepOrdinal >= 0 && plan.CurrentStepOrdinal < steps.Count && steps[plan.CurrentStepOrdinal].State == PlanStepState.Current)
+            return PlanState.InProgress;
+        return steps.LastOrDefault(step => step.State == PlanStepState.Confirmed)?.Action == PlanStepAction.PlaceBuyOrder
+            ? PlanState.Waiting
+            : PlanState.ExecutionComplete;
     }
 
     private static void Apply(Dictionary<string, long> quantities, ref Money cash, PlanResourceRequirement effect)
