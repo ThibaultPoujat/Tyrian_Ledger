@@ -77,6 +77,7 @@ public sealed record PlanEffectiveResources(Money VerifiedCash, Money EffectiveC
 public interface IPlanRepository
 {
     Task<IReadOnlyList<PlanRecord>> GetStartedAsync(long accountProfileId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<PlanRecord>> GetReconciliationCandidatesAsync(long accountProfileId, CancellationToken cancellationToken = default);
     Task<PlanStartResult> TryStartAsync(long accountProfileId, PlanRecord plan, Money verifiedCash,
         Money hardReserve, IReadOnlyDictionary<string, long> verifiedQuantities,
         CancellationToken cancellationToken = default);

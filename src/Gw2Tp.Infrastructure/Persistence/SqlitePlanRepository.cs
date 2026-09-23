@@ -12,12 +12,22 @@ internal sealed class SqlitePlanRepository(
     private readonly ISqliteDatabaseGate gate = databaseGate ?? new SqliteDatabaseGate();
 
     public async Task<IReadOnlyList<PlanRecord>> GetStartedAsync(long accountProfileId, CancellationToken cancellationToken = default)
+        => await ReadPlansAsync(accountProfileId, "state IN (2, 3, 4, 5, 6)", cancellationToken).ConfigureAwait(false);
+
+    public async Task<IReadOnlyList<PlanRecord>> GetReconciliationCandidatesAsync(long accountProfileId, CancellationToken cancellationToken = default)
+    {
+        var plans = await ReadPlansAsync(accountProfileId, "state IN (2, 3, 4, 5, 6, 7)", cancellationToken).ConfigureAwait(false);
+        var now = DateTimeOffset.UtcNow;
+        return plans.Where(plan => plan.State != PlanState.Invalid || PlanOrchestrationService.IsCancellationReconciliationRetained(plan, now)).ToArray();
+    }
+
+    private async Task<IReadOnlyList<PlanRecord>> ReadPlansAsync(long accountProfileId, string statePredicate, CancellationToken cancellationToken)
     {
         if (accountProfileId <= 0) throw new ArgumentOutOfRangeException(nameof(accountProfileId));
         await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT payload_json, revision FROM execution_plans WHERE account_profile_id = $accountProfileId AND state IN (2, 3, 4, 5, 6) ORDER BY updated_at_utc, plan_id;";
+        command.CommandText = $"SELECT payload_json, revision FROM execution_plans WHERE account_profile_id = $accountProfileId AND {statePredicate} ORDER BY updated_at_utc, plan_id;";
         command.Parameters.AddWithValue("$accountProfileId", accountProfileId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         var plans = new List<PlanRecord>();

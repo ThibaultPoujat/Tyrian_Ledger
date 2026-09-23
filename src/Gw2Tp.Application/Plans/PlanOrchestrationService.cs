@@ -8,6 +8,16 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
 {
     public const int MaximumCandidates = 18;
     public static readonly TimeSpan DefaultObservationWindow = TimeSpan.FromMinutes(15);
+    public static readonly TimeSpan CancellationReconciliationRetentionWindow = TimeSpan.FromMinutes(30);
+
+    public static bool IsCancellationReconciliationRetained(PlanRecord plan, DateTimeOffset nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        var now = RequireUtc(nowUtc);
+        return plan.State == PlanState.Invalid && plan.IsCancelled && plan.LastEvidenceCapturedAtUtc is { } captured &&
+            now >= captured && now - captured <= CancellationReconciliationRetentionWindow &&
+            plan.Events.Any(value => value.Action == PlanStepAction.CancelBuyOrder && value.State == PlanShadowEventState.Confirmed);
+    }
 
     public static PlanEffectiveResources ProjectEffectiveResources(
         Money verifiedCash,
@@ -280,6 +290,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                 _ => step,
             };
         }).ToArray();
+        if (!stillAwaitingEvidence && state == PlanState.RecheckRequired) state = CompatibleLifecycleState(plan, updatedSteps);
         return plan with { Events = events, Steps = updatedSteps, State = state, ReconciliationState = reconciliation, BaselineVerifiedCash = baselineCash,
             BaselineVerifiedQuantities = new Dictionary<string, long>(baselineQuantities, StringComparer.Ordinal), ConsecutiveContradictionCount = contradictionCount, LastObservedAtUtc = observed,
             LastEvidenceCapturedAtUtc = freshCapture ? evidenceCapturedAtUtc : plan.LastEvidenceCapturedAtUtc, LastEvidenceFingerprint = freshCapture ? fingerprint : plan.LastEvidenceFingerprint };
@@ -489,6 +500,14 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         return !string.IsNullOrWhiteSpace(step?.ExternalIdentity) && evidence.Any(value => value.Kind == PlanEvidenceKind.BuyOrder && value.ItemId == step.ItemId &&
             value.ObservedAtUtc >= execution.OccurredAtUtc &&
             string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal));
+    }
+
+    private static PlanState CompatibleLifecycleState(PlanRecord plan, IReadOnlyList<PlanStep>? updatedSteps)
+    {
+        var steps = updatedSteps ?? plan.Steps;
+        return plan.CurrentStepOrdinal >= 0 && plan.CurrentStepOrdinal < steps.Count && steps[plan.CurrentStepOrdinal].State == PlanStepState.Current
+            ? PlanState.InProgress
+            : plan.Attention == PlanAttention.Passive ? PlanState.Waiting : PlanState.ExecutionComplete;
     }
 
     private static void Apply(Dictionary<string, long> quantities, ref Money cash, PlanResourceRequirement effect)

@@ -40,8 +40,9 @@ internal sealed class PlanEndpointService(
         var context = await BuildContextAsync(cancellationToken).ConfigureAwait(false);
         if (context is null) return new { state = "unavailable", proposals = Array.Empty<object>(), plans = Array.Empty<object>() };
         var plans = await ReconcilePlansAsync(context, cancellationToken).ConfigureAwait(false);
+        var visiblePlans = plans.Where(plan => plan.State != PlanState.Invalid).ToArray();
         if (context.Recommendations?.State != PrimaryRecommendationState.Ready || context.Recommendations.Portfolio is null)
-            return new { state = "ready", degraded = true, proposals = Array.Empty<object>(), excludedCandidateIds = Array.Empty<string>(), intentionallyFreeCash = Money.Zero, plans = plans.Select(ToResponse) };
+            return new { state = "ready", degraded = true, proposals = Array.Empty<object>(), excludedCandidateIds = Array.Empty<string>(), intentionallyFreeCash = Money.Zero, plans = visiblePlans.Select(ToResponse) };
 
         var effective = PlanOrchestrationService.ProjectEffectiveResources(context.Snapshot.AvailableCash, context.VerifiedQuantities, plans.SelectMany(plan => plan.Events).ToArray());
         var reservations = plans.SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray();
@@ -59,7 +60,7 @@ internal sealed class PlanEndpointService(
             ? new PlanBundleSelection([], Money.Zero, 0, candidates.Select(candidate => candidate.Id).OrderBy(id => id, StringComparer.Ordinal).ToArray(), new Money(Math.Max(0, availableCash.Copper)))
             : await orchestration.SelectAsync(candidates, availableCash, context.Recommendations.Portfolio.CashReserve, cancellationToken, availableQuantities).ConfigureAwait(false);
         return new { state = "ready", degraded = false, proposals = selection.Plans.Select(ToResponse), excludedCandidateIds = selection.ExcludedCandidateIds,
-            intentionallyFreeCash = selection.IntentionallyFreeCash, plans = plans.Select(ToResponse) };
+            intentionallyFreeCash = selection.IntentionallyFreeCash, plans = visiblePlans.Select(ToResponse) };
     }
 
     public async Task<IResult> StartAsync(string planId, CancellationToken cancellationToken)
@@ -164,7 +165,7 @@ internal sealed class PlanEndpointService(
 
     private async Task<IReadOnlyList<PlanRecord>> ReconcilePlansAsync(Context context, CancellationToken cancellationToken)
     {
-        var plans = await repository.GetStartedAsync(context.Profile.Id, cancellationToken).ConfigureAwait(false);
+        var plans = await repository.GetReconciliationCandidatesAsync(context.Profile.Id, cancellationToken).ConfigureAwait(false);
         var updated = new List<PlanRecord>(plans.Count);
         foreach (var plan in plans)
         {
@@ -181,7 +182,7 @@ internal sealed class PlanEndpointService(
             }
             catch (PlanConcurrencyException)
             {
-                var latest = await FindAsync(context.Profile.Id, plan.Id, cancellationToken).ConfigureAwait(false);
+                var latest = await FindReconciliationCandidateAsync(context.Profile.Id, plan.Id, cancellationToken).ConfigureAwait(false);
                 if (latest is not null) updated.Add(latest);
             }
         }
@@ -196,6 +197,9 @@ internal sealed class PlanEndpointService(
 
     private async Task<PlanRecord?> FindByCandidateAsync(long profileId, string candidateId, CancellationToken cancellationToken) =>
         (await repository.GetStartedAsync(profileId, cancellationToken).ConfigureAwait(false)).SingleOrDefault(plan => plan.SourceOpportunityId == candidateId);
+
+    private async Task<PlanRecord?> FindReconciliationCandidateAsync(long profileId, string planId, CancellationToken cancellationToken) =>
+        (await repository.GetReconciliationCandidatesAsync(profileId, cancellationToken).ConfigureAwait(false)).SingleOrDefault(plan => plan.Id == planId);
 
     private static bool IsActionable(PrimaryRecommendationRecord record) => record.Action is PrimaryRecommendationAction.Buy or PrimaryRecommendationAction.BuySmall or PrimaryRecommendationAction.UpdateBid or PrimaryRecommendationAction.CancelBid or PrimaryRecommendationAction.List or PrimaryRecommendationAction.Reduce or PrimaryRecommendationAction.SellPartial or PrimaryRecommendationAction.Sell;
 

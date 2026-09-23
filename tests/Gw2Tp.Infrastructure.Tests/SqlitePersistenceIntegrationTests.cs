@@ -103,6 +103,23 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Recently_terminal_cancelled_execution_remains_available_only_for_bounded_reconciliation()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("plan-reconciliation-retention", FirstObservedAtUtc);
+        var retainedAt = DateTimeOffset.UtcNow;
+        var retained = TerminalCancelledPlan("plan:retained", "opportunity:retained", retainedAt);
+        var expired = TerminalCancelledPlan("plan:expired", "opportunity:expired", retainedAt - PlanOrchestrationService.CancellationReconciliationRetentionWindow - TimeSpan.FromSeconds(1));
+
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, retained, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, expired, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+
+        Assert.Empty(await database.Plans.GetStartedAsync(account.Id));
+        var reconciliationCandidates = await database.Plans.GetReconciliationCandidatesAsync(account.Id);
+        Assert.Equal("plan:retained", Assert.Single(reconciliationCandidates).Id);
+    }
+
+    [Fact]
     public async Task Version_two_database_upgrades_to_version_three_without_losing_completed_history()
     {
         await using var database = await TestDatabase.CreateAsync(migrate: false);
@@ -1356,6 +1373,16 @@ public sealed class SqlitePersistenceIntegrationTests
         int itemId,
         int unitPrice,
         int quantity) => new(id, side, itemId, unitPrice, quantity, FirstObservedAtUtc);
+
+    private static PlanRecord TerminalCancelledPlan(string planId, string opportunityId, DateTimeOffset capturedAtUtc)
+    {
+        var step = new PlanStep($"{planId}:cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Confirmed, "order-7");
+        var execution = new PlanExecutionEvent($"{planId}:event", planId, step.Id, 1, capturedAtUtc, 1, new Money(100), [],
+            PlanShadowEventState.Confirmed, null, [], Action: PlanStepAction.CancelBuyOrder);
+        return new PlanRecord(planId, 1, opportunityId, PlanAttention.Active, PlanState.Invalid, PlanReconciliationState.Compatible,
+            capturedAtUtc, [], Money.Zero, -1, [step], [execution], 0, PlanHysteresisPolicy.Default,
+            LastEvidenceCapturedAtUtc: capturedAtUtc, IsCancelled: true);
+    }
 
     private static string FindRepositoryRoot()
     {
