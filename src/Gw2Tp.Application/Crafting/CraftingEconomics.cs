@@ -1,6 +1,6 @@
 using Gw2Tp.Analytics.Finance;
+using Gw2Tp.Analytics.OrderBooks;
 using Gw2Tp.Application.Finance;
-using Gw2Tp.Application.MarketData;
 using Gw2Tp.Domain.Finance;
 
 namespace Gw2Tp.Application.Crafting;
@@ -24,6 +24,13 @@ public enum CraftingInputStrategy
     Indeterminate = 4,
 }
 
+public enum CraftingAcquisitionStrategy
+{
+    InstantBuy = 1,
+    BuyOrder = 2,
+    CraftedIntermediate = 3,
+}
+
 public enum CraftingEconomicsState
 {
     Available = 1,
@@ -43,19 +50,86 @@ public enum CraftingEconomicsUncertainty
     OutputPriceUnavailable = 5,
     ArithmeticOverflow = 6,
     BreakEvenPriceOutOfRange = 7,
+    InsufficientMarketDepth = 8,
 }
 
 public sealed record CraftingOwnedMaterial(int Quantity, CraftingOwnedMaterialState State);
 
 /// <summary>
-/// Current public aggregate prices for one item. The typed market contract is
-/// retained so the caller cannot bypass the application's market-data boundary.
+/// Fully quantified execution evidence for an owned liquidation or a direct
+/// acquisition. A top-of-book unit price without enough quantity is not valid
+/// evidence for a multi-unit economic calculation.
 /// </summary>
+public sealed record CraftingExecutionEvidence(
+    int RequestedQuantity,
+    int FilledQuantity,
+    Money TotalValue,
+    OrderBookExecutionScenario? SourceScenario = null)
+{
+    public bool IsFullyFilled => RequestedQuantity > 0 && FilledQuantity == RequestedQuantity;
+
+    public static CraftingExecutionEvidence FromOrderBookExecution(OrderBookExecutionScenario scenario)
+    {
+        ArgumentNullException.ThrowIfNull(scenario);
+        return new(
+            scenario.RequestedQuantity,
+            scenario.FilledQuantity,
+            scenario.TotalValue,
+            scenario);
+    }
+
+    public static CraftingExecutionEvidence ForBoundedBuyOrder(int quantity, Money unitPrice)
+    {
+        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
+        if (unitPrice.Copper <= 0) throw new ArgumentOutOfRangeException(nameof(unitPrice));
+        return new(quantity, quantity, new Money(checked(unitPrice.Copper * quantity)));
+    }
+}
+
+/// <summary>
+/// One direct acquisition alternative. Market alternatives must carry complete
+/// execution evidence; a crafted intermediate carries the already-computed
+/// economic cost supplied by the bounded recipe planner.
+/// </summary>
+public sealed record CraftingAcquisitionAlternative(
+    CraftingAcquisitionStrategy Strategy,
+    int Quantity,
+    Money? TotalCost,
+    CraftingExecutionEvidence? ExecutionEvidence)
+{
+    public static CraftingAcquisitionAlternative FromExecution(
+        CraftingAcquisitionStrategy strategy,
+        CraftingExecutionEvidence evidence)
+    {
+        if (strategy == CraftingAcquisitionStrategy.CraftedIntermediate)
+        {
+            throw new ArgumentException("A crafted intermediate must use FromCraftedIntermediate.", nameof(strategy));
+        }
+
+        ArgumentNullException.ThrowIfNull(evidence);
+        return new(strategy, evidence.RequestedQuantity, null, evidence);
+    }
+
+    public static CraftingAcquisitionAlternative FromCraftedIntermediate(int quantity, Money totalCost)
+    {
+        if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
+        if (totalCost.Copper < 0) throw new ArgumentOutOfRangeException(nameof(totalCost));
+        return new(CraftingAcquisitionStrategy.CraftedIntermediate, quantity, totalCost, null);
+    }
+}
+
+public sealed record CraftingAcquisitionSelection(
+    CraftingAcquisitionStrategy Strategy,
+    int Quantity,
+    Money TotalCost,
+    CraftingExecutionEvidence? ExecutionEvidence);
+
 public sealed record CraftingIngredientEconomicsInput(
     int ItemId,
     int RequiredQuantity,
     IReadOnlyList<CraftingOwnedMaterial> OwnedMaterials,
-    MarketPrice? MarketPrice);
+    CraftingExecutionEvidence? OwnedLiquidationEvidence,
+    IReadOnlyList<CraftingAcquisitionAlternative> AcquisitionAlternatives);
 
 public sealed record CraftingEconomicsInput(
     int OutputItemId,
@@ -76,7 +150,9 @@ public sealed record CraftingIngredientEconomics(
     int PurchasedQuantity,
     CraftingInputStrategy Strategy,
     Money? OwnedOpportunityCost,
+    CraftingExecutionEvidence? OwnedLiquidationEvidence,
     Money? PurchasedAcquisitionCost,
+    CraftingAcquisitionSelection? Acquisition,
     Money? EconomicInputCost,
     IReadOnlyList<CraftingEconomicsUncertainty> Uncertainties);
 
@@ -119,10 +195,11 @@ public interface ICraftingEconomicsCalculator
 
 /// <summary>
 /// Calculates owned-material opportunity cost and completed-sale economics.
-/// An owned tradable stack is valued at the net proceeds of immediately selling
-/// that whole allocation to the current best buy order; bought remainder uses
-/// the current lowest sell price. Both output and opportunity-sale fees use the
-/// single canonical fee policy.
+/// An owned tradable stack is valued at the non-negative proceeds of a complete
+/// supplied liquidation scenario. Missing input quantity is selected from the
+/// cheapest complete instant-buy, buy-order, or crafted-intermediate
+/// alternative. Both output and opportunity-sale fees use the single canonical
+/// fee policy.
 /// </summary>
 public sealed class CraftingEconomicsCalculator : ICraftingEconomicsCalculator
 {
@@ -224,15 +301,24 @@ public sealed class CraftingEconomicsCalculator : ICraftingEconomicsCalculator
         var uncertainties = new HashSet<CraftingEconomicsUncertainty>();
 
         Money? ownedOpportunityCost = null;
+        CraftingExecutionEvidence? ownedLiquidationEvidence = null;
         if (tradableQuantity > 0)
         {
-            if (!TryGetBuyPrice(ingredient.MarketPrice, ingredient.ItemId, out var buyPrice))
+            if (!IsCompleteEvidence(ingredient.OwnedLiquidationEvidence, tradableQuantity, OrderBookExecutionKind.Liquidation))
             {
-                uncertainties.Add(CraftingEconomicsUncertainty.OpportunityPriceUnavailable);
+                AddEvidenceUncertainty(
+                    ingredient.OwnedLiquidationEvidence,
+                    CraftingEconomicsUncertainty.OpportunityPriceUnavailable,
+                    uncertainties);
             }
             else
             {
-                ownedOpportunityCost = profitCalculator.Calculate(Money.Zero, Multiply(buyPrice, tradableQuantity)).NetSaleProceeds;
+                var evidence = ingredient.OwnedLiquidationEvidence!;
+                ownedLiquidationEvidence = evidence;
+                var liquidation = profitCalculator.Calculate(Money.Zero, evidence.TotalValue);
+                ownedOpportunityCost = liquidation.NetSaleProceeds.Copper > 0
+                    ? liquidation.NetSaleProceeds
+                    : Money.Zero;
             }
         }
         else
@@ -244,15 +330,13 @@ public sealed class CraftingEconomicsCalculator : ICraftingEconomicsCalculator
         if (unknownQuantity > 0) uncertainties.Add(CraftingEconomicsUncertainty.UnknownOwnedInput);
 
         Money? purchasedAcquisitionCost = null;
+        CraftingAcquisitionSelection? acquisition = null;
         if (purchasedQuantity > 0)
         {
-            if (!TryGetSellPrice(ingredient.MarketPrice, ingredient.ItemId, out var sellPrice))
+            acquisition = SelectAcquisition(ingredient.AcquisitionAlternatives, purchasedQuantity, uncertainties);
+            if (acquisition is not null)
             {
-                uncertainties.Add(CraftingEconomicsUncertainty.AcquisitionPriceUnavailable);
-            }
-            else
-            {
-                purchasedAcquisitionCost = Multiply(sellPrice, purchasedQuantity);
+                purchasedAcquisitionCost = acquisition.TotalCost;
             }
         }
         else
@@ -272,7 +356,9 @@ public sealed class CraftingEconomicsCalculator : ICraftingEconomicsCalculator
             purchasedQuantity,
             Strategy(tradableQuantity, boundQuantity, unknownQuantity, purchasedQuantity),
             ownedOpportunityCost,
+            ownedLiquidationEvidence,
             purchasedAcquisitionCost,
+            acquisition,
             economicInputCost,
             uncertainties.OrderBy(uncertainty => uncertainty).ToArray());
     }
@@ -322,28 +408,94 @@ public sealed class CraftingEconomicsCalculator : ICraftingEconomicsCalculator
         tradable > 0 ? CraftingInputStrategy.Owned :
         CraftingInputStrategy.Purchased;
 
-    private static bool TryGetBuyPrice(MarketPrice? marketPrice, int itemId, out Money price)
+    private static CraftingAcquisitionSelection? SelectAcquisition(
+        IReadOnlyList<CraftingAcquisitionAlternative> alternatives,
+        int requiredQuantity,
+        ISet<CraftingEconomicsUncertainty> uncertainties)
     {
-        if (marketPrice is { ItemId: var marketItemId, Buys: { Quantity: > 0, UnitPriceInCopper: > 0 } buys } && marketItemId == itemId)
+        var candidates = new List<CraftingAcquisitionSelection>();
+        var hadInsufficientDepth = false;
+        foreach (var alternative in alternatives.Where(alternative => alternative.Quantity == requiredQuantity))
         {
-            price = new Money(buys.UnitPriceInCopper);
-            return true;
+            if (alternative.Strategy is CraftingAcquisitionStrategy.InstantBuy or CraftingAcquisitionStrategy.BuyOrder)
+            {
+                var evidence = alternative.ExecutionEvidence;
+                if (evidence is null ||
+                    evidence.RequestedQuantity != requiredQuantity ||
+                    evidence.SourceScenario is { Kind: not OrderBookExecutionKind.Acquisition })
+                {
+                    continue;
+                }
+
+                if (!evidence.IsFullyFilled)
+                {
+                    hadInsufficientDepth = true;
+                    continue;
+                }
+
+                if (evidence.TotalValue.Copper <= 0)
+                {
+                    continue;
+                }
+
+                candidates.Add(new(
+                    alternative.Strategy,
+                    requiredQuantity,
+                    evidence.TotalValue,
+                    evidence));
+                continue;
+            }
+
+            if (alternative.Strategy == CraftingAcquisitionStrategy.CraftedIntermediate &&
+                alternative.ExecutionEvidence is null &&
+                alternative.TotalCost is { } intermediateCost &&
+                intermediateCost.Copper >= 0)
+            {
+                candidates.Add(new(
+                    alternative.Strategy,
+                    requiredQuantity,
+                    intermediateCost,
+                    null));
+            }
         }
 
-        price = default;
-        return false;
+        if (candidates.Count == 0)
+        {
+            uncertainties.Add(hadInsufficientDepth
+                ? CraftingEconomicsUncertainty.InsufficientMarketDepth
+                : CraftingEconomicsUncertainty.AcquisitionPriceUnavailable);
+            return null;
+        }
+
+        return candidates
+            .OrderBy(candidate => candidate.TotalCost.Copper)
+            .ThenBy(candidate => candidate.Strategy)
+            .First();
     }
 
-    private static bool TryGetSellPrice(MarketPrice? marketPrice, int itemId, out Money price)
-    {
-        if (marketPrice is { ItemId: var marketItemId, Sells: { Quantity: > 0, UnitPriceInCopper: > 0 } sells } && marketItemId == itemId)
-        {
-            price = new Money(sells.UnitPriceInCopper);
-            return true;
-        }
+    private static bool IsCompleteEvidence(
+        CraftingExecutionEvidence? evidence,
+        int requiredQuantity,
+        OrderBookExecutionKind expectedKind) =>
+        evidence is not null &&
+        evidence.RequestedQuantity == requiredQuantity &&
+        evidence.IsFullyFilled &&
+        evidence.TotalValue.Copper >= 0 &&
+        (evidence.SourceScenario is null || evidence.SourceScenario.Kind == expectedKind);
 
-        price = default;
-        return false;
+    private static void AddEvidenceUncertainty(
+        CraftingExecutionEvidence? evidence,
+        CraftingEconomicsUncertainty unavailableUncertainty,
+        ISet<CraftingEconomicsUncertainty> uncertainties)
+    {
+        if (evidence is not null && evidence.RequestedQuantity > evidence.FilledQuantity)
+        {
+            uncertainties.Add(CraftingEconomicsUncertainty.InsufficientMarketDepth);
+        }
+        else
+        {
+            uncertainties.Add(unavailableUncertainty);
+        }
     }
 
     private static Money Sum(IEnumerable<Money> values) => values.Aggregate(Money.Zero, static (sum, value) => sum + value);
@@ -374,6 +526,37 @@ public sealed class CraftingEconomicsCalculator : ICraftingEconomicsCalculator
             {
                 throw new ArgumentException("Owned ingredient quantities must be positive.", nameof(input));
             }
+
+            ArgumentNullException.ThrowIfNull(ingredient.AcquisitionAlternatives);
+            if (ingredient.AcquisitionAlternatives.Any(alternative => alternative is null))
+            {
+                throw new ArgumentException("Acquisition alternatives cannot be null.", nameof(input));
+            }
+
+            ValidateEvidence(ingredient.OwnedLiquidationEvidence, nameof(ingredient.OwnedLiquidationEvidence));
+            foreach (var alternative in ingredient.AcquisitionAlternatives)
+            {
+                if (!Enum.IsDefined(alternative.Strategy) || alternative.Quantity <= 0)
+                {
+                    throw new ArgumentException("Acquisition alternatives must have valid positive quantities.", nameof(input));
+                }
+
+                if (alternative.TotalCost is { Copper: < 0 })
+                {
+                    throw new ArgumentException("Acquisition alternatives cannot have negative costs.", nameof(input));
+                }
+
+                ValidateEvidence(alternative.ExecutionEvidence, nameof(alternative.ExecutionEvidence));
+            }
+        }
+    }
+
+    private static void ValidateEvidence(CraftingExecutionEvidence? evidence, string parameterName)
+    {
+        if (evidence is null) return;
+        if (evidence.RequestedQuantity <= 0 || evidence.FilledQuantity < 0 || evidence.FilledQuantity > evidence.RequestedQuantity || evidence.TotalValue.Copper < 0)
+        {
+            throw new ArgumentException("Execution evidence must have a valid non-negative filled value.", parameterName);
         }
     }
 }

@@ -49,9 +49,11 @@ public static class Gw2TradingPostFeePolicy
 
         var retainedBasisPoints = FeeRule.BasisPointsPerWhole - ListingFeeBasisPoints - ExchangeFeeBasisPoints;
         var denominator = new BigInteger(retainedBasisPoints) * quantity;
-        var minimumCandidate = CeilingDivide(
-            new BigInteger(requiredNetProceeds.Copper) * FeeRule.BasisPointsPerWhole,
-            denominator);
+        var minimumCandidate = BigInteger.Max(
+            BigInteger.One,
+            CeilingDivide(
+                new BigInteger(requiredNetProceeds.Copper) * FeeRule.BasisPointsPerWhole,
+                denominator));
         var sufficientCandidate = CeilingDivide(
             (new BigInteger(requiredNetProceeds.Copper) + FeeComponentCount) * FeeRule.BasisPointsPerWhole,
             denominator);
