@@ -1,7 +1,8 @@
 [
   {
     "id": 900001,
-    "name": "Synthetic Mithril Widget"
+    "name": "Synthetic Mithril Widget",
+    "icon": "https://render.guildwars2.com/file/synthetic-mithril.png"
   },
   {
     "id": 900002,

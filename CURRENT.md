@@ -1,336 +1,113 @@
 # Current Project State
 
-Last updated: 2026-09-17
+Last durable-context update: 2026-09-17
 
-## Active direction
+## Durable product direction
 
-Tyrian Ledger is pivoting from the M10-M11 public static Pages product into a
-**local-first personal Guild Wars 2 Trading Post assistant**.
+Tyrian Ledger is a **local-first second-screen Guild Wars 2 profit assistant**.
+It continuously turns account/market evidence into the smallest useful set of
+concrete manual actions for the owner to perform in Guild Wars 2.
 
-The owner has approved the product vision and the architectural direction:
+Target runtime remains:
 
-`React UI -> loopback ASP.NET Core host/API -> deterministic application logic -> SQLite + typed read-only ArenaNet API gateway`
+`React UI -> loopback ASP.NET Core host/API -> deterministic Application/Analytics -> SQLite + typed read-only ArenaNet gateway`
 
-The existing C# financial/domain/API foundation and useful React/test work are
-to be preserved. Static Pages publishing, the external Pages scheduler, the
-public market-snapshot runtime, and browser-side duplicate authoritative
-recommendation calculations are transition code retired in M12 rather than new
-architecture to extend.
+The application never automates gameplay or Trading Post mutations. Authoritative
+financial/accounting/recommendation behavior remains deterministic, testable and
+integer-copper based.
 
-## Active milestone
+The primary daily Signals surface is displayed as **`Mes Signaux`**. Target
+displayed primary navigation is:
 
-**M21 - Crafting Intelligence**
+- `Mes Signaux`;
+- `Artisanat`;
+- `Réglages`.
 
-M13 is complete through the local host, secure API-key validation, and typed
-personal Trading Post gateway work merged in PRs #102-#105. M14 is complete
-through versioned SQLite persistence, idempotent personal TP synchronization,
-and local backup/restore/clear controls merged in PRs #106-#108.
+Repository-facing documentation, filenames, code, identifiers and internal model
+terminology are English. French is the product's displayed language: all
+user-facing UI/UX labels, actions, messages, errors, explanations, empty states
+and accessibility text are written in French.
 
-TKT-M15-01 / #75 is merged in PR #109. It establishes one canonical
-application-layer GW2 fee policy with separate 5% listing and 10% exchange fees,
-a 1-copper positive-sale minimum for each, and owner-approved independent
-round-up. ArenaNet support and the linked official wiki do not define
-fractional-copper rounding, so VERIFY-013 remains OPEN and every fee-derived
-result remains explicitly modeled/provisional.
+The 0.1 product focus is Trading Post flipping/trading plus crafting. Existing
+investment-position/staged-exit infrastructure is preserved, but investment
+opportunity discovery/seasonality is deferred.
 
-TKT-M15-02 / #76 merged in PR #110. It reconstructs known acquisition inventory
-from completed personal Trading Post transactions, allocates sells to the oldest
-available buy lots by account and item, supports partial/many-to-one/one-to-many
-matches, and keeps missing pre-history basis as an explicit unknown quantity.
-Equal completed timestamps use ascending external transaction ID, and the
-versioned result is rebuilt in memory without derived SQLite state or
-current-order inference.
+Canonical domain lifecycle:
 
-TKT-M15-03 / #77 merged in PR #111. It provides deterministic known-basis
-realized P&L, explicit unknown-basis exclusion, open FIFO basis, and current
-liquidation/unrealized results only where complete market evidence exists.
-VERIFY-013 remains OPEN, so every fee-derived value is provisional.
+`Opportunity -> Plan -> Steps -> Reconciliation -> Outcome`
 
-TKT-M16-01 / #78 merged in PR #112. It adds a
-backend-authoritative local dashboard and current-order view: manual sync,
-connection and retained-coverage status, 7/30/90 realized results, separately
-labeled open/unrealized exposure, current buy/sell capital, recent trades,
-known-basis best/worst items, and top-of-book comparisons. The browser receives
-only safe structured result data; fee, P&L, liquidation, and market comparison
-logic stay in the application/backend layers. Missing coverage, unknown basis,
-partial liquidation depth, and unavailable market evidence remain explicit.
+Market/account intelligence feeds opportunity discovery but is not a lifecycle
+stage. A Signal is also not a lifecycle stage: it is a presentation/eligibility
+concept for a sufficiently safe, profitable, relevant and compatible
+opportunity/plan action that should be surfaced to the owner now. No-action
+states such as `WAIT`, `HOLD`, `KEEP BID`, harmless outbid/undercut, `SKIP` and
+`REVIEW` normally remain silent on the main action feed.
 
-TKT-M17-01 / #79 merged in PR #113. It adds a backend-authoritative
-current aggregate-market scanner with configurable ROI/profit and bid/list
-policy, exact canonical fee economics, maximum integer bid, aggregate side
-quantity, observation time, and structured inclusion/exclusion evidence. The
-local no-store API encodes copper as strings and reports the fee-rounding model
-as provisional while VERIFY-013 remains OPEN. It deliberately does not read
-detailed order books, size positions, persist history, or add scanner UI.
+See `docs/specs/signals.md` for the complete product model and `docs/ux/ux.md`
+for the active interface contract.
 
-TKT-M17-02 / #80 merged in PR #114. It enriches every scanner shortlist
-candidate with complete visible order-book depth, near-best quantity/listing
-evidence, exact simulator acquisition/liquidation outcomes for a requested
-quantity, next-level price gaps/cliffs, shallow-book reasons, and a conservative
-visible-depth participation cap. The evidence remains current-book-only and
-does not become historical volume, a fill guarantee, or final portfolio sizing.
+## Durable delivery rules
 
-TKT-M17-03 / #81 merged in PR #115. It adds an accessible local scanner screen
-with backend-returned current economics, filters/sorts, freshness and
-risk/rejection visibility, bounded same-scan order-book detail, and a durable
-local SQLite watchlist that works without account connection. React only
-displays backend financial and liquidity evidence.
+- One implementation ticket normally equals one implementation session.
+- Authority is split by concern:
+  - GitHub merged PRs, issue open/closed state, and milestone assignment/title are authoritative for **operational delivery state**;
+  - issue #98 and `docs/milestones/INDEX.md` are authoritative for **execution order and the next valid ticket**;
+  - `docs/workflow/model-effort-guide.md` is authoritative for **review effort and the active explicit Sol-gate list**.
+- Issue #98 and `docs/milestones/INDEX.md` must agree on execution order. If they conflict, repair the source-of-truth contradiction instead of silently choosing one or inferring numeric issue order.
+- `CURRENT.md` contains durable narrative plus the generated live-state block below. The generated block is a derived handoff/cache view, not an independent authority. The owner should not manually maintain normal merge handoff state.
+- TKT-M21-S01 / #129 provides a deterministic post-merge workflow/script that combines those authorities and updates only the generated block without AI/model quota.
+- A coding agent still compares each generated field with its owning authority at session start and repairs stale generated state if the workflow failed or has not yet run.
+- Historical ADRs/tickets remain useful evidence but are not active instructions when superseded by current source-of-truth docs/tickets.
 
-TKT-M18-01 / #82 merged in PR #116. It adds
-versioned SQLite storage for immutable best-price observations and deliberate
-optional full-book captures, with UTC/integer-copper invariants, strict backup
-validation, item/time indexes, and an append-only repository boundary. Its
-typed adaptive policy composes current personal orders, watchlist entries, and
-future registered sources; full books require explicit high-interest opt-in.
+## Known foundation
 
-TKT-M18-02 / #83 merged in PR #117. It starts a loopback hosted collector that resumes per-item cadence
-from retained aggregate observations, uses the typed gateway's existing request
-budget/batching/retry behavior, appends only valid complete evidence, exposes
-safe no-store health, and accepts a protected manual one-shot run. The worker
-rechecks typed source membership every configurable minute by default; detailed
-books remain an explicit policy opt-in. VERIFY-004, VERIFY-005, VERIFY-006,
-VERIFY-010, and VERIFY-011 remain OPEN with conservative configurable limits;
-no live keyed probe was performed.
+The local-first pivot foundation is complete through TKT-M21-01 / #92, merged in
+PR #127 on 2026-09-16. This includes local runtime/security, durable SQLite data,
+trustworthy FIFO accounting, dashboard/current orders, live scanner/depth,
+owned market history, deterministic history/score/sizing/recommendation engines,
+personal turnover/performance evidence, investment-position tracking, and
+normalized crafting account/capability ingestion.
 
-TKT-M18-03 / #84 merged in PR #118. It adds a read-only local history-status
-API with measured database size, per-item/time-window aggregate and
-detailed-book coverage, and on-demand integrity results. Retention policy
-version 1 independently preserves all raw aggregate and detailed-book evidence:
-it performs no deletion, rewriting, or downsampling without a future
-owner-approved migration. Populated backup/restore and clear-personal-data tests
-prove market history remains recoverable and separate from account-scoped
-clearing. PR #120 follows up the #118 NORMAL review with a managed-backup
-restore path so retained history is not bounded by the 512 MiB imported-file
-upload cap, and maps out-of-range SQLite migration IDs to failed integrity
-rather than a server error. No VERIFY entries changed.
+PR #127's final recorded regression baseline was 481 .NET tests plus all five
+GitHub checks green after its review fix. VERIFY-004, VERIFY-005, VERIFY-008 and
+VERIFY-013 remain relevant open external-contract uncertainties; consult the
+VERIFY register rather than assuming external behavior.
 
-TKT-M19-01 / #85 merged in PR #119. It adds deterministic historical market
-baselines from retained aggregate observations, with latest-observed modeled
-ROI and coverage-aware 7/30-day persistence, volatility, depth, range, and
-drawdown evidence. Insufficient samples or observed span remain explicit, and
-the analytics do not predict prices, fills, or profit.
+## Active execution order
 
-TKT-M19-02 / #86 merged in PR #121. The versioned deterministic score
-combines bounded current economics, visible liquidity, historical persistence,
-stability, and explicit 7/30-day confidence, then exposes every named component
-and anomaly penalty. Missing history contributes no invented stability;
-extreme ROI, shallow books, price cliffs, abrupt price/depth changes, and an
-intended quantity above visible-depth participation remain structured flags.
-Personal evidence is an explicit zero-weight placeholder for later sufficiently
-sampled M20 work. No scanner/API/UI orchestration or final position sizing is
-included.
+The preferred owner sequence from here is:
 
-TKT-M19-03 / #87 merged in PR #122 after the required SOL-GATED review and a
-targeted fresh Sol XHigh re-review. It adds a pure deterministic position-sizing
-policy with a 15% reserve; 5%/3%/1.5% high/medium/low-liquidity item caps; and
-20% strategy/25% category caps. Explicit complete portfolio snapshots include
-current-order/position capital at risk; unknown, negative, duplicate, or
-incomplete state returns no allocation. Ranked candidates consume cash and
-grouped capacity sequentially, participation caps fail safe against visible
-depth, reserve breach/shortfall is explicit result-level evidence, and every
-binding cap remains structured for M19-04 orchestration. No VERIFY entries
-changed.
+1. #129 / TKT-M21-S01 — self-healing `CURRENT.md` generated live state using the explicit authority split;
+2. #130 / TKT-M21-S02 — prototype/validate the Signals second-screen UX displayed as `Mes Signaux`;
+3. #131 / TKT-M21-S03 — usable Signals MVP + primary navigation;
+4. #132 / TKT-M21-S04 — remove/archive superseded UI/docs/code after MVP;
+5. #133 / TKT-M21-S05 — plan orchestration, Active/Passive paths, resource reservations, reversible shadow state, Undo and reconciliation;
+6. #93 / TKT-M21-02 — crafting economic truth and direct procurement alternatives;
+7. #94 / TKT-M21-03 — bounded crafting opportunity paths + guided crafting UI displayed as `Artisanat`;
+8. #95 / TKT-M22-01 — continuous decision loop + actionable notifications;
+9. #96 / TKT-M22-02 — security/recovery/E2E/accessibility/local packaging;
+10. #97 / TKT-M22-03 — Signal-plan outcome evaluation and strategy attribution.
 
-TKT-M19-04 / #88 merged in PR #123 after the required SOL-GATED review. The
-primary “What should I do?” workflow combines authenticated Coin, synchronized orders and FIFO
-inventory, live depth, retained history, opportunity score, and conservative
-position sizing into explicit attention-first manual actions. Its protected
-read-only API returns exact full-quantity modeled economics, max-bid and
-portfolio constraints, confidence/liquidity evidence, and backend-generated
-reasons without returning credentials or account identity. Portfolio-fit
-capital is applied before bounded scanner truncation so unaffordable
-high-absolute-profit markets cannot crowd out an eligible affordable candidate.
-React renders the backend contract, initially limits new opportunities to five,
-and provides accessible evidence expansion without recommendation formulas or
-browser storage. Review corrections now prevent competitive bids from bypassing
-item/strategy/category caps, rebuild current-order liquidity for the order's
-actual quantity, apply the `BUY SMALL` half-size before sequential headroom is
-consumed, preserve version-one conservative one-unit `TotalCost` sizing while
-reconciling displayed remaining cash to exact returned full-quantity economics,
-fail closed when an exposure reduction has no safe depth, and cover the composed
-recommendation paths including the 201st affordable candidate.
-VERIFY-005 and VERIFY-013 remain OPEN.
+#129 is the preferred maintenance predecessor, but it must not delay the MVP path.
+While #129 remains open, #130 may start after #128 merges if #129 becomes
+non-trivial or would delay #131. Once #130 closes, #131 may continue on the
+same allowed route because #131 depends on #130, not on completion of #129.
+In that fallback, agents use the documented session-start reconciliation/manual
+generated-block repair.
 
-TKT-M20-01 / #89 is implemented in PR #124. It derives
-reproducible personal source-timestamp order durations, strictly bounded local
-confirmation windows, unknown disappearances, observed quantity reductions,
-known-basis capital lock duration, realized profit/day, and capital turns from
-retained data only. Per-item evidence labels insufficient coverage, low samples,
-and stale evidence explicitly, so unrelated one-off markets cannot combine into
-supported turnover evidence; confidence counts distinct completed sales rather
-than FIFO allocation fragments, and the aggregate is a portfolio summary only.
-Partially unknown-basis sales retain their known-fragment economics but cannot
-count toward strong evidence; non-computable profit/day or capital turns are
-explicit insufficient-metrics evidence. Average holding duration is weighted by
-allocated acquisition basis, and disappearance detection checks only the final
-retained observation rather than rescanning immutable history per order.
-An order identifier that disappears from a complete snapshot and later
-reappears is explicit unknown evidence rather than bridged partial behavior,
-while quantity reductions observed within each contiguous snapshot run remain
-independent partial evidence.
-Quantity reductions are retained as independent partial behavior even without
-completed history, while a censored-confirmation flag only reflects observations
-through the confirmation boundary. Historical observation-only items retain
-stored metadata in the dashboard, which labels portfolio-wide summaries and
-independent quantity reductions without implying a fill. No recommendation score
-consumes this output. Source timestamps and polling observations remain
-distinct, and no polling instant or disappearance is presented as an exact fill
-timestamp. No VERIFY entries changed.
+Do not use numeric issue ordering to skip #129-#133 and begin #93 early.
 
-TKT-M20-02 / #90 has its requested Sol review corrections implemented and is
-pending the required targeted fresh Sol XHigh re-review in Draft PR #125:
-https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/125.
-It adds a version-two deterministic opportunity score
-with an item-scoped personal component bounded to plus or minus 15 points.
-Only sufficiently sampled, recent, fully known-basis realized sales contribute;
-no/weak/stale/insufficient evidence remains an explicit zero contribution.
-The score policy now evaluates complete raw evidence against its own configured
-sample/recency gates, so deliberate policy changes can relax either default
-turnover label without admitting incomplete-cost evidence.
-The component exposes its realized ROI min/median/max distribution, exact
-profit/day and capital-turns/day rates, typical holding duration, sample count,
-and recency. It deliberately does not fabricate a completion rate because
-retained observations do not provide a trustworthy cancelled/failed-order
-denominator. Poor turnover can lower an otherwise attractive market, while
-strong repeatable personal results can outweigh a modest snapshot-ROI advantage
-within the fixed policy bound; no weights or rules self-modify. Partially
-unknown-basis sales remain visible in learning output but cannot affect ranking.
+## Generated live state
 
-TKT-M20-03 / #91 is implemented in PR #126:
-https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/126. It adds
-account-scoped durable investment positions with explicit known or unknown
-basis, staged target levels, immutable partial-exit history, and retained
-closed-position history separate from imported realized flip accounting. The
-local investment screen reports current full-depth gross/net liquidation,
-known-basis unrealized P&L, opportunity-cost context, retained historical
-price/supply evidence, and deterministic `HOLD`, `SELL PARTIAL`, or `SELL`
-target evidence without claiming appreciation or execution. Open positions are
-registered at the highest collection priority; a close removes only that source
-reason, leaving any watchlist or current-order reason intact. No VERIFY entries
-changed.
+The block between the markers is machine-owned once #129 lands. Durable prose
+outside the markers must never be rewritten by the generated-state updater.
 
-TKT-M21-01 / #92 is implemented in PR #127 and pending its owner-triggered NORMAL
-re-review. It adds a typed, authenticated, read-only crafting account
-gateway for bank, material storage, recipe unlocks, and per-character crafting
-capability. Each optional source fails independently, so missing `inventories`,
-`unlocks`, or `characters` permission disables only the corresponding crafting
-fact. The gateway normalizes and preserves supplied binding evidence while
-discarding raw bank payloads and character names; recipe definitions are
-available through a separately typed public reader using conservative 200-ID
-batches and the documented provisional 2022 recipe schema.
-
-Only one normalized current snapshot is stored per opaque local account scope.
-Replacing it transactionally removes superseded private child rows, and clear
-personal data removes all crafting snapshot rows. The origin-protected refresh
-route returns only feature availability and counts—never account identifiers,
-item details, character names, raw payloads, or API credentials. Fixture,
-malformed/partial/permission, scope, retention, response-redaction, and schema
-integrity coverage was added. VERIFY-004, VERIFY-005, and VERIFY-008 remain
-open with refreshed public-documentation evidence dated 2026-09-16. The review
-finding that crafting child rows could outlive their snapshot was fixed: all
-four child tables now reference the normalized snapshot row, and restore
-validation rejects orphaned crafting data. The refreshed local regression suite
-(481 tests) and all five GitHub checks passed on 2026-09-16.
-
-TKT-M21-02 / #93 is implemented in Draft PR #135
-(https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/135) and awaits its
-required fresh separate Sol XHigh financial review. It adds deterministic backend-authoritative
-crafting economics: account-owned tradable input is valued at its exact
-fee-adjusted current liquidation value, while any remainder uses the current
-market replacement cost. Bound, unknown, and unavailable-price inputs make
-input cost, profit, ROI, and break-even explicitly incomplete rather than free.
-Output gross value, listing and exchange fees, net proceeds, profit, exact ROI,
-and the first rounding-aware break-even unit price all remain integer copper.
-The canonical fee policy owns the break-even calculation so independent fee
-round-up is never duplicated in crafting. No crafting browser surface is added
-here; TKT-M21-03 owns bounded path analysis and the rendering-only UI. No VERIFY
-entries changed; VERIFY-013 remains OPEN and every fee-derived result reports
-its provisional status.
-
-The next valid implementation ticket is:
-
-**TKT-M21-03 / #94 - Add Bounded Crafting-Path Analysis and Profitable-Craft UI.**
-
-## Known-good baseline
-
-TKT-M21-02 local validation on 2026-09-17 reported:
-
-- Release solution build: zero warnings and zero errors;
-- full .NET regression suite: 492 tests passed (4 Domain, 21 Analytics, 244
-  Application, 178 Infrastructure, and 45 Web);
-- React: 25 component tests passed and the production build succeeded;
-- Playwright: 15 tests passed across Chromium, Firefox, and WebKit with no
-  external request;
-- CI workflow contracts: 3 tests passed; and
-- Gitleaks: 324 reachable commits scanned with no leaks.
-
-TKT-M20-01 local validation on 2026-09-15 reported:
-
-- Release solution build: zero warnings and zero errors;
-- focused personal turnover and dashboard suites: 30 tests passed;
-- full .NET regression suite: 463 tests passed (4 Domain, 21 Analytics, 223
-  Application, 172 Infrastructure, and 43 Web);
-- React: 24 component tests passed and the production build succeeded;
-- Playwright: 15 tests passed across Chromium, Firefox, and WebKit with no
-  external request;
-- CI workflow contracts: 3 tests passed;
-- Gitleaks: 314 reachable commits scanned with no leaks.
-
-PR URL: https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/124 (NORMAL; CI green; separate owner-triggered review pending).
-
-## Important transition warning
-
-The active repository shape no longer builds or deploys the old static Pages
-delivery, external scheduler, publishable market snapshot, or browser-side
-recommendation formulas. Those concepts remain only in explicitly superseded
-historical records, not as permission to restore the public runtime.
-
-Do not delete proven Domain, Analytics, typed gateway, request scheduler,
-order-book simulator, fixtures, or tests merely because they were used by the
-static product. Reuse them in the local-first architecture where compatible.
-
-## Product checkpoints
-
-- M15: trustworthy personal accounting foundation.
-- M16: first useful personal dashboard.
-- M17: usable live market scanner.
-- M18: owned historical market collection is running.
-- M19: primary `What Should I Do?` recommendation product is usable.
-- M20: personal performance learning and investment tracking.
-- M21: crafting intelligence.
-- M22: alerts, hardening, packaging, and recommendation evaluation.
-
-## Review and effort rule
-
-The active quota-aware policy is in
-`docs/workflow/model-effort-guide.md`.
-
-- R0/R1 implementation uses Terra Medium by default, escalating to High when complexity/uncertainty warrants it.
-- R2/R3 implementation uses Terra High by default.
-- NORMAL tickets use a same-run independent Terra review subagent/check when supported; a second owner-triggered review session is not required by default.
-- SOL-GATED tickets remain **Draft**, finish required validation/CI before the fresh Sol XHigh review, and use targeted fresh Sol re-review after scoped fixes.
-- R3 risk classification alone does not create a Sol review gate.
-- Dedicated Plan mode is not mandatory for every ticket; every ticket still receives a short in-session plan and genuine owner ambiguities are surfaced before build work proceeds.
-
-Do not rely on old ticket/workflow wording that makes Terra High universal,
-requires actual Plan mode for every ticket, equates every R3 ticket with Sol, or
-requires a separate NORMAL review session. The central model-effort guide
-supersedes those model/workflow selections.
-
-## State-maintenance rule
-
-`CURRENT.md` is maintained by implementation/delivery agents as part of ticket
-handoff. The owner should not need to edit this file manually during normal
-execution. Before delivery, the agent must make the current ticket state and
-next valid ticket/handoff accurate.
-
-## GitHub delivery state
-
-GitHub Milestone objects for M12-M22 exist. Implementation issues and their PRs
-should use the matching milestone. Every implementation PR must include
-`Closes #<issue-number>` so merging to the default branch closes the ticket
-automatically. The implementation agent should set the PR milestone through the
-available GitHub tooling when possible and report explicitly if it cannot.
-
-SOL-GATED PRs use Draft state as the merge blocker. NORMAL PRs should not carry
-legacy blanket R3/XHigh blocker text.
+<!-- BEGIN GENERATED LIVE STATE -->
+- Last completed implementation ticket: `TKT-M21-S05 / #133`
+- Last merged implementation PR: `#142`
+- Active milestone: `M21 — Signals and Crafting Intelligence`
+- Preferred next implementation ticket: `TKT-M21-02 / #93`
+- Allowed non-blocking alternate: `None`
+- Explicit active Sol gates: `TKT-M21-S05 / #133`, `TKT-M21-02 / #93`, `TKT-M21-03 / #94`, `TKT-M22-02 / #96`
+- Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`
+<!-- END GENERATED LIVE STATE -->

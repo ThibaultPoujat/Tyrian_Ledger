@@ -339,7 +339,16 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
             throw new JsonException("The item metadata payload is structurally incomplete.");
         }
 
-        return new MarketItemMetadata(dto.Id, dto.Name, MarketItemStackPolicy.NormalStackLimit);
+        string? iconUrl = null;
+        if (!string.IsNullOrWhiteSpace(dto.Icon) &&
+            Uri.TryCreate(dto.Icon, UriKind.Absolute, out var iconUri) &&
+            string.Equals(iconUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(iconUri.Host, "render.guildwars2.com", StringComparison.OrdinalIgnoreCase))
+        {
+            iconUrl = iconUri.AbsoluteUri;
+        }
+
+        return new MarketItemMetadata(dto.Id, dto.Name, MarketItemStackPolicy.NormalStackLimit, iconUrl);
     }
 
     private static MarketOrderLevel MapListingLevel(CommerceListingLevelDto dto)

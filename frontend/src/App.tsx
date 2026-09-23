@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './App.css';
-import ScannerPanel from './ScannerPanel';
 import RecommendationPanel from './RecommendationPanel';
-import InvestmentPanel from './InvestmentPanel';
+import PlanPanel from './PlanPanel';
+import MoneyDisplay from './MoneyDisplay';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
 type AccountConnectionState =
@@ -32,45 +32,14 @@ type LocalDataLocationState =
   | { kind: 'ready'; location: LocalDataLocation };
 
 type Money = { copper: string };
+const restoreConfirmationText = 'RESTAURER LES DONNÉES LOCALES';
+const clearConfirmationText = 'EFFACER LES DONNÉES PERSONNELLES';
+
 type Dashboard = {
   state: 'ready' | 'notSynchronized' | 'accountUnavailable';
-  accountError: string | null;
-  lastSuccessfulSyncAtUtc: string | null;
-  currentOrdersObservedAtUtc: string | null;
   historyCoverage: { startUtc: string | null; endUtc: string | null } | null;
-  marketState: 'available' | 'unavailable';
-  isFeeRoundingExternallyVerified: boolean;
   realizedWindows: Array<{ days: number; status: 'supported' | 'insufficientCoverage'; netProfit: Money | null; unknownBasisQuantity: number }>;
-  openAcquisitionBasis: Money | null;
-  netLiquidationValue: Money | null;
-  unrealizedProfit: Money | null;
-  isOpenInventoryFullyValued: boolean | null;
-  openInventory: Array<{ itemId: number; itemName: string; quantity: number; acquisitionBasis: Money; liquidationStatus: string; unliquidatedQuantity: number; netLiquidationValue: Money | null; unrealizedProfit: Money | null }>;
-  currentBuyCapital: Money;
-  currentSellGrossValue: Money;
-  currentSellNetValue: Money;
-  currentOrders: Array<{ orderId: string; side: 'buy' | 'sell'; itemId: number; itemName: string; quantity: number; unitPrice: Money; marketComparisonStatus: 'available' | 'missingSide' | 'unavailable'; currentMarketUnitPrice: Money | null }>;
-  recentTrades: Array<{ transactionId: string; side: 'buy' | 'sell'; itemName: string; quantity: number; unitPrice: Money; completedAtUtc: string }>;
-  bestRealizedItems: Array<{ itemId: number; itemName: string; quantity: number; netProfit: Money }>;
-  worstRealizedItems: Array<{ itemId: number; itemName: string; quantity: number; netProfit: Money }>;
-  personalLearning: {
-    status: 'insufficientCoverage' | 'insufficientSamples' | 'insufficientMetrics' | 'stale' | 'supported';
-    timestampLimitation: string;
-    minimumKnownBasisSamples: number;
-    exactSourceTimestampCount: number;
-    intervalCensoredCompletionCount: number;
-    unknownOrderTimingCount: number;
-    observedQuantityReductionCount: number;
-    fillTiming: Array<{ side: 'buy' | 'sell'; exactSourceTimestampCount: number; averageSourceDuration: string | null; intervalCensoredCompletionCount: number; averageConfirmationWindow: string | null }>;
-    items: Array<{ itemId: number; itemName: string; status: 'insufficientCoverage' | 'insufficientSamples' | 'insufficientMetrics' | 'stale' | 'supported'; exactSourceTimestampCount: number; intervalCensoredCompletionCount: number; unknownOrderTimingCount: number; observedQuantityReductionCount: number; knownBasisSampleCount: number | null; averageHoldingDuration: string | null; realizedProfitPerDay: { numerator: string; denominator: string } | null; capitalTurns: { numerator: string; denominator: string } | null }>;
-    knownBasisSampleCount: number | null;
-    latestKnownBasisCompletionAtUtc: string | null;
-    netProfit: Money | null;
-    matchedAcquisitionBasis: Money | null;
-    averageHoldingDuration: string | null;
-    realizedProfitPerDay: { numerator: string; denominator: string } | null;
-    capitalTurns: { numerator: string; denominator: string } | null;
-  } | null;
+  todayRealized: { days: number; status: 'supported' | 'insufficientCoverage'; netProfit: Money | null; unknownBasisQuantity: number } | null;
 };
 
 function isAccountConnectionResponse(payload: unknown): payload is AccountConnectionResponse {
@@ -86,20 +55,41 @@ function isAccountConnectionResponse(payload: unknown): payload is AccountConnec
     && candidate.missingRequiredPermissions.every((permission) => typeof permission === 'string');
 }
 
+function syncFailureMessage(error: string | null): string {
+  const messages: Record<string, string> = {
+    credential_not_configured: "Aucune clé ArenaNet n'est configurée. Vérifiez la connexion du compte dans les réglages.",
+    credential_unavailable: "La clé ArenaNet enregistrée n'est pas accessible. Vérifiez le coffre d'identifiants du système.",
+    unauthorized: "La clé ArenaNet a été refusée. Vérifiez qu'elle est toujours valide.",
+    forbidden: "La clé ArenaNet ne dispose pas des autorisations nécessaires : account, tradingpost et wallet.",
+    rate_limited: "ArenaNet limite temporairement les requêtes. Réessayez dans quelques instants.",
+    upstream_unavailable: "ArenaNet est temporairement indisponible. Vos données locales existantes sont conservées.",
+    transport_failure: "La requête vers ArenaNet a échoué ou a expiré. Réessayez dans quelques instants.",
+    persistence_failure: "La synchronisation a été reçue, mais l'enregistrement local a échoué. Vos données locales existantes sont conservées.",
+    invalid_payload: "ArenaNet a renvoyé des données inattendues. Vos données locales existantes sont conservées.",
+    incomplete_data: "Les données reçues d'ArenaNet sont incomplètes. Vos données locales existantes sont conservées.",
+    invalid_request: "La requête de synchronisation a été refusée comme invalide. Vos données locales existantes sont conservées.",
+    not_found: "Une ressource ArenaNet nécessaire à la synchronisation est introuvable.",
+    unexpected_response: "ArenaNet a renvoyé une réponse inattendue. Vos données locales existantes sont conservées.",
+  };
+  return error !== null && messages[error] !== undefined
+    ? messages[error]
+    : "La synchronisation n'a pas pu être confirmée. Les données locales existantes sont conservées.";
+}
+
 function accountConnectionMessage(state: AccountConnectionState, missingPermissions: string[]): string {
   switch (state) {
     case 'checking':
-      return 'Checking ArenaNet key status…';
+      return 'Vérification de la clé ArenaNet…';
     case 'not_configured':
-      return 'No ArenaNet key configured';
+      return 'Aucune clé ArenaNet configurée';
     case 'valid':
-      return 'Account connection ready';
+      return 'Connexion au compte prête';
     case 'invalid':
-      return 'ArenaNet key is invalid or revoked';
+      return 'La clé ArenaNet est invalide ou révoquée';
     case 'insufficient_permissions':
-      return `ArenaNet key needs permission${missingPermissions.length === 1 ? '' : 's'}: ${missingPermissions.join(', ')}`;
+      return `Autorisation ArenaNet insuffisante : ${missingPermissions.join(', ')}`;
     case 'unavailable':
-      return 'ArenaNet key status unavailable';
+      return 'État de la clé ArenaNet indisponible';
   }
 }
 
@@ -138,8 +128,9 @@ export default function App() {
   }>({ state: 'checking', missingPermissions: [] });
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [dashboardStatus, setDashboardStatus] = useState<'loading' | 'error' | 'ready'>('loading');
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'failed'>('idle');
+  const [syncStatus, setSyncStatus] = useState<string>('idle');
   const [localDataRefreshGeneration, setLocalDataRefreshGeneration] = useState(0);
+  const [activeView, setActiveView] = useState<'signals' | 'plans' | 'settings'>('signals');
   const dashboardRequestGeneration = useRef(0);
 
   useEffect(() => {
@@ -172,6 +163,7 @@ export default function App() {
 
   const loadDashboard = () => {
     const generation = ++dashboardRequestGeneration.current;
+    setDashboard(null);
     setDashboardStatus('loading');
     void fetch('/api/personal-dashboard', { headers: localRequestHeaders() })
       .then(async (response) => {
@@ -210,7 +202,10 @@ export default function App() {
       .then(async (response) => {
         const payload: unknown = await response.json();
         if (!response.ok || typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'succeeded') {
-          setSyncStatus('failed');
+          const error = typeof payload === 'object' && payload !== null && typeof (payload as Record<string, unknown>).error === 'string'
+            ? (payload as Record<string, string>).error
+            : null;
+          setSyncStatus(error === null ? 'failed' : `failed:${error}`);
           return;
         }
         setSyncStatus('idle');
@@ -253,93 +248,164 @@ export default function App() {
   }, []);
 
   return (
-    <div className="app-page">
-      <a className="skip-link" href="#main-content">Skip to main content</a>
-      <div className="app-shell">
-        <header className="app-header">
-          <div aria-label="Tyrian Ledger" className="brand-lockup">
-            <span aria-hidden="true" className="brand-mark">TL</span>
-            <span><strong>Tyrian Ledger</strong><small>Personal trading assistant</small></span>
-          </div>
-        </header>
+    <div className="signals-app">
+      <a className="skip-link" href="#main-content">Aller au contenu principal</a>
+      <aside className="signals-sidebar">
+        <div aria-label="Tyrian Ledger" className="brand-lockup">
+          <span aria-hidden="true" className="brand-mark">TL</span>
+          <span><strong>Tyrian Ledger</strong><small>Assistant de profit</small></span>
+        </div>
+        <nav aria-label="Navigation principale" className="primary-navigation">
+          <button
+            aria-label="Mes Signaux"
+            aria-current={activeView === 'signals' ? 'page' : undefined}
+            className={activeView === 'signals' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => setActiveView('signals')}
+            type="button"
+          >
+            <span aria-hidden="true">◆</span>
+            <span>Mes Signaux</span>
+          </button>
+          <button
+            aria-label="Plans"
+            aria-current={activeView === 'plans' ? 'page' : undefined}
+            className={activeView === 'plans' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => setActiveView('plans')}
+            type="button"
+          >
+            <span aria-hidden="true">◇</span>
+            <span>Plans</span>
+          </button>
+          <button aria-label="Artisanat — bientôt" className="nav-item" disabled type="button">
+            <span aria-hidden="true">⌁</span>
+            <span>Artisanat <small>Bientôt</small></span>
+          </button>
+          <button
+            aria-label="Réglages"
+            aria-current={activeView === 'settings' ? 'page' : undefined}
+            className={activeView === 'settings' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => setActiveView('settings')}
+            type="button"
+          >
+            <span aria-hidden="true">⚙</span>
+            <span>Réglages</span>
+          </button>
+        </nav>
+        <div aria-live="polite" className="sidebar-status" role="status">
+          <span className={`host-dot host-dot--${hostStatus}`} aria-hidden="true" />
+          {hostStatus === 'checking' && 'Application locale…'}
+          {hostStatus === 'connected' && 'Application locale connectée'}
+          {hostStatus === 'unavailable' && 'Application locale indisponible'}
+        </div>
+      </aside>
 
-        <main id="main-content">
-          <section aria-labelledby="primary-title" className="transition-panel">
-            <p className="eyebrow">Daily decision workflow</p>
-            <h1 id="primary-title">What should I do?</h1>
-            <p className="page-introduction">Review explicit manual actions built locally from your cash, orders, inventory, current market depth, and retained history.</p>
-            <p aria-live="polite" className={`host-status host-status--${hostStatus}`} role="status">
-              <span aria-hidden="true" />
-              {hostStatus === 'checking' && 'Checking the local host…'}
-              {hostStatus === 'connected' && 'Local host connected'}
-              {hostStatus === 'unavailable' && 'Local host unavailable'}
-            </p>
+      <main className="signals-main" id="main-content">
+        {activeView === 'signals' ? (
+          <>
+            <header className="signals-header">
+              <div>
+                <p className="eyebrow">Assistant d'action</p>
+                <h1>Mes Signaux</h1>
+                <p className="page-introduction">Uniquement les actions qui méritent votre attention maintenant.</p>
+              </div>
+              <PerformanceSummary dashboard={dashboard} status={dashboardStatus} />
+            </header>
             <RecommendationPanel refreshGeneration={localDataRefreshGeneration} />
-            <section aria-labelledby="account-connection-title" className="account-connection-panel">
-              <p className="eyebrow">Account connection</p>
-              <h2 id="account-connection-title">Keep your key on this computer</h2>
+          </>
+        ) : activeView === 'plans' ? (
+          <>
+            <header className="signals-header"><div><p className="eyebrow">Exécution guidée</p><h1>Plans</h1><p className="page-introduction">Une action utile à la fois, avec une réconciliation explicite.</p></div></header>
+            <PlanPanel />
+          </>
+        ) : (
+          <section aria-labelledby="settings-title" className="settings-view">
+            <header className="settings-header">
+              <h1 id="settings-title">Réglages</h1>
+              <p>Compte ArenaNet, données locales et diagnostic.</p>
+            </header>
+
+            <section aria-labelledby="account-connection-title" className="settings-panel settings-panel--primary">
+              <h2 id="account-connection-title">Compte ArenaNet</h2>
+              <p className="settings-section-note">Connexion en lecture seule</p>
               <p aria-live="polite" className={`account-connection-status account-connection-status--${accountConnection.state}`} role="status">
                 <span aria-hidden="true" />
                 {accountConnectionMessage(accountConnection.state, accountConnection.missingPermissions)}
               </p>
               {(accountConnection.state === 'not_configured' || accountConnection.state === 'unavailable') && (
-                <p>Store a dedicated read-only ArenaNet key with account, trading-post, and wallet access in your operating system’s credential vault. Tyrian Ledger never asks the browser to store or send it.</p>
+                <p>Enregistrez une clé ArenaNet dédiée et en lecture seule dans le coffre d'identifiants du système. Le navigateur ne stocke jamais la clé.</p>
               )}
               {accountConnection.state === 'insufficient_permissions' && (
-                <p>Use a dedicated key with account, trading-post, and wallet access for read-only personal recommendations.</p>
+                <p>La clé doit autoriser account, tradingpost et wallet pour les recommandations personnelles en lecture seule.</p>
               )}
               <button className="sync-button" disabled={syncStatus === 'syncing' || accountConnection.state !== 'valid'} onClick={synchronize} type="button">
-                {syncStatus === 'syncing' ? 'Synchronizing…' : 'Synchronize Trading Post data'}
+                {syncStatus === 'syncing' ? 'Synchronisation en cours…' : 'Synchroniser les données du Comptoir'}
               </button>
-              {syncStatus === 'failed' && <p role="alert">Synchronization could not be confirmed. Your existing local data was kept.</p>}
+              {syncStatus.startsWith('failed') && <p role="alert">{syncFailureMessage(syncStatus.includes(':') ? syncStatus.slice(syncStatus.indexOf(':') + 1) : null)}</p>}
             </section>
-            <DashboardPanel dashboard={dashboard} status={dashboardStatus} />
-            <InvestmentPanel refreshGeneration={localDataRefreshGeneration} />
-            <ScannerPanel watchlistRefreshGeneration={localDataRefreshGeneration} />
+
             <LocalDataPanel onPersonalDataChanged={refreshLocalDataViews} />
+
+            <section className="legal-notice">
+              <h2>À propos</h2>
+              <p>Tyrian Ledger est un projet communautaire indépendant et non officiel pour Guild Wars 2. Il n'est ni affilié à ArenaNet ou NCSOFT, ni approuvé par eux.</p>
+              <p>Guild Wars 2 © ArenaNet, LLC. Tous droits réservés. Guild Wars 2 et GW2 sont des marques de NCSOFT Corporation.</p>
+            </section>
           </section>
-        </main>
-      </div>
-      <footer className="site-footer">
-        <div><strong>Tyrian Ledger</strong><span>Local-first, read-only Trading Post decision support.</span></div>
-        <p>Tyrian Ledger is an unofficial, independent Guild Wars 2 fan project and is not affiliated with or endorsed by ArenaNet or NCSOFT.</p>
-        <p>Guild Wars 2 © ArenaNet, LLC. All rights reserved. Guild Wars 2 and GW2 are trademarks or registered trademarks of NCSOFT Corporation.</p>
-      </footer>
+        )}
+      </main>
     </div>
+  );
+}
+
+function PerformanceSummary({ dashboard, status }: { dashboard: Dashboard | null; status: 'loading' | 'error' | 'ready' }) {
+  const windowFor = (days: number) => dashboard?.realizedWindows.find(window => window.days === days) ?? null;
+  const today = dashboard?.todayRealized ?? null;
+  const thirty = windowFor(30);
+  const seven = windowFor(7);
+  const ninety = windowFor(90);
+  const value = (window: { status: 'supported' | 'insufficientCoverage'; netProfit: Money | null } | null) =>
+    window?.status === 'supported' ? window.netProfit : null;
+  const excluded = (window: { unknownBasisQuantity: number } | null) =>
+    window !== null && window.unknownBasisQuantity > 0
+      ? <small>{window.unknownBasisQuantity} unité{window.unknownBasisQuantity === 1 ? '' : 's'} vendue{window.unknownBasisQuantity === 1 ? '' : 's'} exclue{window.unknownBasisQuantity === 1 ? '' : 's'} (prix d'achat inconnu)</small>
+      : null;
+  const unavailable = status === 'loading'
+    ? 'Chargement…'
+    : status === 'error' || dashboard === null
+      ? 'Indisponible'
+      : dashboard.state === 'notSynchronized'
+        ? 'Non synchronisé'
+        : dashboard.state === 'accountUnavailable'
+          ? 'Compte indisponible'
+          : 'Couverture insuffisante';
+  const todayThrough = value(today) && dashboard?.historyCoverage?.endUtc
+    ? new Date(dashboard.historyCoverage.endUtc).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+    : null;
+
+  return (
+    <section aria-label="Profit réalisé" className="performance-summary">
+      <span className="performance-title">Profit réalisé</span>
+      <div className="performance-primary">
+        <div><span>Aujourd'hui</span>{value(today) ? <MoneyDisplay compact money={value(today)} /> : <strong>{unavailable}</strong>}{todayThrough && <small>Données jusqu’au {todayThrough}</small>}{excluded(today)}</div>
+        <div><span>30 j</span>{value(thirty) ? <MoneyDisplay compact money={value(thirty)} /> : <strong>{unavailable}</strong>}{excluded(thirty)}</div>
+      </div>
+      <details>
+        <summary>7 j / 90 j</summary>
+        <div className="performance-secondary">
+          <div><span>7 jours</span>{value(seven) ? <MoneyDisplay compact money={value(seven)} /> : <strong>{unavailable}</strong>}{excluded(seven)}</div>
+          <div><span>90 jours</span>{value(ninety) ? <MoneyDisplay compact money={value(ninety)} /> : <strong>{unavailable}</strong>}{excluded(ninety)}</div>
+        </div>
+      </details>
+    </section>
   );
 }
 
 function isDashboard(payload: unknown): payload is Dashboard {
   if (!isRecord(payload)) return false;
   return isOneOf(payload.state, ['ready', 'notSynchronized', 'accountUnavailable'])
-    && isNullableString(payload.accountError)
-    && isNullableString(payload.lastSuccessfulSyncAtUtc)
-    && isNullableString(payload.currentOrdersObservedAtUtc)
     && isNullableHistoryCoverage(payload.historyCoverage)
-    && isOneOf(payload.marketState, ['available', 'unavailable'])
-    && typeof payload.isFeeRoundingExternallyVerified === 'boolean'
     && isArrayOf(payload.realizedWindows, isRealizedWindow)
-    && isNullableMoney(payload.openAcquisitionBasis)
-    && isNullableMoney(payload.netLiquidationValue)
-    && isNullableMoney(payload.unrealizedProfit)
-    && (typeof payload.isOpenInventoryFullyValued === 'boolean' || payload.isOpenInventoryFullyValued === null)
-    && isArrayOf(payload.openInventory, isOpenInventory)
-    && isMoney(payload.currentBuyCapital)
-    && isMoney(payload.currentSellGrossValue)
-    && isMoney(payload.currentSellNetValue)
-    && isArrayOf(payload.currentOrders, isCurrentOrder)
-    && isArrayOf(payload.recentTrades, isRecentTrade)
-    && isArrayOf(payload.bestRealizedItems, isRealizedItem)
-    && isArrayOf(payload.worstRealizedItems, isRealizedItem)
-    && (payload.personalLearning === null || isPersonalLearning(payload.personalLearning));
-}
-
-function copper(money: Money | null): string {
-  if (money === null) return 'Unavailable';
-  const value = BigInt(money.copper);
-  const sign = value < 0n ? '−' : '';
-  const absolute = value < 0n ? -value : value;
-  return `${sign}${absolute / 10000n}g ${(absolute % 10000n) / 100n}s ${absolute % 100n}c`;
+    && (payload.todayRealized === null || isRealizedWindow(payload.todayRealized));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -352,10 +418,6 @@ function isOneOf<T extends string>(value: unknown, values: readonly T[]): value 
 
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
-}
-
-function isDecimalIdentifier(value: unknown): value is string {
-  return typeof value === 'string' && /^\d+$/.test(value);
 }
 
 function isMoney(value: unknown): value is Money {
@@ -386,180 +448,6 @@ function isRealizedWindow(value: unknown): boolean {
     && isNonNegativeInteger(value.unknownBasisQuantity);
 }
 
-function isOpenInventory(value: unknown): boolean {
-  return isRecord(value)
-    && isNonNegativeInteger(value.itemId)
-    && typeof value.itemName === 'string'
-    && isNonNegativeInteger(value.quantity)
-    && isMoney(value.acquisitionBasis)
-    && isOneOf(value.liquidationStatus, ['fullyValued', 'insufficientBuyDepth', 'evidenceMissing'])
-    && isNonNegativeInteger(value.unliquidatedQuantity)
-    && isNullableMoney(value.netLiquidationValue)
-    && isNullableMoney(value.unrealizedProfit);
-}
-
-function isCurrentOrder(value: unknown): boolean {
-  return isRecord(value)
-    && isDecimalIdentifier(value.orderId)
-    && isOneOf(value.side, ['buy', 'sell'])
-    && isNonNegativeInteger(value.itemId)
-    && typeof value.itemName === 'string'
-    && isNonNegativeInteger(value.quantity)
-    && isMoney(value.unitPrice)
-    && isOneOf(value.marketComparisonStatus, ['available', 'missingSide', 'unavailable'])
-    && isNullableMoney(value.currentMarketUnitPrice);
-}
-
-function isRecentTrade(value: unknown): boolean {
-  return isRecord(value)
-    && isDecimalIdentifier(value.transactionId)
-    && isOneOf(value.side, ['buy', 'sell'])
-    && typeof value.itemName === 'string'
-    && isNonNegativeInteger(value.quantity)
-    && isMoney(value.unitPrice)
-    && typeof value.completedAtUtc === 'string';
-}
-
-function isRealizedItem(value: unknown): boolean {
-  return isRecord(value)
-    && isNonNegativeInteger(value.itemId)
-    && typeof value.itemName === 'string'
-    && isNonNegativeInteger(value.quantity)
-    && isMoney(value.netProfit);
-}
-
-function isExactRate(value: unknown): boolean {
-  return isRecord(value)
-    && typeof value.numerator === 'string'
-    && typeof value.denominator === 'string'
-    && /^-?\d+$/.test(value.numerator)
-    && /^\d+$/.test(value.denominator)
-    && BigInt(value.denominator) > 0n;
-}
-
-function isPersonalLearning(value: unknown): boolean {
-  return isRecord(value)
-    && isOneOf(value.status, ['insufficientCoverage', 'insufficientSamples', 'insufficientMetrics', 'stale', 'supported'])
-    && typeof value.timestampLimitation === 'string'
-    && isNonNegativeInteger(value.minimumKnownBasisSamples)
-    && isNonNegativeInteger(value.exactSourceTimestampCount)
-    && isNonNegativeInteger(value.intervalCensoredCompletionCount)
-    && isNonNegativeInteger(value.unknownOrderTimingCount)
-    && isNonNegativeInteger(value.observedQuantityReductionCount)
-    && isArrayOf(value.fillTiming, isFillTiming)
-    && isArrayOf(value.items, isPersonalLearningItem)
-    && (value.knownBasisSampleCount === null || isNonNegativeInteger(value.knownBasisSampleCount))
-    && isNullableString(value.latestKnownBasisCompletionAtUtc)
-    && isNullableMoney(value.netProfit)
-    && isNullableMoney(value.matchedAcquisitionBasis)
-    && isNullableString(value.averageHoldingDuration)
-    && (value.realizedProfitPerDay === null || isExactRate(value.realizedProfitPerDay))
-    && (value.capitalTurns === null || isExactRate(value.capitalTurns));
-}
-
-function isFillTiming(value: unknown): boolean {
-  return isRecord(value)
-    && isOneOf(value.side, ['buy', 'sell'])
-    && isNonNegativeInteger(value.exactSourceTimestampCount)
-    && isNullableString(value.averageSourceDuration)
-    && isNonNegativeInteger(value.intervalCensoredCompletionCount)
-    && isNullableString(value.averageConfirmationWindow);
-}
-
-function isPersonalLearningItem(value: unknown): boolean {
-  return isRecord(value)
-    && isNonNegativeInteger(value.itemId)
-    && typeof value.itemName === 'string'
-    && isOneOf(value.status, ['insufficientCoverage', 'insufficientSamples', 'insufficientMetrics', 'stale', 'supported'])
-    && isNonNegativeInteger(value.exactSourceTimestampCount)
-    && isNonNegativeInteger(value.intervalCensoredCompletionCount)
-    && isNonNegativeInteger(value.unknownOrderTimingCount)
-    && isNonNegativeInteger(value.observedQuantityReductionCount)
-    && (value.knownBasisSampleCount === null || isNonNegativeInteger(value.knownBasisSampleCount))
-    && isNullableString(value.averageHoldingDuration)
-    && (value.realizedProfitPerDay === null || isExactRate(value.realizedProfitPerDay))
-    && (value.capitalTurns === null || isExactRate(value.capitalTurns));
-}
-
-function exactRate(value: { numerator: string; denominator: string } | null, suffix: string): string {
-  if (value === null) return 'Unavailable';
-  const numerator = BigInt(value.numerator);
-  const denominator = BigInt(value.denominator);
-  const negative = numerator < 0n;
-  const scaled = (negative ? -numerator : numerator) * 100n / denominator;
-  return `${negative ? '−' : ''}${scaled / 100n}.${(scaled % 100n).toString().padStart(2, '0')} ${suffix}`;
-}
-
-function personalLearningStatus(status: NonNullable<Dashboard['personalLearning']>['status']): string {
-  switch (status) {
-    case 'supported': return 'Sufficient recent known-basis evidence';
-    case 'stale': return 'Evidence is stale; it is not strong current evidence';
-    case 'insufficientSamples': return 'Too few known-basis outcomes for strong evidence';
-    case 'insufficientMetrics': return 'Turnover metrics cannot be calculated from the retained outcomes';
-    case 'insufficientCoverage': return 'Continuous completed-history coverage is not available';
-  }
-}
-
-function timestamp(value: string | null): string {
-  return value === null ? 'Not yet recorded' : new Date(value).toLocaleString();
-}
-
-function DashboardPanel({ dashboard, status }: { dashboard: Dashboard | null; status: 'loading' | 'error' | 'ready' }) {
-  if (status === 'loading') return <section className="dashboard-panel" aria-busy="true"><h2>Loading personal dashboard…</h2></section>;
-  if (status === 'error' || dashboard === null) return <section className="dashboard-panel" role="alert"><h2>Dashboard unavailable</h2><p>The local dashboard could not be read. Check the local host and try again.</p></section>;
-  if (dashboard.state === 'accountUnavailable') return <section className="dashboard-panel"><h2>Connect an account to view your dashboard</h2><p>Account access is unavailable ({dashboard.accountError ?? 'unknown error'}). Your browser never receives the key.</p></section>;
-  if (dashboard.state === 'notSynchronized') return <section className="dashboard-panel"><h2>No personal data yet</h2><p>Synchronize a valid Trading Post account to create the first local snapshot.</p></section>;
-
-  const coverage = dashboard.historyCoverage;
-  return <section className="dashboard-panel" aria-labelledby="performance-title">
-    <div className="dashboard-heading"><div><p className="eyebrow">Retained evidence</p><h2 id="performance-title">Performance and current orders</h2></div><p className="sync-time">Last sync: {timestamp(dashboard.lastSuccessfulSyncAtUtc)}</p></div>
-    {coverage === null || coverage.startUtc === null || coverage.endUtc === null ? <p className="notice">Continuous history coverage is not available. No realized performance claim is shown.</p> : <p className="notice">History coverage: {timestamp(coverage.startUtc)} to {timestamp(coverage.endUtc)}.</p>}
-    {!dashboard.isFeeRoundingExternallyVerified && <p className="notice">Fee-derived values use the current modeled rounding policy and remain provisional.</p>}
-    <div className="metric-grid">
-      {dashboard.realizedWindows.map((window) => <section key={window.days}><h3>{window.days}-day realized P&amp;L</h3><strong>{window.status === 'supported' ? copper(window.netProfit) : 'Insufficient coverage'}</strong>{window.unknownBasisQuantity > 0 && <p>{window.unknownBasisQuantity} sold without known basis, excluded.</p>}</section>)}
-      <section><h3>Open acquisition basis</h3><strong>{copper(dashboard.openAcquisitionBasis)}</strong></section>
-      <section><h3>Unrealized P&amp;L</h3><strong>{dashboard.isOpenInventoryFullyValued ? copper(dashboard.unrealizedProfit) : 'Not fully valued'}</strong></section>
-      <section><h3>Capital in buy orders</h3><strong>{copper(dashboard.currentBuyCapital)}</strong></section>
-      <section><h3>Current sell listings</h3><strong>{copper(dashboard.currentSellGrossValue)} gross</strong><p>{copper(dashboard.currentSellNetValue)} modeled net</p></section>
-    </div>
-    {dashboard.personalLearning !== null && <section className="dashboard-learning" aria-labelledby="learning-title">
-      <div><p className="eyebrow">Personal learning</p><h3 id="learning-title">Fill time and capital turnover</h3></div>
-      <p className="notice">{dashboard.personalLearning.timestampLimitation}</p>
-      <p aria-live="polite"><strong>{personalLearningStatus(dashboard.personalLearning.status)}</strong> {dashboard.personalLearning.knownBasisSampleCount ?? 0} portfolio-wide known-basis completed outcome{(dashboard.personalLearning.knownBasisSampleCount ?? 0) === 1 ? '' : 's'} retained. Each market requires {dashboard.personalLearning.minimumKnownBasisSamples} outcomes for strong evidence.</p>
-      <div className="metric-grid">
-        {dashboard.personalLearning.fillTiming.map((timing) => <section key={timing.side}><h3>{timing.side === 'buy' ? 'Buy' : 'Sell'} timing</h3><strong>{timing.averageSourceDuration ?? 'Unavailable'}</strong><p>{timing.exactSourceTimestampCount} source-timestamp duration{timing.exactSourceTimestampCount === 1 ? '' : 's'}; {timing.intervalCensoredCompletionCount} local confirmation window{timing.intervalCensoredCompletionCount === 1 ? '' : 's'} ({timing.averageConfirmationWindow ?? 'unavailable'} average).</p></section>)}
-        <section><h3>Local confirmation windows</h3><strong>{dashboard.personalLearning.intervalCensoredCompletionCount}</strong><p>Polling supplies bounds only; no window claims an exact fill time.</p></section>
-        <section><h3>Observed quantity reductions</h3><strong>{dashboard.personalLearning.observedQuantityReductionCount}</strong><p>Independent snapshot evidence; it does not claim a completed fill.</p></section>
-        <section><h3>Unknown order timing</h3><strong>{dashboard.personalLearning.unknownOrderTimingCount}</strong><p>Disappearance from polling is never counted as a fill.</p></section>
-        <section><h3>Average capital lock</h3><strong>{dashboard.personalLearning.averageHoldingDuration ?? 'Unavailable'}</strong><p>Known FIFO acquisition to completed sale.</p></section>
-        <section><h3>Realized profit/day</h3><strong>{exactRate(dashboard.personalLearning.realizedProfitPerDay, 'c/day')}</strong><p>Exact retained-evidence ratio, displayed to two truncated decimals.</p></section>
-        <section><h3>Capital turns</h3><strong>{exactRate(dashboard.personalLearning.capitalTurns, 'turns')}</strong><p>Time-weighted matched capital over the measured interval.</p></section>
-      </div>
-      <DashboardTable title="Personal market evidence" columns={['Item', 'Evidence strength', 'Known-basis outcomes', 'Average capital lock', 'Profit/day', 'Capital turns', 'Observed timing']}>
-        {dashboard.personalLearning.items.length === 0 ? <tr><td colSpan={7}>No item-level personal evidence is retained yet.</td></tr> : dashboard.personalLearning.items.map((item) => <tr key={item.itemId}><td>{item.itemName}</td><td>{personalLearningStatus(item.status)}</td><td>{item.knownBasisSampleCount ?? 0}</td><td>{item.averageHoldingDuration ?? 'Unavailable'}</td><td>{exactRate(item.realizedProfitPerDay, 'c/day')}</td><td>{exactRate(item.capitalTurns, 'turns')}</td><td>{item.exactSourceTimestampCount} source / {item.intervalCensoredCompletionCount} bounded / {item.observedQuantityReductionCount} reductions / {item.unknownOrderTimingCount} unknown</td></tr>)}
-      </DashboardTable>
-    </section>}
-    <DashboardTable title="Current orders" columns={['Side', 'Item', 'Quantity', 'Your price', 'Current market']}>
-      {dashboard.currentOrders.length === 0 ? <tr><td colSpan={5}>No current orders in the latest sync.</td></tr> : dashboard.currentOrders.map((order) => <tr key={order.orderId}><td>{order.side}</td><td>{order.itemName}</td><td>{order.quantity}</td><td>{copper(order.unitPrice)}</td><td>{order.marketComparisonStatus === 'available' ? copper(order.currentMarketUnitPrice) : order.marketComparisonStatus === 'missingSide' ? 'No comparable orders' : 'Market unavailable'}</td></tr>)}
-    </DashboardTable>
-    <DashboardTable title="Recent completed trades" columns={['Side', 'Item', 'Quantity', 'Price', 'Completed']}>
-      {dashboard.recentTrades.length === 0 ? <tr><td colSpan={5}>No completed trades are retained yet.</td></tr> : dashboard.recentTrades.map((trade) => <tr key={trade.transactionId}><td>{trade.side}</td><td>{trade.itemName}</td><td>{trade.quantity}</td><td>{copper(trade.unitPrice)}</td><td>{timestamp(trade.completedAtUtc)}</td></tr>)}
-    </DashboardTable>
-    <div className="dashboard-split"><DashboardItems title="Best realized items" items={dashboard.bestRealizedItems} /><DashboardItems title="Worst realized items" items={dashboard.worstRealizedItems} /></div>
-    {dashboard.openInventory.length > 0 && <DashboardTable title="Open inventory" columns={['Item', 'Quantity', 'Basis', 'Liquidation state', 'Unrealized P&L']}>
-      {dashboard.openInventory.map((item) => <tr key={item.itemId}><td>{item.itemName}</td><td>{item.quantity}</td><td>{copper(item.acquisitionBasis)}</td><td>{item.liquidationStatus === 'fullyValued' ? 'Fully valued' : item.liquidationStatus === 'insufficientBuyDepth' ? `Insufficient buy depth (${item.unliquidatedQuantity} remaining)` : 'Market evidence missing'}</td><td>{copper(item.unrealizedProfit)}</td></tr>)}
-    </DashboardTable>}
-  </section>;
-}
-
-function DashboardTable({ title, columns, children }: { title: string; columns: string[]; children: ReactNode }) {
-  return <section className="dashboard-table"><h3>{title}</h3><div className="table-wrap"><table><thead><tr>{columns.map((column) => <th key={column} scope="col">{column}</th>)}</tr></thead><tbody>{children}</tbody></table></div></section>;
-}
-
-function DashboardItems({ title, items }: { title: string; items: Dashboard['bestRealizedItems'] }) {
-  return <section className="dashboard-items"><h3>{title}</h3>{items.length === 0 ? <p>No known-basis realized sales yet.</p> : <ol>{items.map((item) => <li key={item.itemId}><span>{item.itemName} ({item.quantity})</span><strong>{copper(item.netProfit)}</strong></li>)}</ol>}</section>;
-}
-
 function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () => void }) {
   const [location, setLocation] = useState<LocalDataLocationState>({ kind: 'loading' });
   const [locationRefreshGeneration, setLocationRefreshGeneration] = useState(0);
@@ -572,6 +460,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
   const [clearConfirmation, setClearConfirmation] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [diagnosticMessage, setDiagnosticMessage] = useState<string | null>(null);
   const isRecoveryBusy = isBackingUp || isRestoring || isClearing;
 
   useEffect(() => {
@@ -599,18 +488,18 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     void fetch('/api/local-data/backup', { method: 'POST', headers: localRequestHeaders() })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('Backup could not be created. Your current local data has not been changed.');
+          setMessage("La sauvegarde n'a pas pu être créée. Vos données locales actuelles n'ont pas été modifiées.");
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || typeof (payload as Record<string, unknown>).fileName !== 'string') {
-          setMessage('Backup outcome could not be confirmed. Check the local backup folder before retrying.');
+          setMessage("Le résultat de la sauvegarde n'a pas pu être confirmé. Vérifiez le dossier de sauvegardes locales avant de réessayer.");
           return;
         }
-        setMessage(`Backup created: ${(payload as Record<string, string>).fileName}`);
+        setMessage(`Sauvegarde créée : ${(payload as Record<string, string>).fileName}`);
         setLocationRefreshGeneration((generation) => generation + 1);
       })
-      .catch(() => setMessage('Backup outcome could not be confirmed. Check the local backup folder before retrying.'))
+      .catch(() => setMessage("Le résultat de la sauvegarde n'a pas pu être confirmé. Vérifiez le dossier de sauvegardes locales avant de réessayer."))
       .finally(() => setIsBackingUp(false));
   };
 
@@ -620,7 +509,7 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
   };
 
   const restore = () => {
-    if (restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA') {
+    if (restoreFile === null || restoreConfirmation !== restoreConfirmationText) {
       return;
     }
 
@@ -630,29 +519,29 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
       ? location.location.managedBackupUploadLimitBytes
       : undefined;
     if (importedBackupUploadLimit !== undefined && restoreFile.size > importedBackupUploadLimit) {
-      setMessage('This imported backup exceeds the local upload limit. Only application-created Tyrian Ledger backups already moved into the managed Backups folder can be selected for local managed restore. Refresh the managed backup list after moving one.');
+      setMessage('Cette sauvegarde importée dépasse la limite locale. Déplacez une sauvegarde créée par Tyrian Ledger dans le dossier Backups géré, puis actualisez la liste avant de la restaurer.');
       setIsRestoring(false);
       return;
     }
 
     const form = new FormData();
     form.append('backup', restoreFile);
-    form.append('confirmation', restoreConfirmation);
+    form.append('confirmation', 'RESTORE LOCAL DATA');
     void fetch('/api/local-data/restore', { method: 'POST', headers: localRequestHeaders(), body: form })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('The selected backup could not be restored. Your current local data was kept.');
+          setMessage("La sauvegarde sélectionnée n'a pas pu être restaurée. Vos données locales actuelles ont été conservées.");
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'restored') {
-          setMessage('Restore outcome could not be confirmed. Check local data before retrying.');
+          setMessage("Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.");
           return;
         }
         const preRestore = (payload as Record<string, unknown>).preRestoreBackupFileName;
         setMessage(typeof preRestore === 'string'
-          ? `Backup restored. Your previous data was saved as ${preRestore}.`
-          : 'Backup restored.');
+          ? `Sauvegarde restaurée. Vos données précédentes ont été enregistrées sous ${preRestore}.`
+          : 'Sauvegarde restaurée.');
         setRestoreFile(null);
         setRestoreConfirmation('');
         if (restoreFileInput.current !== null) {
@@ -661,12 +550,12 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
         onPersonalDataChanged();
         setLocationRefreshGeneration((generation) => generation + 1);
       })
-      .catch(() => setMessage('Restore outcome could not be confirmed. Check local data before retrying.'))
+      .catch(() => setMessage("Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer."))
       .finally(() => setIsRestoring(false));
   };
 
   const restoreManagedBackup = () => {
-    if (managedBackupFileName === '' || restoreConfirmation !== 'RESTORE LOCAL DATA') {
+    if (managedBackupFileName === '' || restoreConfirmation !== restoreConfirmationText) {
       return;
     }
 
@@ -675,33 +564,33 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     void fetch('/api/local-data/restore-managed', {
       method: 'POST',
       headers: { ...localRequestHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmation: restoreConfirmation, backupFileName: managedBackupFileName }),
+      body: JSON.stringify({ confirmation: 'RESTORE LOCAL DATA', backupFileName: managedBackupFileName }),
     })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('The selected managed backup could not be restored. Your current local data was kept.');
+          setMessage("La sauvegarde gérée sélectionnée n'a pas pu être restaurée. Vos données locales actuelles ont été conservées.");
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'restored') {
-          setMessage('Restore outcome could not be confirmed. Check local data before retrying.');
+          setMessage("Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.");
           return;
         }
         const preRestore = (payload as Record<string, unknown>).preRestoreBackupFileName;
         setMessage(typeof preRestore === 'string'
-          ? `Backup restored. Your previous data was saved as ${preRestore}.`
-          : 'Backup restored.');
+          ? `Sauvegarde restaurée. Vos données précédentes ont été enregistrées sous ${preRestore}.`
+          : 'Sauvegarde restaurée.');
         setManagedBackupFileName('');
         setRestoreConfirmation('');
         onPersonalDataChanged();
         setLocationRefreshGeneration((generation) => generation + 1);
       })
-      .catch(() => setMessage('Restore outcome could not be confirmed. Check local data before retrying.'))
+      .catch(() => setMessage("Le résultat de la restauration n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer."))
       .finally(() => setIsRestoring(false));
   };
 
   const clearPersonalData = () => {
-    if (clearConfirmation !== 'CLEAR PERSONAL DATA') {
+    if (clearConfirmation !== clearConfirmationText) {
       return;
     }
 
@@ -710,80 +599,123 @@ function LocalDataPanel({ onPersonalDataChanged }: { onPersonalDataChanged: () =
     void fetch('/api/local-data/clear-personal', {
       method: 'POST',
       headers: { ...localRequestHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirmation: clearConfirmation }),
+      body: JSON.stringify({ confirmation: 'CLEAR PERSONAL DATA' }),
     })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage('Personal data could not be cleared. Your current local data was kept.');
+          setMessage("Les données personnelles n'ont pas pu être effacées. Vos données locales actuelles ont été conservées.");
           return;
         }
         const payload: unknown = await response.json();
         if (typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'personal_data_cleared') {
-          setMessage('Clear outcome could not be confirmed. Check local data before retrying.');
+          setMessage("Le résultat de l'effacement n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer.");
           return;
         }
-        setMessage('Personal account data cleared. Existing backup files were kept.');
+        setMessage('Données personnelles du compte effacées. Les sauvegardes existantes ont été conservées.');
         setClearConfirmation('');
         onPersonalDataChanged();
       })
-      .catch(() => setMessage('Clear outcome could not be confirmed. Check local data before retrying.'))
+      .catch(() => setMessage("Le résultat de l'effacement n'a pas pu être confirmé. Vérifiez les données locales avant de réessayer."))
       .finally(() => setIsClearing(false));
   };
 
+  const exportDiagnostics = () => {
+    setDiagnosticMessage(null);
+    void fetch('/api/diagnostics/export', { headers: localRequestHeaders() })
+      .then(async response => {
+        if (!response.ok) throw new Error('Diagnostic export failed');
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const revokeObjectURL = URL.revokeObjectURL.bind(URL);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'tyrian-ledger-diagnostic.txt';
+        link.click();
+        window.setTimeout(() => revokeObjectURL(url), 0);
+      })
+      .catch(() => setDiagnosticMessage("Le diagnostic n'a pas pu être exporté."));
+  };
+
   return (
-    <section aria-labelledby="local-data-title" className="local-data-panel">
-      <p className="eyebrow">Local data</p>
-      <h2 id="local-data-title">Backup and recovery</h2>
-      <p>Backups stay on this computer. Tyrian Ledger handles restore files only through its local loopback host and never sends them to a cloud service.</p>
-      {location.kind === 'loading' && <p aria-live="polite" role="status">Finding local data locations…</p>}
-      {location.kind === 'unavailable' && <p role="alert">Local data locations are unavailable. Check that the local host is running.</p>}
-      {location.kind === 'ready' && (
-        <dl className="local-data-locations">
-          <div><dt>Database</dt><dd><code>{location.location.databasePath}</code></dd></div>
-          <div><dt>Backups</dt><dd><code>{location.location.backupDirectoryPath}</code></dd></div>
-        </dl>
-      )}
-      <div className="local-data-action">
-        <h3>Create a backup</h3>
-        <p>Create a timestamped, consistent copy before making major changes to your computer or this application.</p>
-        <button disabled={isRecoveryBusy || location.kind !== 'ready'} onClick={createBackup} type="button">
-          {isBackingUp ? 'Creating backup…' : 'Create local backup'}
-        </button>
-      </div>
-      <div className="local-data-action">
-        <h3>Restore a backup</h3>
-        <p>Restoring replaces the active database only after the selected file is checked. A backup of the current data is created first.</p>
-        {location.kind === 'ready' && location.location.managedBackupUploadLimitBytes !== undefined && <p>Imported selected backup files are limited to {Math.floor(location.location.managedBackupUploadLimitBytes / (1024 * 1024))} MiB.</p>}
-        <label htmlFor="restore-backup">Backup file</label>
-        <input ref={restoreFileInput} id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
-        <label htmlFor="restore-confirmation">Type RESTORE LOCAL DATA to continue</label>
-        <input id="restore-confirmation" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} />
-        <button disabled={isRecoveryBusy || restoreFile === null || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restore} type="button">
-          {isRestoring ? 'Restoring backup…' : 'Restore selected backup'}
-        </button>
-        {location.kind === 'ready' && location.location.managedBackups !== undefined && <>
-          <p>Managed restore is only for application-created Tyrian Ledger backups listed in this application’s Backups folder. After moving one there, refresh this list before selecting it.</p>
-          <button disabled={isRecoveryBusy} onClick={refreshManagedBackups} type="button">Refresh managed backups</button>
-          <label htmlFor="managed-restore-backup">Managed backup</label>
-          <select id="managed-restore-backup" value={managedBackupFileName} onChange={(event) => setManagedBackupFileName(event.target.value)}>
-            <option value="">Select a managed backup</option>
-            {location.location.managedBackups.map((backup) => <option key={backup.fileName} value={backup.fileName}>{backup.fileName}</option>)}
-          </select>
-          <button disabled={isRecoveryBusy || managedBackupFileName === '' || restoreConfirmation !== 'RESTORE LOCAL DATA'} onClick={restoreManagedBackup} type="button">
-            {isRestoring ? 'Restoring backup…' : 'Restore managed backup'}
+    <>
+      <section aria-labelledby="local-data-title" className="settings-panel">
+        <h2 id="local-data-title">Données locales</h2>
+        <p>Créez une sauvegarde avant une modification importante. Les sauvegardes restent sur cet ordinateur et ne sont jamais envoyées vers un service cloud.</p>
+        {location.kind === 'loading' && <p aria-live="polite" role="status">Recherche des emplacements de données locales…</p>}
+        {location.kind === 'unavailable' && <p role="alert">Les emplacements de données locales sont indisponibles. Vérifiez que l'application locale fonctionne.</p>}
+        {location.kind === 'ready' && (
+          <details className="settings-disclosure settings-disclosure--quiet">
+            <summary>Emplacements locaux</summary>
+            <dl className="local-data-locations">
+              <div><dt>Base de données</dt><dd><code>{location.location.databasePath}</code></dd></div>
+              <div><dt>Sauvegardes</dt><dd><code>{location.location.backupDirectoryPath}</code></dd></div>
+            </dl>
+          </details>
+        )}
+
+        <div className="settings-primary-action">
+          <div>
+            <h3>Sauvegarde</h3>
+            <p>Conservez une copie cohérente et horodatée de vos données locales.</p>
+          </div>
+          <button disabled={isRecoveryBusy || location.kind !== 'ready'} onClick={createBackup} type="button">
+            {isBackingUp ? 'Création de la sauvegarde…' : 'Créer une sauvegarde locale'}
           </button>
-        </>}
-      </div>
-      <div className="local-data-action local-data-action--danger">
-        <h3>Clear personal account data</h3>
-        <p>This permanently removes synced account history and current-order records from the active database. Shared item metadata and settings remain. Existing backup files are not deleted.</p>
-        <label htmlFor="clear-confirmation">Type CLEAR PERSONAL DATA to continue</label>
-        <input id="clear-confirmation" value={clearConfirmation} onChange={(event) => setClearConfirmation(event.target.value)} />
-        <button disabled={isRecoveryBusy || clearConfirmation !== 'CLEAR PERSONAL DATA'} onClick={clearPersonalData} type="button">
-          {isClearing ? 'Clearing personal data…' : 'Clear personal account data'}
+        </div>
+
+        <details className="settings-disclosure">
+          <summary>Restaurer des données</summary>
+          <div className="settings-disclosure-content">
+            <p>La restauration remplace la base active uniquement après vérification du fichier sélectionné. Une sauvegarde des données actuelles est créée auparavant.</p>
+            {location.kind === 'ready' && location.location.managedBackupUploadLimitBytes !== undefined && <p>Les sauvegardes importées sélectionnées sont limitées à {Math.floor(location.location.managedBackupUploadLimitBytes / (1024 * 1024))} MiB.</p>}
+            <label htmlFor="restore-backup">Fichier de sauvegarde</label>
+            <input ref={restoreFileInput} id="restore-backup" accept=".db,application/x-sqlite3" onChange={(event) => setRestoreFile(event.target.files?.[0] ?? null)} type="file" />
+            <label htmlFor="restore-confirmation">Saisissez {restoreConfirmationText} pour continuer</label>
+            <input id="restore-confirmation" value={restoreConfirmation} onChange={(event) => setRestoreConfirmation(event.target.value)} />
+            <button disabled={isRecoveryBusy || restoreFile === null || restoreConfirmation !== restoreConfirmationText} onClick={restore} type="button">
+              {isRestoring ? 'Restauration en cours…' : 'Restaurer la sauvegarde sélectionnée'}
+            </button>
+            {location.kind === 'ready' && location.location.managedBackups !== undefined && <>
+              <div className="settings-subsection">
+                <h3>Sauvegarde gérée</h3>
+                <p>Utilisez une sauvegarde créée par Tyrian Ledger présente dans le dossier Backups de l'application.</p>
+                <button disabled={isRecoveryBusy} onClick={refreshManagedBackups} type="button">Actualiser les sauvegardes gérées</button>
+                <label htmlFor="managed-restore-backup">Sauvegarde gérée</label>
+                <select id="managed-restore-backup" value={managedBackupFileName} onChange={(event) => setManagedBackupFileName(event.target.value)}>
+                  <option value="">Sélectionner une sauvegarde gérée</option>
+                  {location.location.managedBackups.map((backup) => <option key={backup.fileName} value={backup.fileName}>{backup.fileName}</option>)}
+                </select>
+                <button disabled={isRecoveryBusy || managedBackupFileName === '' || restoreConfirmation !== restoreConfirmationText} onClick={restoreManagedBackup} type="button">
+                  {isRestoring ? 'Restauration en cours…' : 'Restaurer la sauvegarde gérée'}
+                </button>
+              </div>
+            </>}
+          </div>
+        </details>
+        {message !== null && <p aria-live="polite" className="local-data-message" role="status">{message}</p>}
+      </section>
+
+      <section aria-labelledby="diagnostics-title" className="settings-panel settings-panel--support">
+        <h2 id="diagnostics-title">Diagnostic</h2>
+        <p>Exportez les événements techniques récents lorsqu'un problème doit être analysé. Les clés API et les en-têtes d'autorisation ne sont pas enregistrés.</p>
+        <button className="settings-secondary-button" onClick={exportDiagnostics} type="button">
+          Exporter le diagnostic
         </button>
-      </div>
-      {message !== null && <p aria-live="polite" className="local-data-message" role="status">{message}</p>}
-    </section>
+        {diagnosticMessage && <p role="alert">{diagnosticMessage}</p>}
+      </section>
+
+      <details className="settings-panel settings-danger">
+        <summary>Zone sensible</summary>
+        <div className="settings-disclosure-content">
+          <h2>Effacer les données personnelles locales</h2>
+          <p>Cette action supprime définitivement de la base active l'historique synchronisé du compte et les ordres actuels. Les métadonnées partagées, les réglages et les sauvegardes existantes sont conservés.</p>
+          <label htmlFor="clear-confirmation">Saisissez {clearConfirmationText} pour continuer</label>
+          <input id="clear-confirmation" value={clearConfirmation} onChange={(event) => setClearConfirmation(event.target.value)} />
+          <button disabled={isRecoveryBusy || clearConfirmation !== clearConfirmationText} onClick={clearPersonalData} type="button">
+            {isClearing ? 'Effacement en cours…' : 'Effacer les données personnelles'}
+          </button>
+        </div>
+      </details>
+    </>
   );
 }

@@ -195,6 +195,7 @@ internal sealed class SqliteLocalDataRecoveryService(
                      "current_tp_order_observations",
                      "current_order_sync_batches",
                      "completed_tp_transactions",
+                     "execution_plans",
                      "account_profiles",
                  })
         {

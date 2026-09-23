@@ -4,6 +4,7 @@ using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Infrastructure.Gw2Api;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Infrastructure.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Secrets;
 using Gw2Tp.Testing;
@@ -318,6 +319,33 @@ public sealed class PersonalTradingPostGatewayTests
     }
 
     [Fact]
+    public async Task Request_timeout_is_diagnosed_safely_without_disclosing_the_credential()
+    {
+        var handler = new RecordingHandler(async (_, cancellationToken) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return CreatePagedJsonResponse(HttpStatusCode.OK, "[]");
+        });
+        using var httpClient = CreateHttpClient(handler);
+        var diagnostics = new SafeTransportDiagnosticBuffer();
+        var gateway = new PersonalTradingPostGateway(
+            new FixedKeySource(SyntheticKey),
+            httpClient,
+            new ImmediateRequestScheduler(),
+            TimeSpan.FromMilliseconds(25),
+            diagnostics);
+
+        var result = await gateway.GetCompletedBuyHistoryAsync(0);
+
+        Assert.Equal(Gw2ApiErrorCategory.TransportFailure, result.ErrorCategory);
+        var diagnostic = Assert.Single(diagnostics.Snapshot());
+        Assert.Equal("commerce/transactions/history/buys", diagnostic.Operation);
+        Assert.Equal("TIMEOUT", diagnostic.Code);
+        Assert.Equal(nameof(TaskCanceledException), diagnostic.ExceptionType);
+        Assert.DoesNotContain(SyntheticKey, diagnostic.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Caller_cancellation_is_not_converted_to_a_gateway_failure()
     {
         var handler = new RecordingHandler(async (_, cancellationToken) =>
@@ -345,6 +373,26 @@ public sealed class PersonalTradingPostGatewayTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => gateway.GetCurrentBuyOrdersAsync(-1));
 
         Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public void Registered_personal_client_honors_configured_request_timeout()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gw2Api:RequestTimeoutMs"] = "30000",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddTyrianLedgerAccountConnection(new TestingHostEnvironment(), configuration);
+        using var provider = services.BuildServiceProvider();
+
+        var client = provider.GetRequiredService<IHttpClientFactory>()
+            .CreateClient(PersonalTradingPostGateway.HttpClientName);
+
+        Assert.Equal(TimeSpan.FromSeconds(30), client.Timeout);
     }
 
     [Fact]

@@ -10,7 +10,9 @@ using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Application.Investments;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.Plans;
 using Gw2Tp.Infrastructure.AccountConnection;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Infrastructure.Persistence;
 using Gw2Tp.Web.Hosting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -50,6 +52,7 @@ public static class Program
         });
 
         builder.Services.AddHealthChecks();
+        builder.Services.AddSingleton<LocalDiagnosticLog>();
         builder.Services.AddTyrianLedgerAccountConnection(builder.Environment, builder.Configuration);
         builder.Services.AddTyrianLedgerPersistence(builder.Configuration);
         builder.Services.AddSingleton<IPersonalDashboardService, PersonalDashboardService>();
@@ -66,6 +69,9 @@ public static class Program
         builder.Services.AddSingleton<IOpportunityScoreService, OpportunityScoreService>();
         builder.Services.AddSingleton<IPrimaryRecommendationPolicy, PrimaryRecommendationPolicy>();
         builder.Services.AddSingleton<IPrimaryRecommendationService, PrimaryRecommendationService>();
+        builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
+        builder.Services.AddSingleton<PlanEndpointService>();
+        builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
         builder.Services.AddSingleton<IInvestmentPortfolioService, InvestmentPortfolioService>();
         builder.Services.AddSingleton<IAccountCraftingSnapshotService, AccountCraftingSnapshotService>();
         builder.Services.AddSingleton<IMarketHistoryCollectionDelay>(SystemMarketHistoryCollectionDelay.Instance);
@@ -113,6 +119,27 @@ public static class Program
                 "/api/health",
                 new HealthCheckOptions { ResponseWriter = HealthResponseWriter.WriteAsync })
             .WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
+
+        app.MapGet("/api/diagnostics/export", (HttpContext context, LocalDiagnosticLog diagnostics, SafeTransportDiagnosticBuffer transportDiagnostics) =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            var export = diagnostics.ExportText();
+            var transport = transportDiagnostics.Snapshot();
+            if (transport.Count > 0)
+            {
+                export += Environment.NewLine + "Transport ArenaNet" + Environment.NewLine;
+                foreach (var item in transport)
+                {
+                    export += $"{item.TimestampUtc:O} [ERROR] ArenaNet/{item.Operation} code={item.Code} exception={item.ExceptionType}";
+                    if (item.InnerExceptionType is not null)
+                    {
+                        export += $" inner={item.InnerExceptionType}";
+                    }
+                    export += $" elapsedMs={item.ElapsedMilliseconds}" + Environment.NewLine;
+                }
+            }
+            return Results.Text(export, "text/plain; charset=utf-8");
+        }).WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
         app.MapGet(
             "/api/account-connection",
             async (
@@ -130,9 +157,19 @@ public static class Program
             async (
                 HttpContext context,
                 IPersonalTradingPostSynchronizationService synchronizationService,
+                LocalDiagnosticLog diagnostics,
                 CancellationToken cancellationToken) =>
             {
+                var correlationId = Guid.NewGuid().ToString("N");
+                diagnostics.Record("INFO", "ArenaNet", "personal-trading-post-sync", "SYNC_STARTED", "Synchronisation du Comptoir démarrée.", correlationId: correlationId);
                 var result = await synchronizationService.SynchronizeAsync(cancellationToken).ConfigureAwait(false);
+                diagnostics.Record(
+                    result.IsSuccess ? "INFO" : "ERROR",
+                    "ArenaNet",
+                    "personal-trading-post-sync",
+                    result.IsSuccess ? "SYNC_SUCCEEDED" : (result.IsPersistenceFailure ? "PERSISTENCE_FAILURE" : result.ErrorCategory?.ToString().ToUpperInvariant() ?? "UNKNOWN_FAILURE"),
+                    result.IsSuccess ? "Synchronisation du Comptoir terminée." : "La synchronisation du Comptoir a échoué. Consultez le code pour la catégorie de panne.",
+                    correlationId: correlationId);
                 await PersonalTradingPostSynchronizationResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
             });
         app.MapPost(
@@ -225,6 +262,7 @@ public static class Program
         app.MapInvestmentEndpoints();
         app.MapMarketHistoryCollectorEndpoints();
         app.MapHistoricalMarketAnalyticsEndpoint();
+        app.MapPlanEndpoints();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 
         MapFrontend(app, builder.Configuration);

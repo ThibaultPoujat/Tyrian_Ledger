@@ -79,6 +79,9 @@ public sealed class PersonalDashboardServiceTests
 
         Assert.Equal(PersonalDashboardState.Ready, result.State);
         Assert.Equal("70", Assert.Single(result.RealizedWindows, window => window.Days == 7).NetProfit!.Copper);
+        Assert.NotNull(result.TodayRealized);
+        Assert.Equal(RealizedPerformanceWindowStatus.Supported, result.TodayRealized!.Status);
+        Assert.Equal("0", result.TodayRealized.NetProfit!.Copper);
         Assert.Equal("100", result.OpenAcquisitionBasis!.Copper);
         Assert.Equal("70", result.UnrealizedProfit!.Copper);
         Assert.Equal("100", result.CurrentBuyCapital.Copper);
@@ -94,6 +97,43 @@ public sealed class PersonalDashboardServiceTests
         Assert.Contains("polling", result.PersonalLearning.TimestampLimitation, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("00:00:00", result.PersonalLearning.FillTiming.Single(value => value.Side == PersonalTradingPostSide.Buy).AverageSourceDuration);
         Assert.Equal("00:00:00", result.PersonalLearning.FillTiming.Single(value => value.Side == PersonalTradingPostSide.Sell).AverageSourceDuration);
+    }
+
+    [Fact]
+    public async Task Today_realized_profit_uses_the_local_calendar_day_and_backend_accounting()
+    {
+        var localNoon = new DateTime(2026, 9, 8, 12, 0, 0, DateTimeKind.Unspecified);
+        var localAsOfUtc = new DateTimeOffset(
+            TimeZoneInfo.ConvertTimeToUtc(localNoon, TimeZoneInfo.Local),
+            TimeSpan.Zero);
+        var sellAtUtc = localAsOfUtc.AddHours(-1);
+        var buyAtUtc = localAsOfUtc.AddDays(-1);
+        var profile = new AccountProfile(1, "account", localAsOfUtc.AddDays(-100), localAsOfUtc);
+        var repository = new FakeRepository
+        {
+            Profile = profile,
+            Coverage = new PersonalTradingPostHistoryCoverage(localAsOfUtc.AddDays(-100), localAsOfUtc),
+            Transactions =
+            [
+                new StoredCompletedPersonalTradingPostTransaction(
+                    Buy(101, 42, 100, 1, buyAtUtc), localAsOfUtc, localAsOfUtc),
+                new StoredCompletedPersonalTradingPostTransaction(
+                    Sell(102, 42, 200, 1, sellAtUtc), localAsOfUtc, localAsOfUtc),
+            ],
+        };
+        var service = new PersonalDashboardService(
+            new FakeGateway(Gw2ApiResult<AccountScope>.Success(new AccountScope("account"))),
+            repository,
+            new FakeMetadataRepository(),
+            new FakeMarketClient(),
+            new FrozenClock(localAsOfUtc));
+
+        var result = await service.GetAsync();
+
+        Assert.NotNull(result.TodayRealized);
+        Assert.Equal(RealizedPerformanceWindowStatus.Supported, result.TodayRealized!.Status);
+        Assert.Equal("70", result.TodayRealized.NetProfit!.Copper);
+        Assert.Equal(0, result.TodayRealized.UnknownBasisQuantity);
     }
 
     [Fact]

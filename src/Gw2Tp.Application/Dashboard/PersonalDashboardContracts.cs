@@ -137,7 +137,8 @@ public sealed record PersonalDashboard(
     IReadOnlyList<DashboardRecentTrade> RecentTrades,
     IReadOnlyList<DashboardRealizedItem> BestRealizedItems,
     IReadOnlyList<DashboardRealizedItem> WorstRealizedItems,
-    DashboardPersonalLearning? PersonalLearning)
+    DashboardPersonalLearning? PersonalLearning,
+    DashboardRealizedWindow? TodayRealized = null)
 {
     public static PersonalDashboard AccountUnavailable(Gw2ApiErrorCategory error) => new(
         PersonalDashboardState.AccountUnavailable,

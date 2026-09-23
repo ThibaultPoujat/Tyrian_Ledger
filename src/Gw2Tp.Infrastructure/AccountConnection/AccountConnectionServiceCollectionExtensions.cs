@@ -2,6 +2,7 @@ using Gw2Tp.Application.AccountConnection;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Secrets;
 using Gw2Tp.Infrastructure.Gw2Api;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Infrastructure.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Crafting;
 using Gw2Tp.Application.Crafting;
@@ -27,6 +28,7 @@ public static class AccountConnectionServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configuration);
 
         services.AddTyrianLedgerGw2ApiClient(configuration);
+        services.AddSingleton<SafeTransportDiagnosticBuffer>();
         services.AddSingleton<OperatingSystemGw2ApiKeySource>();
         services.AddSingleton<EnvironmentGw2ApiKeySource>();
         services.AddSingleton<IGw2ApiKeySource>(serviceProvider =>
@@ -82,7 +84,8 @@ public static class AccountConnectionServiceCollectionExtensions
             TimeSpan.FromMilliseconds(serviceProvider
                 .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
                 .Value
-                .RequestTimeoutMs)));
+                .RequestTimeoutMs),
+            serviceProvider.GetRequiredService<SafeTransportDiagnosticBuffer>()));
         services.AddSingleton<IPersonalTradingPostGateway>(serviceProvider =>
             serviceProvider.GetRequiredService<PersonalTradingPostGateway>());
         services.AddSingleton<IAccountPortfolioGateway>(serviceProvider =>
