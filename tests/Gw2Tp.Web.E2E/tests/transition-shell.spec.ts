@@ -20,7 +20,7 @@ test('loads Mes Signaux by default and keeps account/recovery controls under Ré
   await expect(navigation.getByRole('button')).toHaveCount(4);
   await expect(navigation.getByRole('button', { name: 'Mes Signaux' })).toHaveAttribute('aria-current', 'page');
   await expect(navigation.getByRole('button', { name: 'Plans' })).toBeEnabled();
-  await expect(navigation.getByRole('button', { name: /Artisanat/i })).toBeDisabled();
+  await expect(navigation.getByRole('button', { name: 'Artisanat' })).toBeEnabled();
   await expect(navigation.getByRole('button', { name: 'Réglages' })).toBeEnabled();
   await expect(navigation.getByRole('button', { name: /tableau de bord|scanner|inventaire|apprentissages personnels|investissements/i })).toHaveCount(0);
   await expect(page.getByText('Application locale connectée')).toBeVisible();
@@ -66,6 +66,25 @@ test('opens the functional French Plans destination from typed local state', asy
   await expect(page.getByRole('heading', { name: 'Plans compatibles disponibles', level: 3 })).toBeVisible();
   await expect(page.getByText('ACHETER MAINTENANT')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Démarrer' })).toBeVisible();
+});
+
+test('opens the French guided Artisanat workspace and starts its shared Plan', async ({ page }) => {
+  await page.route('**/api/crafting-opportunities', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ state: 'Ready', truncationReasons: ['CandidateLimit'], summaryExclusions: [], opportunities: [{
+      id: 'craft:1', outputName: 'Insigne test', outputIconUrl: null, outputQuantity: 2,
+      economics: { netProfit: { copper: '1000' }, totalCost: { copper: '5000' }, state: 'Available' }, attention: 'Active', interactionSeconds: 90,
+      isActionable: true, exclusions: [], procurementExplanation: ['Coût complet vérifié.'], planId: 'craft:1',
+      steps: [{ action: 'BuyNow', itemName: 'Minerai test', quantity: 2, unitPrice: { copper: '100' } }, { action: 'Craft', itemName: 'Insigne test', quantity: 2, unitPrice: null }],
+    }] }),
+  }));
+  await page.route('**/api/plans/craft%3A1/start', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ state: 'started' }) }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Artisanat' }).click();
+  await expect(page.getByRole('heading', { name: 'Artisanat', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Actions d’artisanat à considérer', level: 2 })).toBeVisible();
+  await expect(page.getByText('Recherche limitée : nombre de propositions atteint.')).toBeVisible();
+  await page.getByRole('button', { name: 'Démarrer ce plan' }).click();
 });
 
 test('presents the execution-first Signal flow at 1920x1080 using only mocked local evidence', async ({ page }) => {

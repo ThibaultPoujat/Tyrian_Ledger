@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import './App.css';
 import RecommendationPanel from './RecommendationPanel';
 import PlanPanel from './PlanPanel';
+import CraftingPanel from './CraftingPanel';
 import MoneyDisplay from './MoneyDisplay';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
@@ -130,7 +131,7 @@ export default function App() {
   const [dashboardStatus, setDashboardStatus] = useState<'loading' | 'error' | 'ready'>('loading');
   const [syncStatus, setSyncStatus] = useState<string>('idle');
   const [localDataRefreshGeneration, setLocalDataRefreshGeneration] = useState(0);
-  const [activeView, setActiveView] = useState<'signals' | 'plans' | 'settings'>('signals');
+  const [activeView, setActiveView] = useState<'signals' | 'plans' | 'crafting' | 'settings'>('signals');
   const dashboardRequestGeneration = useRef(0);
 
   useEffect(() => {
@@ -276,9 +277,15 @@ export default function App() {
             <span aria-hidden="true">◇</span>
             <span>Plans</span>
           </button>
-          <button aria-label="Artisanat — bientôt" className="nav-item" disabled type="button">
+          <button
+            aria-label="Artisanat"
+            aria-current={activeView === 'crafting' ? 'page' : undefined}
+            className={activeView === 'crafting' ? 'nav-item nav-item--active' : 'nav-item'}
+            onClick={() => setActiveView('crafting')}
+            type="button"
+          >
             <span aria-hidden="true">⌁</span>
-            <span>Artisanat <small>Bientôt</small></span>
+            <span>Artisanat</span>
           </button>
           <button
             aria-label="Réglages"
@@ -316,6 +323,11 @@ export default function App() {
           <>
             <header className="signals-header"><div><p className="eyebrow">Exécution guidée</p><h1>Plans</h1><p className="page-introduction">Une action utile à la fois, avec une réconciliation explicite.</p></div></header>
             <PlanPanel />
+          </>
+        ) : activeView === 'crafting' ? (
+          <>
+            <header className="signals-header"><div><p className="eyebrow">Profit par fabrication</p><h1>Artisanat</h1><p className="page-introduction">Des parcours courts, réalisables et fondés sur des coûts complets.</p></div></header>
+            <CraftingPanel />
           </>
         ) : (
           <section aria-labelledby="settings-title" className="settings-view">

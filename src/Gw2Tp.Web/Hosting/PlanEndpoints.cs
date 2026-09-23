@@ -31,6 +31,7 @@ internal sealed class PlanEndpointService(
     IAccountPortfolioGateway accountPortfolio,
     IPersonalTradingPostGateway personalTradingPost,
     IAccountCraftingSnapshotService craftingSnapshots,
+    ICraftingOpportunityService craftingOpportunities,
     IPersonalTradingPostRepository profiles,
     IPlanRepository repository,
     IPlanOrchestrationService orchestration)
@@ -157,9 +158,18 @@ internal sealed class PlanEndpointService(
         }
         var quantities = VerifiedQuantities(snapshot, crafting);
         var evidence = accountEvidenceAvailable ? await ReadEvidenceAsync(cancellationToken).ConfigureAwait(false) : new EvidenceCapture([], null, new HashSet<PlanEvidenceKind>());
-        var candidates = recommendationsResult?.State == PrimaryRecommendationState.Ready
+        var recommendationCandidates = recommendationsResult?.State == PrimaryRecommendationState.Ready
             ? recommendationsResult.Actions.Where(IsActionable).Select(ToCandidate).ToArray()
             : Array.Empty<PlanCandidate>();
+        IReadOnlyList<PlanCandidate> craftingCandidates = [];
+        try
+        {
+            craftingCandidates = (await craftingOpportunities.GetAsync(cancellationToken).ConfigureAwait(false)).Opportunities
+                .Where(value => value.IsActionable && value.Candidate is not null).Select(value => value.Candidate!).ToArray();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch { /* Crafting remains conservatively unavailable without suppressing trading plans. */ }
+        var candidates = recommendationCandidates.Concat(craftingCandidates).OrderBy(value => value.Id, StringComparer.Ordinal).ToArray();
         return new Context(profile, snapshot, quantities, recommendationsResult, candidates, accountEvidenceAvailable, evidence.Evidence, evidence.CapturedAtUtc, evidence.CompleteKinds);
     }
 
