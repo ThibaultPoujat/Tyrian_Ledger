@@ -68,6 +68,13 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                         requirements.Add(new(PlanResourceKind.Cash, "cash", 0, Gw2TradingPostFeePolicy.Create().CalculateFees(gross).ListingFee));
                     }
                     break;
+                case PlanStepAction.Craft:
+                    foreach (var effect in step.CraftEffects ?? [])
+                    {
+                        if (effect.Kind == PlanResourceKind.Inventory && effect.Quantity < 0)
+                            requirements.Add(effect with { Quantity = -effect.Quantity, Cash = Money.Zero });
+                    }
+                    break;
             }
         }
         var represented = requirements.Select(Key).ToHashSet(StringComparer.Ordinal);
@@ -120,7 +127,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         if (plan.State is PlanState.ReconciliationRequired or PlanState.RecheckRequired or PlanState.Invalid) throw new InvalidOperationException("The plan cannot accept execution while paused.");
         if (plan.CurrentStepOrdinal < 0 || plan.CurrentStepOrdinal >= plan.Steps.Count) throw new InvalidOperationException("The plan has no executable current step.");
         var step = plan.Steps[plan.CurrentStepOrdinal];
-        if (step.State != PlanStepState.Current || quantity <= 0) throw new InvalidOperationException("Only the current step can be reported with a positive quantity.");
+        if (step.State != PlanStepState.Current || quantity <= 0 || step.Action == PlanStepAction.Craft && quantity != step.Quantity) throw new InvalidOperationException("Only the exact current manual craft can be reported with a positive quantity.");
         var occurred = RequireUtc(occurredAtUtc);
         var effectiveUnitPrice = unitPrice ?? step.UnitPrice;
         var execution = new PlanExecutionEvent(Guid.NewGuid().ToString("N"), plan.Id, step.Id, plan.Events.Count + 1, occurred, quantity,
@@ -386,6 +393,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             PlanStepAction.PlaceBuyOrder => [new(PlanResourceKind.Cash, "cash", 0, -gross)],
             PlanStepAction.SellNow => [new(PlanResourceKind.Inventory, item, -quantity, Money.Zero), new(PlanResourceKind.Cash, "cash", 0, gross - fees.ListingFee - fees.ExchangeFee)],
             PlanStepAction.List or PlanStepAction.Relist => [new(PlanResourceKind.Inventory, item, -quantity, Money.Zero), new(PlanResourceKind.Cash, "cash", 0, -fees.ListingFee)],
+            PlanStepAction.Craft => step.CraftEffects ?? [],
             _ => [],
         };
     }

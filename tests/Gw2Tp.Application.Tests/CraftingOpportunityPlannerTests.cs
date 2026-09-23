@@ -18,6 +18,9 @@ public sealed class CraftingOpportunityPlannerTests
         Assert.Equal(CraftingOpportunityState.Ready, result.State);
         Assert.True(opportunity.IsActionable);
         Assert.Equal(new[] { PlanStepAction.BuyNow, PlanStepAction.Craft, PlanStepAction.List }, opportunity.Candidate!.Steps.Select(step => step.Action));
+        var craft = Assert.Single(opportunity.Candidate.Steps, step => step.Action == PlanStepAction.Craft);
+        Assert.Equal(-1, Assert.Single(craft.CraftEffects!, effect => effect.ResourceId == "10").Quantity);
+        Assert.Equal(1, Assert.Single(craft.CraftEffects!, effect => effect.ResourceId == "100").Quantity);
         Assert.Equal(750, opportunity.Economics.NetProfit!.Value.Copper); // independently: 1000 - 15% fees - 100 input
         Assert.Equal(opportunity.Economics.TotalCost!.Value, opportunity.Candidate.Requirements.Aggregate(Gw2Tp.Domain.Finance.Money.Zero, (sum, value) => sum + value.Cash));
     }

@@ -26,18 +26,23 @@ public sealed class CraftingOpportunityService(
         var snapshot = await snapshots.GetLatestAsync(scope.Value, cancellationToken).ConfigureAwait(false);
         if (snapshot is null || DateTimeOffset.UtcNow - snapshot.CapturedAtUtc > TimeSpan.FromMinutes(15) ||
             snapshot.RecipeUnlocks.Availability != CraftingFeatureAvailability.Available ||
-            snapshot.CharacterCrafting.Availability != CraftingFeatureAvailability.Available)
+            snapshot.CharacterCrafting.Availability != CraftingFeatureAvailability.Available ||
+            snapshot.BankInventory.Availability != CraftingFeatureAvailability.Available ||
+            snapshot.MaterialStorage.Availability != CraftingFeatureAvailability.Available)
             return new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.CapabilityUnavailable]);
 
         var limits = CraftingPlannerLimits.Default;
         var unlocked = (snapshot.RecipeUnlocks.Value ?? []).OrderBy(id => id).ToArray();
+        var recipeLimited = unlocked.Length > limits.MaximumRecipes;
         var requested = unlocked.Take(limits.MaximumRecipes).ToArray();
         var definitions = await recipes.GetRecipesAsync(requested, cancellationToken).ConfigureAwait(false);
         if (!definitions.IsSuccess || definitions.Value is null || definitions.IsPartialData)
             return new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.MissingInputEvidence]);
-        var itemIds = definitions.Value.Select(recipe => recipe.OutputItemId)
+        var allItemIds = definitions.Value.Select(recipe => recipe.OutputItemId)
             .Concat(definitions.Value.SelectMany(recipe => recipe.Ingredients.Where(ingredient => ingredient.Type == "Item").Select(ingredient => ingredient.Id)))
-            .Where(id => id > 0).Distinct().OrderBy(id => id).Take(200).ToArray();
+            .Where(id => id > 0).Distinct().OrderBy(id => id).ToArray();
+        var marketLimited = allItemIds.Length > 200;
+        var itemIds = allItemIds.Take(200).ToArray();
         var listingTask = market.GetListingsAsync(itemIds, cancellationToken);
         var metadataTask = market.GetItemMetadataAsync(itemIds, cancellationToken);
         await Task.WhenAll(listingTask, metadataTask).ConfigureAwait(false);
@@ -53,7 +58,10 @@ public sealed class CraftingOpportunityService(
         var markets = itemIds.Where(id => listingByItem.ContainsKey(id) && metadataByItem.ContainsKey(id)).ToDictionary(id => id,
             id => new CraftingMarketEvidence(listingByItem[id], metadataByItem[id], true,
                 historyByItem.TryGetValue(id, out var analytics) && analytics.Windows.Any(window => window.State == HistoricalMarketWindowState.Available)));
-        return planner.Plan(new(definitions.Value, unlocked.ToHashSet(), snapshot.CharacterCrafting.Value ?? [], markets, Owned(snapshot), limits));
+        var result = planner.Plan(new(definitions.Value, unlocked.ToHashSet(), snapshot.CharacterCrafting.Value ?? [], markets, Owned(snapshot), limits));
+        var extra = (recipeLimited ? new[] { CraftingSearchTruncationReason.RecipeLimit } : [])
+            .Concat(marketLimited ? new[] { CraftingSearchTruncationReason.MarketDataLimit } : []).Distinct().OrderBy(value => value).ToArray();
+        return extra.Length == 0 ? result : result with { TruncationReasons = result.TruncationReasons.Concat(extra).Distinct().OrderBy(value => value).ToArray() };
     }
 
     private static IReadOnlyDictionary<int, CraftingOwnedEvidence> Owned(AccountCraftingSnapshot snapshot)

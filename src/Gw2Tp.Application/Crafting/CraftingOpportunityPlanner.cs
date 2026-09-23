@@ -17,7 +17,7 @@ public sealed record CraftingPlannerLimits(int MaximumRecipes, int MaximumDepth,
 }
 
 public enum CraftingOpportunityState { Ready = 1, NoOpportunities, Degraded }
-public enum CraftingSearchTruncationReason { RecipeLimit = 1, DepthLimit, CandidateLimit, WorkLimit }
+public enum CraftingSearchTruncationReason { RecipeLimit = 1, DepthLimit, CandidateLimit, WorkLimit, MarketDataLimit }
 public enum CraftingOpportunityExclusion { CapabilityUnavailable = 1, RecipeLocked, InvalidRecipe, CycleDetected, MissingInputEvidence, InsufficientInputDepth, InsufficientOutputDepth, WeakHistory, StaleEvidence, NotProfitable, RawSaleSuperior, ResourceConflict }
 
 public sealed record CraftingMarketEvidence(MarketListing Listing, MarketItemMetadata Item, bool IsFresh, bool HasSufficientHistory);
@@ -170,7 +170,8 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
                     exclusions.OrderBy(value => value).ToArray(), explanation.Distinct(StringComparer.Ordinal).ToArray(), true);
             }
             var craftStepId = $"{craftId}:craft";
-            steps.Add(new(craftStepId, PlanStepAction.Craft, recipe.OutputItemId, output.Item.Name, recipe.OutputItemCount, null, steps.Select(step => step.Id).ToArray(), PlanStepState.Pending));
+            steps.Add(new(craftStepId, PlanStepAction.Craft, recipe.OutputItemId, output.Item.Name, recipe.OutputItemCount, null, steps.Select(step => step.Id).ToArray(), PlanStepState.Pending,
+                CraftEffects: CraftEffects(recipe, result)));
             var listId = $"{craftId}:list";
             steps.Add(new(listId, PlanStepAction.List, recipe.OutputItemId, output.Item.Name, recipe.OutputItemCount, unitPrice, [craftStepId], PlanStepState.Pending));
             requirements.Add(new(PlanResourceKind.Cash, "cash", 0, result.OutputSale!.ListingFee));
@@ -217,7 +218,10 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
                     if (intermediate.Economics.EconomicInputCost is not { } cost || intermediate.Economics.State != CraftingEconomicsState.Available) continue;
                     var withIntermediate = direct with { AcquisitionAlternatives = alternatives.Append(CraftingAcquisitionAlternative.FromCraftedIntermediate(quantity, cost)).ToArray() };
                     var chosen = economics.Calculate(new CraftingEconomicsInput(itemId, quantity, BestSell(market?.Listing), [withIntermediate]));
-                    if (chosen.EconomicInputCost is { } chosenCost && (best.CraftedCost is null || chosenCost.Copper < best.CraftedCost.Value.Copper))
+                    if (chosen.EconomicInputCost is { } chosenCost &&
+                        chosen.Ingredients.Single().Acquisition?.Strategy == CraftingAcquisitionStrategy.CraftedIntermediate &&
+                        intermediate.Candidate is { Attention: PlanAttention.Active } &&
+                        (best.CraftedCost is null || chosenCost.Copper < best.CraftedCost.Value.Copper))
                     {
                         var steps = intermediate.Candidate?.Steps.Where(step => step.Action != PlanStepAction.List).ToArray() ?? [];
                         var requirements = intermediate.Candidate?.Requirements.Where(requirement => requirement.Kind != PlanResourceKind.ExpectedIncoming).ToList() ?? [];
@@ -242,6 +246,10 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
     private static bool CanLiquidate(MarketListing listing, int quantity) => new OrderBookExecutionSimulator().SimulateLiquidation(ToLevels(listing.Buys), quantity).IsFullyFilled;
     private static Money? BestSell(MarketListing? listing) => listing?.Sells.Where(level => level.UnitPriceInCopper > 0).OrderBy(level => level.UnitPriceInCopper).Select(level => new Money(level.UnitPriceInCopper)).FirstOrDefault();
     private static IReadOnlyList<OrderBookLevel> ToLevels(IEnumerable<MarketOrderLevel> levels) => levels.Where(level => level.Quantity > 0 && level.UnitPriceInCopper > 0).Select(level => new OrderBookLevel(level.Quantity, new Money(level.UnitPriceInCopper))).ToArray();
+    private static IReadOnlyList<PlanResourceRequirement> CraftEffects(CraftingRecipe recipe, CraftingEconomics economics) =>
+        economics.Ingredients.Select(ingredient => new PlanResourceRequirement(PlanResourceKind.Inventory,
+                ingredient.ItemId.ToString(System.Globalization.CultureInfo.InvariantCulture), -ingredient.RequiredQuantity, Money.Zero))
+            .Append(new PlanResourceRequirement(PlanResourceKind.Inventory, recipe.OutputItemId.ToString(System.Globalization.CultureInfo.InvariantCulture), recipe.OutputItemCount, Money.Zero)).ToArray();
 
     private sealed record SearchKey(int ItemId, int Quantity, int Depth);
     private sealed class SearchKeyComparer : IEqualityComparer<SearchKey> { public static SearchKeyComparer Instance { get; } = new(); public bool Equals(SearchKey? x, SearchKey? y) => x == y; public int GetHashCode(SearchKey value) => value.GetHashCode(); }
