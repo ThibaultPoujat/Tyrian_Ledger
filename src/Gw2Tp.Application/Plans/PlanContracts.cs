@@ -41,7 +41,8 @@ public sealed record PlanExecutionEvent(
     DateTimeOffset? ExpectedObservableUntilUtc = null, int? VerifiedQuantity = null,
     Money? VerifiedUnitPrice = null, PlanEvidenceKind? ExpectedEvidenceKind = null,
     DateTimeOffset? IssuedAtUtc = null, string? LastRelevantEvidenceFingerprint = null,
-    IReadOnlyList<string>? VerifiedEvidenceIds = null, PlanStepAction? Action = null);
+    IReadOnlyList<string>? VerifiedEvidenceIds = null, PlanStepAction? Action = null,
+    DateTimeOffset? FirstNegativeEvidenceCapturedAtUtc = null, int NegativeEvidenceCaptureCount = 0);
 
 public sealed record PlanRecord(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,

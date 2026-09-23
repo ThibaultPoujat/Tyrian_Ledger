@@ -193,15 +193,18 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
-    public void Complete_current_buy_order_observation_confirms_a_reported_bid_cancellation_by_absence()
+    public void Two_stabilized_complete_observations_confirm_a_reported_bid_cancellation_by_absence()
     {
         var candidate = Candidate("cancel-bid", 0, 50, 1,
             steps: [new PlanStep("cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending, "order-7")]);
         var reported = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
 
-        var reconciled = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(1),
+        var provisional = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(1),
             [], Now.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        var reconciled = service.ReconcileWithVerifiedState(provisional, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(16),
+            [], Now.AddMinutes(16), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
 
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, provisional.Events[0].State);
         Assert.Equal(PlanShadowEventState.Confirmed, reconciled.Events[0].State);
         Assert.Equal(PlanStepState.Confirmed, reconciled.Steps[0].State);
         Assert.Equal(PlanReconciliationState.Compatible, reconciled.ReconciliationState);
@@ -236,6 +239,42 @@ public sealed class PlanOrchestrationServiceTests
         Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled.Events[0].State);
         Assert.Equal(PlanState.ReconciliationRequired, reconciled.State);
         Assert.Equal(PlanReconciliationState.Contradicted, reconciled.ReconciliationState);
+    }
+
+    [Fact]
+    public void A_fill_between_instruction_and_done_report_pauses_cancellation()
+    {
+        var candidate = Candidate("cancel-filled-before-report", 0, 50, 1,
+            steps: [new PlanStep("cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 2, new Money(100), [], PlanStepState.Pending, "order-7")]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 2, new Money(100), Now.AddSeconds(10));
+
+        var reconciled = service.ReconcileWithVerifiedState(reported, new Money(800), new Dictionary<string, long> { ["2:42"] = 2 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("CompletedBuy:7", PlanEvidenceKind.CompletedBuy, 42, 2, new Money(100), Now.AddSeconds(5), Now.AddMinutes(1), "order-7")],
+            Now.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled.Events[0].State);
+        Assert.Equal(PlanState.ReconciliationRequired, reconciled.State);
+        Assert.Equal(PlanReconciliationState.Contradicted, reconciled.ReconciliationState);
+    }
+
+    [Fact]
+    public void Late_exact_completed_buy_evidence_reopens_a_stabilized_cancellation()
+    {
+        var candidate = Candidate("cancel-late-history", 0, 50, 1,
+            steps: [new PlanStep("cancel", PlanStepAction.CancelBuyOrder, 42, "Objet", 1, new Money(100), [], PlanStepState.Pending, "order-7")]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now.AddSeconds(10));
+        var firstAbsence = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(1),
+            [], Now.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        var confirmed = service.ReconcileWithVerifiedState(firstAbsence, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(16),
+            [], Now.AddMinutes(16), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+
+        var reopened = service.ReconcileWithVerifiedState(confirmed, new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, Now.AddMinutes(17),
+            [new PlanVerifiedEvidence("CompletedBuy:7", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100), Now.AddSeconds(5), Now.AddMinutes(17), "order-7")],
+            Now.AddMinutes(17), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+
+        Assert.Equal(PlanShadowEventState.Confirmed, confirmed.Events[0].State);
+        Assert.Equal(PlanState.ReconciliationRequired, reopened.State);
+        Assert.Equal(PlanReconciliationState.Contradicted, reopened.ReconciliationState);
     }
 
     [Fact]

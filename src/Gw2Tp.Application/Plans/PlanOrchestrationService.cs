@@ -181,6 +181,11 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         {
             if (execution.State is PlanShadowEventState.Reversed or PlanShadowEventState.Invalidated) continue;
             var index = Array.FindIndex(events, value => value.Id == execution.Id);
+            if (execution.State == PlanShadowEventState.Confirmed && HasExactCancellationFillEvidence(plan, execution, evidenceSet))
+            {
+                cancellationEvidenceConflict = true;
+                blockedByPending = true;
+            }
             if (execution.State == PlanShadowEventState.PendingConfirmation || execution.State == PlanShadowEventState.PartiallyConfirmed)
             {
                 var claimedEvidenceIds = events.Where(value => value.Id != execution.Id)
@@ -194,16 +199,33 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                     blockedByPending = true;
                     if (freshCapture) events[index] = execution with { LastRelevantEvidenceFingerprint = relevantFingerprint };
                 }
-                else if (!blockedByPending && IsConfirmedCancellation(plan, execution, availableEvidence, freshCapture, completeEvidenceKinds))
+                else if (!blockedByPending && IsCancellationAbsence(plan, execution, availableEvidence, freshCapture, completeEvidenceKinds))
                 {
-                    events[index] = execution with
+                    var capturedAt = RequireUtc(evidenceCapturedAtUtc!.Value);
+                    var firstNegativeCapture = execution.FirstNegativeEvidenceCapturedAtUtc ?? capturedAt;
+                    var negativeCaptureCount = checked(execution.NegativeEvidenceCaptureCount + 1);
+                    if (negativeCaptureCount >= 2 && capturedAt - firstNegativeCapture >= DefaultObservationWindow)
                     {
-                        State = PlanShadowEventState.Confirmed,
-                        VerifiedQuantity = execution.Quantity,
-                        VerifiedUnitPrice = execution.UnitPrice,
-                        LastRelevantEvidenceFingerprint = freshCapture ? relevantFingerprint : execution.LastRelevantEvidenceFingerprint,
-                        VerifiedEvidenceIds = [],
-                    };
+                        events[index] = execution with
+                        {
+                            State = PlanShadowEventState.Confirmed,
+                            VerifiedQuantity = execution.Quantity,
+                            VerifiedUnitPrice = execution.UnitPrice,
+                            LastRelevantEvidenceFingerprint = relevantFingerprint,
+                            VerifiedEvidenceIds = [],
+                            FirstNegativeEvidenceCapturedAtUtc = firstNegativeCapture,
+                            NegativeEvidenceCaptureCount = negativeCaptureCount,
+                        };
+                    }
+                    else
+                    {
+                        events[index] = execution with
+                        {
+                            LastRelevantEvidenceFingerprint = relevantFingerprint,
+                            FirstNegativeEvidenceCapturedAtUtc = firstNegativeCapture,
+                            NegativeEvidenceCaptureCount = negativeCaptureCount,
+                        };
+                    }
                 }
                 else if (!blockedByPending && TryMatchEvidence(plan, execution, availableEvidence, out var observedQuantity, out var observedPrice, out var verifiedEvidenceIds))
                 {
@@ -223,7 +245,12 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                     {
                         contradictions++;
                     }
-                    if (freshCapture) events[index] = execution with { LastRelevantEvidenceFingerprint = relevantFingerprint };
+                    if (freshCapture) events[index] = execution with
+                    {
+                        LastRelevantEvidenceFingerprint = relevantFingerprint,
+                        FirstNegativeEvidenceCapturedAtUtc = persistentCancellation ? null : execution.FirstNegativeEvidenceCapturedAtUtc,
+                        NegativeEvidenceCaptureCount = persistentCancellation ? 0 : execution.NegativeEvidenceCaptureCount,
+                    };
                 }
             }
             var effective = events[index].State switch
@@ -424,7 +451,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         .OrderBy(value => value.Kind).ThenBy(value => value.Identity, StringComparer.Ordinal)
         .Select(value => $"{value.Kind}:{value.Identity}:{value.ItemId}:{value.Quantity}:{value.UnitPrice.Copper}:{value.CreatedAtUtc.UtcTicks}"));
 
-    private static bool IsConfirmedCancellation(PlanRecord plan, PlanExecutionEvent execution,
+    private static bool IsCancellationAbsence(PlanRecord plan, PlanExecutionEvent execution,
         IReadOnlyCollection<PlanVerifiedEvidence> evidence, bool freshCapture, IReadOnlySet<PlanEvidenceKind>? completeKinds)
     {
         if (execution.Action != PlanStepAction.CancelBuyOrder || !freshCapture || !HasCompleteRelevantObservation(execution, completeKinds)) return false;
@@ -440,10 +467,19 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         if (execution.Action != PlanStepAction.CancelBuyOrder) return false;
         var step = plan.Steps.FirstOrDefault(value => value.Id == execution.StepId);
         if (step is null) return false;
+        var issuedAt = execution.IssuedAtUtc ?? step.IssuedAtUtc ?? plan.StartedAtUtc;
         return evidence.Any(value => value.Kind == PlanEvidenceKind.CompletedBuy && value.ItemId == step.ItemId &&
-            value.CreatedAtUtc >= execution.OccurredAtUtc && value.ObservedAtUtc >= execution.OccurredAtUtc &&
+            value.ObservedAtUtc >= execution.OccurredAtUtc &&
             (string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal) ||
-             execution.UnitPrice is not { } price || value.UnitPrice == price));
+             value.CreatedAtUtc >= issuedAt && (execution.UnitPrice is not { } price || value.UnitPrice == price)));
+    }
+
+    private static bool HasExactCancellationFillEvidence(PlanRecord plan, PlanExecutionEvent execution, IReadOnlyCollection<PlanVerifiedEvidence> evidence)
+    {
+        if (execution.Action != PlanStepAction.CancelBuyOrder) return false;
+        var step = plan.Steps.FirstOrDefault(value => value.Id == execution.StepId);
+        return !string.IsNullOrWhiteSpace(step?.ExternalIdentity) && evidence.Any(value => value.Kind == PlanEvidenceKind.CompletedBuy && value.ItemId == step.ItemId &&
+            string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal));
     }
 
     private static bool IsCancellationStillVisible(PlanRecord plan, PlanExecutionEvent execution, IReadOnlyCollection<PlanVerifiedEvidence> evidence)
