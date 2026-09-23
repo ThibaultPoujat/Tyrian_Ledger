@@ -15,7 +15,8 @@ export default function CraftingPanel() {
     if (!isResponse(payload)) { setStatus('error'); return; } setResult(payload); setStatus('ready');
   }).catch(() => { if (generation === request.current) setStatus('error'); }); };
   useEffect(load, []);
-  const start = (id: string) => { setStatus('loading'); void fetch(`/api/plans/${encodeURIComponent(id)}/start`, { method: 'POST', headers: { 'X-TyrianLedger-Request': 'local' } }).then(load).catch(() => setStatus('error')); };
+  const start = (id: string) => { setStatus('loading'); void fetch(`/api/plans/${encodeURIComponent(id)}/start`, { method: 'POST', headers: { 'X-Tyrian-Ledger-Request': '1' } })
+    .then(response => { if (!response.ok) { setStatus('error'); return; } load(); }).catch(() => setStatus('error')); };
   if (status === 'loading' && result === null) return <p aria-live="polite" className="operational-status" role="status">Recherche des parcours d’artisanat…</p>;
   if (status === 'error') return <p className="operational-status operational-status--error" role="alert">La recherche d’artisanat depuis l’application locale a échoué.</p>;
   if (result === null) return null;

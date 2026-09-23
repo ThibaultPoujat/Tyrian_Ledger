@@ -23,7 +23,7 @@ it('renders a French active craft path and starts it through the shared Plans en
   fireEvent.click(screen.getByText('Pourquoi ?'));
   expect(screen.getByText('Approvisionnement et faisabilité')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Démarrer ce plan' }));
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/plans/craft%3A1/start', expect.objectContaining({ method: 'POST' })));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/plans/craft%3A1/start', expect.objectContaining({ method: 'POST', headers: { 'X-Tyrian-Ledger-Request': '1' } })));
 });
 
 it('explains no viable opportunity and explicit search truncation in French', async () => {
