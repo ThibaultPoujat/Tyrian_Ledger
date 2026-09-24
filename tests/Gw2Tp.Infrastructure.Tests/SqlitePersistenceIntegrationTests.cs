@@ -78,6 +78,26 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Buy_craft_list_plan_starts_without_requiring_future_inventory_up_front()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("craft-dependency-account", FirstObservedAtUtc);
+        var candidate = new PlanCandidate("craft:dependency", 1, "craft:dependency", PlanAttention.Active,
+            [
+                new PlanStep("craft:dependency:buy", PlanStepAction.BuyNow, 10, "Ingrédient", 1, new Money(100), [], PlanStepState.Pending),
+                new PlanStep("craft:dependency:craft", PlanStepAction.Craft, 100, "Résultat", 1, null, ["craft:dependency:buy"], PlanStepState.Pending,
+                    CraftEffects: [new(PlanResourceKind.Inventory, "10", -1, Money.Zero), new(PlanResourceKind.Inventory, "100", 1, Money.Zero)]),
+                new PlanStep("craft:dependency:list", PlanStepAction.List, 100, "Résultat", 1, new Money(1_000), ["craft:dependency:craft"], PlanStepState.Pending),
+            ],
+            [new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(250))], new Money(100), new Money(250), 8_000, 0, 1, 1, true, []);
+        var plan = new PlanOrchestrationService().Start(candidate, FirstObservedAtUtc);
+
+        var started = await database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), Money.Zero, new Dictionary<string, long>());
+
+        Assert.Equal(PlanStartResult.Started, started);
+    }
+
+    [Fact]
     public async Task Cancelling_an_unperformed_plan_allows_a_new_execution_for_the_same_opportunity_without_erasing_history()
     {
         await using var database = await TestDatabase.CreateAsync();

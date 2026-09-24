@@ -17,7 +17,8 @@ public sealed record PlanResourceRequirement(PlanResourceKind Kind, string Resou
 public sealed record PlanStep(
     string Id, PlanStepAction Action, int ItemId, string ItemName, int Quantity,
     Money? UnitPrice, IReadOnlyList<string> DependsOnStepIds, PlanStepState State,
-    string? ExternalIdentity = null, DateTimeOffset? IssuedAtUtc = null);
+    string? ExternalIdentity = null, DateTimeOffset? IssuedAtUtc = null,
+    IReadOnlyList<PlanResourceRequirement>? CraftEffects = null);
 
 public sealed record PlanCandidate(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,

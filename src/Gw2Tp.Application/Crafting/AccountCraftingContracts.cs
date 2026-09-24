@@ -82,8 +82,9 @@ public enum AccountItemBinding
 }
 
 /// <summary>
-/// A bank slot quantity. Unspecified binding is not evidence that an item is
-/// tradable; it only records that this endpoint supplied no binding evidence.
+/// A bank slot quantity. Unspecified binding means no bind flag was supplied;
+/// it may be used as tradable only after the crafting service has also obtained
+/// complete typed Trading Post liquidation evidence for that item quantity.
 /// </summary>
 public sealed record AccountInventoryEntry(int ItemId, int Quantity, AccountItemBinding Binding);
 

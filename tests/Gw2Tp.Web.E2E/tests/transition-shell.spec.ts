@@ -20,7 +20,7 @@ test('loads Mes Signaux by default and keeps account/recovery controls under Ré
   await expect(navigation.getByRole('button')).toHaveCount(4);
   await expect(navigation.getByRole('button', { name: 'Mes Signaux' })).toHaveAttribute('aria-current', 'page');
   await expect(navigation.getByRole('button', { name: 'Plans' })).toBeEnabled();
-  await expect(navigation.getByRole('button', { name: /Artisanat/i })).toBeDisabled();
+  await expect(navigation.getByRole('button', { name: 'Artisanat' })).toBeEnabled();
   await expect(navigation.getByRole('button', { name: 'Réglages' })).toBeEnabled();
   await expect(navigation.getByRole('button', { name: /tableau de bord|scanner|inventaire|apprentissages personnels|investissements/i })).toHaveCount(0);
   await expect(page.getByText('Application locale connectée')).toBeVisible();
@@ -66,6 +66,65 @@ test('opens the functional French Plans destination from typed local state', asy
   await expect(page.getByRole('heading', { name: 'Plans compatibles disponibles', level: 3 })).toBeVisible();
   await expect(page.getByText('ACHETER MAINTENANT')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Démarrer' })).toBeVisible();
+});
+
+test('opens the French guided Artisanat workspace and starts its shared Plan', async ({ page }) => {
+  await page.route('**/api/crafting-opportunities', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ state: 'Ready', truncationReasons: ['CandidateLimit'], summaryExclusions: [], opportunities: [{
+      id: 'craft:1', outputName: 'Insigne test', outputIconUrl: null, outputQuantity: 2,
+      economics: { netProfit: { copper: '1000' }, totalCost: { copper: '5000' }, state: 'Available' }, attention: 'Active', interactionSeconds: 90,
+      isActionable: true, exclusions: [], procurementExplanation: ['Coût complet vérifié.'], planId: 'craft:1',
+      steps: [{ action: 'BuyNow', itemName: 'Minerai test', quantity: 2, unitPrice: { copper: '100' } }, { action: 'Craft', itemName: 'Insigne test', quantity: 2, unitPrice: null }],
+    }] }),
+  }));
+  await page.route('**/api/plans/craft%3A1/start', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ state: 'started' }) }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Artisanat' }).click();
+  await expect(page.getByRole('heading', { name: 'Artisanat', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Actions d’artisanat à considérer', level: 2 })).toBeVisible();
+  await expect(page.getByText('Recherche limitée : nombre de propositions atteint.')).toBeVisible();
+  await page.getByRole('button', { name: 'Démarrer ce plan' }).click();
+});
+
+test('presents a passive crafting path without exposing a premature craft action', async ({ page }) => {
+  await page.route('**/api/crafting-opportunities', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+    state: 'Ready', truncationReasons: [], summaryExclusions: [], opportunities: [{
+      id: 'craft:passive', outputName: 'Insigne passif', outputIconUrl: null, outputQuantity: 1,
+      economics: { netProfit: { copper: '1000' }, totalCost: { copper: '5000' }, state: 'Available' }, attention: 'Passive', confidenceBasisPoints: 8000,
+      evidenceExplanation: ['Ordre d’achat requis avant fabrication.'], interactionSeconds: 30, isActionable: true, exclusions: [], procurementExplanation: [], planId: 'craft:passive',
+      steps: [{ action: 'PlaceBuyOrder', itemName: 'Minerai test', quantity: 1, unitPrice: { copper: '100' } }],
+    }],
+  }) }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Artisanat' }).click();
+
+  await expect(page.getByText('PASSIF · ORDRES À CONFIRMER')).toBeVisible();
+  await page.getByText('Pourquoi ?').click();
+  await expect(page.getByText('Ordre d’achat requis avant fabrication.')).toBeVisible();
+});
+
+test('explains a bounded no-opportunity crafting result in French', async ({ page }) => {
+  await page.route('**/api/crafting-opportunities', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+    state: 'NoOpportunities', truncationReasons: ['WorkLimit'], summaryExclusions: ['WeakHistory'], opportunities: [],
+  }) }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Artisanat' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Aucun parcours d’artisanat viable', level: 2 })).toBeVisible();
+  await expect(page.getByText('Recherche limitée : budget de calcul atteint.')).toBeVisible();
+});
+
+test('offers a protected snapshot refresh when crafting evidence is degraded', async ({ page }) => {
+  await page.route('**/api/crafting-opportunities', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+    state: 'Degraded', truncationReasons: [], summaryExclusions: ['StaleEvidence'], opportunities: [],
+  }) }));
+  await page.route('**/api/account-crafting/refresh', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({}) }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Artisanat' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Artisanat temporairement indisponible', level: 2 })).toBeVisible();
+  await page.getByRole('button', { name: 'Actualiser les données d’artisanat' }).click();
 });
 
 test('presents the execution-first Signal flow at 1920x1080 using only mocked local evidence', async ({ page }) => {

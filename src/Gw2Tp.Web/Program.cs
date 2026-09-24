@@ -69,6 +69,9 @@ public static class Program
         builder.Services.AddSingleton<IOpportunityScoreService, OpportunityScoreService>();
         builder.Services.AddSingleton<IPrimaryRecommendationPolicy, PrimaryRecommendationPolicy>();
         builder.Services.AddSingleton<IPrimaryRecommendationService, PrimaryRecommendationService>();
+        builder.Services.AddSingleton<ICraftingEconomicsCalculator, CraftingEconomicsCalculator>();
+        builder.Services.AddSingleton<ICraftingOpportunityPlanner, CraftingOpportunityPlanner>();
+        builder.Services.AddSingleton<ICraftingOpportunityService, CraftingOpportunityService>();
         builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
         builder.Services.AddSingleton<PlanEndpointService>();
         builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
@@ -262,6 +265,7 @@ public static class Program
         app.MapInvestmentEndpoints();
         app.MapMarketHistoryCollectorEndpoints();
         app.MapHistoricalMarketAnalyticsEndpoint();
+        app.MapCraftingOpportunityEndpoints();
         app.MapPlanEndpoints();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 

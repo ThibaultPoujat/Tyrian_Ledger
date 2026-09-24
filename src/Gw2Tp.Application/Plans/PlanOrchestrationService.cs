@@ -46,6 +46,22 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         ArgumentNullException.ThrowIfNull(plan);
         if (plan.State is PlanState.ExecutionComplete or PlanState.Invalid) return [];
         var requirements = new List<PlanResourceRequirement>();
+        // Dependent resources are produced by earlier outstanding steps. Only
+        // the residual need is reserved before a plan starts.
+        var produced = new Dictionary<string, long>(StringComparer.Ordinal);
+        void Consume(PlanResourceRequirement requirement)
+        {
+            var key = Key(requirement);
+            var covered = Math.Min(produced.GetValueOrDefault(key), requirement.Quantity);
+            if (covered > 0) produced[key] -= covered;
+            var residual = requirement.Quantity - covered;
+            if (residual > 0) requirements.Add(requirement with { Quantity = residual });
+        }
+        void Produce(PlanResourceRequirement effect)
+        {
+            if (effect.Kind == PlanResourceKind.Inventory && effect.Quantity > 0)
+                produced[Key(effect)] = checked(produced.GetValueOrDefault(Key(effect)) + effect.Quantity);
+        }
         foreach (var step in plan.Steps.Where(step => step.State is PlanStepState.Pending or PlanStepState.Current))
         {
             var quantity = Math.Max(0, step.Quantity);
@@ -57,15 +73,27 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                 case PlanStepAction.PlaceBuyOrder:
                     if (step.UnitPrice is { } buyPrice)
                         requirements.Add(new(PlanResourceKind.Cash, "cash", 0, new Money(checked(buyPrice.Copper * quantity))));
+                    Produce(new(PlanResourceKind.Inventory, itemId, quantity, Money.Zero));
                     break;
                 case PlanStepAction.List:
                 case PlanStepAction.Relist:
                 case PlanStepAction.SellNow:
-                    requirements.Add(new(PlanResourceKind.Inventory, itemId, quantity, Money.Zero));
+                    Consume(new(PlanResourceKind.Inventory, itemId, quantity, Money.Zero));
                     if (step.Action is PlanStepAction.List or PlanStepAction.Relist && step.UnitPrice is { } listPrice)
                     {
                         var gross = new Money(checked(listPrice.Copper * quantity));
                         requirements.Add(new(PlanResourceKind.Cash, "cash", 0, Gw2TradingPostFeePolicy.Create().CalculateFees(gross).ListingFee));
+                    }
+                    break;
+                case PlanStepAction.Craft:
+                    foreach (var effect in step.CraftEffects ?? [])
+                    {
+                        if (effect.Kind == PlanResourceKind.Inventory && effect.Quantity < 0)
+                            Consume(effect with { Quantity = -effect.Quantity, Cash = Money.Zero });
+                    }
+                    foreach (var effect in step.CraftEffects ?? [])
+                    {
+                        Produce(effect);
                     }
                     break;
             }
@@ -120,7 +148,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         if (plan.State is PlanState.ReconciliationRequired or PlanState.RecheckRequired or PlanState.Invalid) throw new InvalidOperationException("The plan cannot accept execution while paused.");
         if (plan.CurrentStepOrdinal < 0 || plan.CurrentStepOrdinal >= plan.Steps.Count) throw new InvalidOperationException("The plan has no executable current step.");
         var step = plan.Steps[plan.CurrentStepOrdinal];
-        if (step.State != PlanStepState.Current || quantity <= 0) throw new InvalidOperationException("Only the current step can be reported with a positive quantity.");
+        if (step.State != PlanStepState.Current || quantity <= 0 || step.Action == PlanStepAction.Craft && quantity != step.Quantity) throw new InvalidOperationException("Only the exact current manual craft can be reported with a positive quantity.");
         var occurred = RequireUtc(occurredAtUtc);
         var effectiveUnitPrice = unitPrice ?? step.UnitPrice;
         var execution = new PlanExecutionEvent(Guid.NewGuid().ToString("N"), plan.Id, step.Id, plan.Events.Count + 1, occurred, quantity,
@@ -246,6 +274,27 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                         VerifiedEvidenceIds = verifiedEvidenceIds };
                     if (nextState == PlanShadowEventState.PartiallyConfirmed) blockedByPending = true;
                 }
+                else if (!blockedByPending && execution.Action == PlanStepAction.Craft)
+                {
+                    if (TryMatchCraftInventory(execution, expectedQuantities, verifiedQuantities, out var craftContradicted))
+                    {
+                        events[index] = execution with { State = PlanShadowEventState.Confirmed, VerifiedQuantity = execution.Quantity,
+                            VerifiedUnitPrice = execution.UnitPrice, VerifiedEvidenceIds = [] };
+                    }
+                    else if (craftContradicted)
+                    {
+                        contradictions++;
+                        blockedByPending = true;
+                    }
+                    else if (freshCapture && evidenceCapturedAtUtc is { } capturedAt)
+                    {
+                        var firstNegativeCapture = execution.FirstNegativeEvidenceCapturedAtUtc ?? capturedAt;
+                        var negativeCaptureCount = checked(execution.NegativeEvidenceCaptureCount + 1);
+                        events[index] = execution with { FirstNegativeEvidenceCapturedAtUtc = firstNegativeCapture, NegativeEvidenceCaptureCount = negativeCaptureCount };
+                        if (negativeCaptureCount >= 2 && capturedAt - firstNegativeCapture >= DefaultObservationWindow)
+                            contradictions += 2;
+                    }
+                }
                 else if (execution.ExpectedEvidenceKind is not null)
                 {
                     blockedByPending = true;
@@ -272,8 +321,19 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             };
             foreach (var effect in effective) Apply(expectedQuantities, ref expectedCash, effect);
         }
+        // A chain may consume an intermediate output and list the final output
+        // before the next account snapshot. Confirm craft events collectively
+        // only when their complete net inventory projection matches verified
+        // state, never from a same-item listing alone.
+        if (!events.Any(value => (value.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) && value.Action != PlanStepAction.Craft) &&
+            CraftShadowProjectionMatchesVerified(events, expectedQuantities, verifiedQuantities))
+        {
+            events = events.Select(value => value.State == PlanShadowEventState.PendingConfirmation && value.Action == PlanStepAction.Craft
+                ? value with { State = PlanShadowEventState.Confirmed, VerifiedQuantity = value.Quantity, VerifiedUnitPrice = value.UnitPrice, VerifiedEvidenceIds = [] }
+                : value).ToArray();
+        }
         var stillAwaitingEvidence = events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed);
-        var contradictionCount = !stillAwaitingEvidence ? 0 : contradictions == 0 ? plan.ConsecutiveContradictionCount : plan.ConsecutiveContradictionCount + 1;
+        var contradictionCount = !stillAwaitingEvidence ? 0 : contradictions == 0 ? plan.ConsecutiveContradictionCount : checked(plan.ConsecutiveContradictionCount + contradictions);
         var state = plan.State;
         var reconciliation = stillAwaitingEvidence ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible;
         var isReconciliationOnly = plan.IsReconciliationOnly || (plan.IsCancelled && cancellationEvidenceConflict);
@@ -310,7 +370,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         ArgumentNullException.ThrowIfNull(plan);
         if (!evidenceReady || plan.State is PlanState.ReconciliationRequired or PlanState.Invalid or PlanState.ExecutionComplete) return plan;
         var current = plan.Steps.FirstOrDefault(step => step.State == PlanStepState.Current);
-        var replacement = currentCandidate?.Steps.FirstOrDefault(step => step.Id.EndsWith($":{plan.CurrentStepOrdinal + 1}", StringComparison.Ordinal));
+        var replacement = currentCandidate?.Steps.FirstOrDefault(step => string.Equals(step.Id, current?.Id, StringComparison.Ordinal));
         var materiallyChanged = current is not null && (replacement is null || replacement.Action != current.Action || replacement.ItemId != current.ItemId || MateriallyDifferent(replacement.Quantity, current.Quantity) || MateriallyDifferent(replacement.UnitPrice?.Copper, current.UnitPrice?.Copper));
         var improvementThreshold = Math.Max(1, Math.Abs(plan.BaselineUtility) * plan.HysteresisPolicy.MaterialImprovementBasisPoints / 10_000);
         var materiallyImproved = currentCandidate is not null && currentCandidate.Utility >= plan.BaselineUtility + improvementThreshold;
@@ -386,6 +446,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             PlanStepAction.PlaceBuyOrder => [new(PlanResourceKind.Cash, "cash", 0, -gross)],
             PlanStepAction.SellNow => [new(PlanResourceKind.Inventory, item, -quantity, Money.Zero), new(PlanResourceKind.Cash, "cash", 0, gross - fees.ListingFee - fees.ExchangeFee)],
             PlanStepAction.List or PlanStepAction.Relist => [new(PlanResourceKind.Inventory, item, -quantity, Money.Zero), new(PlanResourceKind.Cash, "cash", 0, -fees.ListingFee)],
+            PlanStepAction.Craft => step.CraftEffects ?? [],
             _ => [],
         };
     }
@@ -458,6 +519,35 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         PlanStepAction.SellNow => PlanEvidenceKind.CompletedSell,
         _ => null,
     };
+
+    private static bool TryMatchCraftInventory(PlanExecutionEvent execution,
+        IReadOnlyDictionary<string, long> expectedBefore, IReadOnlyDictionary<string, long> observed,
+        out bool contradicted)
+    {
+        contradicted = false;
+        var effects = execution.Effects.Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity != 0).ToArray();
+        if (effects.Length == 0) return false;
+        foreach (var effect in effects)
+        {
+            var key = Key(effect);
+            var before = expectedBefore.GetValueOrDefault(key);
+            var target = checked(before + effect.Quantity);
+            var actual = observed.GetValueOrDefault(key);
+            if (actual == target) continue;
+            if (effect.Quantity > 0 ? actual > target : actual < target) contradicted = true;
+            return false;
+        }
+        return true;
+    }
+
+    private static bool CraftShadowProjectionMatchesVerified(IReadOnlyCollection<PlanExecutionEvent> events,
+        IReadOnlyDictionary<string, long> expected, IReadOnlyDictionary<string, long> observed)
+    {
+        var keys = events.Where(value => value.Action == PlanStepAction.Craft && value.State == PlanShadowEventState.PendingConfirmation)
+            .SelectMany(value => value.Effects).Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity != 0)
+            .Select(Key).Distinct(StringComparer.Ordinal).ToArray();
+        return keys.Length > 0 && keys.All(key => expected.GetValueOrDefault(key) == observed.GetValueOrDefault(key));
+    }
 
     private static bool MateriallyDifferent(long? replacement, long? current)
     {

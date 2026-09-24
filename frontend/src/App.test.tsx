@@ -254,7 +254,7 @@ describe('Mes Signaux MVP', () => {
     expect(within(navigation).getAllByRole('button')).toHaveLength(4);
     expect(within(navigation).getByRole('button', { name: 'Mes Signaux' })).toHaveAttribute('aria-current', 'page');
     expect(within(navigation).getByRole('button', { name: 'Plans' })).toBeEnabled();
-    expect(within(navigation).getByRole('button', { name: /Artisanat/i })).toBeDisabled();
+    expect(within(navigation).getByRole('button', { name: 'Artisanat' })).toBeEnabled();
     expect(within(navigation).getByRole('button', { name: /Réglages/i })).toBeEnabled();
     expect(within(navigation).queryByRole('button', { name: /tableau de bord|scanner|inventaire|apprentissages personnels|investissements/i })).not.toBeInTheDocument();
   });
