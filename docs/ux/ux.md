@@ -348,7 +348,7 @@ Organize configuration around user goals rather than backend subsystems:
 
 - API/account connection and safe permission state;
 - sync/refresh and data-source health;
-- bankroll reserve/risk/concentration policy;
+- bankroll reserve/risk/concentration policy and a compact `Comprendre mes calculs` disclosure: versioned canonical theory alongside account-scoped actual wallet/exposure inputs, intermediate math, binding limits, source timestamps and unknowns;
 - alert/notification controls;
 - public market-history cache/coverage/recovery, kept conceptually separate from
   personal ArenaNet/account data;
@@ -370,7 +370,7 @@ Personal learning should improve ranking silently when evidence is sufficient.
 The user should not need to operate a large Personal Learning table.
 
 When personal evidence materially affects a Signal, expose it inside
-`Pourquoi ?` with sample size/recency/limitations.
+`Pourquoi ?` with sample size/recency/limitations. Reuse the same backend calculation/provenance trace in `Réglages > Comprendre mes calculs` and each relevant Signal/Plan/craft explanation; show which exact input or rule made a candidate ineligible rather than duplicating economics in React. Keep explanations progressively disclosed, French and accessible; unknown input evidence must never be treated as zero.
 
 Raw scanner/history/order-book details may remain available through progressive
 detail or diagnostics but should not compete with the main assistant.
