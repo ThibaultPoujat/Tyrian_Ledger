@@ -99,7 +99,8 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
                 : value).ToArray();
         }
         var state = ordered.Any(value => value.IsActionable) ? CraftingOpportunityState.Ready : CraftingOpportunityState.NoOpportunities;
-        return new(state, ordered.Take(input.Limits.MaximumCandidates).ToArray(), truncation.OrderBy(value => value).ToArray(),
+        var visible = ordered.Where(value => value.IsActionable).Concat(ordered.Where(value => !value.IsActionable)).Take(input.Limits.MaximumCandidates).ToArray();
+        return new(state, visible, truncation.OrderBy(value => value).ToArray(),
             ordered.SelectMany(value => value.Exclusions).Distinct().OrderBy(value => value).ToArray());
     }
 

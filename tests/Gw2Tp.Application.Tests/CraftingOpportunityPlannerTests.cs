@@ -129,6 +129,18 @@ public sealed class CraftingOpportunityPlannerTests
     }
 
     [Fact]
+    public void Prioritizes_actionable_paths_over_higher_margin_excluded_recipes_when_display_is_bounded()
+    {
+        var limits = new CraftingPlannerLimits(8, 4, 1, 100);
+        var result = planner.Plan(Input(
+            [Recipe(1, 100, 1, (10, 1)), Recipe(2, 200, 1, (20, 1))],
+            Markets((10, 100, 0, true), (20, 100, 0, true), (100, 1_000, 1_000, true), (200, 10_000, 10_000, false)), limits));
+
+        Assert.Equal(100, Assert.Single(result.Opportunities).Recipe.OutputItemId);
+        Assert.True(Assert.Single(result.Opportunities).IsActionable);
+    }
+
+    [Fact]
     public void Reports_depth_and_candidate_truncation_explicitly_with_stable_ties()
     {
         var limits = new CraftingPlannerLimits(8, 1, 1, 100);

@@ -142,6 +142,43 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public void Intermediate_craft_chain_confirms_from_its_verified_net_inventory_projection()
+    {
+        var first = new PlanStep("intermediate", PlanStepAction.Craft, 20, "Intermédiaire", 1, null, [], PlanStepState.Pending,
+            CraftEffects: [new(PlanResourceKind.Inventory, "10", -1, Money.Zero), new(PlanResourceKind.Inventory, "20", 1, Money.Zero)]);
+        var second = new PlanStep("final", PlanStepAction.Craft, 100, "Final", 1, null, ["intermediate"], PlanStepState.Pending,
+            CraftEffects: [new(PlanResourceKind.Inventory, "20", -1, Money.Zero), new(PlanResourceKind.Inventory, "100", 1, Money.Zero)]);
+        var list = new PlanStep("list", PlanStepAction.List, 100, "Final", 1, new Money(1_000), ["final"], PlanStepState.Pending);
+        var candidate = new PlanCandidate("chain", 1, "chain", PlanAttention.Active, [first, second, list], [], Money.Zero, Money.Zero, 8_000, 0, 1, 1, true, []);
+        var plan = service.Start(candidate, Now, new Money(1_000), new Dictionary<string, long> { ["2:10"] = 1 });
+        plan = service.ReportStep(plan, 1, null, Now);
+        plan = service.ReportStep(plan, 1, null, Now.AddSeconds(1));
+        plan = service.ReportStep(plan, 1, new Money(1_000), Now.AddSeconds(2));
+
+        var reconciled = service.ReconcileWithVerifiedState(plan, new Money(990), new Dictionary<string, long> { ["2:10"] = 0, ["2:20"] = 0, ["2:100"] = 0 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("listing", PlanEvidenceKind.SellListing, 100, 1, new Money(1_000), Now.AddSeconds(2), Now.AddMinutes(1))], Now.AddMinutes(1), Complete(PlanEvidenceKind.SellListing));
+
+        Assert.All(reconciled.Events, execution => Assert.Equal(PlanShadowEventState.Confirmed, execution.State));
+    }
+
+    [Fact]
+    public void Listing_an_existing_output_does_not_confirm_a_craft_without_its_input_delta()
+    {
+        var craft = new PlanStep("craft", PlanStepAction.Craft, 100, "Insigne", 1, null, [], PlanStepState.Pending,
+            CraftEffects: [new(PlanResourceKind.Inventory, "10", -1, Money.Zero), new(PlanResourceKind.Inventory, "100", 1, Money.Zero)]);
+        var list = new PlanStep("list", PlanStepAction.List, 100, "Insigne", 1, new Money(1_000), ["craft"], PlanStepState.Pending);
+        var candidate = new PlanCandidate("existing-output", 1, "existing-output", PlanAttention.Active, [craft, list], [], Money.Zero, Money.Zero, 8_000, 0, 1, 1, true, []);
+        var plan = service.ReportStep(service.Start(candidate, Now, new Money(1_000), new Dictionary<string, long> { ["2:10"] = 1, ["2:100"] = 1 }), 1, null, Now);
+        plan = service.ReportStep(plan, 1, new Money(1_000), Now.AddSeconds(1));
+
+        var reconciled = service.ReconcileWithVerifiedState(plan, new Money(990), new Dictionary<string, long> { ["2:10"] = 1, ["2:100"] = 0 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("listing", PlanEvidenceKind.SellListing, 100, 1, new Money(1_000), Now.AddSeconds(1), Now.AddMinutes(1))], Now.AddMinutes(1), Complete(PlanEvidenceKind.SellListing));
+
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled.Events[0].State);
+        Assert.Equal(PlanShadowEventState.Confirmed, reconciled.Events[1].State);
+    }
+
+    [Fact]
     public void Partial_listing_projects_the_canonical_fee_for_only_the_remaining_quantity()
     {
         var candidate = Candidate("partial-listing", 0, 50, 2,
@@ -528,6 +565,18 @@ public sealed class PlanOrchestrationServiceTests
         var changed = service.ApplyRefresh(plan, Candidate("freeze", 200, 50, 2), evidenceReady: true);
         Assert.Equal(PlanState.RecheckRequired, changed.State);
         Assert.Equal(1, changed.Steps[0].Quantity);
+    }
+
+    [Fact]
+    public void Refresh_keeps_a_current_craft_step_executable_when_its_stable_id_is_unchanged()
+    {
+        var craft = new PlanStep("craft:1:craft", PlanStepAction.Craft, 100, "Insigne", 1, null, [], PlanStepState.Pending);
+        var candidate = new PlanCandidate("craft-refresh", 1, "craft-refresh", PlanAttention.Active, [craft], [], Money.Zero, Money.Zero, 8_000, 0, 1, 1, true, []);
+
+        var refreshed = service.ApplyRefresh(service.Start(candidate, Now), candidate, evidenceReady: true);
+
+        Assert.Equal(PlanState.InProgress, refreshed.State);
+        Assert.Equal(PlanStepState.Current, refreshed.Steps[0].State);
     }
 
     [Fact]

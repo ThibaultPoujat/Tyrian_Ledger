@@ -281,13 +281,6 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                         events[index] = execution with { State = PlanShadowEventState.Confirmed, VerifiedQuantity = execution.Quantity,
                             VerifiedUnitPrice = execution.UnitPrice, VerifiedEvidenceIds = [] };
                     }
-                    else if (CraftOutputWasListed(plan, execution, availableEvidence))
-                    {
-                        // A later verified listing may have consumed the output
-                        // before the account inventory snapshot was refreshed.
-                        events[index] = execution with { State = PlanShadowEventState.Confirmed, VerifiedQuantity = execution.Quantity,
-                            VerifiedUnitPrice = execution.UnitPrice, VerifiedEvidenceIds = [] };
-                    }
                     else if (craftContradicted)
                     {
                         contradictions++;
@@ -328,6 +321,17 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             };
             foreach (var effect in effective) Apply(expectedQuantities, ref expectedCash, effect);
         }
+        // A chain may consume an intermediate output and list the final output
+        // before the next account snapshot. Confirm craft events collectively
+        // only when their complete net inventory projection matches verified
+        // state, never from a same-item listing alone.
+        if (!events.Any(value => (value.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) && value.Action != PlanStepAction.Craft) &&
+            CraftShadowProjectionMatchesVerified(events, expectedQuantities, verifiedQuantities))
+        {
+            events = events.Select(value => value.State == PlanShadowEventState.PendingConfirmation && value.Action == PlanStepAction.Craft
+                ? value with { State = PlanShadowEventState.Confirmed, VerifiedQuantity = value.Quantity, VerifiedUnitPrice = value.UnitPrice, VerifiedEvidenceIds = [] }
+                : value).ToArray();
+        }
         var stillAwaitingEvidence = events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed);
         var contradictionCount = !stillAwaitingEvidence ? 0 : contradictions == 0 ? plan.ConsecutiveContradictionCount : checked(plan.ConsecutiveContradictionCount + contradictions);
         var state = plan.State;
@@ -366,7 +370,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         ArgumentNullException.ThrowIfNull(plan);
         if (!evidenceReady || plan.State is PlanState.ReconciliationRequired or PlanState.Invalid or PlanState.ExecutionComplete) return plan;
         var current = plan.Steps.FirstOrDefault(step => step.State == PlanStepState.Current);
-        var replacement = currentCandidate?.Steps.FirstOrDefault(step => step.Id.EndsWith($":{plan.CurrentStepOrdinal + 1}", StringComparison.Ordinal));
+        var replacement = currentCandidate?.Steps.FirstOrDefault(step => string.Equals(step.Id, current?.Id, StringComparison.Ordinal));
         var materiallyChanged = current is not null && (replacement is null || replacement.Action != current.Action || replacement.ItemId != current.ItemId || MateriallyDifferent(replacement.Quantity, current.Quantity) || MateriallyDifferent(replacement.UnitPrice?.Copper, current.UnitPrice?.Copper));
         var improvementThreshold = Math.Max(1, Math.Abs(plan.BaselineUtility) * plan.HysteresisPolicy.MaterialImprovementBasisPoints / 10_000);
         var materiallyImproved = currentCandidate is not null && currentCandidate.Utility >= plan.BaselineUtility + improvementThreshold;
@@ -536,14 +540,13 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         return true;
     }
 
-    private static bool CraftOutputWasListed(PlanRecord plan, PlanExecutionEvent craft,
-        IReadOnlyCollection<PlanVerifiedEvidence> evidence)
+    private static bool CraftShadowProjectionMatchesVerified(IReadOnlyCollection<PlanExecutionEvent> events,
+        IReadOnlyDictionary<string, long> expected, IReadOnlyDictionary<string, long> observed)
     {
-        var outputs = craft.Effects.Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity > 0)
-            .Select(effect => (ItemId: int.TryParse(effect.ResourceId, out var itemId) ? itemId : 0, effect.Quantity)).Where(value => value.ItemId > 0).ToArray();
-        return outputs.Length > 0 && plan.Events.Where(value => value.Sequence > craft.Sequence && value.Action is PlanStepAction.List or PlanStepAction.Relist)
-            .Any(listing => outputs.Any(output => listing.Quantity >= output.Quantity && plan.Steps.Any(step => step.Id == listing.StepId && step.ItemId == output.ItemId)) &&
-                TryMatchEvidence(plan, listing, evidence, out _, out _, out _));
+        var keys = events.Where(value => value.Action == PlanStepAction.Craft && value.State == PlanShadowEventState.PendingConfirmation)
+            .SelectMany(value => value.Effects).Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity != 0)
+            .Select(Key).Distinct(StringComparer.Ordinal).ToArray();
+        return keys.Length > 0 && keys.All(key => expected.GetValueOrDefault(key) == observed.GetValueOrDefault(key));
     }
 
     private static bool MateriallyDifferent(long? replacement, long? current)
