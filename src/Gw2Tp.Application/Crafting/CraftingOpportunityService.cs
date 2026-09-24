@@ -1,7 +1,6 @@
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.PersonalTradingPost;
-using Gw2Tp.Analytics.OrderBooks;
 
 namespace Gw2Tp.Application.Crafting;
 
@@ -74,16 +73,13 @@ public sealed class CraftingOpportunityService(
         return rows.Where(value => value.ItemId > 0 && value.Quantity > 0).GroupBy(value => value.ItemId).ToDictionary(group => group.Key,
             group =>
             {
-                var tradableQuantity = group.Where(value => value.Binding == AccountItemBinding.Unspecified).Sum(value => value.Quantity);
-                var liquidation = tradableQuantity > 0 && markets.TryGetValue(group.Key, out var market)
-                    ? CraftingExecutionEvidence.FromOrderBookExecution(new OrderBookExecutionSimulator().SimulateLiquidation(
-                        market.Listing.Buys.Where(level => level.Quantity > 0 && level.UnitPriceInCopper > 0)
-                            .Select(level => new OrderBookLevel(level.Quantity, new Gw2Tp.Domain.Finance.Money(level.UnitPriceInCopper))).ToArray(), tradableQuantity))
-                    : null;
-                var tradable = liquidation?.IsFullyFilled == true && liquidation.SourceScenario?.Kind == OrderBookExecutionKind.Liquidation;
+                // The planner subsequently simulates the exact consumed subset,
+                // rather than incorrectly valuing the complete owned stack.
+                var tradable = markets.TryGetValue(group.Key, out var market) && market.IsFresh &&
+                    market.Listing.Buys.Any(level => level.Quantity > 0 && level.UnitPriceInCopper > 0);
                 return new CraftingOwnedEvidence(group.Select(value => new CraftingOwnedMaterial(value.Quantity,
                     value.Binding == AccountItemBinding.Unspecified && tradable ? CraftingOwnedMaterialState.Tradable :
-                    value.Binding == AccountItemBinding.Unspecified ? CraftingOwnedMaterialState.Unknown : CraftingOwnedMaterialState.Bound)).ToArray(), liquidation);
+                    value.Binding == AccountItemBinding.Unspecified ? CraftingOwnedMaterialState.Unknown : CraftingOwnedMaterialState.Bound)).ToArray(), null);
             });
     }
 

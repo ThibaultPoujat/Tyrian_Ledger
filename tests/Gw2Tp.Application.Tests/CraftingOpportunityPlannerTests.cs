@@ -73,6 +73,62 @@ public sealed class CraftingOpportunityPlannerTests
     }
 
     [Fact]
+    public void Values_only_the_consumed_subset_of_a_larger_owned_stack()
+    {
+        var owned = new Dictionary<int, CraftingOwnedEvidence>
+        {
+            [10] = new([new CraftingOwnedMaterial(10, CraftingOwnedMaterialState.Tradable)], null),
+        };
+        var result = planner.Plan(new CraftingPlannerInput([Recipe(1, 100, 1, (10, 1))], new HashSet<int> { 1 }, [new("Artificer", 500, true)],
+            Markets((10, 100, 100), (100, 1_000, 1_000)), owned, CraftingPlannerLimits.Default));
+
+        var ingredient = Assert.Single(Assert.Single(result.Opportunities).Economics.Ingredients);
+        Assert.Equal(CraftingInputStrategy.Owned, ingredient.Strategy);
+        Assert.Equal(1, ingredient.OwnedTradableQuantity);
+        Assert.Equal(CraftingEconomicsState.Available, Assert.Single(result.Opportunities).Economics.State);
+    }
+
+    [Fact]
+    public void Uses_owned_material_then_buys_only_the_missing_quantity()
+    {
+        var owned = new Dictionary<int, CraftingOwnedEvidence>
+        {
+            [10] = new([new CraftingOwnedMaterial(1, CraftingOwnedMaterialState.Tradable)], null),
+        };
+        var result = planner.Plan(new CraftingPlannerInput([Recipe(1, 100, 1, (10, 2))], new HashSet<int> { 1 }, [new("Artificer", 500, true)],
+            Markets((10, 100, 90), (100, 1_000, 1_000)), owned, CraftingPlannerLimits.Default));
+
+        var opportunity = Assert.Single(result.Opportunities);
+        Assert.Equal(CraftingInputStrategy.Mixed, Assert.Single(opportunity.Economics.Ingredients).Strategy);
+        Assert.Contains(opportunity.Candidate!.Steps, step => (step.Action is PlanStepAction.BuyNow or PlanStepAction.PlaceBuyOrder) && step.ItemId == 10 && step.Quantity == 1);
+    }
+
+    [Fact]
+    public void Makes_the_root_passive_when_a_recursive_intermediate_needs_a_buy_order()
+    {
+        var result = planner.Plan(Input(
+            [Recipe(1, 100, 1, (10, 1)), Recipe(2, 10, 1, (20, 1))],
+            Markets((20, 100, 50), (10, 1_000, 1_000), (100, 2_000, 2_000))));
+
+        var candidate = Assert.Single(result.Opportunities, value => value.Recipe.RecipeId == 1).Candidate!;
+        Assert.Equal(PlanAttention.Passive, candidate.Attention);
+        Assert.All(candidate.Steps, step => Assert.Equal(PlanStepAction.PlaceBuyOrder, step.Action));
+    }
+
+    [Fact]
+    public void Does_not_surface_an_opportunity_below_the_minimum_history_confidence()
+    {
+        var markets = Markets((10, 100, 0), (100, 1_000, 1_000)).ToDictionary(pair => pair.Key, pair => pair.Value);
+        markets[100] = markets[100] with { ConfidenceBasisPoints = 5_000 };
+
+        var result = planner.Plan(Input([Recipe(1, 100, 1, (10, 1))], markets));
+
+        var opportunity = Assert.Single(result.Opportunities);
+        Assert.False(opportunity.IsActionable);
+        Assert.Contains(CraftingOpportunityExclusion.WeakHistory, opportunity.Exclusions);
+    }
+
+    [Fact]
     public void Reports_depth_and_candidate_truncation_explicitly_with_stable_ties()
     {
         var limits = new CraftingPlannerLimits(8, 1, 1, 100);

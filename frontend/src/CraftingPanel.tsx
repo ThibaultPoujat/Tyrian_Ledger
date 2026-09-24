@@ -20,7 +20,7 @@ export default function CraftingPanel() {
   const refreshCrafting = () => { setStatus('loading'); void fetch('/api/account-crafting/refresh', { method: 'POST', headers: { 'X-Tyrian-Ledger-Request': '1' } })
     .then(response => { if (!response.ok) { setStatus('error'); return; } load(); }).catch(() => setStatus('error')); };
   if (status === 'loading' && result === null) return <p aria-live="polite" className="operational-status" role="status">Recherche des parcours d’artisanat…</p>;
-  if (status === 'error') return <p className="operational-status operational-status--error" role="alert">La recherche d’artisanat depuis l’application locale a échoué.</p>;
+  if (status === 'error') return <section className="signals-zero-state"><div><p className="operational-status operational-status--error" role="alert">L’actualisation ou la recherche d’artisanat depuis l’application locale a échoué.</p><button className="refresh-signals" onClick={refreshCrafting} type="button">Réessayer l’actualisation</button></div></section>;
   if (result === null) return null;
   const data = result;
   if (data.state === 'Degraded') return <section className="signals-zero-state"><div><h2>Artisanat temporairement indisponible</h2><p>{degraded(data.summaryExclusions)}</p><button className="refresh-signals" onClick={refreshCrafting} type="button">Actualiser les données d’artisanat</button><button className="refresh-signals" onClick={load} type="button">Réessayer</button></div></section>;

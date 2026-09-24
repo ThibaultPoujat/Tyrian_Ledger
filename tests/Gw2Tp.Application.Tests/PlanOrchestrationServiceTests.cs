@@ -109,6 +109,39 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public void Craft_confirms_when_a_verified_later_listing_consumed_its_output_before_inventory_refresh()
+    {
+        var craft = new PlanStep("craft", PlanStepAction.Craft, 100, "Insigne", 1, null, [], PlanStepState.Pending,
+            CraftEffects: [new(PlanResourceKind.Inventory, "10", -1, Money.Zero), new(PlanResourceKind.Inventory, "100", 1, Money.Zero)]);
+        var list = new PlanStep("list", PlanStepAction.List, 100, "Insigne", 1, new Money(1_000), ["craft"], PlanStepState.Pending);
+        var candidate = new PlanCandidate("craft-list", 1, "craft-list", PlanAttention.Active, [craft, list], [], Money.Zero, Money.Zero, 8_000, 0, 1, 1, true, []);
+        var crafted = service.ReportStep(service.Start(candidate, Now, new Money(1_000), new Dictionary<string, long> { ["2:10"] = 1 }), 1, null, Now);
+        var listed = service.ReportStep(crafted, 1, new Money(1_000), Now.AddSeconds(5));
+
+        var reconciled = service.ReconcileWithVerifiedState(listed, new Money(990), new Dictionary<string, long> { ["2:10"] = 0, ["2:100"] = 0 }, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("listing", PlanEvidenceKind.SellListing, 100, 1, new Money(1_000), Now.AddSeconds(5), Now.AddMinutes(1))], Now.AddMinutes(1), Complete(PlanEvidenceKind.SellListing));
+        var effective = PlanOrchestrationService.ProjectEffectiveResources(new Money(990), new Dictionary<string, long> { ["2:10"] = 0, ["2:100"] = 0 }, reconciled.Events);
+
+        Assert.All(reconciled.Events, execution => Assert.Equal(PlanShadowEventState.Confirmed, execution.State));
+        Assert.Equal(0, effective.Quantities["2:100"]);
+    }
+
+    [Fact]
+    public void Unchanged_fresh_inventory_after_a_reported_craft_requires_reconciliation()
+    {
+        var craft = new PlanStep("craft", PlanStepAction.Craft, 100, "Insigne", 1, null, [], PlanStepState.Pending,
+            CraftEffects: [new(PlanResourceKind.Inventory, "10", -1, Money.Zero), new(PlanResourceKind.Inventory, "100", 1, Money.Zero)]);
+        var candidate = new PlanCandidate("craft-stale", 1, "craft-stale", PlanAttention.Active, [craft], [], Money.Zero, Money.Zero, 8_000, 0, 1, 1, true, []);
+        var reported = service.ReportStep(service.Start(candidate, Now, new Money(1_000), new Dictionary<string, long> { ["2:10"] = 1 }), 1, null, Now);
+        var first = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long> { ["2:10"] = 1 }, Now.AddMinutes(16), [], Now.AddMinutes(16));
+
+        var reconciled = service.ReconcileWithVerifiedState(first, new Money(1_000), new Dictionary<string, long> { ["2:10"] = 1 }, Now.AddMinutes(32), [], Now.AddMinutes(32));
+
+        Assert.Equal(PlanState.ReconciliationRequired, reconciled.State);
+        Assert.Equal(PlanReconciliationState.Contradicted, reconciled.ReconciliationState);
+    }
+
+    [Fact]
     public void Partial_listing_projects_the_canonical_fee_for_only_the_remaining_quantity()
     {
         var candidate = Candidate("partial-listing", 0, 50, 2,

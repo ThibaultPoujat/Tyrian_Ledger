@@ -281,10 +281,25 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                         events[index] = execution with { State = PlanShadowEventState.Confirmed, VerifiedQuantity = execution.Quantity,
                             VerifiedUnitPrice = execution.UnitPrice, VerifiedEvidenceIds = [] };
                     }
+                    else if (CraftOutputWasListed(plan, execution, availableEvidence))
+                    {
+                        // A later verified listing may have consumed the output
+                        // before the account inventory snapshot was refreshed.
+                        events[index] = execution with { State = PlanShadowEventState.Confirmed, VerifiedQuantity = execution.Quantity,
+                            VerifiedUnitPrice = execution.UnitPrice, VerifiedEvidenceIds = [] };
+                    }
                     else if (craftContradicted)
                     {
                         contradictions++;
                         blockedByPending = true;
+                    }
+                    else if (freshCapture && evidenceCapturedAtUtc is { } capturedAt)
+                    {
+                        var firstNegativeCapture = execution.FirstNegativeEvidenceCapturedAtUtc ?? capturedAt;
+                        var negativeCaptureCount = checked(execution.NegativeEvidenceCaptureCount + 1);
+                        events[index] = execution with { FirstNegativeEvidenceCapturedAtUtc = firstNegativeCapture, NegativeEvidenceCaptureCount = negativeCaptureCount };
+                        if (negativeCaptureCount >= 2 && capturedAt - firstNegativeCapture >= DefaultObservationWindow)
+                            contradictions += 2;
                     }
                 }
                 else if (execution.ExpectedEvidenceKind is not null)
@@ -314,7 +329,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             foreach (var effect in effective) Apply(expectedQuantities, ref expectedCash, effect);
         }
         var stillAwaitingEvidence = events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed);
-        var contradictionCount = !stillAwaitingEvidence ? 0 : contradictions == 0 ? plan.ConsecutiveContradictionCount : plan.ConsecutiveContradictionCount + 1;
+        var contradictionCount = !stillAwaitingEvidence ? 0 : contradictions == 0 ? plan.ConsecutiveContradictionCount : checked(plan.ConsecutiveContradictionCount + contradictions);
         var state = plan.State;
         var reconciliation = stillAwaitingEvidence ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible;
         var isReconciliationOnly = plan.IsReconciliationOnly || (plan.IsCancelled && cancellationEvidenceConflict);
@@ -519,6 +534,16 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             return false;
         }
         return true;
+    }
+
+    private static bool CraftOutputWasListed(PlanRecord plan, PlanExecutionEvent craft,
+        IReadOnlyCollection<PlanVerifiedEvidence> evidence)
+    {
+        var outputs = craft.Effects.Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity > 0)
+            .Select(effect => (ItemId: int.TryParse(effect.ResourceId, out var itemId) ? itemId : 0, effect.Quantity)).Where(value => value.ItemId > 0).ToArray();
+        return outputs.Length > 0 && plan.Events.Where(value => value.Sequence > craft.Sequence && value.Action is PlanStepAction.List or PlanStepAction.Relist)
+            .Any(listing => outputs.Any(output => listing.Quantity >= output.Quantity && plan.Steps.Any(step => step.Id == listing.StepId && step.ItemId == output.ItemId)) &&
+                TryMatchEvidence(plan, listing, evidence, out _, out _, out _));
     }
 
     private static bool MateriallyDifferent(long? replacement, long? current)

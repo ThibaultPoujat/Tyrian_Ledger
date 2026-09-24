@@ -110,7 +110,7 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
         var exclusions = new HashSet<CraftingOpportunityExclusion>();
         if (!input.Markets.TryGetValue(recipe.OutputItemId, out var output) || !output.IsFresh)
             exclusions.Add(CraftingOpportunityExclusion.StaleEvidence);
-        if (output is null || !output.HasSufficientHistory) exclusions.Add(CraftingOpportunityExclusion.WeakHistory);
+        if (output is null || !output.HasSufficientHistory || output.ConfidenceBasisPoints < 8_000) exclusions.Add(CraftingOpportunityExclusion.WeakHistory);
         if (output is not null && !CanLiquidate(output.Listing, recipe.OutputItemCount)) exclusions.Add(CraftingOpportunityExclusion.InsufficientOutputDepth);
         var ingredients = new List<CraftingIngredientEconomicsInput>();
         var steps = new List<PlanStep>();
@@ -136,7 +136,6 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
         if (actionable && output is not null && result.NetProfit is { } profit && result.TotalCost is { } totalCost)
         {
             var craftId = $"craft:{recipe.RecipeId}";
-            var passive = result.Ingredients.Any(ingredient => ingredient.Acquisition?.Strategy == CraftingAcquisitionStrategy.BuyOrder);
             foreach (var ingredient in result.Ingredients.OrderBy(value => value.ItemId))
             {
                 if (ingredient.OwnedTradableQuantity > 0)
@@ -163,6 +162,7 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
                     }
                 }
             }
+            var passive = steps.Any(step => step.Action == PlanStepAction.PlaceBuyOrder);
             if (passive)
             {
                 var passiveSteps = steps.Where(step => step.Action == PlanStepAction.PlaceBuyOrder).ToArray();
@@ -191,35 +191,44 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
         IDictionary<SearchKey, IngredientPath> memo, ISet<int> stack, int depth, ref int work, ISet<CraftingSearchTruncationReason> truncation)
     {
         var key = new SearchKey(itemId, quantity, depth);
-        if (memo.TryGetValue(key, out var known)) return known;
+        // Recursive eligibility depends on the current ancestor stack. Cache
+        // only root calls, where there is no ancestor-specific exclusion.
+        var cacheable = stack.Count == 0;
+        if (cacheable && memo.TryGetValue(key, out var known)) return known;
         if (depth > input.Limits.MaximumDepth) { truncation.Add(CraftingSearchTruncationReason.DepthLimit); return IngredientPath.Unavailable(itemId, quantity, CraftingOpportunityExclusion.MissingInputEvidence); }
         if (!stack.Add(itemId)) return IngredientPath.Unavailable(itemId, quantity, CraftingOpportunityExclusion.CycleDetected);
         try
         {
             var owned = input.Owned.TryGetValue(itemId, out var value) ? value : new([], null);
+            var tradableQuantity = Math.Min(quantity, owned.Materials.Where(material => material.State == CraftingOwnedMaterialState.Tradable).Sum(material => material.Quantity));
+            var remainingAfterOwned = RemainingAfterOwned(quantity, owned.Materials);
+            var exactLiquidation = tradableQuantity > 0 && input.Markets.TryGetValue(itemId, out var liquidationMarket)
+                ? CraftingExecutionEvidence.FromOrderBookExecution(executions.SimulateLiquidation(ToLevels(liquidationMarket.Listing.Buys), tradableQuantity))
+                : null;
             var alternatives = new List<CraftingAcquisitionAlternative>();
-            if (input.Markets.TryGetValue(itemId, out var market) && market.IsFresh)
+            input.Markets.TryGetValue(itemId, out var market);
+            if (remainingAfterOwned > 0 && market is { IsFresh: true })
             {
-                var acquisition = executions.SimulateAcquisition(ToLevels(market.Listing.Sells), quantity);
+                var acquisition = executions.SimulateAcquisition(ToLevels(market.Listing.Sells), remainingAfterOwned);
                 alternatives.Add(CraftingAcquisitionAlternative.FromExecution(CraftingAcquisitionStrategy.InstantBuy, CraftingExecutionEvidence.FromOrderBookExecution(acquisition)));
                 var bestBid = market.Listing.Buys.Where(level => level.Quantity > 0 && level.UnitPriceInCopper > 0)
                     .Select(level => level.UnitPriceInCopper).DefaultIfEmpty().Max();
                 if (bestBid > 0 && bestBid < int.MaxValue)
                     alternatives.Add(CraftingAcquisitionAlternative.FromExecution(CraftingAcquisitionStrategy.BuyOrder,
-                        CraftingExecutionEvidence.ForBoundedBuyOrder(quantity, new Money(bestBid + 1))));
+                        CraftingExecutionEvidence.ForBoundedBuyOrder(remainingAfterOwned, new Money(bestBid + 1))));
             }
-            var direct = new CraftingIngredientEconomicsInput(itemId, quantity, owned.Materials, owned.Liquidation, alternatives);
+            var direct = new CraftingIngredientEconomicsInput(itemId, quantity, owned.Materials, exactLiquidation, alternatives);
             var best = new IngredientPath(direct, [], [], [], []);
-            if (byOutput.TryGetValue(itemId, out var recipes))
+            if (remainingAfterOwned > 0 && byOutput.TryGetValue(itemId, out var recipes))
             {
                 foreach (var recipe in recipes.Where(recipe => IsEligible(recipe, input)))
                 {
                     if (++work > input.Limits.MaximumWork) { truncation.Add(CraftingSearchTruncationReason.WorkLimit); break; }
-                    if (quantity % recipe.OutputItemCount != 0) continue; // never create hidden surplus inventory
-                    var batches = quantity / recipe.OutputItemCount;
+                    if (remainingAfterOwned % recipe.OutputItemCount != 0) continue; // never create hidden surplus inventory
+                    var batches = remainingAfterOwned / recipe.OutputItemCount;
                     var scaled = recipe with
                     {
-                        OutputItemCount = quantity,
+                        OutputItemCount = remainingAfterOwned,
                         Ingredients = recipe.Ingredients.Select(ingredient => ingredient with { Count = checked(ingredient.Count * batches) }).ToArray(),
                     };
                     var inputs = new List<CraftingIngredientEconomicsInput>();
@@ -238,7 +247,7 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
                     // Intermediate cost is independent of whether the intermediate itself can be sold.
                     // A nominal output price is used solely to obtain the calculator's exact input-cost
                     // accounting; it is never surfaced as a sale opportunity or plan step.
-                    var intermediateEconomics = economics.Calculate(new CraftingEconomicsInput(itemId, quantity, new Money(1), inputs));
+                    var intermediateEconomics = economics.Calculate(new CraftingEconomicsInput(itemId, remainingAfterOwned, new Money(1), inputs));
                     if (intermediateEconomics.EconomicInputCost is not { } cost || intermediateEconomics.State != CraftingEconomicsState.Available) continue;
                     foreach (var ingredient in intermediateEconomics.Ingredients.OrderBy(value => value.ItemId))
                     {
@@ -258,21 +267,27 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
                                 prior = [fillId];
                             }
                         }
+                        else if (acquisition.Strategy == CraftingAcquisitionStrategy.BuyOrder && acquisition.ExecutionEvidence is { RequestedQuantity: > 0 } evidence)
+                        {
+                            var unitPrice = new Money(evidence.TotalValue.Copper / evidence.RequestedQuantity);
+                            craftSteps.Add(new($"craft:{recipe.RecipeId}:order:{ingredient.ItemId}", PlanStepAction.PlaceBuyOrder, ingredient.ItemId,
+                                inputMarket.Item.Name, acquisition.Quantity, unitPrice, craftSteps.Select(step => step.Id).ToArray(), PlanStepState.Pending));
+                        }
                     }
-                    var withIntermediate = direct with { AcquisitionAlternatives = alternatives.Append(CraftingAcquisitionAlternative.FromCraftedIntermediate(quantity, cost)).ToArray() };
+                    var withIntermediate = direct with { AcquisitionAlternatives = alternatives.Append(CraftingAcquisitionAlternative.FromCraftedIntermediate(remainingAfterOwned, cost)).ToArray() };
                     var chosen = economics.Calculate(new CraftingEconomicsInput(itemId, quantity, new Money(1), [withIntermediate]));
                     if (chosen.EconomicInputCost is { } chosenCost &&
                         chosen.Ingredients.Single().Acquisition?.Strategy == CraftingAcquisitionStrategy.CraftedIntermediate &&
                         (best.CraftedCost is null || chosenCost.Copper < best.CraftedCost.Value.Copper))
                     {
-                        var craftId = $"craft:{recipe.RecipeId}:intermediate:{quantity}";
-                        craftSteps.Add(new(craftId, PlanStepAction.Craft, itemId, market?.Item.Name ?? $"Objet {itemId}", quantity, null,
+                        var craftId = $"craft:{recipe.RecipeId}:intermediate:{remainingAfterOwned}";
+                        craftSteps.Add(new(craftId, PlanStepAction.Craft, itemId, market?.Item.Name ?? $"Objet {itemId}", remainingAfterOwned, null,
                             craftSteps.Select(step => step.Id).ToArray(), PlanStepState.Pending, CraftEffects: CraftEffects(scaled, intermediateEconomics)));
                         best = new(withIntermediate, craftSteps, craftRequirements, ["Un intermédiaire fabriqué a été retenu car son coût complet est inférieur."], [], chosenCost);
                     }
                 }
             }
-            memo[key] = best;
+            if (cacheable) memo[key] = best;
             return best;
         }
         finally { stack.Remove(itemId); }
@@ -284,6 +299,17 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
     private static bool CanLiquidate(MarketListing listing, int quantity) => new OrderBookExecutionSimulator().SimulateLiquidation(ToLevels(listing.Buys), quantity).IsFullyFilled;
     private static Money? BestSell(MarketListing? listing) => listing?.Sells.Where(level => level.UnitPriceInCopper > 0).OrderBy(level => level.UnitPriceInCopper).Select(level => new Money(level.UnitPriceInCopper)).FirstOrDefault();
     private static IReadOnlyList<OrderBookLevel> ToLevels(IEnumerable<MarketOrderLevel> levels) => levels.Where(level => level.Quantity > 0 && level.UnitPriceInCopper > 0).Select(level => new OrderBookLevel(level.Quantity, new Money(level.UnitPriceInCopper))).ToArray();
+    private static int RemainingAfterOwned(int quantity, IReadOnlyList<CraftingOwnedMaterial> materials)
+    {
+        var remaining = quantity;
+        foreach (var state in new[] { CraftingOwnedMaterialState.Tradable, CraftingOwnedMaterialState.Bound, CraftingOwnedMaterialState.Unknown })
+            foreach (var material in materials.Where(material => material.State == state))
+            {
+                remaining -= Math.Min(remaining, material.Quantity);
+                if (remaining == 0) return 0;
+            }
+        return remaining;
+    }
     private static IReadOnlyList<PlanResourceRequirement> CraftEffects(CraftingRecipe recipe, CraftingEconomics economics) =>
         economics.Ingredients.Select(ingredient => new PlanResourceRequirement(PlanResourceKind.Inventory,
                 ingredient.ItemId.ToString(System.Globalization.CultureInfo.InvariantCulture), -ingredient.RequiredQuantity, Money.Zero))
