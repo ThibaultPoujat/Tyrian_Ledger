@@ -40,6 +40,8 @@ internal static class CraftingOpportunityEndpoints
             outputQuantity = value.Recipe.OutputItemCount,
             economics = new { netProfit = Optional(value.Economics.NetProfit), totalCost = Optional(value.Economics.TotalCost), state = value.Economics.State.ToString() },
             attention = value.Candidate?.Attention.ToString(),
+            confidenceBasisPoints = value.ConfidenceBasisPoints,
+            evidenceExplanation = value.EvidenceExplanation ?? [],
             interactionSeconds = value.Candidate?.ExpectedInteractionSeconds,
             isActionable = value.IsActionable,
             exclusions = value.Exclusions.Select(reason => reason.ToString()),

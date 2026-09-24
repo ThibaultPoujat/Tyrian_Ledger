@@ -1,6 +1,7 @@
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.PersonalTradingPost;
+using Gw2Tp.Analytics.OrderBooks;
 
 namespace Gw2Tp.Application.Crafting;
 
@@ -57,19 +58,38 @@ public sealed class CraftingOpportunityService(
         var historyByItem = histories.ToDictionary(value => value.ItemId, value => value.Value);
         var markets = itemIds.Where(id => listingByItem.ContainsKey(id) && metadataByItem.ContainsKey(id)).ToDictionary(id => id,
             id => new CraftingMarketEvidence(listingByItem[id], metadataByItem[id], true,
-                historyByItem.TryGetValue(id, out var analytics) && analytics.Windows.Any(window => window.State == HistoricalMarketWindowState.Available)));
-        var result = planner.Plan(new(definitions.Value, unlocked.ToHashSet(), snapshot.CharacterCrafting.Value ?? [], markets, Owned(snapshot), limits));
+                historyByItem.TryGetValue(id, out var analytics) && analytics.Windows.Count(window => window.State == HistoricalMarketWindowState.Available) >= 2,
+                historyByItem.TryGetValue(id, out analytics) ? HistoryConfidence(analytics) : 0));
+        var result = planner.Plan(new(definitions.Value, unlocked.ToHashSet(), snapshot.CharacterCrafting.Value ?? [], markets, Owned(snapshot, markets), limits));
         var extra = (recipeLimited ? new[] { CraftingSearchTruncationReason.RecipeLimit } : [])
             .Concat(marketLimited ? new[] { CraftingSearchTruncationReason.MarketDataLimit } : []).Distinct().OrderBy(value => value).ToArray();
         return extra.Length == 0 ? result : result with { TruncationReasons = result.TruncationReasons.Concat(extra).Distinct().OrderBy(value => value).ToArray() };
     }
 
-    private static IReadOnlyDictionary<int, CraftingOwnedEvidence> Owned(AccountCraftingSnapshot snapshot)
+    private static IReadOnlyDictionary<int, CraftingOwnedEvidence> Owned(AccountCraftingSnapshot snapshot,
+        IReadOnlyDictionary<int, CraftingMarketEvidence> markets)
     {
         var rows = (snapshot.BankInventory.Value ?? []).Select(value => (value.ItemId, value.Quantity, value.Binding))
             .Concat((snapshot.MaterialStorage.Value ?? []).Select(value => (value.ItemId, value.Quantity, value.Binding)));
         return rows.Where(value => value.ItemId > 0 && value.Quantity > 0).GroupBy(value => value.ItemId).ToDictionary(group => group.Key,
-            group => new CraftingOwnedEvidence(group.Select(value => new CraftingOwnedMaterial(value.Quantity,
-                value.Binding == AccountItemBinding.Unspecified ? CraftingOwnedMaterialState.Unknown : CraftingOwnedMaterialState.Bound)).ToArray(), null));
+            group =>
+            {
+                var tradableQuantity = group.Where(value => value.Binding == AccountItemBinding.Unspecified).Sum(value => value.Quantity);
+                var liquidation = tradableQuantity > 0 && markets.TryGetValue(group.Key, out var market)
+                    ? CraftingExecutionEvidence.FromOrderBookExecution(new OrderBookExecutionSimulator().SimulateLiquidation(
+                        market.Listing.Buys.Where(level => level.Quantity > 0 && level.UnitPriceInCopper > 0)
+                            .Select(level => new OrderBookLevel(level.Quantity, new Gw2Tp.Domain.Finance.Money(level.UnitPriceInCopper))).ToArray(), tradableQuantity))
+                    : null;
+                var tradable = liquidation?.IsFullyFilled == true && liquidation.SourceScenario?.Kind == OrderBookExecutionKind.Liquidation;
+                return new CraftingOwnedEvidence(group.Select(value => new CraftingOwnedMaterial(value.Quantity,
+                    value.Binding == AccountItemBinding.Unspecified && tradable ? CraftingOwnedMaterialState.Tradable :
+                    value.Binding == AccountItemBinding.Unspecified ? CraftingOwnedMaterialState.Unknown : CraftingOwnedMaterialState.Bound)).ToArray(), liquidation);
+            });
+    }
+
+    private static int HistoryConfidence(HistoricalMarketAnalytics analytics)
+    {
+        var available = analytics.Windows.Count(window => window.State == HistoricalMarketWindowState.Available);
+        return available >= 3 ? 9_000 : available == 2 ? 8_000 : available == 1 ? 5_000 : 0;
     }
 }

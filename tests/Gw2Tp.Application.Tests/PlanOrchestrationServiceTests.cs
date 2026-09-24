@@ -93,6 +93,22 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public void Craft_inventory_delta_confirms_and_retires_the_local_shadow()
+    {
+        var craft = new PlanStep("craft", PlanStepAction.Craft, 100, "Insigne", 1, null, [], PlanStepState.Pending,
+            CraftEffects: [new(PlanResourceKind.Inventory, "10", -2, Money.Zero), new(PlanResourceKind.Inventory, "100", 1, Money.Zero)]);
+        var candidate = new PlanCandidate("craft-delta", 1, "craft-delta", PlanAttention.Active, [craft], [], Money.Zero, Money.Zero, 8_000, 0, 1, 1, true, []);
+        var reported = service.ReportStep(service.Start(candidate, Now, new Money(1_000), new Dictionary<string, long> { ["2:10"] = 2 }), 1, null, Now);
+
+        var confirmed = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long> { ["2:10"] = 0, ["2:100"] = 1 }, Now.AddMinutes(1));
+        var effective = PlanOrchestrationService.ProjectEffectiveResources(new Money(1_000), new Dictionary<string, long> { ["2:10"] = 0, ["2:100"] = 1 }, confirmed.Events);
+
+        Assert.Equal(PlanShadowEventState.Confirmed, confirmed.Events[0].State);
+        Assert.Equal(0, effective.Quantities["2:10"]);
+        Assert.Equal(1, effective.Quantities["2:100"]);
+    }
+
+    [Fact]
     public void Partial_listing_projects_the_canonical_fee_for_only_the_remaining_quantity()
     {
         var candidate = Candidate("partial-listing", 0, 50, 2,

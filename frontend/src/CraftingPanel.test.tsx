@@ -31,3 +31,16 @@ it('explains no viable opportunity and explicit search truncation in French', as
   render(<CraftingPanel />);
   expect(await screen.findByRole('heading', { name: 'Aucun parcours d’artisanat viable' })).toBeInTheDocument();
 });
+
+it('refreshes the account crafting snapshot through the protected local endpoint', async () => {
+  const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === 'POST') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({}) });
+    return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'NoOpportunities', truncationReasons: [], summaryExclusions: [], opportunities: [] }) });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(<CraftingPanel />);
+
+  fireEvent.click((await screen.findAllByRole('button', { name: 'Actualiser les données d’artisanat' })).at(-1)!);
+
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/account-crafting/refresh', expect.objectContaining({ method: 'POST', headers: { 'X-Tyrian-Ledger-Request': '1' } })));
+});

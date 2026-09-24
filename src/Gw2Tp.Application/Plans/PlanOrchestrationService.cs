@@ -46,6 +46,22 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         ArgumentNullException.ThrowIfNull(plan);
         if (plan.State is PlanState.ExecutionComplete or PlanState.Invalid) return [];
         var requirements = new List<PlanResourceRequirement>();
+        // Dependent resources are produced by earlier outstanding steps. Only
+        // the residual need is reserved before a plan starts.
+        var produced = new Dictionary<string, long>(StringComparer.Ordinal);
+        void Consume(PlanResourceRequirement requirement)
+        {
+            var key = Key(requirement);
+            var covered = Math.Min(produced.GetValueOrDefault(key), requirement.Quantity);
+            if (covered > 0) produced[key] -= covered;
+            var residual = requirement.Quantity - covered;
+            if (residual > 0) requirements.Add(requirement with { Quantity = residual });
+        }
+        void Produce(PlanResourceRequirement effect)
+        {
+            if (effect.Kind == PlanResourceKind.Inventory && effect.Quantity > 0)
+                produced[Key(effect)] = checked(produced.GetValueOrDefault(Key(effect)) + effect.Quantity);
+        }
         foreach (var step in plan.Steps.Where(step => step.State is PlanStepState.Pending or PlanStepState.Current))
         {
             var quantity = Math.Max(0, step.Quantity);
@@ -57,11 +73,12 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                 case PlanStepAction.PlaceBuyOrder:
                     if (step.UnitPrice is { } buyPrice)
                         requirements.Add(new(PlanResourceKind.Cash, "cash", 0, new Money(checked(buyPrice.Copper * quantity))));
+                    Produce(new(PlanResourceKind.Inventory, itemId, quantity, Money.Zero));
                     break;
                 case PlanStepAction.List:
                 case PlanStepAction.Relist:
                 case PlanStepAction.SellNow:
-                    requirements.Add(new(PlanResourceKind.Inventory, itemId, quantity, Money.Zero));
+                    Consume(new(PlanResourceKind.Inventory, itemId, quantity, Money.Zero));
                     if (step.Action is PlanStepAction.List or PlanStepAction.Relist && step.UnitPrice is { } listPrice)
                     {
                         var gross = new Money(checked(listPrice.Copper * quantity));
@@ -72,7 +89,11 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                     foreach (var effect in step.CraftEffects ?? [])
                     {
                         if (effect.Kind == PlanResourceKind.Inventory && effect.Quantity < 0)
-                            requirements.Add(effect with { Quantity = -effect.Quantity, Cash = Money.Zero });
+                            Consume(effect with { Quantity = -effect.Quantity, Cash = Money.Zero });
+                    }
+                    foreach (var effect in step.CraftEffects ?? [])
+                    {
+                        Produce(effect);
                     }
                     break;
             }
@@ -252,6 +273,19 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                         LastRelevantEvidenceFingerprint = freshCapture ? relevantFingerprint : execution.LastRelevantEvidenceFingerprint,
                         VerifiedEvidenceIds = verifiedEvidenceIds };
                     if (nextState == PlanShadowEventState.PartiallyConfirmed) blockedByPending = true;
+                }
+                else if (!blockedByPending && execution.Action == PlanStepAction.Craft)
+                {
+                    if (TryMatchCraftInventory(execution, expectedQuantities, verifiedQuantities, out var craftContradicted))
+                    {
+                        events[index] = execution with { State = PlanShadowEventState.Confirmed, VerifiedQuantity = execution.Quantity,
+                            VerifiedUnitPrice = execution.UnitPrice, VerifiedEvidenceIds = [] };
+                    }
+                    else if (craftContradicted)
+                    {
+                        contradictions++;
+                        blockedByPending = true;
+                    }
                 }
                 else if (execution.ExpectedEvidenceKind is not null)
                 {
@@ -466,6 +500,26 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         PlanStepAction.SellNow => PlanEvidenceKind.CompletedSell,
         _ => null,
     };
+
+    private static bool TryMatchCraftInventory(PlanExecutionEvent execution,
+        IReadOnlyDictionary<string, long> expectedBefore, IReadOnlyDictionary<string, long> observed,
+        out bool contradicted)
+    {
+        contradicted = false;
+        var effects = execution.Effects.Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity != 0).ToArray();
+        if (effects.Length == 0) return false;
+        foreach (var effect in effects)
+        {
+            var key = Key(effect);
+            var before = expectedBefore.GetValueOrDefault(key);
+            var target = checked(before + effect.Quantity);
+            var actual = observed.GetValueOrDefault(key);
+            if (actual == target) continue;
+            if (effect.Quantity > 0 ? actual > target : actual < target) contradicted = true;
+            return false;
+        }
+        return true;
+    }
 
     private static bool MateriallyDifferent(long? replacement, long? current)
     {

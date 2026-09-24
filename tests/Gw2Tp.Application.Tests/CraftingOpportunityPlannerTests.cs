@@ -50,12 +50,26 @@ public sealed class CraftingOpportunityPlannerTests
     }
 
     [Fact]
-    public void Detects_indirect_cycles_without_treating_them_as_profitable_paths()
+    public void Falls_back_to_direct_acquisition_when_an_intermediate_branch_is_cyclic()
     {
         var result = planner.Plan(Input([Recipe(1, 100, 1, (10, 1)), Recipe(2, 10, 1, (100, 1))], Markets((10, 100, 0), (100, 1_000, 1_000))));
 
-        Assert.Contains(result.Opportunities.SelectMany(value => value.Exclusions), value => value == CraftingOpportunityExclusion.CycleDetected);
-        Assert.DoesNotContain(result.Opportunities, value => value.IsActionable && value.Recipe.RecipeId == 1 && value.ProcurementExplanation.Any(line => line.Contains("intermédiaire", StringComparison.OrdinalIgnoreCase)));
+        var final = Assert.Single(result.Opportunities, value => value.Recipe.RecipeId == 1);
+        Assert.True(final.IsActionable);
+        Assert.DoesNotContain(final.ProcurementExplanation, line => line.Contains("intermédiaire", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Scales_an_internal_recipe_to_the_exact_required_quantity_without_requiring_it_to_be_saleable()
+    {
+        var result = planner.Plan(Input(
+            [Recipe(1, 100, 1, (10, 2)), Recipe(2, 10, 1, (20, 1))],
+            Markets((20, 100, 0), (100, 2_000, 2_000))));
+
+        var final = Assert.Single(result.Opportunities, value => value.Recipe.RecipeId == 1).Candidate!;
+        var intermediateCraft = Assert.Single(final.Steps, step => step.Action == PlanStepAction.Craft && step.ItemId == 10);
+        Assert.Equal(2, intermediateCraft.Quantity);
+        Assert.DoesNotContain(final.Steps, step => step.Action == PlanStepAction.List && step.ItemId == 10);
     }
 
     [Fact]

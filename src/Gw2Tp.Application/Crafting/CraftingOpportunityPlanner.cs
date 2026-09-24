@@ -20,7 +20,7 @@ public enum CraftingOpportunityState { Ready = 1, NoOpportunities, Degraded }
 public enum CraftingSearchTruncationReason { RecipeLimit = 1, DepthLimit, CandidateLimit, WorkLimit, MarketDataLimit }
 public enum CraftingOpportunityExclusion { CapabilityUnavailable = 1, RecipeLocked, InvalidRecipe, CycleDetected, MissingInputEvidence, InsufficientInputDepth, InsufficientOutputDepth, WeakHistory, StaleEvidence, NotProfitable, RawSaleSuperior, ResourceConflict }
 
-public sealed record CraftingMarketEvidence(MarketListing Listing, MarketItemMetadata Item, bool IsFresh, bool HasSufficientHistory);
+public sealed record CraftingMarketEvidence(MarketListing Listing, MarketItemMetadata Item, bool IsFresh, bool HasSufficientHistory, int ConfidenceBasisPoints = 8_000);
 public sealed record CraftingOwnedEvidence(IReadOnlyList<CraftingOwnedMaterial> Materials, CraftingExecutionEvidence? Liquidation);
 public sealed record CraftingPlannerInput(
     IReadOnlyList<CraftingRecipe> Recipes,
@@ -36,7 +36,9 @@ public sealed record CraftingOpportunity(
     CraftingEconomics Economics, PlanCandidate? Candidate,
     IReadOnlyList<CraftingOpportunityExclusion> Exclusions,
     IReadOnlyList<string> ProcurementExplanation,
-    bool IsActionable);
+    bool IsActionable,
+    int ConfidenceBasisPoints = 0,
+    IReadOnlyList<string>? EvidenceExplanation = null);
 
 public sealed record CraftingPlannerResult(
     CraftingOpportunityState State,
@@ -164,10 +166,11 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
             if (passive)
             {
                 var passiveSteps = steps.Where(step => step.Action == PlanStepAction.PlaceBuyOrder).ToArray();
-                candidate = new(craftId, 1, craftId, PlanAttention.Passive, passiveSteps, requirements, profit, totalCost, 7_000, 0,
+                candidate = new(craftId, 1, craftId, PlanAttention.Passive, passiveSteps, requirements, profit, totalCost, output.ConfidenceBasisPoints, 0,
                     checked(passiveSteps.Length * 35), checked(profit.Copper * 1_000 / Math.Max(1, totalCost.Copper)), true, []);
                 return new($"craft:{recipe.RecipeId}", recipe, output.Item.Name, output.Item.IconUrl, result, candidate,
-                    exclusions.OrderBy(value => value).ToArray(), explanation.Distinct(StringComparer.Ordinal).ToArray(), true);
+                    exclusions.OrderBy(value => value).ToArray(), explanation.Distinct(StringComparer.Ordinal).ToArray(), true,
+                    output.ConfidenceBasisPoints, ["Historique de marché et profondeur vérifiés avant la proposition."]);
             }
             var craftStepId = $"{craftId}:craft";
             steps.Add(new(craftStepId, PlanStepAction.Craft, recipe.OutputItemId, output.Item.Name, recipe.OutputItemCount, null, steps.Select(step => step.Id).ToArray(), PlanStepState.Pending,
@@ -176,11 +179,12 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
             steps.Add(new(listId, PlanStepAction.List, recipe.OutputItemId, output.Item.Name, recipe.OutputItemCount, unitPrice, [craftStepId], PlanStepState.Pending));
             requirements.Add(new(PlanResourceKind.Cash, "cash", 0, result.OutputSale!.ListingFee));
             requirements.Add(new(PlanResourceKind.ExpectedIncoming, recipe.OutputItemId.ToString(System.Globalization.CultureInfo.InvariantCulture), recipe.OutputItemCount, Money.Zero));
-            candidate = new(craftId, 1, craftId, PlanAttention.Active, steps, requirements, profit, totalCost, 8_000, 0,
+            candidate = new(craftId, 1, craftId, PlanAttention.Active, steps, requirements, profit, totalCost, output.ConfidenceBasisPoints, 0,
                 checked(steps.Count * 45), checked(profit.Copper * 1_000 / Math.Max(1, totalCost.Copper)), true, []);
         }
         return new($"craft:{recipe.RecipeId}", recipe, output?.Item.Name ?? $"Objet {recipe.OutputItemId}", output?.Item.IconUrl, result, candidate,
-            exclusions.OrderBy(value => value).ToArray(), explanation.Distinct(StringComparer.Ordinal).ToArray(), actionable);
+            exclusions.OrderBy(value => value).ToArray(), explanation.Distinct(StringComparer.Ordinal).ToArray(), actionable,
+            output?.ConfidenceBasisPoints ?? 0, output is null ? ["Les preuves de marché de sortie sont indisponibles."] : ["Historique de marché et profondeur vérifiés avant la proposition."]);
     }
 
     private IngredientPath FindIngredient(int itemId, int quantity, CraftingPlannerInput input, IReadOnlyDictionary<int, CraftingRecipe[]> byOutput,
@@ -211,26 +215,60 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
                 foreach (var recipe in recipes.Where(recipe => IsEligible(recipe, input)))
                 {
                     if (++work > input.Limits.MaximumWork) { truncation.Add(CraftingSearchTruncationReason.WorkLimit); break; }
-                    if (recipe.OutputItemCount != quantity) continue; // no hidden surplus/inventory creation
-                    var intermediate = EvaluateRecipe(recipe, input, byOutput, memo, stack, depth, ref work, truncation);
-                    if (intermediate.Exclusions.Contains(CraftingOpportunityExclusion.CycleDetected))
-                        return IngredientPath.Unavailable(itemId, quantity, CraftingOpportunityExclusion.CycleDetected);
-                    if (intermediate.Economics.EconomicInputCost is not { } cost || intermediate.Economics.State != CraftingEconomicsState.Available) continue;
+                    if (quantity % recipe.OutputItemCount != 0) continue; // never create hidden surplus inventory
+                    var batches = quantity / recipe.OutputItemCount;
+                    var scaled = recipe with
+                    {
+                        OutputItemCount = quantity,
+                        Ingredients = recipe.Ingredients.Select(ingredient => ingredient with { Count = checked(ingredient.Count * batches) }).ToArray(),
+                    };
+                    var inputs = new List<CraftingIngredientEconomicsInput>();
+                    var craftSteps = new List<PlanStep>();
+                    var craftRequirements = new List<PlanResourceRequirement>();
+                    var branchFailed = false;
+                    foreach (var ingredient in scaled.Ingredients.Where(value => string.Equals(value.Type, "Item", StringComparison.Ordinal)).OrderBy(value => value.Id))
+                    {
+                        var path = FindIngredient(ingredient.Id, ingredient.Count, input, byOutput, memo, stack, depth + 1, ref work, truncation);
+                        if (path.Exclusions.Count > 0) { branchFailed = true; break; }
+                        inputs.Add(path.Input);
+                        craftSteps.AddRange(path.Steps);
+                        craftRequirements.AddRange(path.Requirements);
+                    }
+                    if (branchFailed || inputs.Count != scaled.Ingredients.Count) continue; // a cyclic branch never poisons a usable direct fallback
+                    // Intermediate cost is independent of whether the intermediate itself can be sold.
+                    // A nominal output price is used solely to obtain the calculator's exact input-cost
+                    // accounting; it is never surfaced as a sale opportunity or plan step.
+                    var intermediateEconomics = economics.Calculate(new CraftingEconomicsInput(itemId, quantity, new Money(1), inputs));
+                    if (intermediateEconomics.EconomicInputCost is not { } cost || intermediateEconomics.State != CraftingEconomicsState.Available) continue;
+                    foreach (var ingredient in intermediateEconomics.Ingredients.OrderBy(value => value.ItemId))
+                    {
+                        if (ingredient.OwnedTradableQuantity > 0)
+                            craftRequirements.Add(new(PlanResourceKind.Inventory, ingredient.ItemId.ToString(System.Globalization.CultureInfo.InvariantCulture), ingredient.OwnedTradableQuantity, Money.Zero));
+                        if (ingredient.Acquisition is not { } acquisition || !input.Markets.TryGetValue(ingredient.ItemId, out var inputMarket)) continue;
+                        if (acquisition.Strategy != CraftingAcquisitionStrategy.CraftedIntermediate)
+                            craftRequirements.Add(new(PlanResourceKind.Cash, "cash", 0, acquisition.TotalCost));
+                        if (acquisition.Strategy == CraftingAcquisitionStrategy.InstantBuy && acquisition.ExecutionEvidence?.SourceScenario is { } scenario)
+                        {
+                            var prior = craftSteps.Select(step => step.Id).ToArray();
+                            var index = 0;
+                            foreach (var fill in scenario.Fills)
+                            {
+                                var fillId = $"craft:{recipe.RecipeId}:acquire:{ingredient.ItemId}:{++index}";
+                                craftSteps.Add(new(fillId, PlanStepAction.BuyNow, ingredient.ItemId, inputMarket.Item.Name, fill.Quantity, fill.UnitPrice, prior, PlanStepState.Pending));
+                                prior = [fillId];
+                            }
+                        }
+                    }
                     var withIntermediate = direct with { AcquisitionAlternatives = alternatives.Append(CraftingAcquisitionAlternative.FromCraftedIntermediate(quantity, cost)).ToArray() };
-                    var chosen = economics.Calculate(new CraftingEconomicsInput(itemId, quantity, BestSell(market?.Listing), [withIntermediate]));
+                    var chosen = economics.Calculate(new CraftingEconomicsInput(itemId, quantity, new Money(1), [withIntermediate]));
                     if (chosen.EconomicInputCost is { } chosenCost &&
                         chosen.Ingredients.Single().Acquisition?.Strategy == CraftingAcquisitionStrategy.CraftedIntermediate &&
-                        intermediate.Candidate is { Attention: PlanAttention.Active } &&
                         (best.CraftedCost is null || chosenCost.Copper < best.CraftedCost.Value.Copper))
                     {
-                        var steps = intermediate.Candidate?.Steps.Where(step => step.Action != PlanStepAction.List).ToArray() ?? [];
-                        var requirements = intermediate.Candidate?.Requirements.Where(requirement => requirement.Kind != PlanResourceKind.ExpectedIncoming).ToList() ?? [];
-                        if (intermediate.Economics.OutputSale is { } outputSale)
-                        {
-                            var feeIndex = requirements.FindLastIndex(requirement => requirement.Kind == PlanResourceKind.Cash && requirement.Cash == outputSale.ListingFee);
-                            if (feeIndex >= 0) requirements.RemoveAt(feeIndex);
-                        }
-                        best = new(withIntermediate, steps, requirements, ["Un intermédiaire fabriqué a été retenu car son coût complet est inférieur."], [], chosenCost);
+                        var craftId = $"craft:{recipe.RecipeId}:intermediate:{quantity}";
+                        craftSteps.Add(new(craftId, PlanStepAction.Craft, itemId, market?.Item.Name ?? $"Objet {itemId}", quantity, null,
+                            craftSteps.Select(step => step.Id).ToArray(), PlanStepState.Pending, CraftEffects: CraftEffects(scaled, intermediateEconomics)));
+                        best = new(withIntermediate, craftSteps, craftRequirements, ["Un intermédiaire fabriqué a été retenu car son coût complet est inférieur."], [], chosenCost);
                     }
                 }
             }
