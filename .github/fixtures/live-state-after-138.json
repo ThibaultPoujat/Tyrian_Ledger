@@ -1,17 +1,66 @@
 {
-  "issue98Body": "## Current execution order\n\n1. #128 — completed\n2. #129 — live state\n3. #130 — spike\n4. #131 — MVP\n5. #132 — cleanup\n6. #133 — orchestration\n7. #93 — economics\n8. #94 — paths\n9. #95 — loop\n10. #96 — hardening\n11. #97 — evaluation\n\n**MVP non-blocking exception:** #129 is preferred before #130. After #128 merges, #130 may start before #129. #131 depends on #130, not on completion of #129.\n",
+  "issue98Body": "## Current execution order\n\n1. #128 — completed\n2. #129 — live state\n3. #130 — spike\n4. #131 — MVP\n5. #132 — cleanup\n6. #133 — orchestration\n7. #93 — economics\n8. #94 — paths\n9. #95 — loop\n10. #145 — calculation transparency\n11. #96 — hardening\n12. #97 — evaluation\n\n**MVP non-blocking exception:** #129 is preferred before #130. After #128 merges, #130 may start before #129. #131 depends on #130, not on completion of #129.\n",
   "issues": {
-    "93": { "state": "OPEN", "title": "Crafting economics", "milestoneTitle": "M21 — Signals and Crafting Intelligence" },
-    "94": { "state": "OPEN", "title": "Crafting paths", "milestoneTitle": "M21 — Signals and Crafting Intelligence" },
-    "95": { "state": "OPEN", "title": "Decision loop", "milestoneTitle": "M22 — Continuous Operation" },
-    "96": { "state": "OPEN", "title": "Hardening", "milestoneTitle": "M22 — Continuous Operation" },
-    "97": { "state": "OPEN", "title": "Evaluation", "milestoneTitle": "M22 — Continuous Operation" },
-    "128": { "state": "CLOSED", "title": "Roadmap consolidation", "milestoneTitle": "M21 — Signals and Crafting Intelligence" },
-    "129": { "state": "OPEN", "title": "Live state", "milestoneTitle": "M21 — Signals and Crafting Intelligence" },
-    "130": { "state": "CLOSED", "title": "Signals UX spike", "milestoneTitle": "M21 — Signals and Crafting Intelligence" },
-    "131": { "state": "CLOSED", "title": "Signals MVP", "milestoneTitle": "M21 — Signals and Crafting Intelligence" },
-    "132": { "state": "OPEN", "title": "Cleanup", "milestoneTitle": "M21 — Signals and Crafting Intelligence" },
-    "133": { "state": "OPEN", "title": "Orchestration", "milestoneTitle": "M21 — Signals and Crafting Intelligence" }
+    "93": {
+      "state": "OPEN",
+      "title": "Crafting economics",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "94": {
+      "state": "OPEN",
+      "title": "Crafting paths",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "95": {
+      "state": "OPEN",
+      "title": "Decision loop",
+      "milestoneTitle": "M22 — Continuous Operation"
+    },
+    "96": {
+      "state": "OPEN",
+      "title": "Hardening",
+      "milestoneTitle": "M22 — Continuous Operation"
+    },
+    "97": {
+      "state": "OPEN",
+      "title": "Evaluation",
+      "milestoneTitle": "M22 — Continuous Operation"
+    },
+    "128": {
+      "state": "CLOSED",
+      "title": "Roadmap consolidation",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "129": {
+      "state": "OPEN",
+      "title": "Live state",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "130": {
+      "state": "CLOSED",
+      "title": "Signals UX spike",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "131": {
+      "state": "CLOSED",
+      "title": "Signals MVP",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "132": {
+      "state": "OPEN",
+      "title": "Cleanup",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "133": {
+      "state": "OPEN",
+      "title": "Orchestration",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "145": {
+      "state": "OPEN",
+      "title": "Calculation transparency",
+      "milestoneTitle": "M22 — Continuous Operation"
+    }
   },
   "pullRequests": [
     {
@@ -19,7 +68,12 @@
       "mergedAt": "2026-09-21T15:16:21Z",
       "baseRefName": "develop",
       "closingIssues": [
-        { "number": 131, "state": "CLOSED", "title": "Signals MVP", "milestoneTitle": "M21 — Signals and Crafting Intelligence" }
+        {
+          "number": 131,
+          "state": "CLOSED",
+          "title": "Signals MVP",
+          "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+        }
       ]
     }
   ]
