@@ -38,9 +38,9 @@ internal sealed class PlanEndpointService(
 {
     public async Task<object> GetAsync(CancellationToken cancellationToken)
     {
-        var context = await BuildContextAsync(cancellationToken).ConfigureAwait(false);
+        var context = await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
         if (context is null) return new { state = "unavailable", proposals = Array.Empty<object>(), plans = Array.Empty<object>() };
-        var plans = await ReconcilePlansAsync(context, cancellationToken).ConfigureAwait(false);
+        var plans = context.Plans;
         var visiblePlans = plans.Where(plan => plan.State != PlanState.Invalid).ToArray();
         if (context.Recommendations?.State != PrimaryRecommendationState.Ready || context.Recommendations.Portfolio is null)
             return new { state = "ready", degraded = true, proposals = Array.Empty<object>(), excludedCandidateIds = Array.Empty<string>(), intentionallyFreeCash = Money.Zero, plans = visiblePlans.Select(ToResponse) };
@@ -66,10 +66,9 @@ internal sealed class PlanEndpointService(
 
     public async Task<IResult> StartAsync(string planId, CancellationToken cancellationToken)
     {
-        var context = await BuildContextAsync(cancellationToken).ConfigureAwait(false);
+        var context = await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
         if (context?.Recommendations?.State != PrimaryRecommendationState.Ready || context.Recommendations.Portfolio is null || !context.AccountEvidenceAvailable)
             return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-        await ReconcilePlansAsync(context, cancellationToken).ConfigureAwait(false);
         var candidate = context.Candidates.SingleOrDefault(value => string.Equals(value.Id, planId, StringComparison.Ordinal));
         if (candidate is null) return Results.NotFound(new { error = "plan_candidate_not_found" });
         var plan = orchestration.Start(candidate, DateTimeOffset.UtcNow, context.Snapshot.AvailableCash, context.VerifiedQuantities);
@@ -116,6 +115,30 @@ internal sealed class PlanEndpointService(
         return Results.Json(new { state = "undone", plan = ToResponse(updated) });
     }
 
+    internal async Task<PlanDecisionSnapshot?> GetDecisionSnapshotAsync(CancellationToken cancellationToken)
+    {
+        var context = await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
+        return context is null
+            ? null
+            : new PlanDecisionSnapshot(context.Profile, context.Recommendations, context.Plans, context.Candidates, context.AccountEvidenceAvailable);
+    }
+
+    private async Task<Context?> BuildDecisionContextAsync(CancellationToken cancellationToken)
+    {
+        var context = await BuildContextAsync(cancellationToken).ConfigureAwait(false);
+        if (context is null) return null;
+
+        // Verified account evidence is reconciled before any new recommendation
+        // or crafting candidate is generated. This ordering prevents a stale
+        // local shadow from feeding the next economic decision.
+        var reconciledPlans = await ReconcilePlansAsync(context, applyRefresh: false, cancellationToken).ConfigureAwait(false);
+        var recommendationsResult = await GetRecommendationsAsync(cancellationToken).ConfigureAwait(false);
+        var candidates = await BuildCandidatesAsync(recommendationsResult, cancellationToken).ConfigureAwait(false);
+        var refreshedContext = context with { Recommendations = recommendationsResult, Candidates = candidates, Plans = reconciledPlans };
+        var refreshedPlans = await ApplyPlanRefreshAsync(refreshedContext, cancellationToken).ConfigureAwait(false);
+        return refreshedContext with { Plans = refreshedPlans };
+    }
+
     private async Task<Context?> BuildContextAsync(CancellationToken cancellationToken)
     {
         var account = await accountPortfolio.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
@@ -130,19 +153,6 @@ internal sealed class PlanEndpointService(
         }
         var profile = await profiles.FindAccountProfileAsync(snapshot.AccountScope.AccountId, cancellationToken).ConfigureAwait(false);
         if (profile is null) return null;
-        PrimaryRecommendationResult? recommendationsResult;
-        try
-        {
-            recommendationsResult = accountEvidenceAvailable ? await recommendations.GetAsync(cancellationToken).ConfigureAwait(false) : null;
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            recommendationsResult = null;
-        }
         AccountCraftingSnapshot? crafting;
         try
         {
@@ -157,7 +167,30 @@ internal sealed class PlanEndpointService(
             crafting = null;
         }
         var quantities = VerifiedQuantities(snapshot, crafting);
-        var evidence = accountEvidenceAvailable ? await ReadEvidenceAsync(cancellationToken).ConfigureAwait(false) : new EvidenceCapture([], null, new HashSet<PlanEvidenceKind>());
+        var evidence = accountEvidenceAvailable ? await ReadEvidenceAsync(profile, cancellationToken).ConfigureAwait(false) : new EvidenceCapture([], null, new HashSet<PlanEvidenceKind>());
+        return new Context(profile, snapshot, quantities, null, [], accountEvidenceAvailable, evidence.Evidence, evidence.CapturedAtUtc, evidence.CompleteKinds, []);
+    }
+
+    private async Task<PrimaryRecommendationResult?> GetRecommendationsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await recommendations.GetAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<IReadOnlyList<PlanCandidate>> BuildCandidatesAsync(
+        PrimaryRecommendationResult? recommendationsResult,
+        CancellationToken cancellationToken)
+    {
         var recommendationCandidates = recommendationsResult?.State == PrimaryRecommendationState.Ready
             ? recommendationsResult.Actions.Where(IsActionable).Select(ToCandidate).ToArray()
             : Array.Empty<PlanCandidate>();
@@ -169,13 +202,14 @@ internal sealed class PlanEndpointService(
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch { /* Crafting remains conservatively unavailable without suppressing trading plans. */ }
-        var candidates = recommendationCandidates.Concat(craftingCandidates).OrderBy(value => value.Id, StringComparer.Ordinal).ToArray();
-        return new Context(profile, snapshot, quantities, recommendationsResult, candidates, accountEvidenceAvailable, evidence.Evidence, evidence.CapturedAtUtc, evidence.CompleteKinds);
+        return recommendationCandidates.Concat(craftingCandidates).OrderBy(value => value.Id, StringComparer.Ordinal).ToArray();
     }
 
-    private async Task<IReadOnlyList<PlanRecord>> ReconcilePlansAsync(Context context, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<PlanRecord>> ReconcilePlansAsync(Context context, bool applyRefresh, CancellationToken cancellationToken)
     {
-        var plans = await repository.GetReconciliationCandidatesAsync(context.Profile.Id, cancellationToken).ConfigureAwait(false);
+        var plans = context.Plans.Count > 0
+            ? context.Plans
+            : await repository.GetReconciliationCandidatesAsync(context.Profile.Id, cancellationToken).ConfigureAwait(false);
         var updated = new List<PlanRecord>(plans.Count);
         foreach (var plan in plans)
         {
@@ -183,8 +217,11 @@ internal sealed class PlanEndpointService(
             var observedAt = context.Snapshot.CapturedAtUtc ?? DateTimeOffset.UtcNow;
             var reconciled = orchestration.ReconcileWithVerifiedState(plan, context.Snapshot.AvailableCash, context.VerifiedQuantities, observedAt,
                 context.Evidence, context.EvidenceCapturedAtUtc, context.CompleteEvidenceKinds);
-            var candidate = context.Candidates.SingleOrDefault(value => value.SourceOpportunityId == plan.SourceOpportunityId);
-            reconciled = orchestration.ApplyRefresh(reconciled, candidate, context.Recommendations?.State == PrimaryRecommendationState.Ready);
+            if (applyRefresh)
+            {
+                var candidate = context.Candidates.SingleOrDefault(value => value.SourceOpportunityId == plan.SourceOpportunityId);
+                reconciled = orchestration.ApplyRefresh(reconciled, candidate, context.Recommendations?.State == PrimaryRecommendationState.Ready);
+            }
             try
             {
                 await repository.SaveAsync(context.Profile.Id, reconciled, cancellationToken).ConfigureAwait(false);
@@ -199,8 +236,35 @@ internal sealed class PlanEndpointService(
         return updated;
     }
 
+    private async Task<IReadOnlyList<PlanRecord>> ApplyPlanRefreshAsync(Context context, CancellationToken cancellationToken)
+    {
+        var updated = new List<PlanRecord>(context.Plans.Count);
+        foreach (var plan in context.Plans)
+        {
+            var candidate = context.Candidates.SingleOrDefault(value => value.SourceOpportunityId == plan.SourceOpportunityId);
+            var refreshed = orchestration.ApplyRefresh(plan, candidate, context.Recommendations?.State == PrimaryRecommendationState.Ready);
+            if (ReferenceEquals(refreshed, plan) || refreshed == plan)
+            {
+                updated.Add(plan);
+                continue;
+            }
+
+            try
+            {
+                await repository.SaveAsync(context.Profile.Id, refreshed, cancellationToken).ConfigureAwait(false);
+                updated.Add(refreshed with { Revision = refreshed.Revision + 1 });
+            }
+            catch (PlanConcurrencyException)
+            {
+                var latest = await FindReconciliationCandidateAsync(context.Profile.Id, plan.Id, cancellationToken).ConfigureAwait(false);
+                if (latest is not null) updated.Add(latest);
+            }
+        }
+        return updated;
+    }
+
     private async Task<Context> RequireContextAsync(CancellationToken cancellationToken) =>
-        await BuildContextAsync(cancellationToken).ConfigureAwait(false) ?? throw new InvalidOperationException("Plan account evidence is unavailable.");
+        await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false) ?? throw new InvalidOperationException("Plan account evidence is unavailable.");
 
     private async Task<PlanRecord?> FindAsync(long profileId, string planId, CancellationToken cancellationToken) =>
         (await repository.GetStartedAsync(profileId, cancellationToken).ConfigureAwait(false)).SingleOrDefault(plan => plan.Id == planId);
@@ -286,37 +350,41 @@ internal sealed class PlanEndpointService(
         return quantities;
     }
 
-    private async Task<EvidenceCapture> ReadEvidenceAsync(CancellationToken cancellationToken)
+    private async Task<EvidenceCapture> ReadEvidenceAsync(AccountProfile profile, CancellationToken cancellationToken)
     {
-        var captured = DateTimeOffset.UtcNow;
+        cancellationToken.ThrowIfCancellationRequested();
+        var current = await profiles.GetLatestCurrentOrderSnapshotAsync(profile, cancellationToken).ConfigureAwait(false);
+        if (current is null || profile.LastSuccessfulSyncAtUtc is null)
+            return new EvidenceCapture([], null, new HashSet<PlanEvidenceKind>());
+
+        var captured = current.ObservedAtUtc;
         var entries = new List<PlanVerifiedEvidence>();
-        var completeKinds = new HashSet<PlanEvidenceKind>();
-        async Task Read(Func<int, Task<Gw2ApiResult<PersonalTransactionPage>>> fetch, PlanEvidenceKind kind)
+        foreach (var order in current.Orders)
         {
-            try
-            {
-                var result = await fetch(0).ConfigureAwait(false);
-                if (!result.IsSuccess || result.Value is null) return;
-                var pages = new List<PersonalTransactionPage> { result.Value };
-                for (var page = 1; page < result.Value.PageCount; page++)
-                {
-                    var next = await fetch(page).ConfigureAwait(false);
-                    if (!next.IsSuccess || next.Value is null) return;
-                    pages.Add(next.Value);
-                }
-                completeKinds.Add(kind);
-                entries.AddRange(pages.SelectMany(page => page.Transactions).Where(tx => tx.Quantity > 0 && tx.ItemId > 0 && tx.PriceInCopper >= 0)
-                    .Select(tx => new PlanVerifiedEvidence($"{kind}:{tx.TransactionId}", kind, tx.ItemId, tx.Quantity, new Money(tx.PriceInCopper),
-                        kind is PlanEvidenceKind.CompletedBuy or PlanEvidenceKind.CompletedSell ? tx.PurchasedAtUtc ?? tx.CreatedAtUtc : tx.CreatedAtUtc, captured,
-                        tx.TransactionId.ToString(System.Globalization.CultureInfo.InvariantCulture))));
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch { }
+            var kind = order.Side == PersonalTradingPostSide.Buy ? PlanEvidenceKind.BuyOrder : PlanEvidenceKind.SellListing;
+            entries.Add(new PlanVerifiedEvidence(
+                $"{kind}:{order.ExternalOrderId}", kind, order.ItemId, order.Quantity, new Money(order.UnitPriceInCopper),
+                order.CreatedAtUtc, captured, order.ExternalOrderId.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         }
-        await Read(page => personalTradingPost.GetCurrentBuyOrdersAsync(page, cancellationToken), PlanEvidenceKind.BuyOrder).ConfigureAwait(false);
-        await Read(page => personalTradingPost.GetCurrentSellListingsAsync(page, cancellationToken), PlanEvidenceKind.SellListing).ConfigureAwait(false);
-        await Read(page => personalTradingPost.GetCompletedBuyHistoryAsync(page, cancellationToken), PlanEvidenceKind.CompletedBuy).ConfigureAwait(false);
-        await Read(page => personalTradingPost.GetCompletedSellHistoryAsync(page, cancellationToken), PlanEvidenceKind.CompletedSell).ConfigureAwait(false);
+
+        var completed = await profiles.GetCompletedTransactionsAsync(profile, cancellationToken).ConfigureAwait(false);
+        foreach (var stored in completed)
+        {
+            var transaction = stored.Transaction;
+            var kind = transaction.Side == PersonalTradingPostSide.Buy ? PlanEvidenceKind.CompletedBuy : PlanEvidenceKind.CompletedSell;
+            entries.Add(new PlanVerifiedEvidence(
+                $"{kind}:{transaction.ExternalTransactionId}", kind, transaction.ItemId, transaction.Quantity,
+                new Money(transaction.UnitPriceInCopper), transaction.CompletedAtUtc, captured,
+                transaction.ExternalTransactionId.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        var completeKinds = new HashSet<PlanEvidenceKind>
+        {
+            PlanEvidenceKind.BuyOrder,
+            PlanEvidenceKind.SellListing,
+            PlanEvidenceKind.CompletedBuy,
+            PlanEvidenceKind.CompletedSell,
+        };
         return new EvidenceCapture(entries, completeKinds.Count == 0 ? null : captured, completeKinds);
     }
 
@@ -348,5 +416,12 @@ internal sealed class PlanEndpointService(
     private static object ToResponse(PlanStep step) => new { id = step.Id, action = step.Action.ToString(), itemName = step.ItemName, quantity = step.Quantity, unitPrice = step.UnitPrice, state = step.State.ToString() };
 
     private sealed record EvidenceCapture(IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? CapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteKinds);
-    private sealed record Context(AccountProfile Profile, AccountPortfolioSnapshot Snapshot, IReadOnlyDictionary<string, long> VerifiedQuantities, PrimaryRecommendationResult? Recommendations, IReadOnlyList<PlanCandidate> Candidates, bool AccountEvidenceAvailable, IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? EvidenceCapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteEvidenceKinds);
+    private sealed record Context(AccountProfile Profile, AccountPortfolioSnapshot Snapshot, IReadOnlyDictionary<string, long> VerifiedQuantities, PrimaryRecommendationResult? Recommendations, IReadOnlyList<PlanCandidate> Candidates, bool AccountEvidenceAvailable, IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? EvidenceCapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteEvidenceKinds, IReadOnlyList<PlanRecord> Plans);
 }
+
+internal sealed record PlanDecisionSnapshot(
+    AccountProfile Profile,
+    PrimaryRecommendationResult? Recommendations,
+    IReadOnlyList<PlanRecord> Plans,
+    IReadOnlyList<PlanCandidate> Candidates,
+    bool AccountEvidenceAvailable);

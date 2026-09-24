@@ -77,6 +77,10 @@ function syncFailureMessage(error: string | null): string {
     : "La synchronisation n'a pas pu être confirmée. Les données locales existantes sont conservées.";
 }
 
+function normalizeErrorCode(error: string): string {
+  return error.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
 function accountConnectionMessage(state: AccountConnectionState, missingPermissions: string[]): string {
   switch (state) {
     case 'checking':
@@ -133,6 +137,17 @@ export default function App() {
   const [localDataRefreshGeneration, setLocalDataRefreshGeneration] = useState(0);
   const [activeView, setActiveView] = useState<'signals' | 'plans' | 'crafting' | 'settings'>('signals');
   const dashboardRequestGeneration = useRef(0);
+
+  useEffect(() => {
+    const navigate = (event: Event) => {
+      const view = (event as CustomEvent<string>).detail;
+      if (view === 'signals' || view === 'plans' || view === 'crafting' || view === 'settings') {
+        setActiveView(view);
+      }
+    };
+    window.addEventListener('tyrian-ledger:navigate', navigate);
+    return () => window.removeEventListener('tyrian-ledger:navigate', navigate);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -199,14 +214,16 @@ export default function App() {
 
   const synchronize = () => {
     setSyncStatus('syncing');
-    void fetch('/api/personal-trading-post/sync', { method: 'POST', headers: localRequestHeaders() })
+    void fetch('/api/recommendations', {
+      headers: { ...localRequestHeaders(), 'X-Tyrian-Ledger-Manual-Refresh': '1' },
+    })
       .then(async (response) => {
         const payload: unknown = await response.json();
-        if (!response.ok || typeof payload !== 'object' || payload === null || (payload as Record<string, unknown>).outcome !== 'succeeded') {
-          const error = typeof payload === 'object' && payload !== null && typeof (payload as Record<string, unknown>).error === 'string'
-            ? (payload as Record<string, string>).error
+        if (!response.ok) {
+          const error = typeof payload === 'object' && payload !== null && typeof (payload as Record<string, unknown>).evidenceError === 'string'
+            ? (payload as Record<string, string>).evidenceError
             : null;
-          setSyncStatus(error === null ? 'failed' : `failed:${error}`);
+          setSyncStatus(error === null ? 'failed' : `failed:${normalizeErrorCode(error)}`);
           return;
         }
         setSyncStatus('idle');
@@ -355,6 +372,8 @@ export default function App() {
               {syncStatus.startsWith('failed') && <p role="alert">{syncFailureMessage(syncStatus.includes(':') ? syncStatus.slice(syncStatus.indexOf(':') + 1) : null)}</p>}
             </section>
 
+            <NotificationSettings />
+
             <LocalDataPanel onPersonalDataChanged={refreshLocalDataViews} />
 
             <section className="legal-notice">
@@ -366,6 +385,69 @@ export default function App() {
         )}
       </main>
     </div>
+  );
+}
+
+function NotificationSettings() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable' | 'saving'>('loading');
+  const [systemPermission, setSystemPermission] = useState<NotificationPermission | 'unavailable'>(() =>
+    typeof Notification === 'undefined' ? 'unavailable' : Notification.permission);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/notifications/preferences', { headers: localRequestHeaders() })
+      .then(async response => {
+        const payload: unknown = await response.json();
+        if (cancelled) return;
+        if (response.ok && isRecord(payload) && typeof payload.enabled === 'boolean') {
+          setEnabled(payload.enabled);
+          setStatus('ready');
+        } else {
+          setStatus('unavailable');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setStatus('unavailable');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const update = async (nextEnabled: boolean) => {
+    if (nextEnabled && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      setSystemPermission(await Notification.requestPermission());
+    }
+    setStatus('saving');
+    try {
+      const response = await fetch('/api/notifications/preferences', {
+        method: 'PUT',
+        headers: { ...localRequestHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
+      const payload: unknown = await response.json();
+      if (!response.ok || !isRecord(payload) || typeof payload.enabled !== 'boolean') throw new Error('preference_update_failed');
+      setEnabled(payload.enabled);
+      setStatus('ready');
+    } catch {
+      setStatus('unavailable');
+    }
+  };
+
+  return (
+    <section aria-labelledby="notification-settings-title" className="settings-panel">
+      <h2 id="notification-settings-title">Notifications locales</h2>
+      <p className="settings-section-note">Les notifications signalent une action manuelle nouvelle. Elles ne synchronisent ni ne modifient le Comptoir.</p>
+      {status === 'loading' && <p role="status">Lecture des réglages de notification…</p>}
+      {status === 'unavailable' && <p className="operational-status operational-status--warning" role="status">Les réglages de notification sont indisponibles. La réconciliation automatique reste active.</p>}
+      {enabled !== null && (
+        <label className="notification-setting-toggle">
+          <input checked={enabled} disabled={status === 'saving'} onChange={event => void update(event.target.checked)} type="checkbox" />
+          <span>Recevoir les nouvelles actions dans l'application</span>
+        </label>
+      )}
+      {enabled && systemPermission === 'denied' && <p>Les notifications système sont refusées par le navigateur ; les notifications dans l'application restent disponibles.</p>}
+      {enabled && systemPermission === 'granted' && <p>Les notifications système sont autorisées lorsque le navigateur les prend en charge.</p>}
+    </section>
   );
 }
 

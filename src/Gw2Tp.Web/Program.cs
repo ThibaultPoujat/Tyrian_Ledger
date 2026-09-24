@@ -74,11 +74,14 @@ public static class Program
         builder.Services.AddSingleton<ICraftingOpportunityService, CraftingOpportunityService>();
         builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
         builder.Services.AddSingleton<PlanEndpointService>();
-        builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
         builder.Services.AddSingleton<IInvestmentPortfolioService, InvestmentPortfolioService>();
         builder.Services.AddSingleton<IAccountCraftingSnapshotService, AccountCraftingSnapshotService>();
         builder.Services.AddSingleton<IMarketHistoryCollectionDelay>(SystemMarketHistoryCollectionDelay.Instance);
         builder.Services.AddHostedService<MarketHistoryCollectorHostedService>();
+        builder.Services.AddSingleton(CreateDecisionLoopSchedulerSettings(builder.Configuration));
+        builder.Services.AddSingleton<IDecisionLoopDelay>(SystemDecisionLoopDelay.Instance);
+        builder.Services.AddSingleton<IContinuousDecisionLoopService, ContinuousDecisionLoopService>();
+        builder.Services.AddHostedService<ContinuousDecisionLoopHostedService>();
         builder.Services.AddHostFiltering(options =>
         {
             options.AllowedHosts = hostOptions.AllowedHosts;
@@ -233,23 +236,55 @@ public static class Program
             async (
                 HttpContext context,
                 IPrimaryRecommendationService recommendationService,
+                IContinuousDecisionLoopService decisionLoop,
+                IPersonalTradingPostGateway personalTradingPost,
                 CancellationToken cancellationToken) =>
             {
                 PrimaryRecommendationResult result;
-                try
+                var loopStatus = decisionLoop.GetStatus();
+                if (context.Request.Headers.TryGetValue("X-Tyrian-Ledger-Manual-Refresh", out var refreshHeader) &&
+                    string.Equals(refreshHeader.ToString(), "1", StringComparison.Ordinal))
                 {
-                    result = await recommendationService.GetAsync(cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception exception) when (exception is not OutOfMemoryException)
-                {
-                    result = PrimaryRecommendationResult.Unavailable(
+                    var run = await decisionLoop.RunNowAsync(cancellationToken).ConfigureAwait(false);
+                    result = run.Recommendations ?? PrimaryRecommendationResult.Unavailable(
                         PrimaryRecommendationState.EvidenceUnavailable,
-                        "recommendation_generation_failed",
+                        run.Status.LastErrorCode,
                         DefaultRecommendationPolicies());
+                }
+                else
+                {
+                    var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
+                    if (scope.IsSuccess && scope.Value is not null &&
+                        string.Equals(loopStatus.AccountScopeId, scope.Value.AccountId, StringComparison.Ordinal) &&
+                        loopStatus.Recommendations is { } latest)
+                    {
+                        result = latest;
+                    }
+                    else if (loopStatus.State is DecisionLoopRunState.Running or DecisionLoopRunState.Degraded)
+                    {
+                        result = PrimaryRecommendationResult.Unavailable(
+                            PrimaryRecommendationState.EvidenceUnavailable,
+                            loopStatus.LastErrorCode ?? "decision_loop_running",
+                            DefaultRecommendationPolicies());
+                    }
+                    else
+                    {
+                        try
+                        {
+                            result = await recommendationService.GetAsync(cancellationToken).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                        {
+                            throw;
+                        }
+                        catch (Exception exception) when (exception is not OutOfMemoryException)
+                        {
+                            result = PrimaryRecommendationResult.Unavailable(
+                                PrimaryRecommendationState.EvidenceUnavailable,
+                                "recommendation_generation_failed",
+                                DefaultRecommendationPolicies());
+                        }
+                    }
                 }
                 if (result.State == PrimaryRecommendationState.EvidenceUnavailable ||
                     result.State == PrimaryRecommendationState.AccountUnavailable && result.EvidenceError is
@@ -258,7 +293,59 @@ public static class Program
                 {
                     context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                 }
-                await PrimaryRecommendationResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
+                var latestLoopStatus = decisionLoop.GetStatus();
+                var responseLoopStatus = ReferenceEquals(result, latestLoopStatus.Recommendations)
+                    ? latestLoopStatus
+                    : latestLoopStatus with { Recommendations = null, Notifications = [] };
+                await PrimaryRecommendationResponseWriter.WriteAsync(context, result, responseLoopStatus).ConfigureAwait(false);
+            });
+        app.MapGet(
+            "/api/notifications/preferences",
+            async (
+                HttpContext context,
+                IPersonalTradingPostGateway personalTradingPost,
+                IContinuousDecisionLoopService decisionLoop,
+                CancellationToken cancellationToken) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
+                if (!scope.IsSuccess || scope.Value is null)
+                    return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                var preferences = decisionLoop.GetPreferences(scope.Value.AccountId);
+                return Results.Json(new { enabled = preferences.Enabled });
+            });
+        app.MapPut(
+            "/api/notifications/preferences",
+            async (
+                HttpContext context,
+                NotificationPreferenceRequest request,
+                IPersonalTradingPostGateway personalTradingPost,
+                IContinuousDecisionLoopService decisionLoop,
+                CancellationToken cancellationToken) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
+                if (!scope.IsSuccess || scope.Value is null)
+                    return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                decisionLoop.SetNotificationsEnabled(scope.Value.AccountId, request.Enabled);
+                return Results.Json(new { enabled = request.Enabled });
+            });
+        app.MapPost(
+            "/api/notifications/{notificationId}/acknowledge",
+            async (
+                HttpContext context,
+                string notificationId,
+                IPersonalTradingPostGateway personalTradingPost,
+                IContinuousDecisionLoopService decisionLoop,
+                CancellationToken cancellationToken) =>
+            {
+                context.Response.Headers.CacheControl = "no-store";
+                var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
+                if (!scope.IsSuccess || scope.Value is null)
+                    return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                return decisionLoop.Acknowledge(scope.Value.AccountId, notificationId)
+                    ? Results.Json(new { state = "acknowledged" })
+                    : Results.NotFound(new { error = "notification_not_found" });
             });
         app.MapLocalDataEndpoints();
         app.MapWatchlistEndpoints();
@@ -274,7 +361,7 @@ public static class Program
         return app;
     }
 
-    private static PrimaryRecommendationPolicies DefaultRecommendationPolicies()
+    internal static PrimaryRecommendationPolicies DefaultRecommendationPolicies()
     {
         var sizing = PositionSizingPolicy.Default;
         return new PrimaryRecommendationPolicies(
@@ -326,6 +413,17 @@ public static class Program
         var defaults = MarketHistoryCollectionSchedulerSettings.Default;
         var settings = new MarketHistoryCollectionSchedulerSettings(
             TimeSpan.FromSeconds(configuration.GetValue<double?>("TyrianLedger:MarketCollection:SourceRefreshIntervalSeconds") ?? defaults.SourceRefreshInterval.TotalSeconds));
+        settings.Validate();
+        return settings;
+    }
+
+    private static DecisionLoopSchedulerSettings CreateDecisionLoopSchedulerSettings(IConfiguration configuration)
+    {
+        var defaults = DecisionLoopSchedulerSettings.Default;
+        var settings = new DecisionLoopSchedulerSettings(
+            TimeSpan.FromSeconds(configuration.GetValue<double?>("TyrianLedger:DecisionLoop:CycleIntervalSeconds") ?? defaults.CycleInterval.TotalSeconds),
+            TimeSpan.FromSeconds(configuration.GetValue<double?>("TyrianLedger:DecisionLoop:MinimumRetryIntervalSeconds") ?? defaults.MinimumRetryInterval.TotalSeconds),
+            TimeSpan.FromSeconds(configuration.GetValue<double?>("TyrianLedger:DecisionLoop:MaximumRetryIntervalSeconds") ?? defaults.MaximumRetryInterval.TotalSeconds));
         settings.Validate();
         return settings;
     }

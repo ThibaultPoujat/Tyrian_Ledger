@@ -223,6 +223,12 @@ function installFetch(overrides: ApiOverrides = {}) {
     if (url === '/api/personal-trading-post/sync') {
       return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'succeeded' }) });
     }
+    if (url === '/api/notifications/preferences') {
+      const enabled = (init?.method ?? 'GET') === 'PUT'
+        ? Boolean(JSON.parse(String(init?.body ?? '{}')).enabled)
+        : true;
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ enabled }) });
+    }
     if (url === '/api/diagnostics/export') {
       return Promise.resolve({ ok: true, blob: vi.fn().mockResolvedValue(new Blob(['safe diagnostic'], { type: 'text/plain' })) });
     }
@@ -755,8 +761,8 @@ describe('Réglages et sécurité locale', () => {
   it('shows the backend synchronization failure reason in actionable French copy', async () => {
     const baseFetch = globalThis.fetch;
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === '/api/personal-trading-post/sync') {
-        return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'failed', error: 'unauthorized' }) });
+      if (String(input) === '/api/recommendations' && (init?.headers as Record<string, string>)?.['X-Tyrian-Ledger-Manual-Refresh'] === '1') {
+        return Promise.resolve({ ok: false, json: vi.fn().mockResolvedValue({ evidenceError: 'unauthorized' }) });
       }
       return baseFetch(input, init);
     }));
@@ -778,5 +784,51 @@ describe('Réglages et sécurité locale', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Mes Signaux' }));
     await waitFor(() => expect(calls.filter(call => String(call.input) === '/api/recommendations').length).toBeGreaterThan(1));
+  });
+
+  it('renders a deterministic French local notification and opens its Plan route', async () => {
+    installFetch({
+      recommendations: {
+        ...readyRecommendations,
+        notifications: [{
+          id: 'plan_7_step_2',
+          kind: 'plan',
+          route: 'plans',
+          action: 'Craft',
+          actionLabel: 'Fabriquer',
+          itemId: 42,
+          itemName: 'Lingot d\'orichalque',
+          quantity: 2,
+          unitPrice: null,
+          reason: "L'étape suivante de ce plan est prête à être réalisée manuellement.",
+          reasonCode: null,
+          planId: '7',
+          urgency: 'normal',
+          createdAtUtc: '2026-09-19T08:00:00Z',
+        }],
+      },
+    });
+    render(<App />);
+
+    expect(await screen.findByText('L\'étape suivante de ce plan est prête à être réalisée manuellement.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ouvrir le plan' }));
+    expect(await screen.findByRole('heading', { name: 'Plans', level: 1 })).toBeInTheDocument();
+  });
+
+  it('exposes the French notification control and requests system permission only from its gesture', async () => {
+    const { calls } = installFetch();
+    const requestPermission = vi.fn().mockResolvedValue('granted');
+    vi.stubGlobal('Notification', { permission: 'default', requestPermission });
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Réglages' }));
+    const control = await screen.findByRole('checkbox', { name: "Recevoir les nouvelles actions dans l'application" });
+    expect(control).toBeChecked();
+
+    fireEvent.click(control);
+    await waitFor(() => expect(calls.some(call => String(call.input) === '/api/notifications/preferences' && call.init?.method === 'PUT')).toBe(true));
+    expect(requestPermission).not.toHaveBeenCalled();
+    fireEvent.click(control);
+    await waitFor(() => expect(requestPermission).toHaveBeenCalledTimes(1));
   });
 });

@@ -187,6 +187,23 @@ public sealed class LocalHostIntegrationTests
     }
 
     [Fact]
+    public async Task Notification_preferences_are_protected_and_non_cacheable()
+    {
+        await using var app = await StartApplicationAsync("Production");
+        using var client = app.GetTestClient();
+
+        using var missingHeader = await client.GetAsync("/api/notifications/preferences");
+        Assert.Equal(HttpStatusCode.Forbidden, missingHeader.StatusCode);
+
+        using var trusted = new HttpRequestMessage(HttpMethod.Get, "/api/notifications/preferences");
+        trusted.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var response = await client.SendAsync(trusted);
+
+        Assert.True(response.StatusCode is HttpStatusCode.OK or HttpStatusCode.ServiceUnavailable);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+    }
+
+    [Fact]
     public async Task Account_crafting_refresh_is_origin_protected_and_returns_only_safe_feature_summary()
     {
         var service = new FixedAccountCraftingSnapshotService(Gw2ApiResult<AccountCraftingSnapshot>.Success(new AccountCraftingSnapshot(
