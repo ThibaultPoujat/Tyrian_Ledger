@@ -1,6 +1,6 @@
 # Current Project State
 
-Last durable-context update: 2026-09-17
+Last durable-context update: 2026-09-24
 
 ## Durable product direction
 
@@ -85,8 +85,9 @@ The preferred owner sequence from here is:
 6. #93 / TKT-M21-02 — crafting economic truth and direct procurement alternatives;
 7. #94 / TKT-M21-03 — bounded crafting opportunity paths + guided crafting UI displayed as `Artisanat`;
 8. #95 / TKT-M22-01 — continuous decision loop + actionable notifications;
-9. #96 / TKT-M22-02 — security/recovery/E2E/accessibility/local packaging;
-10. #97 / TKT-M22-03 — Signal-plan outcome evaluation and strategy attribution.
+9. #145 / TKT-M22-S01 — explain canonical calculations using actual account evidence and decision provenance in `Réglages` / contextual `Pourquoi ?`;
+10. #96 / TKT-M22-02 — security/recovery/E2E/accessibility/local packaging;
+11. #97 / TKT-M22-03 — Signal-plan outcome evaluation and strategy attribution.
 
 #129 is the preferred maintenance predecessor, but it must not delay the MVP path.
 While #129 remains open, #130 may start after #128 merges if #129 becomes
@@ -96,6 +97,8 @@ In that fallback, agents use the documented session-start reconciliation/manual
 generated-block repair.
 
 Do not use numeric issue ordering to skip #129-#133 and begin #93 early.
+
+TKT-M22-S01 / #145 is scheduled after #95's final merged decision/cache contracts and before #96's release-hardening gate. Its two-layer calculation explanations must use the canonical backend and real account evidence; no independent browser financial logic. The new ticket's Draft PR is a planning scaffold until feature implementation and owner acceptance. The generated live-state block below is machine-owned and should continue to report #95 as next while #95 remains open.
 
 ## Generated live state
 
