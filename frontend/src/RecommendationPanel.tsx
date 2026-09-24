@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import MoneyDisplay from './MoneyDisplay';
+import { useViewQuery } from './viewQueryCache';
 
 type Money = { copper: string };
 type RecommendationState = 'ready' | 'notSynchronized' | 'accountEvidenceStale' | 'accountUnavailable' | 'evidenceUnavailable';
@@ -120,6 +121,7 @@ type DecisionLoopStatus = {
   consecutiveFailures: number;
   lastErrorCode: string | null;
   notificationsEnabled: boolean;
+  accountCacheScope?: string | null;
   market: SourceStatus;
   account: SourceStatus;
   history: SourceStatus;
@@ -159,43 +161,30 @@ const actionable = new Set<RecommendationAction>([
 ]);
 
 export default function RecommendationPanel({ refreshGeneration = 0 }: { refreshGeneration?: number }) {
-  const [result, setResult] = useState<RecommendationResponse | null>(null);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const requestGeneration = useRef(0);
   const firstRefresh = useRef(true);
   const schedulerRef = useRef<DecisionLoopStatus | null>(null);
   const deliveredNotificationIds = useRef(new Set<string>());
   const [freshnessTick, setFreshnessTick] = useState(0);
+  const query = useViewQuery(useMemo(() => ({
+    key: 'recommendations',
+    url: '/api/recommendations',
+    init: { headers: { Accept: 'application/json', 'X-Tyrian-Ledger-Request': '1' } },
+    validate: isRecommendationResponse,
+    acceptResponse: (response: Response, payload: RecommendationResponse) => response.ok || payload.state !== 'ready',
+    scopeFrom: (payload: RecommendationResponse) => payload.decisionLoop?.accountCacheScope,
+  }), []));
+  const result = query.data;
+  const status: 'loading' | 'ready' | 'error' = query.phase === 'loading' ? 'loading' : query.phase === 'error' ? 'error' : 'ready';
+  const load = (manual = false) => query.refresh(manual ? {
+    headers: { Accept: 'application/json', 'X-Tyrian-Ledger-Request': '1', 'X-Tyrian-Ledger-Manual-Refresh': '1' },
+  } : undefined);
 
-  const load = (manual = false) => {
-    const generation = ++requestGeneration.current;
-    setStatus('loading');
-    void fetch('/api/recommendations', {
-      headers: {
-        Accept: 'application/json',
-        'X-Tyrian-Ledger-Request': '1',
-        ...(manual ? { 'X-Tyrian-Ledger-Manual-Refresh': '1' } : {}),
-      },
-    }).then(async response => {
-      const payload: unknown = await response.json();
-      if (generation !== requestGeneration.current) return;
-      if (!isRecommendationResponse(payload) || (!response.ok && payload.state === 'ready')) {
-        setStatus('error');
-        return;
-      }
-      setResult(payload);
-      schedulerRef.current = payload.decisionLoop ?? null;
-      setStatus('ready');
-    }).catch(() => {
-      if (generation === requestGeneration.current) setStatus('error');
-    });
-  };
+  useEffect(() => { schedulerRef.current = result?.decisionLoop ?? null; }, [result]);
 
   useEffect(() => {
     const manual = !firstRefresh.current;
     firstRefresh.current = false;
-    load(manual);
-    return () => { requestGeneration.current++; };
+    if (manual) void load(true);
   }, [refreshGeneration]);
 
   useEffect(() => {
@@ -269,10 +258,12 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
           </h2>
         </div>
         <button className="refresh-signals" disabled={status === 'loading'} onClick={() => load(true)} type="button">
-          {status === 'loading' ? 'Actualisation en cours…' : 'Actualiser'}
+          {query.phase === 'refreshing' ? 'Actualisation en cours…' : 'Actualiser'}
         </button>
       </div>
 
+      {query.phase === 'refreshing' && <p className="operational-status" role="status">Données précédentes affichées pendant l’actualisation…</p>}
+      {query.isStale && <p className="operational-status operational-status--warning" role="status">La validité des signaux est en cours de vérification.</p>}
       <OperationalStatus status={status} result={result} accountEvidenceExpired={accountEvidenceExpired} />
       <DecisionLoopHealth scheduler={scheduler} />
       <NotificationInbox notifications={result?.notifications ?? []} onRefresh={() => load()} />

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import RecommendationPanel from './RecommendationPanel';
 import PlanPanel from './PlanPanel';
 import CraftingPanel from './CraftingPanel';
 import MoneyDisplay from './MoneyDisplay';
+import { invalidateViewCache, putViewCacheData, setViewCacheScope, useViewQuery } from './viewQueryCache';
 
 type HostStatus = 'checking' | 'connected' | 'unavailable';
 type AccountConnectionState =
@@ -81,6 +82,10 @@ function normalizeErrorCode(error: string): string {
   return error.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
 }
 
+function isRecommendationPayload(value: unknown): value is { decisionLoop?: { accountCacheScope?: string | null } } {
+  return typeof value === 'object' && value !== null && typeof (value as Record<string, unknown>).state === 'string';
+}
+
 function accountConnectionMessage(state: AccountConnectionState, missingPermissions: string[]): string {
   switch (state) {
     case 'checking':
@@ -131,12 +136,13 @@ export default function App() {
     state: AccountConnectionState;
     missingPermissions: string[];
   }>({ state: 'checking', missingPermissions: [] });
-  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [dashboardStatus, setDashboardStatus] = useState<'loading' | 'error' | 'ready'>('loading');
   const [syncStatus, setSyncStatus] = useState<string>('idle');
-  const [localDataRefreshGeneration, setLocalDataRefreshGeneration] = useState(0);
   const [activeView, setActiveView] = useState<'signals' | 'plans' | 'crafting' | 'settings'>('signals');
-  const dashboardRequestGeneration = useRef(0);
+  const dashboardQuery = useViewQuery(useMemo(() => ({
+    key: 'dashboard', url: '/api/personal-dashboard', init: { headers: localRequestHeaders() }, validate: isDashboard, discardOnError: true,
+  }), []));
+  const dashboard = dashboardQuery.data;
+  const dashboardStatus: 'loading' | 'error' | 'ready' = dashboardQuery.phase === 'loading' ? 'loading' : dashboardQuery.phase === 'error' || dashboardQuery.isStale ? 'error' : 'ready';
 
   useEffect(() => {
     const navigate = (event: Event) => {
@@ -177,43 +183,16 @@ export default function App() {
     return () => controller.abort();
   }, []);
 
-  const loadDashboard = () => {
-    const generation = ++dashboardRequestGeneration.current;
-    setDashboard(null);
-    setDashboardStatus('loading');
-    void fetch('/api/personal-dashboard', { headers: localRequestHeaders() })
-      .then(async (response) => {
-        const payload: unknown = await response.json();
-        if (generation !== dashboardRequestGeneration.current) {
-          return;
-        }
-
-        if (!response.ok || !isDashboard(payload)) {
-          setDashboardStatus('error');
-          return;
-        }
-        setDashboard(payload);
-        setDashboardStatus('ready');
-      })
-      .catch(() => {
-        if (generation === dashboardRequestGeneration.current) {
-          setDashboardStatus('error');
-        }
-      });
-  };
-
   const refreshLocalDataViews = () => {
-    loadDashboard();
-    setLocalDataRefreshGeneration(generation => generation + 1);
+    invalidateViewCache(['dashboard', 'recommendations', 'plans', 'crafting']);
+    void dashboardQuery.refresh();
   };
-
-  useEffect(() => {
-    loadDashboard();
-    return () => { dashboardRequestGeneration.current++; };
-  }, []);
 
   const synchronize = () => {
     setSyncStatus('syncing');
+    // The manual cycle itself returns the replacement Signal snapshot. Keep the
+    // current view visible until that one coalesced request completes.
+    invalidateViewCache(['plans', 'crafting', 'dashboard']);
     void fetch('/api/recommendations', {
       headers: { ...localRequestHeaders(), 'X-Tyrian-Ledger-Manual-Refresh': '1' },
     })
@@ -224,10 +203,16 @@ export default function App() {
             ? (payload as Record<string, string>).evidenceError
             : null;
           setSyncStatus(error === null ? 'failed' : `failed:${normalizeErrorCode(error)}`);
+          invalidateViewCache(['recommendations']);
           return;
         }
+        if (isRecommendationPayload(payload)) {
+          setViewCacheScope(payload.decisionLoop?.accountCacheScope);
+          putViewCacheData('recommendations', payload);
+        }
         setSyncStatus('idle');
-        refreshLocalDataViews();
+        invalidateViewCache(['plans', 'crafting', 'dashboard']);
+        void dashboardQuery.refresh();
       })
       .catch(() => setSyncStatus('failed'));
   };
@@ -334,7 +319,7 @@ export default function App() {
               </div>
               <PerformanceSummary dashboard={dashboard} status={dashboardStatus} />
             </header>
-            <RecommendationPanel refreshGeneration={localDataRefreshGeneration} />
+            <RecommendationPanel />
           </>
         ) : activeView === 'plans' ? (
           <>

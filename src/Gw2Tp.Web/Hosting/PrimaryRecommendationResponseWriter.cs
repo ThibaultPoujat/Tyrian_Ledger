@@ -14,15 +14,15 @@ internal static class PrimaryRecommendationResponseWriter
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    internal static Task WriteAsync(HttpContext context, PrimaryRecommendationResult result, DecisionLoopStatus? decisionLoop = null)
+    internal static Task WriteAsync(HttpContext context, PrimaryRecommendationResult result, DecisionLoopStatus? decisionLoop = null, string? accountCacheScope = null)
     {
         ArgumentNullException.ThrowIfNull(result);
         context.Response.ContentType = "application/json; charset=utf-8";
         context.Response.Headers.CacheControl = "no-store";
-        return context.Response.WriteAsync(JsonSerializer.Serialize(ToResponse(result, decisionLoop), SerializerOptions));
+        return context.Response.WriteAsync(JsonSerializer.Serialize(ToResponse(result, decisionLoop, accountCacheScope), SerializerOptions));
     }
 
-    private static object ToResponse(PrimaryRecommendationResult result, DecisionLoopStatus? decisionLoop) => new
+    private static object ToResponse(PrimaryRecommendationResult result, DecisionLoopStatus? decisionLoop, string? accountCacheScope) => new
     {
         result.State, result.EvidenceError, result.GeneratedAtUtc, result.LastSuccessfulSyncAtUtc,
         result.CurrentOrdersObservedAtUtc, result.ScannerObservedAtUtc, result.AccountEvidenceExpiresAtUtc,
@@ -96,6 +96,7 @@ internal static class PrimaryRecommendationResponseWriter
             decisionLoop.ConsecutiveFailures,
             decisionLoop.LastErrorCode,
             notificationsEnabled = decisionLoop.NotificationsEnabled,
+            accountCacheScope,
             market = Source(decisionLoop.Market),
             account = Source(decisionLoop.Account),
             history = Source(decisionLoop.History),

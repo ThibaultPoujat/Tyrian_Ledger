@@ -18,6 +18,8 @@ using Gw2Tp.Web.Hosting;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.AspNetCore.Routing;
+using System.Diagnostics;
+using System.Globalization;
 
 namespace Gw2Tp.Web;
 
@@ -53,6 +55,7 @@ public static class Program
 
         builder.Services.AddHealthChecks();
         builder.Services.AddSingleton<LocalDiagnosticLog>();
+        builder.Services.AddSingleton<AccountViewScopeTokenService>();
         builder.Services.AddTyrianLedgerAccountConnection(builder.Environment, builder.Configuration);
         builder.Services.AddTyrianLedgerPersistence(builder.Configuration);
         builder.Services.AddSingleton<IPersonalDashboardService, PersonalDashboardService>();
@@ -108,6 +111,22 @@ public static class Program
         var app = builder.Build();
 
         app.UseHostFiltering();
+        app.Use(async (context, next) =>
+        {
+            var instrumented = string.Equals(context.Request.Path, "/api/recommendations", StringComparison.Ordinal) ||
+                string.Equals(context.Request.Path, "/api/plans", StringComparison.Ordinal) ||
+                string.Equals(context.Request.Path, "/api/crafting-opportunities", StringComparison.Ordinal);
+            var stopwatch = instrumented ? Stopwatch.StartNew() : null;
+            if (stopwatch is not null)
+            {
+                context.Response.OnStarting(() =>
+                {
+                    context.Response.Headers["Server-Timing"] = "app;dur=" + stopwatch.Elapsed.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture);
+                    return Task.CompletedTask;
+                });
+            }
+            await next(context).ConfigureAwait(false);
+        });
         app.Use(async (context, next) =>
         {
             context.Response.Headers["X-Frame-Options"] = "DENY";
@@ -238,6 +257,7 @@ public static class Program
                 IPrimaryRecommendationService recommendationService,
                 IContinuousDecisionLoopService decisionLoop,
                 IPersonalTradingPostGateway personalTradingPost,
+                AccountViewScopeTokenService accountViewScopes,
                 CancellationToken cancellationToken) =>
             {
                 PrimaryRecommendationResult result;
@@ -297,7 +317,10 @@ public static class Program
                 var responseLoopStatus = ReferenceEquals(result, latestLoopStatus.Recommendations)
                     ? latestLoopStatus
                     : latestLoopStatus with { Recommendations = null, Notifications = [] };
-                await PrimaryRecommendationResponseWriter.WriteAsync(context, result, responseLoopStatus).ConfigureAwait(false);
+                var accountCacheScope = responseLoopStatus.AccountScopeId is { } accountScopeId
+                    ? accountViewScopes.GetToken(accountScopeId)
+                    : null;
+                await PrimaryRecommendationResponseWriter.WriteAsync(context, result, responseLoopStatus, accountCacheScope).ConfigureAwait(false);
             });
         app.MapGet(
             "/api/notifications/preferences",

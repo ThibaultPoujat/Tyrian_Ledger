@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { resetViewCacheForTests } from './viewQueryCache';
 
 const dashboardBase = {
   state: 'ready',
@@ -162,9 +163,12 @@ type ApiOverrides = {
   health?: unknown;
   account?: unknown;
   localData?: unknown;
+  plans?: unknown;
+  crafting?: unknown;
 };
 
 function installFetch(overrides: ApiOverrides = {}) {
+  resetViewCacheForTests();
   const calls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
   let dashboardRequests = 0;
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -197,6 +201,12 @@ function installFetch(overrides: ApiOverrides = {}) {
         ok: overrides.recommendationsOk ?? true,
         json: vi.fn().mockResolvedValue(overrides.recommendations ?? readyRecommendations),
       });
+    }
+    if (url === '/api/plans') {
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(overrides.plans ?? { state: 'ready', proposals: [], plans: [] }) });
+    }
+    if (url === '/api/crafting-opportunities') {
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(overrides.crafting ?? { state: 'NoOpportunities', truncationReasons: [], summaryExclusions: [], opportunities: [] }) });
     }
     if (url === '/api/local-data') {
       return Promise.resolve({
@@ -263,6 +273,26 @@ describe('Mes Signaux MVP', () => {
     expect(within(navigation).getByRole('button', { name: 'Artisanat' })).toBeEnabled();
     expect(within(navigation).getByRole('button', { name: /Réglages/i })).toBeEnabled();
     expect(within(navigation).queryByRole('button', { name: /tableau de bord|scanner|inventaire|apprentissages personnels|investissements/i })).not.toBeInTheDocument();
+  });
+
+  it('revisits all four views from memory while each view revalidates in the background', async () => {
+    const { calls } = installFetch();
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: "Lingot d'orichalque", level: 3 })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Plans' }));
+    expect(await screen.findByRole('heading', { name: 'Aucun plan à démarrer' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Artisanat' }));
+    expect(await screen.findByRole('heading', { name: 'Aucun parcours d’artisanat viable' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Réglages' }));
+    expect(await screen.findByRole('heading', { name: 'Réglages', level: 1 })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mes Signaux' }));
+    expect(screen.getByRole('heading', { name: "Lingot d'orichalque", level: 3 })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Plans' }));
+    expect(screen.getByRole('heading', { name: 'Aucun plan à démarrer' })).toBeInTheDocument();
+    await waitFor(() => expect(calls.filter(call => String(call.input) === '/api/plans')).toHaveLength(2));
+    expect(calls.filter(call => String(call.input) === '/api/crafting-opportunities')).toHaveLength(1);
   });
 
   it('announces asynchronous local-host status changes politely', async () => {
