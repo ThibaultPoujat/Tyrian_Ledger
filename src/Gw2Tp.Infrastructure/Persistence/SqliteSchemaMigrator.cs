@@ -5,7 +5,7 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFactory)
 {
-    private const int LatestVersion = 9;
+    private const int LatestVersion = 10;
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> LatestSchemaColumns =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
@@ -499,6 +499,65 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             );
             CREATE INDEX ix_execution_plans_account_state
                 ON execution_plans (account_profile_id, state);
+            """),
+        new(
+            10,
+            "repair_crafting_entry_snapshot_foreign_keys",
+            """
+            CREATE TABLE account_crafting_bank_entries_replacement (
+                account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
+                item_id INTEGER NOT NULL CHECK (item_id > 0),
+                binding INTEGER NOT NULL CHECK (binding BETWEEN 0 AND 3),
+                quantity INTEGER NOT NULL CHECK (quantity > 0),
+                CONSTRAINT fk_account_crafting_bank_entries_snapshot FOREIGN KEY (account_profile_id)
+                    REFERENCES account_crafting_snapshots(account_profile_id) ON DELETE RESTRICT,
+                PRIMARY KEY (account_profile_id, item_id, binding)
+            );
+            INSERT INTO account_crafting_bank_entries_replacement
+                SELECT account_profile_id, item_id, binding, quantity FROM account_crafting_bank_entries;
+            DROP TABLE account_crafting_bank_entries;
+            ALTER TABLE account_crafting_bank_entries_replacement RENAME TO account_crafting_bank_entries;
+
+            CREATE TABLE account_crafting_material_entries_replacement (
+                account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
+                item_id INTEGER NOT NULL CHECK (item_id > 0),
+                category_id INTEGER NOT NULL CHECK (category_id > 0),
+                binding INTEGER NOT NULL CHECK (binding BETWEEN 0 AND 3),
+                quantity INTEGER NOT NULL CHECK (quantity >= 0),
+                CONSTRAINT fk_account_crafting_material_entries_snapshot FOREIGN KEY (account_profile_id)
+                    REFERENCES account_crafting_snapshots(account_profile_id) ON DELETE RESTRICT,
+                PRIMARY KEY (account_profile_id, item_id)
+            );
+            INSERT INTO account_crafting_material_entries_replacement
+                SELECT account_profile_id, item_id, category_id, binding, quantity FROM account_crafting_material_entries;
+            DROP TABLE account_crafting_material_entries;
+            ALTER TABLE account_crafting_material_entries_replacement RENAME TO account_crafting_material_entries;
+
+            CREATE TABLE account_crafting_recipe_unlocks_replacement (
+                account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
+                recipe_id INTEGER NOT NULL CHECK (recipe_id > 0),
+                CONSTRAINT fk_account_crafting_recipe_unlocks_snapshot FOREIGN KEY (account_profile_id)
+                    REFERENCES account_crafting_snapshots(account_profile_id) ON DELETE RESTRICT,
+                PRIMARY KEY (account_profile_id, recipe_id)
+            );
+            INSERT INTO account_crafting_recipe_unlocks_replacement
+                SELECT account_profile_id, recipe_id FROM account_crafting_recipe_unlocks;
+            DROP TABLE account_crafting_recipe_unlocks;
+            ALTER TABLE account_crafting_recipe_unlocks_replacement RENAME TO account_crafting_recipe_unlocks;
+
+            CREATE TABLE account_crafting_disciplines_replacement (
+                account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
+                discipline TEXT NOT NULL COLLATE BINARY CHECK (length(discipline) > 0),
+                rating INTEGER NOT NULL CHECK (rating >= 0),
+                is_active INTEGER NOT NULL CHECK (is_active IN (0, 1)),
+                CONSTRAINT fk_account_crafting_disciplines_snapshot FOREIGN KEY (account_profile_id)
+                    REFERENCES account_crafting_snapshots(account_profile_id) ON DELETE RESTRICT,
+                PRIMARY KEY (account_profile_id, discipline)
+            );
+            INSERT INTO account_crafting_disciplines_replacement
+                SELECT account_profile_id, discipline, rating, is_active FROM account_crafting_disciplines;
+            DROP TABLE account_crafting_disciplines;
+            ALTER TABLE account_crafting_disciplines_replacement RENAME TO account_crafting_disciplines;
             """),
     ];
 

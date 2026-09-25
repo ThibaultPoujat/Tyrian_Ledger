@@ -30,6 +30,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -101,7 +102,7 @@ public sealed class LocalHostIntegrationTests
                 await connection.OpenAsync();
                 await using var command = connection.CreateCommand();
                 command.CommandText = "SELECT COUNT(*) FROM schema_migrations;";
-                Assert.Equal(9L, await command.ExecuteScalarAsync());
+                Assert.Equal(10L, await command.ExecuteScalarAsync());
             }
 
         }
@@ -990,31 +991,67 @@ public sealed class LocalHostIntegrationTests
     }
 
     [Fact]
-    public async Task ActualKestrelHostListensOnBothDefaultLoopbackAddresses()
+    public async Task ActualKestrel_host_starts_without_credentials_and_serves_health_on_isolated_loopback_ports_before_timeout()
     {
         var port = ReserveAvailablePort();
-        await using var app = Program.CreateApplication([], builder =>
+        var databaseDirectory = Path.Combine(Path.GetTempPath(), "TyrianLedger.Web.Tests", Guid.NewGuid().ToString("N"));
+        var databasePath = Path.Combine(databaseDirectory, "tyrian-ledger.db");
+        try
         {
-            builder.Environment.EnvironmentName = "Production";
-            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            await using var app = Program.CreateApplication(
+                [],
+                builder =>
+                {
+                    builder.Environment.EnvironmentName = "Production";
+                    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["TyrianLedger:Host:Port"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        ["TyrianLedger:Database:Path"] = databasePath,
+                    });
+                },
+                services =>
+                {
+                    var databaseInitializer = services.Single(descriptor =>
+                        descriptor.ServiceType == typeof(IHostedService)
+                        && string.Equals(
+                            descriptor.ImplementationType?.FullName,
+                            "Gw2Tp.Infrastructure.Persistence.SqliteDatabaseInitializationService",
+                            StringComparison.Ordinal));
+                    services.RemoveAll<IHostedService>();
+                    services.Add(databaseInitializer);
+                });
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await app.StartAsync(timeout.Token);
+
+            Assert.True(File.Exists(databasePath));
+            await using (var connection = new SqliteConnection($"Data Source={databasePath};Foreign Keys=True"))
             {
-                ["TyrianLedger:Host:Port"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                ["TyrianLedger:Database:Path"] = Path.Combine(Path.GetTempPath(), "TyrianLedger.Web.Tests", Guid.NewGuid().ToString("N"), "tyrian-ledger.db"),
-            });
-        });
-        await app.StartAsync();
+                await connection.OpenAsync(timeout.Token);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT COUNT(*) FROM schema_migrations WHERE version = 10;";
+                Assert.Equal(1L, await command.ExecuteScalarAsync(timeout.Token));
+            }
 
-        var server = app.Services.GetRequiredService<IServer>();
-        var boundAddresses = server.Features.Get<IServerAddressesFeature>()!.Addresses;
-        Assert.Contains($"http://127.0.0.1:{port}", boundAddresses);
-        Assert.Contains($"http://[::1]:{port}", boundAddresses);
+            var server = app.Services.GetRequiredService<IServer>();
+            var boundAddresses = server.Features.Get<IServerAddressesFeature>()!.Addresses;
+            Assert.Contains($"http://127.0.0.1:{port}", boundAddresses);
+            Assert.Contains($"http://[::1]:{port}", boundAddresses);
 
-        using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false });
-        using var ipv4Response = await client.GetAsync($"http://127.0.0.1:{port}/api/health");
-        using var ipv6Response = await client.GetAsync($"http://[::1]:{port}/api/health");
+            using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false });
+            using var ipv4Response = await client.GetAsync($"http://127.0.0.1:{port}/api/health", timeout.Token);
+            using var ipv6Response = await client.GetAsync($"http://[::1]:{port}/api/health", timeout.Token);
 
-        Assert.Equal(HttpStatusCode.OK, ipv4Response.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, ipv6Response.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, ipv4Response.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, ipv6Response.StatusCode);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (Directory.Exists(databaseDirectory))
+            {
+                Directory.Delete(databaseDirectory, recursive: true);
+            }
+        }
     }
 
     [Fact]
