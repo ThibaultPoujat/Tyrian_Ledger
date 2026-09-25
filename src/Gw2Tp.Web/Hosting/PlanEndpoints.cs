@@ -6,6 +6,8 @@ using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Plans;
 using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Domain.Finance;
+using System.Diagnostics;
+using System.Globalization;
 
 namespace Gw2Tp.Web.Hosting;
 
@@ -13,8 +15,12 @@ internal static class PlanEndpoints
 {
     public static void MapPlanEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGet("/api/plans", async (PlanEndpointService service, CancellationToken cancellationToken) =>
-            Results.Json(await service.GetAsync(cancellationToken).ConfigureAwait(false)));
+        endpoints.MapGet("/api/plans", async (HttpContext context, PlanEndpointService service, CancellationToken cancellationToken) =>
+        {
+            var response = await service.GetAsync(cancellationToken).ConfigureAwait(false);
+            context.Response.Headers["X-Tyrian-Plan-Timing"] = response.Timing.ToHeaderValue();
+            return Results.Json(response.Payload);
+        });
         endpoints.MapPost("/api/plans/{planId}/start", (string planId, PlanEndpointService service, CancellationToken cancellationToken) =>
             service.StartAsync(planId, cancellationToken));
         endpoints.MapPost("/api/plans/{planId}/complete", (string planId, PlanStepCompletion request, PlanEndpointService service, CancellationToken cancellationToken) =>
@@ -26,6 +32,122 @@ internal static class PlanEndpoints
 
 internal sealed record PlanStepCompletion(int Quantity, string? UnitPriceCopper, bool NotPerformed = false);
 
+/// <summary>Sanitized phase timings for a Plans read; contains no account or market facts.</summary>
+internal sealed record PlanDecisionTiming(
+    long AccountEvidenceLoadingMilliseconds = 0,
+    long ReconciliationPersistenceMilliseconds = 0,
+    long RecommendationGenerationMilliseconds = 0,
+    long CraftingCandidateGenerationMilliseconds = 0,
+    long CraftingListingsMilliseconds = 0,
+    long CraftingHistoryMilliseconds = 0,
+    long PlanRefreshPersistenceMilliseconds = 0,
+    long ResourceSelectionMilliseconds = 0)
+{
+    internal string ToHeaderValue() => string.Join(",",
+        $"account;dur={AccountEvidenceLoadingMilliseconds.ToString(CultureInfo.InvariantCulture)}",
+        $"reconcile;dur={ReconciliationPersistenceMilliseconds.ToString(CultureInfo.InvariantCulture)}",
+        $"recommendations;dur={RecommendationGenerationMilliseconds.ToString(CultureInfo.InvariantCulture)}",
+        $"crafting;dur={CraftingCandidateGenerationMilliseconds.ToString(CultureInfo.InvariantCulture)}",
+        $"craft-listings;dur={CraftingListingsMilliseconds.ToString(CultureInfo.InvariantCulture)}",
+        $"craft-history;dur={CraftingHistoryMilliseconds.ToString(CultureInfo.InvariantCulture)}",
+        $"refresh;dur={PlanRefreshPersistenceMilliseconds.ToString(CultureInfo.InvariantCulture)}",
+        $"selection;dur={ResourceSelectionMilliseconds.ToString(CultureInfo.InvariantCulture)}");
+}
+
+internal sealed record PlanEndpointResponse(object Payload, PlanDecisionTiming Timing);
+
+/// <summary>
+/// Holds one completed decision-loop projection in process.  The projection is
+/// not a market cache: it expires at the next permitted cycle (or earlier at
+/// account-evidence expiry), is account-scoped, and is cleared for mutations.
+/// </summary>
+internal sealed class PlanDecisionProjectionStore(
+    DecisionLoopSchedulerSettings settings,
+    Func<DateTimeOffset>? utcNow = null)
+{
+    private readonly object gate = new();
+    private readonly Func<DateTimeOffset> clock = utcNow ?? (() => DateTimeOffset.UtcNow);
+    private PlanDecisionSnapshot? latest;
+    private long generation;
+    private ActiveLoopRun? active;
+
+    internal long BeginLoopRun()
+    {
+        lock (gate)
+        {
+            latest = null;
+            generation = checked(generation + 1);
+            active = new(generation, new(TaskCreationOptions.RunContinuationsAsynchronously));
+            return generation;
+        }
+    }
+
+    internal bool TryGetActive(out Task<PlanDecisionSnapshot?>? decision)
+    {
+        lock (gate)
+        {
+            decision = active?.Completion.Task;
+            return decision is not null;
+        }
+    }
+
+    internal void CompleteLoopRun(long loopGeneration)
+    {
+        lock (gate)
+        {
+            if (active?.Generation != loopGeneration) return;
+            active.Completion.TrySetResult(null);
+            active = null;
+        }
+    }
+
+    internal void Publish(PlanDecisionSnapshot decision, long loopGeneration)
+    {
+        if (!decision.AccountEvidenceAvailable || decision.Recommendations?.State != PrimaryRecommendationState.Ready) return;
+        lock (gate)
+        {
+            if (active?.Generation != loopGeneration) return;
+            latest = decision;
+            active.Completion.TrySetResult(decision);
+        }
+    }
+
+    internal void Invalidate()
+    {
+        lock (gate)
+        {
+            latest = null;
+            generation = checked(generation + 1);
+            active?.Completion.TrySetResult(null);
+            active = null;
+        }
+    }
+
+    internal bool TryGet(string accountScopeId, out PlanDecisionSnapshot? decision)
+    {
+        if (string.IsNullOrWhiteSpace(accountScopeId)) throw new ArgumentException("An account scope is required.", nameof(accountScopeId));
+        lock (gate)
+        {
+            var candidate = latest;
+            var now = clock();
+            if (candidate is null ||
+                !string.Equals(candidate.Profile.AccountScopeId, accountScopeId, StringComparison.Ordinal) ||
+                candidate.Recommendations?.AccountEvidenceExpiresAtUtc is not { } accountExpires ||
+                now > accountExpires || now > candidate.CachedAtUtc + settings.CycleInterval)
+            {
+                if (candidate is not null && (now > candidate.CachedAtUtc + settings.CycleInterval || now > candidate.Recommendations?.AccountEvidenceExpiresAtUtc)) latest = null;
+                decision = null;
+                return false;
+            }
+
+            decision = candidate;
+            return true;
+        }
+    }
+
+    private sealed record ActiveLoopRun(long Generation, TaskCompletionSource<PlanDecisionSnapshot?> Completion);
+}
+
 internal sealed class PlanEndpointService(
     IPrimaryRecommendationService recommendations,
     IAccountPortfolioGateway accountPortfolio,
@@ -34,22 +156,24 @@ internal sealed class PlanEndpointService(
     ICraftingOpportunityService craftingOpportunities,
     IPersonalTradingPostRepository profiles,
     IPlanRepository repository,
-    IPlanOrchestrationService orchestration)
+    IPlanOrchestrationService orchestration,
+    PlanDecisionProjectionStore loopDecisions)
 {
-    public async Task<object> GetAsync(CancellationToken cancellationToken)
+    public async Task<PlanEndpointResponse> GetAsync(CancellationToken cancellationToken)
     {
-        var context = await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
-        if (context is null) return new { state = "unavailable", proposals = Array.Empty<object>(), plans = Array.Empty<object>(), selection = EmptySelection("account_evidence_unavailable") };
+        var context = await TryGetLoopDecisionContextAsync(cancellationToken).ConfigureAwait(false)
+            ?? await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
+        if (context is null) return Complete(new { state = "unavailable", proposals = Array.Empty<object>(), plans = Array.Empty<object>(), selection = EmptySelection("account_evidence_unavailable") }, new PlanDecisionTiming());
         var plans = context.Plans;
         var visiblePlans = plans.Where(plan => plan.State != PlanState.Invalid).ToArray();
         if (context.Recommendations?.State != PrimaryRecommendationState.Ready)
-            return new { state = "ready", degraded = true, proposals = Array.Empty<object>(), excludedCandidateIds = Array.Empty<string>(), intentionallyFreeCash = Money.Zero, plans = visiblePlans.Select(ToResponse), selection = EmptySelection("recommendations_not_ready", context.DecisionCacheState, context.ReusedDecision) };
+            return Complete(new { state = "ready", degraded = true, proposals = Array.Empty<object>(), excludedCandidateIds = Array.Empty<string>(), intentionallyFreeCash = Money.Zero, plans = visiblePlans.Select(ToResponse), selection = EmptySelection("recommendations_not_ready", context.DecisionCacheState, context.ReusedDecision) }, context.Timing);
         var portfolioSizingUnavailable = context.Recommendations.Portfolio is null;
         var safeWithoutPortfolioSizing = portfolioSizingUnavailable
             ? context.Candidates.Where(CanExecuteWithoutPortfolioSizing).ToArray()
             : context.Candidates.ToArray();
         if (portfolioSizingUnavailable && safeWithoutPortfolioSizing.Length == 0)
-            return new
+            return Complete(new
             {
                 state = "ready",
                 degraded = true,
@@ -70,8 +194,9 @@ internal sealed class PlanEndpointService(
                     reusedDecision = context.ReusedDecision,
                     cacheState = context.DecisionCacheState,
                 },
-            };
+            }, context.Timing);
 
+        var selectionTimer = Stopwatch.StartNew();
         var effective = PlanOrchestrationService.ProjectEffectiveResources(context.Snapshot.AvailableCash, context.VerifiedQuantities, plans.SelectMany(plan => plan.Events).ToArray());
         var reservations = plans.SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray();
         var reservedCash = reservations.Aggregate(Money.Zero, (total, requirement) => total + requirement.Cash);
@@ -94,7 +219,7 @@ internal sealed class PlanEndpointService(
             : candidates.Length == 0 ? "resource_conflicts"
             : availableCash.Copper < hardReserve.Copper ? "cash_reserve"
             : "selection_constraints";
-        return new { state = "ready", degraded = false, proposals = selection.Plans.Select(ToResponse), excludedCandidateIds = selection.ExcludedCandidateIds,
+        return Complete(new { state = "ready", degraded = false, proposals = selection.Plans.Select(ToResponse), excludedCandidateIds = selection.ExcludedCandidateIds,
             intentionallyFreeCash = selection.IntentionallyFreeCash, plans = visiblePlans.Select(ToResponse), selection = new
             {
                 recommendationCandidates = context.Recommendations.Actions.Count(IsActionable),
@@ -107,7 +232,7 @@ internal sealed class PlanEndpointService(
                 reason,
                 reusedDecision = context.ReusedDecision,
                 cacheState = context.DecisionCacheState,
-            } };
+            } }, context.Timing, selectionTimer);
     }
 
     public async Task<IResult> StartAsync(string planId, CancellationToken cancellationToken)
@@ -129,6 +254,7 @@ internal sealed class PlanEndpointService(
             var existing = await FindByCandidateAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
             return existing is null ? Results.Conflict(new { error = "plan_already_started" }) : Results.Json(new { state = "already_started", plan = ToResponse(existing) });
         }
+        InvalidateLoopDecision();
         return Results.Json(new { state = "started", plan = ToResponse(plan) });
     }
 
@@ -142,6 +268,7 @@ internal sealed class PlanEndpointService(
             var cancelled = orchestration.CancelUnperformedStep(plan);
             try { await repository.SaveAsync(context.Profile.Id, cancelled, cancellationToken).ConfigureAwait(false); }
             catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
+            InvalidateLoopDecision();
             return Results.Json(new { state = "cancelled", plan = ToResponse(cancelled) });
         }
         Money? price = null;
@@ -150,6 +277,7 @@ internal sealed class PlanEndpointService(
         var updated = orchestration.ReportStep(plan, request.Quantity, price, DateTimeOffset.UtcNow);
         try { await repository.SaveAsync(context.Profile.Id, updated, cancellationToken).ConfigureAwait(false); }
         catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
+        InvalidateLoopDecision();
         return Results.Json(new { state = "reported", plan = ToResponse(updated) });
     }
 
@@ -161,6 +289,7 @@ internal sealed class PlanEndpointService(
         var updated = orchestration.UndoLastStep(plan, DateTimeOffset.UtcNow);
         try { await repository.SaveAsync(context.Profile.Id, updated, cancellationToken).ConfigureAwait(false); }
         catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
+        InvalidateLoopDecision();
         return Results.Json(new { state = "undone", plan = ToResponse(updated) });
     }
 
@@ -169,31 +298,88 @@ internal sealed class PlanEndpointService(
         var context = await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
         var decision = context is null
             ? null
-            : new PlanDecisionSnapshot(context.Profile, context.Recommendations, context.Plans, context.Candidates, context.AccountEvidenceAvailable, DateTimeOffset.UtcNow);
+            : new PlanDecisionSnapshot(context.Profile, context.Snapshot, context.VerifiedQuantities, context.Recommendations, context.Plans, context.Candidates, context.AccountEvidenceAvailable, context.Timing, DateTimeOffset.UtcNow);
         return decision;
     }
 
+    /// <summary>
+    /// Publishes only a completed decision-loop projection.  It is bounded by
+    /// the next permitted loop cycle and the original account-evidence expiry;
+    /// a plan mutation or a new cycle clears it before any read can reuse it.
+    /// </summary>
+    internal void PublishLoopDecision(PlanDecisionSnapshot decision, long loopGeneration)
+    {
+        if (!decision.AccountEvidenceAvailable || decision.Recommendations?.State != PrimaryRecommendationState.Ready)
+            return;
+        loopDecisions.Publish(decision, loopGeneration);
+    }
+
+    internal void InvalidateLoopDecision()
+    {
+        loopDecisions.Invalidate();
+    }
+
+    internal long BeginLoopDecision() => loopDecisions.BeginLoopRun();
+
+    internal void CompleteLoopDecision(long loopGeneration) => loopDecisions.CompleteLoopRun(loopGeneration);
+
     private async Task<Context?> BuildDecisionContextAsync(CancellationToken cancellationToken)
     {
+        var accountTimer = Stopwatch.StartNew();
         var context = await BuildContextAsync(cancellationToken).ConfigureAwait(false);
+        accountTimer.Stop();
         if (context is null) return null;
 
         // Verified account evidence is reconciled before any new recommendation
         // or crafting candidate is generated. This ordering prevents a stale
         // local shadow from feeding the next economic decision.
+        var reconciliationTimer = Stopwatch.StartNew();
         var reconciledPlans = await ReconcilePlansAsync(context, applyRefresh: false, cancellationToken).ConfigureAwait(false);
+        reconciliationTimer.Stop();
+        var recommendationTimer = Stopwatch.StartNew();
         var recommendationsResult = await GetRecommendationsAsync(cancellationToken).ConfigureAwait(false);
-        var candidates = await BuildCandidatesAsync(recommendationsResult, cancellationToken).ConfigureAwait(false);
+        recommendationTimer.Stop();
+        var craftingTimer = Stopwatch.StartNew();
+        var candidateBuild = await BuildCandidatesAsync(recommendationsResult, cancellationToken).ConfigureAwait(false);
+        craftingTimer.Stop();
+        var timing = new PlanDecisionTiming(
+            Milliseconds(accountTimer.Elapsed),
+            Milliseconds(reconciliationTimer.Elapsed),
+            Milliseconds(recommendationTimer.Elapsed),
+            Milliseconds(craftingTimer.Elapsed),
+            candidateBuild.CraftingTiming?.ListingsMilliseconds ?? 0,
+            candidateBuild.CraftingTiming?.HistoryMilliseconds ?? 0);
         var refreshedContext = context with
         {
             Recommendations = recommendationsResult,
-            Candidates = candidates,
+            Candidates = candidateBuild.Candidates,
             Plans = reconciledPlans,
             ReusedDecision = false,
             DecisionCacheState = "not_cached",
+            Timing = timing,
         };
+        var refreshTimer = Stopwatch.StartNew();
         var refreshedPlans = await ApplyPlanRefreshAsync(refreshedContext, cancellationToken).ConfigureAwait(false);
-        return refreshedContext with { Plans = refreshedPlans };
+        refreshTimer.Stop();
+        return refreshedContext with { Plans = refreshedPlans, Timing = timing with { PlanRefreshPersistenceMilliseconds = Milliseconds(refreshTimer.Elapsed) } };
+    }
+
+    private async Task<Context?> TryGetLoopDecisionContextAsync(CancellationToken cancellationToken)
+    {
+        // A fresh account scope read prevents one account from ever observing
+        // another account's in-memory decision projection.
+        var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
+        if (!scope.IsSuccess || scope.Value is null) return null;
+        if (!loopDecisions.TryGet(scope.Value.AccountId, out var decision) || decision is null)
+        {
+            if (!loopDecisions.TryGetActive(out var active) || active is null) return null;
+            _ = await active.WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (!loopDecisions.TryGet(scope.Value.AccountId, out decision) || decision is null) return null;
+        }
+
+        return new Context(decision.Profile, decision.Snapshot, decision.VerifiedQuantities, decision.Recommendations,
+            decision.Candidates, decision.AccountEvidenceAvailable, [], null, new HashSet<PlanEvidenceKind>(), decision.Plans,
+            true, "loop_projection", decision.Timing);
     }
 
     private static object EmptySelection(string reason, string cacheState = "not_requested", bool reusedDecision = false) => new
@@ -257,7 +443,7 @@ internal sealed class PlanEndpointService(
         }
     }
 
-    private async Task<IReadOnlyList<PlanCandidate>> BuildCandidatesAsync(
+    private async Task<CandidateBuild> BuildCandidatesAsync(
         PrimaryRecommendationResult? recommendationsResult,
         CancellationToken cancellationToken)
     {
@@ -265,14 +451,17 @@ internal sealed class PlanEndpointService(
             ? recommendationsResult.Actions.Where(IsActionable).Select(ToCandidate).ToArray()
             : Array.Empty<PlanCandidate>();
         IReadOnlyList<PlanCandidate> craftingCandidates = [];
+        CraftingOpportunityTiming? craftingTiming = null;
         try
         {
-            craftingCandidates = (await craftingOpportunities.GetAsync(cancellationToken).ConfigureAwait(false)).Opportunities
+            var crafting = await craftingOpportunities.GetAsync(cancellationToken).ConfigureAwait(false);
+            craftingTiming = crafting.Timing;
+            craftingCandidates = crafting.Opportunities
                 .Where(value => value.IsActionable && value.Candidate is not null).Select(value => value.Candidate!).ToArray();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch { /* Crafting remains conservatively unavailable without suppressing trading plans. */ }
-        return recommendationCandidates.Concat(craftingCandidates).OrderBy(value => value.Id, StringComparer.Ordinal).ToArray();
+        return new(recommendationCandidates.Concat(craftingCandidates).OrderBy(value => value.Id, StringComparer.Ordinal).ToArray(), craftingTiming);
     }
 
     private async Task<IReadOnlyList<PlanRecord>> ReconcilePlansAsync(Context context, bool applyRefresh, CancellationToken cancellationToken)
@@ -494,13 +683,26 @@ internal sealed class PlanEndpointService(
     private static object ToResponse(PlanStep step) => new { id = step.Id, action = step.Action.ToString(), itemName = step.ItemName, quantity = step.Quantity, unitPrice = step.UnitPrice, state = step.State.ToString() };
 
     private sealed record EvidenceCapture(IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? CapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteKinds);
-    private sealed record Context(AccountProfile Profile, AccountPortfolioSnapshot Snapshot, IReadOnlyDictionary<string, long> VerifiedQuantities, PrimaryRecommendationResult? Recommendations, IReadOnlyList<PlanCandidate> Candidates, bool AccountEvidenceAvailable, IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? EvidenceCapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteEvidenceKinds, IReadOnlyList<PlanRecord> Plans, bool ReusedDecision, string DecisionCacheState);
+    private sealed record CandidateBuild(IReadOnlyList<PlanCandidate> Candidates, CraftingOpportunityTiming? CraftingTiming);
+    private static long Milliseconds(TimeSpan elapsed) => Math.Max(0, (long)elapsed.TotalMilliseconds);
+
+    private static PlanEndpointResponse Complete(object payload, PlanDecisionTiming timing, Stopwatch? selectionTimer = null)
+    {
+        if (selectionTimer is null) return new(payload, timing);
+        selectionTimer.Stop();
+        return new(payload, timing with { ResourceSelectionMilliseconds = Milliseconds(selectionTimer.Elapsed) });
+    }
+
+    private sealed record Context(AccountProfile Profile, AccountPortfolioSnapshot Snapshot, IReadOnlyDictionary<string, long> VerifiedQuantities, PrimaryRecommendationResult? Recommendations, IReadOnlyList<PlanCandidate> Candidates, bool AccountEvidenceAvailable, IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? EvidenceCapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteEvidenceKinds, IReadOnlyList<PlanRecord> Plans, bool ReusedDecision, string DecisionCacheState, PlanDecisionTiming Timing = null!);
 }
 
 internal sealed record PlanDecisionSnapshot(
     AccountProfile Profile,
+    AccountPortfolioSnapshot Snapshot,
+    IReadOnlyDictionary<string, long> VerifiedQuantities,
     PrimaryRecommendationResult? Recommendations,
     IReadOnlyList<PlanRecord> Plans,
     IReadOnlyList<PlanCandidate> Candidates,
     bool AccountEvidenceAvailable,
+    PlanDecisionTiming Timing,
     DateTimeOffset CachedAtUtc);

@@ -157,8 +157,9 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
         {
             if (activeRun is null)
             {
+                var loopGeneration = plans.BeginLoopDecision();
                 SetStatus(status with { State = DecisionLoopRunState.Running });
-                activeRun = RunCoreAsync(applicationLifetime.ApplicationStopping);
+                activeRun = RunCoreAsync(applicationLifetime.ApplicationStopping, loopGeneration);
                 _ = ClearActiveRunAsync(activeRun);
             }
 
@@ -221,11 +222,11 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
         return acknowledged;
     }
 
-    private async Task<DecisionLoopRunResult> RunCoreAsync(CancellationToken cancellationToken)
+    private async Task<DecisionLoopRunResult> RunCoreAsync(CancellationToken cancellationToken, long loopGeneration)
     {
         try
         {
-            return await RunCoreBodyAsync(cancellationToken).ConfigureAwait(false);
+            return await RunCoreBodyAsync(cancellationToken, loopGeneration).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -240,9 +241,13 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
                 PrimaryRecommendationResult.Unavailable(PrimaryRecommendationState.EvidenceUnavailable, error, Program.DefaultRecommendationPolicies()),
                 GetStatus());
         }
+        finally
+        {
+            plans.CompleteLoopDecision(loopGeneration);
+        }
     }
 
-    private async Task<DecisionLoopRunResult> RunCoreBodyAsync(CancellationToken cancellationToken)
+    private async Task<DecisionLoopRunResult> RunCoreBodyAsync(CancellationToken cancellationToken, long loopGeneration)
     {
         var total = Stopwatch.StartNew();
         var synchronizationTimer = Stopwatch.StartNew();
@@ -290,6 +295,8 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
             SetFailedStatus(synchronizationResult.AttemptedAtUtc, "DecisionGenerationFailed", timing);
             return new(false, synchronizationResult, null, GetStatus());
         }
+
+        plans.PublishLoopDecision(decision, loopGeneration);
 
         var observedAt = RequireUtc(clock.UtcNow);
         var notificationObservation = notificationLedger.Observe(

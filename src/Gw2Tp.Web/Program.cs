@@ -76,12 +76,13 @@ public static class Program
         builder.Services.AddSingleton<ICraftingOpportunityPlanner, CraftingOpportunityPlanner>();
         builder.Services.AddSingleton<ICraftingOpportunityService, CraftingOpportunityService>();
         builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
+        builder.Services.AddSingleton(CreateDecisionLoopSchedulerSettings(builder.Configuration));
+        builder.Services.AddSingleton<PlanDecisionProjectionStore>();
         builder.Services.AddSingleton<PlanEndpointService>();
         builder.Services.AddSingleton<IInvestmentPortfolioService, InvestmentPortfolioService>();
         builder.Services.AddSingleton<IAccountCraftingSnapshotService, AccountCraftingSnapshotService>();
         builder.Services.AddSingleton<IMarketHistoryCollectionDelay>(SystemMarketHistoryCollectionDelay.Instance);
         builder.Services.AddHostedService<MarketHistoryCollectorHostedService>();
-        builder.Services.AddSingleton(CreateDecisionLoopSchedulerSettings(builder.Configuration));
         builder.Services.AddSingleton<IDecisionLoopDelay>(SystemDecisionLoopDelay.Instance);
         builder.Services.AddSingleton<IContinuousDecisionLoopService, ContinuousDecisionLoopService>();
         builder.Services.AddHostedService<ContinuousDecisionLoopHostedService>();
