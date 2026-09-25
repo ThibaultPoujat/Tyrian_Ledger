@@ -87,6 +87,52 @@ public sealed class AccountCraftingGatewayTests
     }
 
     [Fact]
+    public async Task Snapshot_canonicalizes_documented_duplicate_material_ids_without_double_counting_quantity()
+    {
+        var handler = new RecordingHandler(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/v2/account" => JsonFixture("account.json"),
+            "/v2/account/bank" => JsonFixture("bank.json"),
+            "/v2/account/materials" => JsonFixture("materials-duplicate-category.json"),
+            "/v2/account/recipes" => JsonFixture("recipes.json"),
+            "/v2/characters" => JsonFixture("characters.json"),
+            "/v2/characters/Synthetic%20Crafter%20One/crafting" => JsonFixture("character-one.json"),
+            "/v2/characters/Synthetic%20Crafter%20Two/crafting" => JsonFixture("character-two.json"),
+            _ => throw new InvalidOperationException(request.RequestUri!.AbsolutePath),
+        });
+        using var client = Client(handler);
+        var gateway = new AccountCraftingGateway(new FixedKeySource(SyntheticKey), client, new ImmediateScheduler());
+
+        var result = await gateway.GetSnapshotAsync();
+
+        var snapshot = Assert.IsType<AccountCraftingSnapshot>(result.Value);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CraftingFeatureAvailability.Available, snapshot.MaterialStorage.Availability);
+        var material = Assert.Single(snapshot.MaterialStorage.Value!);
+        Assert.Equal(920201, material.ItemId);
+        Assert.Equal(4, material.Quantity);
+        Assert.Equal(5, material.CategoryId);
+
+        var conflictingDuplicate = new AccountCraftingGateway(new FixedKeySource(SyntheticKey), Client(new RecordingHandler(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/v2/account" => JsonFixture("account.json"),
+            "/v2/account/bank" => JsonFixture("bank.json"),
+            "/v2/account/materials" => Json("[{\"id\":920201,\"category\":5,\"count\":4},{\"id\":920201,\"category\":6,\"count\":5}]"),
+            "/v2/account/recipes" => JsonFixture("recipes.json"),
+            "/v2/characters" => JsonFixture("characters.json"),
+            "/v2/characters/Synthetic%20Crafter%20One/crafting" => JsonFixture("character-one.json"),
+            "/v2/characters/Synthetic%20Crafter%20Two/crafting" => JsonFixture("character-two.json"),
+            _ => throw new InvalidOperationException(request.RequestUri!.AbsolutePath),
+        })), new ImmediateScheduler());
+
+        var failed = await conflictingDuplicate.GetSnapshotAsync();
+
+        Assert.True(failed.IsSuccess);
+        Assert.Equal(CraftingFeatureAvailability.Unavailable, failed.Value!.MaterialStorage.Availability);
+        Assert.Equal(Gw2ApiErrorCategory.InvalidPayload, failed.Value.MaterialStorage.ErrorCategory);
+    }
+
+    [Fact]
     public async Task Recipe_definitions_are_bounded_normalized_and_reject_incomplete_or_malformed_responses()
     {
         var handler = new RecordingHandler(_ => JsonFixture("recipe-definitions.json"));

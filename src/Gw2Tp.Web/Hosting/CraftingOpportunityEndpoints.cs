@@ -19,7 +19,7 @@ internal static class CraftingOpportunityEndpoints
             catch
             {
                 context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-                return Results.Json(ToResponse(new CraftingPlannerResult(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.MissingInputEvidence])));
+                return Results.Json(ToResponse(new CraftingPlannerResult(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.MissingInputEvidence], "crafting_search_failed")));
             }
         });
         return endpoints;
@@ -30,6 +30,7 @@ internal static class CraftingOpportunityEndpoints
         state = result.State.ToString(),
         truncationReasons = result.TruncationReasons.Select(value => value.ToString()),
         summaryExclusions = result.SummaryExclusions.Select(value => value.ToString()),
+        evidenceFailureCode = result.EvidenceFailureCode,
         opportunities = result.Opportunities.Select(value => new
         {
             id = value.Id,

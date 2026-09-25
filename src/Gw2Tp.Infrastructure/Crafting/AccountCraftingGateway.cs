@@ -260,11 +260,33 @@ internal sealed class AccountCraftingGateway : IAccountCraftingGateway
     private static async Task<IReadOnlyList<AccountMaterialEntry>> MapMaterialsAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        var payload = await JsonSerializer.DeserializeAsync<AccountMaterialDto[]>(stream, SerializerOptions, cancellationToken).ConfigureAwait(false);
-        if (payload is null || payload.Any(entry => entry is null || entry.ItemId is not > 0 || entry.CategoryId is not > 0 || entry.Count is not >= 0) ||
-            payload.Select(entry => entry.ItemId!.Value).Distinct().Count() != payload.Length) throw new JsonException();
-        return payload.Select(entry => new AccountMaterialEntry(entry.ItemId!.Value, entry.CategoryId!.Value, entry.Count!.Value, MapBinding(entry.Binding)))
-            .OrderBy(entry => entry.ItemId).ToArray();
+        var payload = await JsonSerializer.DeserializeAsync<AccountMaterialDto?[]>(stream, SerializerOptions, cancellationToken).ConfigureAwait(false);
+        if (payload is null) throw new JsonException();
+        if (payload.Any(entry => entry is null || entry.ItemId is not > 0 || entry.CategoryId is not > 0 || entry.Count is not >= 0)) throw new JsonException();
+
+        // ArenaNet's live endpoint can list the same material id under two
+        // categories. The category is display/reference metadata, while the
+        // known quantity is the ownership evidence. We may retain one quantity
+        // only when all duplicate rows agree on quantity and binding; a
+        // conflicting duplicate remains incomplete and therefore unusable.
+        var normalized = payload
+            .Select(entry => entry!)
+            .GroupBy(entry => entry.ItemId!.Value)
+            .Select(group =>
+            {
+                var quantities = group.Select(entry => entry.Count!.Value).Distinct().ToArray();
+                var bindings = group.Select(entry => MapBinding(entry.Binding)).Distinct().ToArray();
+                if (quantities.Length != 1 || bindings.Length != 1) throw new JsonException();
+                return new AccountMaterialEntry(
+                    group.Key,
+                    group.Min(entry => entry.CategoryId!.Value),
+                    quantities[0],
+                    bindings[0]);
+            })
+            .OrderBy(entry => entry.ItemId)
+            .ToArray();
+
+        return normalized;
     }
 
     private static async Task<IReadOnlyList<int>> MapRecipeUnlocksAsync(HttpResponseMessage response, CancellationToken cancellationToken)

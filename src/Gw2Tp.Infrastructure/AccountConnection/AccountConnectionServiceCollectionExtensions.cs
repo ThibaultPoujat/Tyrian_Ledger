@@ -29,6 +29,8 @@ public static class AccountConnectionServiceCollectionExtensions
 
         services.AddTyrianLedgerGw2ApiClient(configuration);
         services.AddSingleton<SafeTransportDiagnosticBuffer>();
+        services.AddSingleton<ICraftingEvidenceDiagnostics>(serviceProvider =>
+            serviceProvider.GetRequiredService<SafeTransportDiagnosticBuffer>());
         services.AddSingleton<OperatingSystemGw2ApiKeySource>();
         services.AddSingleton<EnvironmentGw2ApiKeySource>();
         services.AddSingleton<IGw2ApiKeySource>(serviceProvider =>

@@ -44,7 +44,8 @@ public sealed record CraftingPlannerResult(
     CraftingOpportunityState State,
     IReadOnlyList<CraftingOpportunity> Opportunities,
     IReadOnlyList<CraftingSearchTruncationReason> TruncationReasons,
-    IReadOnlyList<CraftingOpportunityExclusion> SummaryExclusions);
+    IReadOnlyList<CraftingOpportunityExclusion> SummaryExclusions,
+    string? EvidenceFailureCode = null);
 
 public interface ICraftingOpportunityPlanner
 {

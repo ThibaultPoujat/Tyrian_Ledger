@@ -1,6 +1,7 @@
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.PersonalTradingPost;
+using System.Diagnostics;
 
 namespace Gw2Tp.Application.Crafting;
 
@@ -16,7 +17,8 @@ public sealed class CraftingOpportunityService(
     ICraftingReferenceGateway recipes,
     IGw2ApiClient market,
     IHistoricalMarketAnalyticsService history,
-    ICraftingOpportunityPlanner planner) : ICraftingOpportunityService
+    ICraftingOpportunityPlanner planner,
+    ICraftingEvidenceDiagnostics? diagnostics = null) : ICraftingOpportunityService
 {
     public async Task<CraftingPlannerResult> GetAsync(CancellationToken cancellationToken = default)
     {
@@ -37,25 +39,44 @@ public sealed class CraftingOpportunityService(
         var requested = unlocked.Take(limits.MaximumRecipes).ToArray();
         var definitions = await recipes.GetRecipesAsync(requested, cancellationToken).ConfigureAwait(false);
         if (!definitions.IsSuccess || definitions.Value is null || definitions.IsPartialData)
-            return new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.MissingInputEvidence]);
+            return new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.MissingInputEvidence], "recipe_definitions_unavailable");
         var allItemIds = definitions.Value.Select(recipe => recipe.OutputItemId)
             .Concat(definitions.Value.SelectMany(recipe => recipe.Ingredients.Where(ingredient => ingredient.Type == "Item").Select(ingredient => ingredient.Id)))
             .Where(id => id > 0).Distinct().OrderBy(id => id).ToArray();
         var marketLimited = allItemIds.Length > 200;
         var itemIds = allItemIds.Take(200).ToArray();
+        var listingTimer = Stopwatch.StartNew();
         var listingTask = market.GetListingsAsync(itemIds, cancellationToken);
+        var metadataTimer = Stopwatch.StartNew();
         var metadataTask = market.GetItemMetadataAsync(itemIds, cancellationToken);
         await Task.WhenAll(listingTask, metadataTask).ConfigureAwait(false);
+        listingTimer.Stop();
+        metadataTimer.Stop();
         var listings = await listingTask.ConfigureAwait(false);
         var metadata = await metadataTask.ConfigureAwait(false);
-        if (!listings.IsSuccess || listings.Value is null || listings.IsPartialData || !metadata.IsSuccess || metadata.Value is null || metadata.IsPartialData)
-            return new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.MissingInputEvidence]);
+        if (!listings.IsSuccess || listings.Value is null || listings.IsPartialData)
+        {
+            RecordMarketDiagnostic(itemIds.Length, listings, metadata, listingTimer.Elapsed, metadataTimer.Elapsed, "market_listings_unavailable");
+            return new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.MissingInputEvidence], "market_listings_unavailable");
+        }
+        if (!metadata.IsSuccess || metadata.Value is null || metadata.IsPartialData)
+        {
+            RecordMarketDiagnostic(itemIds.Length, listings, metadata, listingTimer.Elapsed, metadataTimer.Elapsed, "market_metadata_unavailable");
+            return new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.MissingInputEvidence], "market_metadata_unavailable");
+        }
+        RecordMarketDiagnostic(itemIds.Length, listings, metadata, listingTimer.Elapsed, metadataTimer.Elapsed, "complete");
         var listingByItem = listings.Value.ToDictionary(value => value.ItemId);
         var metadataByItem = metadata.Value.ToDictionary(value => value.ItemId);
-        var outputIds = definitions.Value.Select(recipe => recipe.OutputItemId).Distinct().OrderBy(id => id).ToArray();
+        // History is relevant only for a bounded output that already has full
+        // current market evidence. Recipes outside the market budget, or with
+        // no usable evidence, are excluded by the planner; reading their
+        // history cannot make them safe and previously dominated this phase.
+        var marketItemIds = itemIds.Where(id => listingByItem.ContainsKey(id) && metadataByItem.ContainsKey(id)).ToArray();
+        var outputIds = definitions.Value.Select(recipe => recipe.OutputItemId)
+            .Where(marketItemIds.Contains).Distinct().OrderBy(id => id).ToArray();
         var histories = await Task.WhenAll(outputIds.Select(async itemId => new { ItemId = itemId, Value = await history.GetAsync(itemId, cancellationToken).ConfigureAwait(false) })).ConfigureAwait(false);
         var historyByItem = histories.ToDictionary(value => value.ItemId, value => value.Value);
-        var markets = itemIds.Where(id => listingByItem.ContainsKey(id) && metadataByItem.ContainsKey(id)).ToDictionary(id => id,
+        var markets = marketItemIds.ToDictionary(id => id,
             id => new CraftingMarketEvidence(listingByItem[id], metadataByItem[id], true,
                 historyByItem.TryGetValue(id, out var analytics) && analytics.Windows.Count(window => window.State == HistoricalMarketWindowState.Available) >= 2,
                 historyByItem.TryGetValue(id, out analytics) ? HistoryConfidence(analytics) : 0));
@@ -64,6 +85,28 @@ public sealed class CraftingOpportunityService(
             .Concat(marketLimited ? new[] { CraftingSearchTruncationReason.MarketDataLimit } : []).Distinct().OrderBy(value => value).ToArray();
         return extra.Length == 0 ? result : result with { TruncationReasons = result.TruncationReasons.Concat(extra).Distinct().OrderBy(value => value).ToArray() };
     }
+
+    private void RecordMarketDiagnostic(
+        int requestedItemIdCount,
+        Gw2ApiResult<IReadOnlyList<MarketListing>> listings,
+        Gw2ApiResult<IReadOnlyList<MarketItemMetadata>> metadata,
+        TimeSpan listingsElapsed,
+        TimeSpan metadataElapsed,
+        string outcome) =>
+        diagnostics?.Record(new(
+            requestedItemIdCount,
+            Milliseconds(listingsElapsed),
+            listings.ErrorCategory,
+            listings.IsPartialData,
+            listings.Value?.Count,
+            0,
+            Milliseconds(metadataElapsed),
+            metadata.ErrorCategory,
+            metadata.IsPartialData,
+            metadata.Value?.Count,
+            outcome));
+
+    private static long Milliseconds(TimeSpan elapsed) => Math.Max(0, (long)elapsed.TotalMilliseconds);
 
     private static IReadOnlyDictionary<int, CraftingOwnedEvidence> Owned(AccountCraftingSnapshot snapshot,
         IReadOnlyDictionary<int, CraftingMarketEvidence> markets)

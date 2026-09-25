@@ -32,9 +32,15 @@ it('explains no viable opportunity and explicit search truncation in French', as
   expect(await screen.findByRole('heading', { name: 'Aucun parcours d’artisanat viable' })).toBeInTheDocument();
 });
 
-it('refreshes the account crafting snapshot through the protected local endpoint', async () => {
+it('explains that recipes with incomplete market evidence are excluded without inventing prices', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({ state: 'NoOpportunities', truncationReasons: [], summaryExclusions: ['MissingInputEvidence'], opportunities: [] }) }));
+  render(<CraftingPanel />);
+  expect(await screen.findByText('Certaines recettes n’ont pas toutes les preuves de marché nécessaires pour leurs ingrédients ou leur sortie. Elles restent exclues : aucun prix, profondeur ou profit n’est inventé.')).toBeInTheDocument();
+});
+
+it('reports a successful unchanged crafting refresh through the protected local endpoint', async () => {
   const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
-    if (init?.method === 'POST') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({}) });
+    if (init?.method === 'POST') return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ outcome: 'succeeded', changed: false, capturedAtUtc: '2026-09-24T00:00:00Z', error: null, bank: { availability: 'Available', count: 1, error: null }, materials: { availability: 'Available', count: 1, error: null }, recipes: { availability: 'Available', count: 1, error: null }, crafting: { availability: 'Available', count: 1, error: null } }) });
     return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'NoOpportunities', truncationReasons: [], summaryExclusions: [], opportunities: [] }) });
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -43,4 +49,19 @@ it('refreshes the account crafting snapshot through the protected local endpoint
   fireEvent.click((await screen.findAllByRole('button', { name: 'Actualiser les données d’artisanat' })).at(-1)!);
 
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/account-crafting/refresh', expect.objectContaining({ method: 'POST', headers: { 'X-Tyrian-Ledger-Request': '1' } })));
+  expect(await screen.findByText('Vérification terminée : les données d’artisanat sont inchangées.')).toBeInTheDocument();
+});
+
+it('keeps the view responsive and explains a failed crafting refresh', async () => {
+  const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === 'POST') return Promise.resolve({ ok: false, json: vi.fn().mockResolvedValue({ outcome: 'failed', changed: null, capturedAtUtc: null, error: 'rate_limited', bank: null, materials: null, recipes: null, crafting: null }) });
+    return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ state: 'NoOpportunities', truncationReasons: [], summaryExclusions: [], opportunities: [] }) });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  render(<CraftingPanel />);
+
+  fireEvent.click((await screen.findAllByRole('button', { name: 'Actualiser les données d’artisanat' })).at(-1)!);
+
+  expect(await screen.findByText('ArenaNet limite temporairement l’actualisation. Réessayez plus tard.')).toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: 'Actualiser les données d’artisanat' }).at(-1)).toBeEnabled();
 });

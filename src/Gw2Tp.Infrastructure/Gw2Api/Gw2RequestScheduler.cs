@@ -4,6 +4,7 @@ using System.Threading.RateLimiting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Gw2Tp.Infrastructure.Diagnostics;
 
 namespace Gw2Tp.Infrastructure.Gw2Api;
 
@@ -29,22 +30,26 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
     private readonly ConcurrencyLimiter _concurrencyLimiter;
     private readonly IGw2RequestDelay _delay;
     private readonly ILogger _logger;
+    private readonly SafeTransportDiagnosticBuffer? _diagnostics;
     private readonly ConcurrentDictionary<Gw2RequestKey, InFlightRequest> _inFlight = new();
 
     public Gw2RequestScheduler(
         IOptions<Gw2ApiSchedulerOptions> options,
-        ILogger<Gw2RequestScheduler> logger)
+        ILogger<Gw2RequestScheduler> logger,
+        SafeTransportDiagnosticBuffer? diagnostics = null)
         : this(
             options?.Value ?? throw new ArgumentNullException(nameof(options)),
             SystemGw2RequestDelay.Instance,
-            logger ?? throw new ArgumentNullException(nameof(logger)))
+            logger ?? throw new ArgumentNullException(nameof(logger)),
+            diagnostics)
     {
     }
 
     internal Gw2RequestScheduler(
         Gw2ApiSchedulerOptions options,
         IGw2RequestDelay delay,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        SafeTransportDiagnosticBuffer? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(delay);
@@ -60,6 +65,7 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
         _options = options;
         _delay = delay;
         _logger = logger ?? NullLogger.Instance;
+        _diagnostics = diagnostics;
         _rateLimiter = new TokenBucketRateLimiter(new TokenBucketRateLimiterOptions
         {
             TokenLimit = options.RateLimit.BurstSize,
@@ -133,7 +139,7 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
     {
         try
         {
-            var result = await ExecuteBoxedAsync(sendAsync, inFlight.CancellationToken).ConfigureAwait(false);
+            var result = await ExecuteBoxedAsync(requestKey, sendAsync, inFlight.CancellationToken).ConfigureAwait(false);
             inFlight.TrySetResult(result);
         }
         catch (OperationCanceledException) when (inFlight.CancellationToken.IsCancellationRequested)
@@ -152,6 +158,7 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
     }
 
     private async Task<object> ExecuteBoxedAsync<T>(
+        Gw2RequestKey requestKey,
         Func<CancellationToken, Task<Gw2ScheduledResult<T>>> sendAsync,
         CancellationToken cancellationToken)
     {
@@ -176,6 +183,11 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
             }
 
             var delay = GetRetryDelay(result, retryOptions, attempt);
+            _diagnostics?.RecordMarketRetry(
+                requestKey.Operation ?? "unknown",
+                attempt,
+                result.RetryKind,
+                delay);
             await _delay.DelayAsync(delay, cancellationToken).ConfigureAwait(false);
         }
     }
@@ -300,7 +312,7 @@ internal sealed class Gw2RequestScheduler : IGw2RequestScheduler, IDisposable
     }
 }
 
-internal sealed record Gw2RequestKey(string Value);
+internal sealed record Gw2RequestKey(string Value, string? Operation = null);
 
 internal sealed record Gw2ScheduledResult<T>(
     T Result,

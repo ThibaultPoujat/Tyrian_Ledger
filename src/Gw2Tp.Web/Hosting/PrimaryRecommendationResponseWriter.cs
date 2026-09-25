@@ -100,6 +100,8 @@ internal static class PrimaryRecommendationResponseWriter
             market = Source(decisionLoop.Market),
             account = Source(decisionLoop.Account),
             history = Source(decisionLoop.History),
+            crafting = Source(decisionLoop.Crafting),
+            timing = decisionLoop.LastTiming,
         },
         notifications = decisionLoop?.Notifications.Select(ToNotification).ToArray() ?? [],
     };

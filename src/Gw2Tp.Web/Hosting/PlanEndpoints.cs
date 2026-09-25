@@ -39,11 +39,38 @@ internal sealed class PlanEndpointService(
     public async Task<object> GetAsync(CancellationToken cancellationToken)
     {
         var context = await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
-        if (context is null) return new { state = "unavailable", proposals = Array.Empty<object>(), plans = Array.Empty<object>() };
+        if (context is null) return new { state = "unavailable", proposals = Array.Empty<object>(), plans = Array.Empty<object>(), selection = EmptySelection("account_evidence_unavailable") };
         var plans = context.Plans;
         var visiblePlans = plans.Where(plan => plan.State != PlanState.Invalid).ToArray();
-        if (context.Recommendations?.State != PrimaryRecommendationState.Ready || context.Recommendations.Portfolio is null)
-            return new { state = "ready", degraded = true, proposals = Array.Empty<object>(), excludedCandidateIds = Array.Empty<string>(), intentionallyFreeCash = Money.Zero, plans = visiblePlans.Select(ToResponse) };
+        if (context.Recommendations?.State != PrimaryRecommendationState.Ready)
+            return new { state = "ready", degraded = true, proposals = Array.Empty<object>(), excludedCandidateIds = Array.Empty<string>(), intentionallyFreeCash = Money.Zero, plans = visiblePlans.Select(ToResponse), selection = EmptySelection("recommendations_not_ready", context.DecisionCacheState, context.ReusedDecision) };
+        var portfolioSizingUnavailable = context.Recommendations.Portfolio is null;
+        var safeWithoutPortfolioSizing = portfolioSizingUnavailable
+            ? context.Candidates.Where(CanExecuteWithoutPortfolioSizing).ToArray()
+            : context.Candidates.ToArray();
+        if (portfolioSizingUnavailable && safeWithoutPortfolioSizing.Length == 0)
+            return new
+            {
+                state = "ready",
+                degraded = true,
+                proposals = Array.Empty<object>(),
+                excludedCandidateIds = Array.Empty<string>(),
+                intentionallyFreeCash = Money.Zero,
+                plans = visiblePlans.Select(ToResponse),
+                selection = new
+                {
+                    recommendationCandidates = context.Recommendations.Actions.Count(IsActionable),
+                    generatedCandidates = context.Candidates.Count,
+                    rejectedHardConstraints = 0,
+                    rejectedResourceConflicts = 0,
+                    rejectedSelectionConstraints = 0,
+                    rejectedDecisionSafetyGate = context.Candidates.Count,
+                    selected = 0,
+                    reason = context.Recommendations.EvidenceError ?? "portfolio_sizing_unavailable",
+                    reusedDecision = context.ReusedDecision,
+                    cacheState = context.DecisionCacheState,
+                },
+            };
 
         var effective = PlanOrchestrationService.ProjectEffectiveResources(context.Snapshot.AvailableCash, context.VerifiedQuantities, plans.SelectMany(plan => plan.Events).ToArray());
         var reservations = plans.SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray();
@@ -52,28 +79,50 @@ internal sealed class PlanEndpointService(
         var availableQuantities = AvailableQuantities(effective.Quantities, reservations);
         var reservedGenericKeys = reservations.Where(requirement => requirement.Quantity > 0 && requirement.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory))
             .Select(ResourceKey).ToHashSet(StringComparer.Ordinal);
-        var candidates = context.Candidates.Where(candidate => candidate.Requirements.Where(requirement => requirement.Quantity > 0)
+        var hardEligible = safeWithoutPortfolioSizing.Where(PlanOrchestrationService.IsExecutable).ToArray();
+        var candidates = hardEligible.Where(candidate => candidate.Requirements.Where(requirement => requirement.Quantity > 0)
             .Where(requirement => requirement.Kind == PlanResourceKind.Inventory)
             .All(requirement => availableQuantities.TryGetValue(ResourceKey(requirement), out var quantity) && quantity >= requirement.Quantity) &&
             !candidate.Requirements.Where(requirement => requirement.Quantity > 0 && requirement.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory))
                 .Any(requirement => reservedGenericKeys.Contains(ResourceKey(requirement)))).ToArray();
-        var selection = availableCash.Copper < 0 || availableCash.Copper < context.Recommendations.Portfolio.CashReserve.Copper
+        var hardReserve = context.Recommendations.Portfolio?.CashReserve ?? Money.Zero;
+        var selection = availableCash.Copper < 0 || availableCash.Copper < hardReserve.Copper
             ? new PlanBundleSelection([], Money.Zero, 0, candidates.Select(candidate => candidate.Id).OrderBy(id => id, StringComparer.Ordinal).ToArray(), new Money(Math.Max(0, availableCash.Copper)))
-            : await orchestration.SelectAsync(candidates, availableCash, context.Recommendations.Portfolio.CashReserve, cancellationToken, availableQuantities).ConfigureAwait(false);
+            : await orchestration.SelectAsync(candidates, availableCash, hardReserve, cancellationToken, availableQuantities).ConfigureAwait(false);
+        var reason = selection.Plans.Count > 0 ? "plans_selected"
+            : hardEligible.Length == 0 ? "hard_constraints"
+            : candidates.Length == 0 ? "resource_conflicts"
+            : availableCash.Copper < hardReserve.Copper ? "cash_reserve"
+            : "selection_constraints";
         return new { state = "ready", degraded = false, proposals = selection.Plans.Select(ToResponse), excludedCandidateIds = selection.ExcludedCandidateIds,
-            intentionallyFreeCash = selection.IntentionallyFreeCash, plans = visiblePlans.Select(ToResponse) };
+            intentionallyFreeCash = selection.IntentionallyFreeCash, plans = visiblePlans.Select(ToResponse), selection = new
+            {
+                recommendationCandidates = context.Recommendations.Actions.Count(IsActionable),
+                generatedCandidates = context.Candidates.Count,
+                rejectedHardConstraints = context.Candidates.Count - hardEligible.Length,
+                rejectedResourceConflicts = hardEligible.Length - candidates.Length,
+                rejectedSelectionConstraints = candidates.Length - selection.Plans.Count,
+                rejectedDecisionSafetyGate = portfolioSizingUnavailable ? context.Candidates.Count - safeWithoutPortfolioSizing.Length : 0,
+                selected = selection.Plans.Count,
+                reason,
+                reusedDecision = context.ReusedDecision,
+                cacheState = context.DecisionCacheState,
+            } };
     }
 
     public async Task<IResult> StartAsync(string planId, CancellationToken cancellationToken)
     {
         var context = await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
-        if (context?.Recommendations?.State != PrimaryRecommendationState.Ready || context.Recommendations.Portfolio is null || !context.AccountEvidenceAvailable)
+        if (context?.Recommendations?.State != PrimaryRecommendationState.Ready || !context.AccountEvidenceAvailable)
             return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
         var candidate = context.Candidates.SingleOrDefault(value => string.Equals(value.Id, planId, StringComparison.Ordinal));
         if (candidate is null) return Results.NotFound(new { error = "plan_candidate_not_found" });
+        if (context.Recommendations.Portfolio is null && !CanExecuteWithoutPortfolioSizing(candidate))
+            return Results.Conflict(new { error = "plan_portfolio_sizing_unavailable" });
         var plan = orchestration.Start(candidate, DateTimeOffset.UtcNow, context.Snapshot.AvailableCash, context.VerifiedQuantities);
+        var hardReserve = context.Recommendations.Portfolio?.CashReserve ?? Money.Zero;
         var outcome = await repository.TryStartAsync(context.Profile.Id, plan, context.Snapshot.AvailableCash,
-            context.Recommendations.Portfolio.CashReserve, context.VerifiedQuantities, cancellationToken).ConfigureAwait(false);
+            hardReserve, context.VerifiedQuantities, cancellationToken).ConfigureAwait(false);
         if (outcome == PlanStartResult.ResourcesUnavailable) return Results.Conflict(new { error = "plan_resources_unavailable" });
         if (outcome == PlanStartResult.AlreadyStarted)
         {
@@ -118,9 +167,10 @@ internal sealed class PlanEndpointService(
     internal async Task<PlanDecisionSnapshot?> GetDecisionSnapshotAsync(CancellationToken cancellationToken)
     {
         var context = await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
-        return context is null
+        var decision = context is null
             ? null
-            : new PlanDecisionSnapshot(context.Profile, context.Recommendations, context.Plans, context.Candidates, context.AccountEvidenceAvailable);
+            : new PlanDecisionSnapshot(context.Profile, context.Recommendations, context.Plans, context.Candidates, context.AccountEvidenceAvailable, DateTimeOffset.UtcNow);
+        return decision;
     }
 
     private async Task<Context?> BuildDecisionContextAsync(CancellationToken cancellationToken)
@@ -134,10 +184,30 @@ internal sealed class PlanEndpointService(
         var reconciledPlans = await ReconcilePlansAsync(context, applyRefresh: false, cancellationToken).ConfigureAwait(false);
         var recommendationsResult = await GetRecommendationsAsync(cancellationToken).ConfigureAwait(false);
         var candidates = await BuildCandidatesAsync(recommendationsResult, cancellationToken).ConfigureAwait(false);
-        var refreshedContext = context with { Recommendations = recommendationsResult, Candidates = candidates, Plans = reconciledPlans };
+        var refreshedContext = context with
+        {
+            Recommendations = recommendationsResult,
+            Candidates = candidates,
+            Plans = reconciledPlans,
+            ReusedDecision = false,
+            DecisionCacheState = "not_cached",
+        };
         var refreshedPlans = await ApplyPlanRefreshAsync(refreshedContext, cancellationToken).ConfigureAwait(false);
         return refreshedContext with { Plans = refreshedPlans };
     }
+
+    private static object EmptySelection(string reason, string cacheState = "not_requested", bool reusedDecision = false) => new
+    {
+        recommendationCandidates = 0,
+        generatedCandidates = 0,
+        rejectedHardConstraints = 0,
+        rejectedResourceConflicts = 0,
+        rejectedSelectionConstraints = 0,
+        selected = 0,
+        reason,
+        reusedDecision,
+        cacheState,
+    };
 
     private async Task<Context?> BuildContextAsync(CancellationToken cancellationToken)
     {
@@ -168,7 +238,7 @@ internal sealed class PlanEndpointService(
         }
         var quantities = VerifiedQuantities(snapshot, crafting);
         var evidence = accountEvidenceAvailable ? await ReadEvidenceAsync(profile, cancellationToken).ConfigureAwait(false) : new EvidenceCapture([], null, new HashSet<PlanEvidenceKind>());
-        return new Context(profile, snapshot, quantities, null, [], accountEvidenceAvailable, evidence.Evidence, evidence.CapturedAtUtc, evidence.CompleteKinds, []);
+        return new Context(profile, snapshot, quantities, null, [], accountEvidenceAvailable, evidence.Evidence, evidence.CapturedAtUtc, evidence.CompleteKinds, [], false, "not_requested");
     }
 
     private async Task<PrimaryRecommendationResult?> GetRecommendationsAsync(CancellationToken cancellationToken)
@@ -276,6 +346,14 @@ internal sealed class PlanEndpointService(
         (await repository.GetReconciliationCandidatesAsync(profileId, cancellationToken).ConfigureAwait(false)).SingleOrDefault(plan => plan.Id == planId);
 
     private static bool IsActionable(PrimaryRecommendationRecord record) => record.Action is PrimaryRecommendationAction.Buy or PrimaryRecommendationAction.BuySmall or PrimaryRecommendationAction.UpdateBid or PrimaryRecommendationAction.CancelBid or PrimaryRecommendationAction.List or PrimaryRecommendationAction.Reduce or PrimaryRecommendationAction.SellPartial or PrimaryRecommendationAction.Sell;
+
+    // Unknown historical basis forbids new capital allocation, but it does not
+    // erase fresh proof of an existing asset. Only actions that can reduce an
+    // exposure may bypass portfolio sizing; their inventory and fee resources
+    // still flow through the ordinary verified-resource gates below.
+    private static bool CanExecuteWithoutPortfolioSizing(PlanCandidate candidate) =>
+        candidate.Steps.Count > 0 && candidate.Steps.All(step => step.Action is
+            PlanStepAction.CancelBuyOrder or PlanStepAction.List or PlanStepAction.SellNow);
 
     internal static PlanCandidate ToCandidate(PrimaryRecommendationRecord record)
     {
@@ -416,7 +494,7 @@ internal sealed class PlanEndpointService(
     private static object ToResponse(PlanStep step) => new { id = step.Id, action = step.Action.ToString(), itemName = step.ItemName, quantity = step.Quantity, unitPrice = step.UnitPrice, state = step.State.ToString() };
 
     private sealed record EvidenceCapture(IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? CapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteKinds);
-    private sealed record Context(AccountProfile Profile, AccountPortfolioSnapshot Snapshot, IReadOnlyDictionary<string, long> VerifiedQuantities, PrimaryRecommendationResult? Recommendations, IReadOnlyList<PlanCandidate> Candidates, bool AccountEvidenceAvailable, IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? EvidenceCapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteEvidenceKinds, IReadOnlyList<PlanRecord> Plans);
+    private sealed record Context(AccountProfile Profile, AccountPortfolioSnapshot Snapshot, IReadOnlyDictionary<string, long> VerifiedQuantities, PrimaryRecommendationResult? Recommendations, IReadOnlyList<PlanCandidate> Candidates, bool AccountEvidenceAvailable, IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? EvidenceCapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteEvidenceKinds, IReadOnlyList<PlanRecord> Plans, bool ReusedDecision, string DecisionCacheState);
 }
 
 internal sealed record PlanDecisionSnapshot(
@@ -424,4 +502,5 @@ internal sealed record PlanDecisionSnapshot(
     PrimaryRecommendationResult? Recommendations,
     IReadOnlyList<PlanRecord> Plans,
     IReadOnlyList<PlanCandidate> Candidates,
-    bool AccountEvidenceAvailable);
+    bool AccountEvidenceAvailable,
+    DateTimeOffset CachedAtUtc);

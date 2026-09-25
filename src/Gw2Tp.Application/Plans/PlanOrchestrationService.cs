@@ -390,7 +390,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         return plan with { Events = events, Steps = steps, ReconciliationState = events.Any(e => e.State == PlanShadowEventState.PendingConfirmation) ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible };
     }
 
-    private static bool IsExecutable(PlanCandidate candidate) => candidate.IsHardEligible && (candidate.Steps.Count > 0 || candidate.Attention == PlanAttention.Passive) && candidate.Requirements.All(requirement => requirement.Quantity >= 0 && requirement.Cash.Copper >= 0) &&
+    public static bool IsExecutable(PlanCandidate candidate) => candidate.IsHardEligible && (candidate.Steps.Count > 0 || candidate.Attention == PlanAttention.Passive) && candidate.Requirements.All(requirement => requirement.Quantity >= 0 && requirement.Cash.Copper >= 0) &&
         (candidate.Attention != PlanAttention.Active || candidate.Steps.Select((step, index) => (step, index)).All(pair => pair.step.Action != PlanStepAction.PlaceBuyOrder || pair.index == candidate.Steps.Count - 1));
 
     private static Selection SelectWithin(PlanCandidate[] candidates, Money capacity, IReadOnlyDictionary<string, long> quantities, CancellationToken cancellationToken)

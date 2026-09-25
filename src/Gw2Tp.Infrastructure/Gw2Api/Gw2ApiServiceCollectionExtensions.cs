@@ -1,5 +1,6 @@
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Time;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
@@ -37,7 +38,8 @@ public static class Gw2ApiServiceCollectionExtensions
             options.ShouldRedactHeaderValue = static _ => true);
         services.AddSingleton<IGw2ApiTransport>(serviceProvider => new Gw2ApiClient(
             serviceProvider.GetRequiredService<IHttpClientFactory>(),
-            serviceProvider.GetRequiredService<IGw2RequestScheduler>()));
+            serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
+            serviceProvider.GetService<SafeTransportDiagnosticBuffer>()));
         services.AddSingleton<IGw2ApiClient, BatchingGw2ApiClient>();
         return services;
     }

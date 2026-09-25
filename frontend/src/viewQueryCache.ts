@@ -6,7 +6,7 @@ type Entry<T> = {
   data: T | null;
   error: boolean;
   stale: boolean;
-  promise: Promise<void> | null;
+  promise: Promise<boolean> | null;
   updatedAt: number | null;
 };
 
@@ -70,7 +70,7 @@ export function resetViewCacheForTests() {
   listeners.clear();
 }
 
-async function fetchEntry<T>(options: QueryOptions<T>, override?: RequestInit): Promise<void> {
+async function fetchEntry<T>(options: QueryOptions<T>, override?: RequestInit): Promise<boolean> {
   const requestScope = scope;
   const entry = entryFor<T>(options.key);
   if (entry.promise) return entry.promise;
@@ -93,10 +93,12 @@ async function fetchEntry<T>(options: QueryOptions<T>, override?: RequestInit): 
       target.updatedAt = Date.now();
       // Timings stay in memory/devtools only; no account data is persisted by the browser.
       try { performance.measure(`tyrian-ledger:${options.key}`, { start: startedAt, end: performance.now() }); } catch { /* optional instrumentation */ }
+      return true;
     } catch {
       entry.error = true;
       if (entry.data !== null) entry.stale = true;
       if (options.discardOnError) entry.data = null;
+      return false;
     } finally {
       entry.promise = null;
       notify();

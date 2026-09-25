@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Diagnostics;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
@@ -75,9 +76,14 @@ internal sealed record DecisionLoopStatus(
     DecisionLoopSourceStatus Market,
     DecisionLoopSourceStatus Account,
     DecisionLoopSourceStatus History,
+    DecisionLoopSourceStatus Crafting,
     bool NotificationsEnabled,
     IReadOnlyList<DecisionLoopNotification> Notifications,
-    PrimaryRecommendationResult? Recommendations);
+    PrimaryRecommendationResult? Recommendations,
+    DecisionLoopCycleTiming? LastTiming);
+
+/// <summary>Safe aggregate timings for the last loop, with no account facts.</summary>
+internal sealed record DecisionLoopCycleTiming(long TotalMilliseconds, long SynchronizationMilliseconds, long CraftingRefreshMilliseconds, long DecisionMilliseconds);
 
 internal sealed record DecisionLoopRunResult(
     bool IsSuccess,
@@ -238,7 +244,10 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
 
     private async Task<DecisionLoopRunResult> RunCoreBodyAsync(CancellationToken cancellationToken)
     {
+        var total = Stopwatch.StartNew();
+        var synchronizationTimer = Stopwatch.StartNew();
         var synchronizationResult = await synchronization.SynchronizeAsync(cancellationToken).ConfigureAwait(false);
+        synchronizationTimer.Stop();
         if (!synchronizationResult.IsSuccess)
         {
             var error = synchronizationResult.IsPersistenceFailure
@@ -248,16 +257,18 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
                 PrimaryRecommendationState.AccountUnavailable,
                 error,
                 Program.DefaultRecommendationPolicies());
-            SetFailedStatus(synchronizationResult.AttemptedAtUtc, error);
+            SetFailedStatus(synchronizationResult.AttemptedAtUtc, error, Timing(total, synchronizationTimer, TimeSpan.Zero, TimeSpan.Zero));
             return new(false, synchronizationResult, unavailable, GetStatus());
         }
 
+        var craftingTimer = Stopwatch.StartNew();
+        Gw2ApiResult<AccountCraftingSnapshot>? craftingRefresh = null;
         try
         {
             // Crafting is refreshed as part of the same cycle, but its failure
             // remains scoped to crafting candidates. Trading recommendations
             // still use the complete personal snapshot below.
-            await craftingSnapshots.RefreshAsync(cancellationToken).ConfigureAwait(false);
+            craftingRefresh = await craftingSnapshots.RefreshAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -268,11 +279,15 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
             // The planner will retain only a still-fresh, typed crafting
             // snapshot. It never treats a failed read as negative evidence.
         }
+        craftingTimer.Stop();
 
+        var decisionTimer = Stopwatch.StartNew();
         var decision = await plans.GetDecisionSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        decisionTimer.Stop();
+        var timing = Timing(total, synchronizationTimer, craftingTimer.Elapsed, decisionTimer.Elapsed);
         if (decision?.Recommendations is null)
         {
-            SetFailedStatus(synchronizationResult.AttemptedAtUtc, "DecisionGenerationFailed");
+            SetFailedStatus(synchronizationResult.AttemptedAtUtc, "DecisionGenerationFailed", timing);
             return new(false, synchronizationResult, null, GetStatus());
         }
 
@@ -291,13 +306,13 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
             var error = decision.Recommendations.EvidenceError ?? decision.Recommendations.State.ToString();
             SetDegradedStatus(observedAt, decision.Recommendations, synchronizationResult, historyObservedAt,
                 decision.Profile.AccountScopeId,
-                notificationLedger.GetPreferences(decision.Profile.AccountScopeId).Enabled, notificationObservation.Pending, error);
+                notificationLedger.GetPreferences(decision.Profile.AccountScopeId).Enabled, notificationObservation.Pending, error, CraftingStatus(craftingRefresh), timing);
             return new(false, synchronizationResult, decision.Recommendations, GetStatus());
         }
 
         SetReadyStatus(observedAt, decision.Recommendations, synchronizationResult, historyObservedAt,
             decision.Profile.AccountScopeId,
-            notificationLedger.GetPreferences(decision.Profile.AccountScopeId).Enabled, notificationObservation.Pending);
+            notificationLedger.GetPreferences(decision.Profile.AccountScopeId).Enabled, notificationObservation.Pending, CraftingStatus(craftingRefresh), timing);
         return new(true, synchronizationResult, decision.Recommendations, GetStatus());
     }
 
@@ -352,7 +367,9 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
         DateTimeOffset? historyObservedAtUtc,
         string accountScopeId,
         bool notificationsEnabled,
-        IReadOnlyList<DecisionLoopNotification> notifications)
+        IReadOnlyList<DecisionLoopNotification> notifications,
+        DecisionLoopSourceStatus crafting,
+        DecisionLoopCycleTiming timing)
     {
         lock (stateGate)
         {
@@ -369,6 +386,8 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
                 Market = new DecisionLoopSourceStatus(recommendations.ScannerObservedAtUtc is null ? DecisionLoopSourceState.Failed : DecisionLoopSourceState.Fresh, recommendations.ScannerObservedAtUtc, recommendations.ScannerObservedAtUtc is null ? recommendations.EvidenceError : null),
                 Account = new DecisionLoopSourceStatus(DecisionLoopSourceState.Fresh, synchronizationResult.AttemptedAtUtc, null),
                 History = new DecisionLoopSourceStatus(historyObservedAtUtc is null ? DecisionLoopSourceState.Unknown : DecisionLoopSourceState.Fresh, historyObservedAtUtc, null),
+                Crafting = crafting,
+                LastTiming = timing,
             };
         }
     }
@@ -381,7 +400,9 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
         string accountScopeId,
         bool notificationsEnabled,
         IReadOnlyList<DecisionLoopNotification> notifications,
-        string errorCode)
+        string errorCode,
+        DecisionLoopSourceStatus crafting,
+        DecisionLoopCycleTiming timing)
     {
         lock (stateGate)
         {
@@ -403,11 +424,13 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
                     recommendations.EvidenceError),
                 Account = new DecisionLoopSourceStatus(DecisionLoopSourceState.Fresh, synchronizationResult.AttemptedAtUtc, null),
                 History = new DecisionLoopSourceStatus(historyObservedAtUtc is null ? DecisionLoopSourceState.Unknown : DecisionLoopSourceState.Fresh, historyObservedAtUtc, null),
+                Crafting = crafting,
+                LastTiming = timing,
             };
         }
     }
 
-    private void SetFailedStatus(DateTimeOffset attemptedAtUtc, string? errorCode)
+    private void SetFailedStatus(DateTimeOffset attemptedAtUtc, string? errorCode, DecisionLoopCycleTiming? timing = null)
     {
         lock (stateGate)
         {
@@ -419,6 +442,8 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
                 ConsecutiveFailures = status.ConsecutiveFailures + 1,
                 LastErrorCode = errorCode,
                 Account = new DecisionLoopSourceStatus(DecisionLoopSourceState.Failed, status.Account.LastSuccessfulAtUtc, errorCode),
+                Crafting = new DecisionLoopSourceStatus(DecisionLoopSourceState.Unknown, status.Crafting.LastSuccessfulAtUtc, status.Crafting.ErrorCode),
+                LastTiming = timing,
                 Recommendations = null,
                 Notifications = [],
             };
@@ -484,7 +509,24 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
         new(DecisionLoopSourceState.Unknown, null, null),
         new(DecisionLoopSourceState.Unknown, null, null),
         new(DecisionLoopSourceState.Unknown, null, null),
-        true, [], null);
+        new(DecisionLoopSourceState.Unknown, null, null),
+        true, [], null, null);
+
+    private static DecisionLoopSourceStatus CraftingStatus(Gw2ApiResult<AccountCraftingSnapshot>? refresh)
+    {
+        if (refresh is not { IsSuccess: true, Value: { } snapshot })
+            return new(DecisionLoopSourceState.Failed, null, refresh?.ErrorCategory?.ToString() ?? "crafting_refresh_failed");
+        var features = new[] { snapshot.BankInventory.Availability, snapshot.MaterialStorage.Availability, snapshot.RecipeUnlocks.Availability, snapshot.CharacterCrafting.Availability };
+        var failed = features.Any(value => value != CraftingFeatureAvailability.Available);
+        var error = snapshot.MaterialStorage.ErrorCategory ?? snapshot.BankInventory.ErrorCategory ?? snapshot.RecipeUnlocks.ErrorCategory ?? snapshot.CharacterCrafting.ErrorCategory;
+        return new(failed ? DecisionLoopSourceState.Failed : DecisionLoopSourceState.Fresh, snapshot.CapturedAtUtc, error?.ToString());
+    }
+
+    private static DecisionLoopCycleTiming Timing(Stopwatch total, Stopwatch synchronization, TimeSpan crafting, TimeSpan decision) => new(
+        Math.Max(0, (long)total.Elapsed.TotalMilliseconds),
+        Math.Max(0, (long)synchronization.Elapsed.TotalMilliseconds),
+        Math.Max(0, (long)crafting.TotalMilliseconds),
+        Math.Max(0, (long)decision.TotalMilliseconds));
 
 }
 

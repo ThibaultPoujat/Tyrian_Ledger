@@ -12,7 +12,12 @@ namespace Gw2Tp.Web.Hosting;
 internal static class AccountCraftingResponseWriter
 {
     internal static Task WriteAsync(HttpContext context, Gw2ApiResult<AccountCraftingSnapshot> result)
+        => WriteAsync(context, new AccountCraftingRefreshResult(result, null));
+
+    internal static Task WriteAsync(HttpContext context, AccountCraftingRefreshResult refresh)
     {
+        ArgumentNullException.ThrowIfNull(refresh);
+        var result = refresh.Result;
         ArgumentNullException.ThrowIfNull(result);
         context.Response.ContentType = "application/json; charset=utf-8";
         context.Response.Headers.CacheControl = "no-store";
@@ -20,6 +25,7 @@ internal static class AccountCraftingResponseWriter
             ? new
             {
                 outcome = "succeeded",
+                changed = refresh.Changed,
                 capturedAtUtc = snapshot.CapturedAtUtc,
                 bank = Feature(snapshot.BankInventory),
                 materials = Feature(snapshot.MaterialStorage),
@@ -30,6 +36,7 @@ internal static class AccountCraftingResponseWriter
             : new
             {
                 outcome = "failed",
+                changed = (bool?)null,
                 capturedAtUtc = (DateTimeOffset?)null,
                 bank = (object?)null,
                 materials = (object?)null,

@@ -125,7 +125,20 @@ public interface IAccountCraftingSnapshotService
     Task<Gw2ApiResult<AccountCraftingSnapshot>> RefreshAsync(
         CancellationToken cancellationToken = default);
 
+    async Task<AccountCraftingRefreshResult> RefreshWithOutcomeAsync(
+        CancellationToken cancellationToken = default) =>
+        new(await RefreshAsync(cancellationToken).ConfigureAwait(false), null);
+
     Task<AccountCraftingSnapshot?> GetLatestAsync(
         AccountScope accountScope,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// The browser may distinguish a successful no-op verification from changed
+/// crafting facts without receiving the account facts themselves. A null value
+/// means the refresh failed or equivalence could not be determined.
+/// </summary>
+public sealed record AccountCraftingRefreshResult(
+    Gw2ApiResult<AccountCraftingSnapshot> Result,
+    bool? Changed);

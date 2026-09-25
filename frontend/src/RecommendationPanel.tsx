@@ -125,6 +125,8 @@ type DecisionLoopStatus = {
   market: SourceStatus;
   account: SourceStatus;
   history: SourceStatus;
+  crafting: SourceStatus;
+  timing?: { totalMilliseconds: number; synchronizationMilliseconds: number; craftingRefreshMilliseconds: number; decisionMilliseconds: number } | null;
 };
 
 type SourceStatus = {
@@ -318,13 +320,23 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
 }
 
 function DecisionLoopHealth({ scheduler }: { scheduler: DecisionLoopStatus | null }) {
-  if (scheduler?.state !== 'degraded') return null;
+  if (scheduler === null) return null;
+  const sources: Array<[string, SourceStatus]> = [
+    ['Marché', scheduler.market], ['Compte ArenaNet', scheduler.account], ['Historique marché', scheduler.history], ['Artisanat', scheduler.crafting],
+  ];
+  const failed = sources.filter(([, source]) => source.state === 'failed');
   return (
-    <p aria-live="polite" className="operational-status operational-status--warning" role="status">
-      Actualisation automatique temporairement dégradée. Les signaux dépendant de la source indisponible restent masqués jusqu'à une récupération confirmée.
-    </p>
+    <aside aria-live="polite" className={scheduler.state === 'degraded' ? 'operational-status operational-status--warning' : 'operational-status'} role="status">
+      {scheduler.lastCycleAtUtc && <span>Dernier cycle automatique : {new Date(scheduler.lastCycleAtUtc).toLocaleString('fr-FR')}. </span>}
+      {scheduler.nextCycleAtUtc && <span>Prochain cycle : {new Date(scheduler.nextCycleAtUtc).toLocaleString('fr-FR')}. </span>}
+      {scheduler.state === 'running' && <span>Actualisation automatique en cours. </span>}
+      {failed.length > 0 && <span>Source{failed.length === 1 ? '' : 's'} à récupérer : {failed.map(([name, source]) => `${name}${source.errorCode ? ` (${sourceFailure(source.errorCode)})` : ''}`).join(', ')}. Les actions dépendantes restent masquées.</span>}
+      {scheduler.timing && <span> Dernier calcul : {(scheduler.timing.totalMilliseconds / 1000).toFixed(1)} s.</span>}
+    </aside>
   );
 }
+
+function sourceFailure(code: string) { return ({ InvalidPayload: 'réponse invalide', RateLimited: 'limite ArenaNet', UpstreamUnavailable: 'service indisponible', TransportFailure: 'connexion interrompue', crafting_refresh_failed: 'actualisation échouée' } as Record<string, string>)[code] ?? 'vérification requise'; }
 
 function NotificationInbox({ notifications, onRefresh }: { notifications: NotificationRecord[]; onRefresh: () => void }) {
   if (notifications.length === 0) return null;

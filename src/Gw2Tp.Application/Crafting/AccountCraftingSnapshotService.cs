@@ -13,17 +13,22 @@ public sealed class AccountCraftingSnapshotService(
 {
     public async Task<Gw2ApiResult<AccountCraftingSnapshot>> RefreshAsync(
         CancellationToken cancellationToken = default)
+        => (await RefreshWithOutcomeAsync(cancellationToken).ConfigureAwait(false)).Result;
+
+    public async Task<AccountCraftingRefreshResult> RefreshWithOutcomeAsync(
+        CancellationToken cancellationToken = default)
     {
         var result = await gateway.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         if (!result.IsSuccess || result.Value is null)
         {
-            return result;
+            return new(result, null);
         }
 
         try
         {
+            var previous = await repository.GetLatestAsync(result.Value.AccountScope, cancellationToken).ConfigureAwait(false);
             await repository.ReplaceAsync(result.Value, cancellationToken).ConfigureAwait(false);
-            return result;
+            return new(result, previous is null || !SameFacts(previous, result.Value));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -31,7 +36,7 @@ public sealed class AccountCraftingSnapshotService(
         }
         catch
         {
-            return Gw2ApiResult<AccountCraftingSnapshot>.Failure(Gw2ApiErrorCategory.UnexpectedResponse);
+            return new(Gw2ApiResult<AccountCraftingSnapshot>.Failure(Gw2ApiErrorCategory.UnexpectedResponse), null);
         }
     }
 
@@ -39,4 +44,18 @@ public sealed class AccountCraftingSnapshotService(
         PersonalTradingPost.AccountScope accountScope,
         CancellationToken cancellationToken = default) =>
         repository.GetLatestAsync(accountScope, cancellationToken);
+
+    private static bool SameFacts(AccountCraftingSnapshot left, AccountCraftingSnapshot right) =>
+        left.AccountScope == right.AccountScope &&
+        Same(left.BankInventory, right.BankInventory) &&
+        Same(left.MaterialStorage, right.MaterialStorage) &&
+        Same(left.RecipeUnlocks, right.RecipeUnlocks) &&
+        Same(left.CharacterCrafting, right.CharacterCrafting);
+
+    private static bool Same<T>(CraftingFeatureResult<IReadOnlyList<T>> left, CraftingFeatureResult<IReadOnlyList<T>> right) =>
+        left.Availability == right.Availability &&
+        left.ErrorCategory == right.ErrorCategory &&
+        (left.Value is null || right.Value is null
+            ? left.Value is null && right.Value is null
+            : left.Value.SequenceEqual(right.Value));
 }

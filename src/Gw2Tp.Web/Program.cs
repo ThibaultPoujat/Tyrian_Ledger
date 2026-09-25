@@ -163,6 +163,40 @@ public static class Program
                     export += $" elapsedMs={item.ElapsedMilliseconds}" + Environment.NewLine;
                 }
             }
+            var market = transportDiagnostics.SnapshotMarketGatewayDiagnostics();
+            if (market.Count > 0)
+            {
+                export += Environment.NewLine + "Marché ArenaNet (diagnostic assaini)" + Environment.NewLine;
+                foreach (var item in market)
+                {
+                    export += $"{item.TimestampUtc:O} stage={item.Stage} operation={item.Operation}";
+                    if (item.BatchIndex is { } batchIndex && item.BatchCount is { } batchCount)
+                        export += $" batch={batchIndex}/{batchCount}";
+                    if (item.RequestedItemIdCount is { } requested)
+                        export += $" requestedIdCount={requested}";
+                    if (item.ResponseItemIdCount is { } responseCount)
+                        export += $" responseIdCount={responseCount}";
+                    if (item.MissingItemIdCount is { } missing)
+                        export += $" missingIdCount={missing}";
+                    if (item.UnexpectedItemIdCount is { } unexpected)
+                        export += $" unexpectedIdCount={unexpected}";
+                    if (item.DuplicateItemIdCount is { } duplicate)
+                        export += $" duplicateIdCount={duplicate}";
+                    if (item.HttpStatusCode is { } status)
+                        export += $" httpStatus={status}";
+                    if (item.ErrorCategory is { } error)
+                        export += $" errorCategory={error}";
+                    if (item.IsPartialResponse is { } partial)
+                        export += $" partialResponse={partial.ToString().ToLowerInvariant()}";
+                    if (item.Attempt is { } attempt)
+                        export += $" attempt={attempt}";
+                    if (item.BackoffMilliseconds is { } backoff)
+                        export += $" backoffMs={backoff}";
+                    if (item.Outcome is { } outcome)
+                        export += $" outcome={outcome}";
+                    export += $" elapsedMs={item.ElapsedMilliseconds}" + Environment.NewLine;
+                }
+            }
             return Results.Text(export, "text/plain; charset=utf-8");
         }).WithMetadata(new HttpMethodMetadata([HttpMethods.Get]));
         app.MapGet(
@@ -204,7 +238,8 @@ public static class Program
                 IAccountCraftingSnapshotService accountCraftingSnapshotService,
                 CancellationToken cancellationToken) =>
             {
-                var result = await accountCraftingSnapshotService.RefreshAsync(cancellationToken).ConfigureAwait(false);
+                var refresh = await accountCraftingSnapshotService.RefreshWithOutcomeAsync(cancellationToken).ConfigureAwait(false);
+                var result = refresh.Result;
                 if (!result.IsSuccess && result.ErrorCategory is
                     Gw2ApiErrorCategory.CredentialUnavailable or
                     Gw2ApiErrorCategory.RateLimited or
@@ -216,7 +251,7 @@ public static class Program
                 {
                     context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                 }
-                await AccountCraftingResponseWriter.WriteAsync(context, result).ConfigureAwait(false);
+                await AccountCraftingResponseWriter.WriteAsync(context, refresh).ConfigureAwait(false);
             });
         app.MapGet(
             "/api/personal-dashboard",
@@ -257,11 +292,13 @@ public static class Program
                 IPrimaryRecommendationService recommendationService,
                 IContinuousDecisionLoopService decisionLoop,
                 IPersonalTradingPostGateway personalTradingPost,
+                PlanEndpointService plans,
                 AccountViewScopeTokenService accountViewScopes,
                 CancellationToken cancellationToken) =>
             {
                 PrimaryRecommendationResult result;
                 var loopStatus = decisionLoop.GetStatus();
+                var accountScopeId = loopStatus.AccountScopeId;
                 if (context.Request.Headers.TryGetValue("X-Tyrian-Ledger-Manual-Refresh", out var refreshHeader) &&
                     string.Equals(refreshHeader.ToString(), "1", StringComparison.Ordinal))
                 {
@@ -270,10 +307,12 @@ public static class Program
                         PrimaryRecommendationState.EvidenceUnavailable,
                         run.Status.LastErrorCode,
                         DefaultRecommendationPolicies());
+                    accountScopeId = run.Status.AccountScopeId;
                 }
                 else
                 {
                     var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
+                    accountScopeId = scope.IsSuccess && scope.Value is not null ? scope.Value.AccountId : null;
                     if (scope.IsSuccess && scope.Value is not null &&
                         string.Equals(loopStatus.AccountScopeId, scope.Value.AccountId, StringComparison.Ordinal) &&
                         loopStatus.Recommendations is { } latest)
@@ -317,8 +356,8 @@ public static class Program
                 var responseLoopStatus = ReferenceEquals(result, latestLoopStatus.Recommendations)
                     ? latestLoopStatus
                     : latestLoopStatus with { Recommendations = null, Notifications = [] };
-                var accountCacheScope = responseLoopStatus.AccountScopeId is { } accountScopeId
-                    ? accountViewScopes.GetToken(accountScopeId)
+                var accountCacheScope = responseLoopStatus.AccountScopeId is { } responseAccountScopeId
+                    ? accountViewScopes.GetToken(responseAccountScopeId)
                     : null;
                 await PrimaryRecommendationResponseWriter.WriteAsync(context, result, responseLoopStatus, accountCacheScope).ConfigureAwait(false);
             });
