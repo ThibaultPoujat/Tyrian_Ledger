@@ -37,7 +37,7 @@ Historical ticket files remain useful evidence but are not active backlog contra
 | M19 | Core Recommendation Foundation | [TKT-M19-01](M19/tickets/TKT-M19-01.md), [TKT-M19-02](M19/tickets/TKT-M19-02.md), [TKT-M19-03](M19/tickets/TKT-M19-03.md), [TKT-M19-04](M19/tickets/TKT-M19-04.md) |
 | M20 | Personal Learning and Existing Investment Tracking | [TKT-M20-01](M20/tickets/TKT-M20-01.md), [TKT-M20-02](M20/tickets/TKT-M20-02.md), [TKT-M20-03](M20/tickets/TKT-M20-03.md) |
 | M21 | Signals and Crafting Intelligence | [TKT-M21-01](M21/tickets/TKT-M21-01.md), [TKT-M21-S01](M21/tickets/TKT-M21-S01.md), [TKT-M21-S02](M21/tickets/TKT-M21-S02.md), [TKT-M21-S03](M21/tickets/TKT-M21-S03.md), [TKT-M21-S04](M21/tickets/TKT-M21-S04.md), [TKT-M21-S05](M21/tickets/TKT-M21-S05.md), [TKT-M21-02](M21/tickets/TKT-M21-02.md), [TKT-M21-03](M21/tickets/TKT-M21-03.md) |
-| M22 | Continuous Operation, Hardening, and Evaluation | [TKT-M22-01](M22/tickets/TKT-M22-01.md), [TKT-M22-02](M22/tickets/TKT-M22-02.md), [TKT-M22-03](M22/tickets/TKT-M22-03.md) |
+| M22 | Continuous Operation, Hardening, and Evaluation | [TKT-M22-01](M22/tickets/TKT-M22-01.md), [TKT-M22-S01](M22/tickets/TKT-M22-S01.md), [TKT-M22-02](M22/tickets/TKT-M22-02.md), [TKT-M22-03](M22/tickets/TKT-M22-03.md) |
 
 The displayed UI labels for the primary surfaces remain French (`Mes Signaux`, `Artisanat`, `Réglages`); milestone/ticket/domain terminology remains English.
 
@@ -55,6 +55,7 @@ M12-M20, TKT-M21-01, and #128 are complete. The preferred owner sequence is:
  -> #93  TKT-M21-02   crafting economic truth
  -> #94  TKT-M21-03   guided crafting paths + crafting UI (Artisanat)
  -> #95  TKT-M22-01   continuous decision loop + actionable notifications
+ -> #145 TKT-M22-S01  calculation transparency: theory + actual account/decision inputs
  -> #96  TKT-M22-02   hardening/packaging
  -> #97  TKT-M22-03   Signal-plan outcome evaluation
 ```
@@ -69,6 +70,7 @@ Do not infer the next ticket from GitHub issue number ordering. Issue #98 and th
 - after TKT-M21-S05 / #133: stable executable Active/Passive plans with responsive reversible local shadow/reconciliation;
 - after TKT-M21-03 / #94: crafting is a first-class guided profit engine with the workspace displayed as `Artisanat`;
 - after TKT-M22-01 / #95: permitted state changes can surface materially new Signals without repeated manual checking;
+- after TKT-M22-S01 / #145: French settings and contextual `Pourquoi ?` disclose canonical math, current account inputs, provenance and exact exclusion reasons without duplicating financial logic;
 - after TKT-M22-02 and TKT-M22-03: the 0.1 shape is hardened and can evaluate observed outcomes without fabricated counterfactuals.
 
 Investment-position/staged-exit infrastructure delivered in M20 remains valid, but new investment-discovery/seasonality work is deferred beyond the 0.1 focus.
@@ -82,7 +84,7 @@ M12-M18 local/account/history foundation
  -> M21-01 crafting-account evidence
  -> Signals transition (S01-S05)
  -> crafting economics/path UI (M21-02/03)
- -> continuous loop/hardening/evaluation (M22)
+ -> continuous loop/calculation transparency/hardening/evaluation (M22)
 ```
 
 After TKT-M18-02, keep the local collector running during subsequent development whenever practical so owned history continues to accumulate.

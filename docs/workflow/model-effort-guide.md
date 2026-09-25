@@ -115,6 +115,7 @@ These tickets are currently expected to use the NORMAL path unless escalated:
 - #131 `Mes Signaux` MVP/new navigation — R2;
 - #132 post-MVP UI/docs/code cleanup — R2;
 - #95 continuous decision loop/actionable notifications — R2;
+- #145 / TKT-M22-S01 calculation transparency and account-scoped decision provenance — R3 NORMAL, Terra High independent review; escalate only for unresolved high-consequence financial/state authority ambiguity;
 - #97 Signal-plan outcome evaluation — R3 NORMAL with Terra High independent
   review unless a material ambiguity triggers escalation.
 
