@@ -44,7 +44,19 @@ public sealed record CraftingPlannerResult(
     CraftingOpportunityState State,
     IReadOnlyList<CraftingOpportunity> Opportunities,
     IReadOnlyList<CraftingSearchTruncationReason> TruncationReasons,
-    IReadOnlyList<CraftingOpportunityExclusion> SummaryExclusions);
+    IReadOnlyList<CraftingOpportunityExclusion> SummaryExclusions,
+    string? EvidenceFailureCode = null,
+    CraftingOpportunityTiming? Timing = null);
+
+/// <summary>Sanitized timings for bounded crafting evidence; contains no item or account facts.</summary>
+public sealed record CraftingOpportunityTiming(
+    long PreparationMilliseconds = 0,
+    long RecipeDefinitionsMilliseconds = 0,
+    long ListingsMilliseconds = 0,
+    long MetadataMilliseconds = 0,
+    long HistoryMilliseconds = 0,
+    long PlanningMilliseconds = 0,
+    long TotalMilliseconds = 0);
 
 public interface ICraftingOpportunityPlanner
 {

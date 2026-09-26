@@ -37,3 +37,27 @@ it('cancels an unperformed step and exposes the refreshed proposal for restart',
   await waitFor(() => expect(screen.getByRole('button', { name: 'Démarrer' })).toBeInTheDocument());
   expect(fetchMock).toHaveBeenCalledWith('/api/plans/plan-1/complete', expect.objectContaining({ method: 'POST' }));
 });
+
+it('explains when cached Signals cannot become executable Plans because sizing is unavailable', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({
+    state: 'ready',
+    proposals: [],
+    plans: [],
+    selection: {
+      recommendationCandidates: 17,
+      generatedCandidates: 17,
+      rejectedHardConstraints: 0,
+      rejectedResourceConflicts: 0,
+      rejectedSelectionConstraints: 0,
+      rejectedDecisionSafetyGate: 17,
+      selected: 0,
+      reason: 'buy_sizing_unavailable',
+      reusedDecision: true,
+    },
+  }) }));
+
+  render(<PlanPanel />);
+
+  expect(await screen.findByText(/dimensionnement sûr du portefeuille est indisponible/i)).toBeInTheDocument();
+  expect(screen.getByText(/17 candidats ne peuvent pas être exposés/i)).toBeInTheDocument();
+});

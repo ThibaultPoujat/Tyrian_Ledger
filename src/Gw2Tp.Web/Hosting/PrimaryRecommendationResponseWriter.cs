@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Gw2Tp.Application.Plans;
 using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Domain.Finance;
 
@@ -13,15 +14,15 @@ internal static class PrimaryRecommendationResponseWriter
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    internal static Task WriteAsync(HttpContext context, PrimaryRecommendationResult result)
+    internal static Task WriteAsync(HttpContext context, PrimaryRecommendationResult result, DecisionLoopStatus? decisionLoop = null, string? accountCacheScope = null)
     {
         ArgumentNullException.ThrowIfNull(result);
         context.Response.ContentType = "application/json; charset=utf-8";
         context.Response.Headers.CacheControl = "no-store";
-        return context.Response.WriteAsync(JsonSerializer.Serialize(ToResponse(result), SerializerOptions));
+        return context.Response.WriteAsync(JsonSerializer.Serialize(ToResponse(result, decisionLoop, accountCacheScope), SerializerOptions));
     }
 
-    private static object ToResponse(PrimaryRecommendationResult result) => new
+    private static object ToResponse(PrimaryRecommendationResult result, DecisionLoopStatus? decisionLoop, string? accountCacheScope) => new
     {
         result.State, result.EvidenceError, result.GeneratedAtUtc, result.LastSuccessfulSyncAtUtc,
         result.CurrentOrdersObservedAtUtc, result.ScannerObservedAtUtc, result.AccountEvidenceExpiresAtUtc,
@@ -87,6 +88,47 @@ internal static class PrimaryRecommendationResponseWriter
             }).ToArray(),
             action.Reasons,
         }).ToArray(),
+        decisionLoop = decisionLoop is null ? null : new
+        {
+            state = decisionLoop.State,
+            decisionLoop.LastCycleAtUtc,
+            decisionLoop.NextCycleAtUtc,
+            decisionLoop.ConsecutiveFailures,
+            decisionLoop.LastErrorCode,
+            notificationsEnabled = decisionLoop.NotificationsEnabled,
+            accountCacheScope,
+            market = Source(decisionLoop.Market),
+            account = Source(decisionLoop.Account),
+            history = Source(decisionLoop.History),
+            crafting = Source(decisionLoop.Crafting),
+            timing = decisionLoop.LastTiming,
+        },
+        notifications = decisionLoop?.Notifications.Select(ToNotification).ToArray() ?? [],
+    };
+
+    private static object Source(DecisionLoopSourceStatus source) => new
+    {
+        state = source.State,
+        source.LastSuccessfulAtUtc,
+        source.ErrorCode,
+    };
+
+    private static object ToNotification(DecisionLoopNotification notification) => new
+    {
+        notification.Id,
+        notification.Kind,
+        notification.Route,
+        action = notification.ActionCode,
+        actionLabel = ActionLabel(notification.ActionCode),
+        notification.ItemId,
+        itemName = notification.ItemName == "Plan" ? "Parcours en cours" : notification.ItemName,
+        notification.Quantity,
+        unitPrice = Optional(notification.UnitPrice),
+        reason = ReasonLabel(notification),
+        reasonCode = notification.SignalReasonCode?.ToString(),
+        notification.PlanId,
+        urgency = notification.IsUrgent ? "high" : "normal",
+        notification.CreatedAtUtc,
     };
 
     private static MoneyResponse? Optional(Money? value) => value is { } amount ? MoneyResponse.From(amount) : null;
@@ -109,6 +151,47 @@ internal static class PrimaryRecommendationResponseWriter
         PrimaryRecommendationAction.Review => "REVIEW",
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Unknown recommendation action."),
     };
+
+    private static string ActionLabel(string actionCode) => actionCode switch
+    {
+        nameof(PrimaryRecommendationAction.Buy) => "Acheter maintenant",
+        nameof(PrimaryRecommendationAction.BuySmall) => "Acheter une petite quantité",
+        nameof(PrimaryRecommendationAction.UpdateBid) => "Mettre à jour l'ordre d'achat",
+        nameof(PrimaryRecommendationAction.CancelBid) => "Annuler l'ordre d'achat",
+        nameof(PrimaryRecommendationAction.List) => "Mettre en vente",
+        nameof(PrimaryRecommendationAction.Reduce) => "Réduire l'exposition",
+        nameof(PrimaryRecommendationAction.SellPartial) => "Vendre partiellement",
+        nameof(PrimaryRecommendationAction.Sell) => "Vendre maintenant",
+        nameof(PlanStepAction.BuyNow) => "Acheter maintenant",
+        nameof(PlanStepAction.PlaceBuyOrder) => "Placer un ordre d'achat",
+        nameof(PlanStepAction.CancelBuyOrder) => "Annuler l'ordre d'achat",
+        nameof(PlanStepAction.Relist) => "Remettre en vente",
+        nameof(PlanStepAction.SellNow) => "Vendre maintenant",
+        nameof(PlanStepAction.Craft) => "Fabriquer",
+        "REVIEW" => "Vérifier le plan",
+        _ => "Consulter le plan",
+    };
+
+    private static string ReasonLabel(DecisionLoopNotification notification)
+    {
+        if (notification.Reason == DecisionLoopNotificationReason.PlanReady)
+            return "L'étape suivante de ce plan est prête à être réalisée manuellement.";
+        if (notification.Reason == DecisionLoopNotificationReason.PlanRecheck)
+            return "Les données ont changé : vérifiez le plan avant d'agir.";
+        if (notification.Reason == DecisionLoopNotificationReason.PlanReconciliation)
+            return "Une différence avec ArenaNet demande une réconciliation explicite.";
+
+        return notification.SignalReasonCode switch
+        {
+            PrimaryRecommendationReasonCode.BidAboveMaximum => "Le prix de l'ordre dépasse maintenant le maximum autorisé.",
+            PrimaryRecommendationReasonCode.ReserveRestoration => "Cette action protège la réserve de liquidités configurée.",
+            PrimaryRecommendationReasonCode.PositiveImmediateExit => "La liquidation immédiate reste positive après les frais.",
+            PrimaryRecommendationReasonCode.PositiveListingExit => "La mise en vente reste positive après les frais.",
+            PrimaryRecommendationReasonCode.ItemExposureExceeded => "L'exposition connue sur cet objet dépasse la limite actuelle.",
+            PrimaryRecommendationReasonCode.BidOutbid => "L'ordre doit être ajusté dans la limite de prix autorisée.",
+            _ => "Les preuves de marché et de portefeuille justifient cette action manuelle.",
+        };
+    }
 
     private sealed record MoneyResponse(string Copper)
     {

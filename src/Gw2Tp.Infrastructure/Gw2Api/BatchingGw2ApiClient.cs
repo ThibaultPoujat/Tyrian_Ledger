@@ -1,4 +1,6 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Infrastructure.Diagnostics;
+using System.Diagnostics;
 
 namespace Gw2Tp.Infrastructure.Gw2Api;
 
@@ -34,11 +36,15 @@ internal sealed class BatchingGw2ApiClient : IGw2ApiClient
     internal const int MaximumBatchSize = 200;
 
     private readonly IGw2ApiTransport _transport;
+    private readonly SafeTransportDiagnosticBuffer? _diagnostics;
 
-    public BatchingGw2ApiClient(IGw2ApiTransport transport)
+    public BatchingGw2ApiClient(
+        IGw2ApiTransport transport,
+        SafeTransportDiagnosticBuffer? diagnostics = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         _transport = transport;
+        _diagnostics = diagnostics;
     }
 
     public Task<Gw2ApiResult<IReadOnlyList<int>>> GetPriceItemIdsAsync(
@@ -48,19 +54,20 @@ internal sealed class BatchingGw2ApiClient : IGw2ApiClient
     public Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>> GetPricesAsync(
         IReadOnlyCollection<int> itemIds,
         CancellationToken cancellationToken = default) =>
-        GetBatchedAsync(itemIds, _transport.GetPricesAsync, static price => price.ItemId, cancellationToken);
+        GetBatchedAsync("commerce/prices", itemIds, _transport.GetPricesAsync, static price => price.ItemId, cancellationToken);
 
     public Task<Gw2ApiResult<IReadOnlyList<MarketListing>>> GetListingsAsync(
         IReadOnlyCollection<int> itemIds,
         CancellationToken cancellationToken = default) =>
-        GetBatchedAsync(itemIds, _transport.GetListingsAsync, static listing => listing.ItemId, cancellationToken);
+        GetBatchedAsync("commerce/listings", itemIds, _transport.GetListingsAsync, static listing => listing.ItemId, cancellationToken);
 
     public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(
         IReadOnlyCollection<int> itemIds,
         CancellationToken cancellationToken = default) =>
-        GetBatchedAsync(itemIds, _transport.GetItemMetadataAsync, static item => item.ItemId, cancellationToken);
+        GetBatchedAsync("items", itemIds, _transport.GetItemMetadataAsync, static item => item.ItemId, cancellationToken);
 
-    private static async Task<Gw2ApiResult<IReadOnlyList<T>>> GetBatchedAsync<T>(
+    private async Task<Gw2ApiResult<IReadOnlyList<T>>> GetBatchedAsync<T>(
+        string operation,
         IReadOnlyCollection<int> itemIds,
         Func<IReadOnlyCollection<int>, CancellationToken, Task<Gw2ApiResult<IReadOnlyList<T>>>> getBatchAsync,
         Func<T, int> getItemId,
@@ -68,22 +75,42 @@ internal sealed class BatchingGw2ApiClient : IGw2ApiClient
     {
         var requestedItemIds = ValidateAndOrderItemIds(itemIds);
         var values = new List<T>(requestedItemIds.Length);
+        var batchCount = (requestedItemIds.Length + MaximumBatchSize - 1) / MaximumBatchSize;
+        var batchIndex = 0;
 
         foreach (var itemIdBatch in requestedItemIds.Chunk(MaximumBatchSize))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            batchIndex++;
+            var timer = Stopwatch.StartNew();
             var batchResult = await getBatchAsync(itemIdBatch, cancellationToken).ConfigureAwait(false);
+            timer.Stop();
 
             if (!batchResult.IsSuccess)
             {
+                RecordBatch(operation, batchIndex, batchCount, itemIdBatch.Length, null, null, null, null,
+                    batchResult.IsPartialData, batchResult.ErrorCategory, timer.Elapsed);
                 return Gw2ApiResult<IReadOnlyList<T>>.Failure(batchResult.ErrorCategory!.Value);
             }
 
-            if (batchResult.IsPartialData || batchResult.Value is null ||
-                !ContainsExactlyRequestedItemIds(batchResult.Value, itemIdBatch, getItemId))
+            if (batchResult.IsPartialData || batchResult.Value is null)
             {
+                RecordBatch(operation, batchIndex, batchCount, itemIdBatch.Length, batchResult.Value?.Count, null, null, null,
+                    batchResult.IsPartialData, Gw2ApiErrorCategory.IncompleteData, timer.Elapsed);
                 return Gw2ApiResult<IReadOnlyList<T>>.Failure(Gw2ApiErrorCategory.IncompleteData);
             }
+
+            var discrepancy = DescribeDiscrepancy(batchResult.Value, itemIdBatch, getItemId);
+            if (discrepancy.MissingCount > 0 || discrepancy.UnexpectedCount > 0 || discrepancy.DuplicateCount > 0)
+            {
+                RecordBatch(operation, batchIndex, batchCount, itemIdBatch.Length, batchResult.Value.Count,
+                    discrepancy.MissingCount, discrepancy.UnexpectedCount, discrepancy.DuplicateCount, false,
+                    Gw2ApiErrorCategory.IncompleteData, timer.Elapsed);
+                return Gw2ApiResult<IReadOnlyList<T>>.Failure(Gw2ApiErrorCategory.IncompleteData);
+            }
+
+            RecordBatch(operation, batchIndex, batchCount, itemIdBatch.Length, batchResult.Value.Count,
+                0, 0, 0, false, null, timer.Elapsed);
 
             values.AddRange(batchResult.Value);
         }
@@ -115,27 +142,56 @@ internal sealed class BatchingGw2ApiClient : IGw2ApiClient
         return orderedItemIds;
     }
 
-    private static bool ContainsExactlyRequestedItemIds<T>(
+    private static BatchDiscrepancy DescribeDiscrepancy<T>(
         IReadOnlyList<T> values,
         IReadOnlyCollection<int> requestedItemIds,
         Func<T, int> getItemId)
     {
-        if (values.Count != requestedItemIds.Count)
-        {
-            return false;
-        }
-
         var requested = requestedItemIds.ToHashSet();
         var received = new HashSet<int>();
+        var unexpected = 0;
+        var duplicates = 0;
         foreach (var value in values)
         {
             var itemId = getItemId(value);
-            if (!received.Add(itemId) || !requested.Contains(itemId))
-            {
-                return false;
-            }
+            if (!requested.Contains(itemId)) unexpected++;
+            else if (!received.Add(itemId)) duplicates++;
         }
 
-        return received.SetEquals(requested);
+        var missing = requested.Where(itemId => !received.Contains(itemId)).OrderBy(itemId => itemId).ToArray();
+        return new(missing, unexpected, duplicates);
+    }
+
+    private void RecordBatch(
+        string operation,
+        int batchIndex,
+        int batchCount,
+        int requestedItemIdCount,
+        int? responseItemIdCount,
+        int? missingItemIdCount,
+        int? unexpectedItemIdCount,
+        int? duplicateItemIdCount,
+        bool isPartialResponse,
+        Gw2ApiErrorCategory? errorCategory,
+        TimeSpan elapsed) =>
+        _diagnostics?.RecordMarketBatch(
+            operation,
+            batchIndex,
+            batchCount,
+            requestedItemIdCount,
+            responseItemIdCount,
+            missingItemIdCount,
+            unexpectedItemIdCount,
+            duplicateItemIdCount,
+            isPartialResponse,
+            errorCategory,
+            elapsed);
+
+    private sealed record BatchDiscrepancy(
+        IReadOnlyList<int> MissingItemIds,
+        int UnexpectedCount,
+        int DuplicateCount)
+    {
+        public int MissingCount => MissingItemIds.Count;
     }
 }

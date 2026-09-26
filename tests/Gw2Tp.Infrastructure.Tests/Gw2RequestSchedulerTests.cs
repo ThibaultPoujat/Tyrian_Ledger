@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -259,6 +260,33 @@ public sealed class Gw2RequestSchedulerTests
     }
 
     [Fact]
+    public async Task Sanitized_market_trace_records_http_status_and_retry_backoff_without_request_identifiers()
+    {
+        var diagnostics = new SafeTransportDiagnosticBuffer();
+        var delay = new RecordingDelay();
+        var handler = new SequenceHttpMessageHandler(
+            CreateResponseWithRetryAfter(HttpStatusCode.TooManyRequests, TimeSpan.FromSeconds(2)),
+            CreateJsonResponse(HttpStatusCode.OK, "[]"));
+        using var httpClient = CreateHttpClient(handler);
+        using var scheduler = CreateScheduler(delay: delay, diagnostics: diagnostics);
+        var apiClient = new Gw2ApiClient(httpClient, scheduler, diagnostics);
+
+        var result = await apiClient.GetListingsAsync([900001, 900002]);
+
+        Assert.True(result.IsSuccess);
+        var trace = diagnostics.SnapshotMarketGatewayDiagnostics();
+        var throttled = Assert.Single(trace, entry => entry.Stage == "http-attempt" && entry.HttpStatusCode == 429);
+        Assert.Equal("commerce/listings", throttled.Operation);
+        Assert.Equal(2, throttled.RequestedItemIdCount);
+        Assert.Equal(Gw2ApiErrorCategory.RateLimited, throttled.ErrorCategory);
+        var retry = Assert.Single(trace, entry => entry.Stage == "retry-backoff");
+        Assert.Equal("commerce/listings", retry.Operation);
+        Assert.Equal(1, retry.Attempt);
+        Assert.Equal(2_000, retry.BackoffMilliseconds);
+        Assert.DoesNotContain("900001", string.Join(' ', trace.Select(entry => entry.ToString())), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Bare_rate_limited_responses_use_bounded_exponential_backoff()
     {
         var delay = new RecordingDelay();
@@ -453,8 +481,9 @@ public sealed class Gw2RequestSchedulerTests
     private static Gw2RequestScheduler CreateScheduler(
         Gw2ApiSchedulerOptions? options = null,
         IGw2RequestDelay? delay = null,
-        ILogger? logger = null) =>
-        new(options ?? CreateOptions(), delay ?? new RecordingDelay(), logger);
+        ILogger? logger = null,
+        SafeTransportDiagnosticBuffer? diagnostics = null) =>
+        new(options ?? CreateOptions(), delay ?? new RecordingDelay(), logger, diagnostics);
 
     private static Gw2ApiSchedulerOptions CreateOptions(
         Gw2BackoffOptions? on429 = null,

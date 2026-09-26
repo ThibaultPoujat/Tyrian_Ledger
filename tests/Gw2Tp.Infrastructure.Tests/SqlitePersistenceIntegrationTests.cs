@@ -27,7 +27,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Migrator.MigrateAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], await database.GetMigrationVersionsAsync());
         Assert.Equal(
             [
                 "account_crafting_bank_entries",
@@ -53,6 +53,96 @@ public sealed class SqlitePersistenceIntegrationTests
                 "watchlist_entries",
             ],
             await database.GetTableNamesAsync());
+    }
+
+    [Fact]
+    public async Task Version_nine_crafting_entries_are_rebuilt_with_snapshot_foreign_keys_without_losing_rows()
+    {
+        await using var database = await TestDatabase.CreateAsync(migrate: false);
+        await database.Migrator.MigrateToAsync(7);
+
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                INSERT INTO account_profiles (id, account_scope_id, created_at_utc)
+                VALUES (1, 'historical-account', '2026-09-16T12:00:00.0000000+00:00');
+                CREATE TABLE account_crafting_snapshots (
+                    account_profile_id INTEGER PRIMARY KEY,
+                    captured_at_utc TEXT NOT NULL,
+                    bank_availability INTEGER NOT NULL CHECK (bank_availability BETWEEN 1 AND 3),
+                    bank_error_category INTEGER NULL CHECK (bank_error_category BETWEEN 0 AND 11),
+                    materials_availability INTEGER NOT NULL CHECK (materials_availability BETWEEN 1 AND 3),
+                    materials_error_category INTEGER NULL CHECK (materials_error_category BETWEEN 0 AND 11),
+                    recipes_availability INTEGER NOT NULL CHECK (recipes_availability BETWEEN 1 AND 3),
+                    recipes_error_category INTEGER NULL CHECK (recipes_error_category BETWEEN 0 AND 11),
+                    crafting_availability INTEGER NOT NULL CHECK (crafting_availability BETWEEN 1 AND 3),
+                    crafting_error_category INTEGER NULL CHECK (crafting_error_category BETWEEN 0 AND 11),
+                    FOREIGN KEY (account_profile_id) REFERENCES account_profiles(id) ON DELETE RESTRICT
+                );
+                CREATE TABLE account_crafting_bank_entries (
+                    account_profile_id INTEGER NOT NULL,
+                    item_id INTEGER NOT NULL,
+                    binding INTEGER NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    PRIMARY KEY (account_profile_id, item_id, binding),
+                    FOREIGN KEY (account_profile_id) REFERENCES account_profiles(id) ON DELETE RESTRICT
+                );
+                CREATE TABLE account_crafting_material_entries (
+                    account_profile_id INTEGER NOT NULL,
+                    item_id INTEGER NOT NULL,
+                    category_id INTEGER NOT NULL,
+                    binding INTEGER NOT NULL,
+                    quantity INTEGER NOT NULL,
+                    PRIMARY KEY (account_profile_id, item_id),
+                    FOREIGN KEY (account_profile_id) REFERENCES account_profiles(id) ON DELETE RESTRICT
+                );
+                CREATE TABLE account_crafting_recipe_unlocks (
+                    account_profile_id INTEGER NOT NULL,
+                    recipe_id INTEGER NOT NULL,
+                    PRIMARY KEY (account_profile_id, recipe_id),
+                    FOREIGN KEY (account_profile_id) REFERENCES account_profiles(id) ON DELETE RESTRICT
+                );
+                CREATE TABLE account_crafting_disciplines (
+                    account_profile_id INTEGER NOT NULL,
+                    discipline TEXT NOT NULL COLLATE BINARY,
+                    rating INTEGER NOT NULL,
+                    is_active INTEGER NOT NULL,
+                    PRIMARY KEY (account_profile_id, discipline),
+                    FOREIGN KEY (account_profile_id) REFERENCES account_profiles(id) ON DELETE RESTRICT
+                );
+                INSERT INTO account_crafting_snapshots VALUES (1, '2026-09-16T12:00:00.0000000+00:00', 1, NULL, 1, NULL, 1, NULL, 1, NULL);
+                INSERT INTO account_crafting_bank_entries VALUES (1, 42, 0, 3);
+                INSERT INTO account_crafting_material_entries VALUES (1, 43, 5, 1, 4);
+                INSERT INTO account_crafting_recipe_unlocks VALUES (1, 44);
+                INSERT INTO account_crafting_disciplines VALUES (1, 'Armorsmith', 500, 1);
+                INSERT INTO schema_migrations (version, name, applied_at_utc)
+                VALUES (8, 'account_crafting_snapshot_schema', '2026-09-16T12:00:00.0000000+00:00');
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await database.Migrator.MigrateToAsync(9);
+        await database.Migrator.MigrateAsync();
+
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], await database.GetMigrationVersionsAsync());
+        await using var validationConnection = await database.Factory.OpenConnectionAsync();
+        await using var validationCommand = validationConnection.CreateCommand();
+        validationCommand.CommandText = """
+            SELECT COUNT(*) FROM account_crafting_bank_entries
+            UNION ALL SELECT COUNT(*) FROM account_crafting_material_entries
+            UNION ALL SELECT COUNT(*) FROM account_crafting_recipe_unlocks
+            UNION ALL SELECT COUNT(*) FROM account_crafting_disciplines;
+            """;
+        var counts = new List<long>();
+        await using (var reader = await validationCommand.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync()) counts.Add(reader.GetInt64(0));
+        }
+        Assert.Equal([1, 1, 1, 1], counts);
+
+        validationCommand.CommandText = "SELECT \"table\" FROM pragma_foreign_key_list('account_crafting_bank_entries');";
+        Assert.Equal("account_crafting_snapshots", await validationCommand.ExecuteScalarAsync());
     }
 
     [Fact]
@@ -190,7 +280,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await database.Migrator.MigrateAsync();
 
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], await database.GetMigrationVersionsAsync());
         var stored = Assert.Single(await database.PersonalTradingPost.GetCompletedTransactionsAsync(account));
         Assert.Equal(transaction, stored.Transaction);
         Assert.Contains("last_sync_outcome", await database.GetAccountProfileColumnNamesAsync());
@@ -1342,7 +1432,7 @@ public sealed class SqlitePersistenceIntegrationTests
 
         await using var backup = File.OpenRead(olderBackupPath);
         Assert.Equal(LocalDataRestoreOutcome.Restored, (await database.Recovery.RestoreAsync(backup)).Outcome);
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], await database.GetMigrationVersionsAsync());
     }
 
     [Fact]
@@ -1393,7 +1483,7 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(1, await database.GetTableCountAsync("market_order_book_snapshots"));
         Assert.Equal(1, await database.GetTableCountAsync("market_order_book_levels"));
         Assert.Equal([84], (await database.Watchlist.GetAllAsync()).Select(entry => entry.ItemId));
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], await database.GetMigrationVersionsAsync());
         Assert.True(File.Exists(Path.Combine(database.Recovery.GetLocation().BackupDirectoryPath, backup.FileName)));
         Assert.False(File.Exists(staleIncomingPath));
         Assert.False(File.Exists(staleDatabasePath));
@@ -1410,7 +1500,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Recovery.CleanupStaleRestoreArtifactsAsync();
 
         Assert.True(File.Exists(database.Path));
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9], await database.GetMigrationVersionsAsync());
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], await database.GetMigrationVersionsAsync());
     }
 
     private static CompletedPersonalTradingPostTransaction CompletedTransaction(

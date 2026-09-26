@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Infrastructure.Diagnostics;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Xunit;
 
@@ -47,6 +48,68 @@ public sealed class BatchingGw2ApiClientTests
         Assert.False(result.IsSuccess);
         Assert.Null(result.Value);
         Assert.Equal(Gw2ApiErrorCategory.IncompleteData, result.ErrorCategory);
+    }
+
+    [Fact]
+    public async Task Listing_response_id_omission_is_incomplete_and_records_only_sanitized_batch_counts()
+    {
+        var diagnostics = new SafeTransportDiagnosticBuffer();
+        var transport = new StubMarketTransport(
+            getListingsAsync: (itemIds, _) => Task.FromResult(
+                Gw2ApiResult<IReadOnlyList<MarketListing>>.Success(
+                [
+                    new MarketListing(itemIds.Min(), [], []),
+                ])));
+        var client = new BatchingGw2ApiClient(transport, diagnostics);
+
+        var result = await client.GetListingsAsync([900001, 900002]);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(Gw2ApiErrorCategory.IncompleteData, result.ErrorCategory);
+        var trace = Assert.Single(diagnostics.SnapshotMarketGatewayDiagnostics());
+        Assert.Equal("batch-completeness", trace.Stage);
+        Assert.Equal("commerce/listings", trace.Operation);
+        Assert.Equal(1, trace.BatchIndex);
+        Assert.Equal(1, trace.BatchCount);
+        Assert.Equal(2, trace.RequestedItemIdCount);
+        Assert.Equal(1, trace.ResponseItemIdCount);
+        Assert.Equal(1, trace.MissingItemIdCount);
+        Assert.Equal(Gw2ApiErrorCategory.IncompleteData, trace.ErrorCategory);
+        Assert.False(trace.IsPartialResponse);
+    }
+
+    [Fact]
+    public async Task Listing_read_rejects_partial_and_response_id_discrepancies()
+    {
+        var partialDiagnostics = new SafeTransportDiagnosticBuffer();
+        var partialClient = new BatchingGw2ApiClient(new StubMarketTransport(
+            getListingsAsync: (itemIds, _) => Task.FromResult(
+                Gw2ApiResult<IReadOnlyList<MarketListing>>.Success(
+                    [new MarketListing(itemIds.First(), [], [])], isPartialData: true))), partialDiagnostics);
+
+        var partial = await partialClient.GetListingsAsync([900001, 900002]);
+
+        Assert.Equal(Gw2ApiErrorCategory.IncompleteData, partial.ErrorCategory);
+        var partialTrace = Assert.Single(partialDiagnostics.SnapshotMarketGatewayDiagnostics());
+        Assert.True(partialTrace.IsPartialResponse);
+        Assert.Equal(Gw2ApiErrorCategory.IncompleteData, partialTrace.ErrorCategory);
+
+        var mismatchDiagnostics = new SafeTransportDiagnosticBuffer();
+        var mismatchClient = new BatchingGw2ApiClient(new StubMarketTransport(
+            getListingsAsync: (_, _) => Task.FromResult(
+                Gw2ApiResult<IReadOnlyList<MarketListing>>.Success(
+                [
+                    new MarketListing(900001, [], []),
+                    new MarketListing(999999, [], []),
+                ]))), mismatchDiagnostics);
+
+        var mismatch = await mismatchClient.GetListingsAsync([900001, 900002]);
+
+        Assert.Equal(Gw2ApiErrorCategory.IncompleteData, mismatch.ErrorCategory);
+        var mismatchTrace = Assert.Single(mismatchDiagnostics.SnapshotMarketGatewayDiagnostics());
+        Assert.Equal(1, mismatchTrace.MissingItemIdCount);
+        Assert.Equal(1, mismatchTrace.UnexpectedItemIdCount);
+        Assert.Equal(Gw2ApiErrorCategory.IncompleteData, mismatchTrace.ErrorCategory);
     }
 
     [Fact]

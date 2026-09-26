@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import MoneyDisplay from './MoneyDisplay';
+import { useViewQuery } from './viewQueryCache';
 
 type Money = { copper: string };
 type RecommendationState = 'ready' | 'notSynchronized' | 'accountEvidenceStale' | 'accountUnavailable' | 'evidenceUnavailable';
@@ -109,6 +110,46 @@ type RecommendationResponse = {
     remainingCashAfterSizing: Money;
   } | null;
   actions: RecommendationRecord[];
+  decisionLoop?: DecisionLoopStatus | null;
+  notifications?: NotificationRecord[];
+};
+
+type DecisionLoopStatus = {
+  state: 'neverRun' | 'running' | 'ready' | 'degraded';
+  lastCycleAtUtc: string | null;
+  nextCycleAtUtc: string | null;
+  consecutiveFailures: number;
+  lastErrorCode: string | null;
+  notificationsEnabled: boolean;
+  accountCacheScope?: string | null;
+  market: SourceStatus;
+  account: SourceStatus;
+  history: SourceStatus;
+  crafting: SourceStatus;
+  timing?: { totalMilliseconds: number; synchronizationMilliseconds: number; craftingRefreshMilliseconds: number; decisionMilliseconds: number } | null;
+};
+
+type SourceStatus = {
+  state: 'unknown' | 'fresh' | 'failed';
+  lastSuccessfulAtUtc: string | null;
+  errorCode: string | null;
+};
+
+type NotificationRecord = {
+  id: string;
+  kind: 'signal' | 'plan';
+  route: 'signals' | 'plans';
+  action: string;
+  actionLabel: string;
+  itemId: number;
+  itemName: string;
+  quantity: number;
+  unitPrice: Money | null;
+  reason: string;
+  reasonCode: string | null;
+  planId: string | null;
+  urgency: 'high' | 'normal';
+  createdAtUtc: string;
 };
 
 const allActions: RecommendationAction[] = [
@@ -122,37 +163,39 @@ const actionable = new Set<RecommendationAction>([
 ]);
 
 export default function RecommendationPanel({ refreshGeneration = 0 }: { refreshGeneration?: number }) {
-  const [result, setResult] = useState<RecommendationResponse | null>(null);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const requestGeneration = useRef(0);
-  const [, setFreshnessTick] = useState(0);
+  const firstRefresh = useRef(true);
+  const schedulerRef = useRef<DecisionLoopStatus | null>(null);
+  const deliveredNotificationIds = useRef(new Set<string>());
+  const [freshnessTick, setFreshnessTick] = useState(0);
+  const query = useViewQuery(useMemo(() => ({
+    key: 'recommendations',
+    url: '/api/recommendations',
+    init: { headers: { Accept: 'application/json', 'X-Tyrian-Ledger-Request': '1' } },
+    validate: isRecommendationResponse,
+    acceptResponse: (response: Response, payload: RecommendationResponse) => response.ok || payload.state !== 'ready',
+    scopeFrom: (payload: RecommendationResponse) => payload.decisionLoop?.accountCacheScope,
+  }), []));
+  const result = query.data;
+  const status: 'loading' | 'ready' | 'error' = query.phase === 'loading' ? 'loading' : query.phase === 'error' ? 'error' : 'ready';
+  const load = (manual = false) => query.refresh(manual ? {
+    headers: { Accept: 'application/json', 'X-Tyrian-Ledger-Request': '1', 'X-Tyrian-Ledger-Manual-Refresh': '1' },
+  } : undefined);
 
-  const load = () => {
-    const generation = ++requestGeneration.current;
-    setStatus('loading');
-    void fetch('/api/recommendations', {
-      headers: { Accept: 'application/json', 'X-Tyrian-Ledger-Request': '1' },
-    }).then(async response => {
-      const payload: unknown = await response.json();
-      if (generation !== requestGeneration.current) return;
-      if (!isRecommendationResponse(payload) || (!response.ok && payload.state === 'ready')) {
-        setStatus('error');
-        return;
-      }
-      setResult(payload);
-      setStatus('ready');
-    }).catch(() => {
-      if (generation === requestGeneration.current) setStatus('error');
-    });
-  };
+  useEffect(() => { schedulerRef.current = result?.decisionLoop ?? null; }, [result]);
 
   useEffect(() => {
-    load();
-    return () => { requestGeneration.current++; };
+    const manual = !firstRefresh.current;
+    firstRefresh.current = false;
+    if (manual) void load(true);
   }, [refreshGeneration]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setFreshnessTick(tick => tick + 1), 30_000);
+    const timer = window.setInterval(() => {
+      setFreshnessTick(tick => tick + 1);
+      const nextCycleAtUtc = schedulerRef.current?.nextCycleAtUtc;
+      if (nextCycleAtUtc && Date.parse(nextCycleAtUtc) > Date.now()) return;
+      load();
+    }, 30_000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -170,6 +213,27 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
     return () => window.clearTimeout(timer);
   }, [result?.accountEvidenceExpiresAtUtc]);
 
+  useEffect(() => {
+    const notifications = result?.notifications ?? [];
+    const activeIds = new Set(notifications.map(notification => notification.id));
+    deliveredNotificationIds.current.forEach(id => {
+      if (!activeIds.has(id)) deliveredNotificationIds.current.delete(id);
+    });
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+
+    notifications.forEach(notification => {
+      if (deliveredNotificationIds.current.has(notification.id)) return;
+      try {
+        new Notification(notification.actionLabel, {
+          body: `${notification.itemName}${notification.quantity > 0 ? ` · ${notification.quantity}` : ''}`,
+        });
+      } catch {
+        // The in-app inbox remains the authoritative fallback when OS delivery is unavailable.
+      }
+      deliveredNotificationIds.current.add(notification.id);
+    });
+  }, [result?.notifications]);
+
   const signals = useMemo(
     () => (result?.actions ?? [])
       .filter(record => actionable.has(record.action)),
@@ -178,6 +242,7 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
   const latestHistoryObservation = useMemo(() => latestHistoryObservationAt(result?.actions ?? []), [result]);
   const accountEvidenceExpired = isExpired(result?.accountEvidenceExpiresAtUtc ?? null);
   const readyForSignals = status === 'ready' && result?.state === 'ready' && !accountEvidenceExpired;
+  const scheduler = result?.decisionLoop ?? null;
 
   return (
     <section aria-labelledby="signals-feed-title" className="signals-feed">
@@ -194,18 +259,22 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
               : 'Mes Signaux'}
           </h2>
         </div>
-        <button className="refresh-signals" disabled={status === 'loading'} onClick={load} type="button">
-          {status === 'loading' ? 'Actualisation en cours…' : 'Actualiser'}
+        <button className="refresh-signals" disabled={status === 'loading'} onClick={() => load(true)} type="button">
+          {query.phase === 'refreshing' ? 'Actualisation en cours…' : 'Actualiser'}
         </button>
       </div>
 
+      {query.phase === 'refreshing' && <p className="operational-status" role="status">Données précédentes affichées pendant l’actualisation…</p>}
+      {query.isStale && <p className="operational-status operational-status--warning" role="status">La validité des signaux est en cours de vérification.</p>}
       <OperationalStatus status={status} result={result} accountEvidenceExpired={accountEvidenceExpired} />
+      <DecisionLoopHealth scheduler={scheduler} />
+      <NotificationInbox notifications={result?.notifications ?? []} onRefresh={() => load()} />
 
       {result?.state === 'ready' && (
         <details className="data-freshness">
           <summary>
             <span>{marketFreshness(result.scannerObservedAtUtc)}</span>
-            <span className="freshness-auto">Actualisation à la demande</span>
+            <span className="freshness-auto">{automaticRefreshLabel(scheduler, freshnessTick)}</span>
           </summary>
           <div className="freshness-grid">
             <div>
@@ -248,6 +317,75 @@ export default function RecommendationPanel({ refreshGeneration = 0 }: { refresh
       )}
     </section>
   );
+}
+
+function DecisionLoopHealth({ scheduler }: { scheduler: DecisionLoopStatus | null }) {
+  if (scheduler === null) return null;
+  const sources: Array<[string, SourceStatus]> = [
+    ['Marché', scheduler.market], ['Compte ArenaNet', scheduler.account], ['Historique marché', scheduler.history], ['Artisanat', scheduler.crafting],
+  ];
+  const failed = sources.filter(([, source]) => source.state === 'failed');
+  return (
+    <aside aria-live="polite" className={scheduler.state === 'degraded' ? 'operational-status operational-status--warning' : 'operational-status'} role="status">
+      {scheduler.lastCycleAtUtc && <span>Dernier cycle automatique : {new Date(scheduler.lastCycleAtUtc).toLocaleString('fr-FR')}. </span>}
+      {scheduler.nextCycleAtUtc && <span>Prochain cycle : {new Date(scheduler.nextCycleAtUtc).toLocaleString('fr-FR')}. </span>}
+      {scheduler.state === 'running' && <span>Actualisation automatique en cours. </span>}
+      {failed.length > 0 && <span>Source{failed.length === 1 ? '' : 's'} à récupérer : {failed.map(([name, source]) => `${name}${source.errorCode ? ` (${sourceFailure(source.errorCode)})` : ''}`).join(', ')}. Les actions dépendantes restent masquées.</span>}
+      {scheduler.timing && <span> Dernier calcul : {(scheduler.timing.totalMilliseconds / 1000).toFixed(1)} s.</span>}
+    </aside>
+  );
+}
+
+function sourceFailure(code: string) { return ({ InvalidPayload: 'réponse invalide', RateLimited: 'limite ArenaNet', UpstreamUnavailable: 'service indisponible', TransportFailure: 'connexion interrompue', crafting_refresh_failed: 'actualisation échouée' } as Record<string, string>)[code] ?? 'vérification requise'; }
+
+function NotificationInbox({ notifications, onRefresh }: { notifications: NotificationRecord[]; onRefresh: () => void }) {
+  if (notifications.length === 0) return null;
+
+  const acknowledge = (id: string) => {
+    void fetch(`/api/notifications/${encodeURIComponent(id)}/acknowledge`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'X-Tyrian-Ledger-Request': '1' },
+    }).finally(onRefresh);
+  };
+
+  const openRoute = (route: NotificationRecord['route']) => {
+    window.dispatchEvent(new CustomEvent('tyrian-ledger:navigate', { detail: route }));
+  };
+
+  return (
+    <aside aria-label="Notifications locales" className="local-notifications" role="status">
+      <div className="local-notifications__header">
+        <strong>À traiter</strong>
+        <span>{notifications.length === 1 ? '1 nouvelle action' : `${notifications.length} nouvelles actions`}</span>
+      </div>
+      <ul>
+        {notifications.map(notification => (
+          <li className={notification.urgency === 'high' ? 'local-notification local-notification--urgent' : 'local-notification'} key={notification.id}>
+            <div>
+              <strong>{notification.actionLabel}</strong>
+              <span>{notification.itemName}{notification.quantity > 0 ? ` · ${notification.quantity}` : ''}</span>
+              {notification.unitPrice && <MoneyDisplay compact money={notification.unitPrice} />}
+              <p>{notification.reason}</p>
+            </div>
+            <div className="local-notification__actions">
+              <button onClick={() => openRoute(notification.route)} type="button">{notification.route === 'plans' ? 'Ouvrir le plan' : 'Voir le signal'}</button>
+              <button aria-label={`Masquer la notification ${notification.itemName}`} onClick={() => acknowledge(notification.id)} type="button">Masquer</button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  );
+}
+
+function automaticRefreshLabel(scheduler: DecisionLoopStatus | null, _tick: number): string {
+  if (scheduler === null) return 'Actualisation à la demande';
+  if (scheduler.state === 'running') return 'Actualisation en cours…';
+  if (scheduler.nextCycleAtUtc) {
+    const seconds = Math.max(0, Math.ceil((new Date(scheduler.nextCycleAtUtc).getTime() - Date.now()) / 1000));
+    return `Prochaine actualisation dans ${seconds < 60 ? `${seconds} s` : `${Math.ceil(seconds / 60)} min`}`;
+  }
+  return 'Actualisation automatique';
 }
 
 function OperationalStatus({
