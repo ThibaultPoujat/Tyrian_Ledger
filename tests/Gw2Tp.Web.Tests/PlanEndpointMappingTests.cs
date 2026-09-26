@@ -193,6 +193,31 @@ public sealed class PlanEndpointMappingTests
         Assert.Empty(await service.GetExecutableSignalCandidateIdsAsync(decision, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task Selection_trace_preserves_the_real_fourteen_candidate_zero_plan_regression_shape()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var profile = new AccountProfile(1, "scope-a", now, now);
+        var portfolio = new AccountPortfolioSnapshot(new AccountScope("scope-a"), new Money(100), CapturedAtUtc: now);
+        var existingPlan = new PlanRecord("existing", 1, "existing", PlanAttention.Passive, PlanState.InProgress, PlanReconciliationState.None, now,
+            [new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", 1, Money.Zero)], Money.Zero, 0,
+            [new PlanStep("buy", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, new Money(1), [], PlanStepState.Current)], [], 0, PlanHysteresisPolicy.Default);
+        var capacityExcluded = Enumerable.Range(0, 13)
+            .Select(index => Candidate($"recommendation:Sell:Inventory:{100 + index}", new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", 1, Money.Zero), utility: 1))
+            .ToArray();
+        var negativeUtility = Candidate("recommendation:Sell:Inventory:999", new PlanResourceRequirement(PlanResourceKind.Inventory, "43", 1, Money.Zero), utility: -1);
+        var service = new PlanEndpointService(null!, null!, null!, null!, null!, null!, null!, new PlanOrchestrationService(), null!);
+        var decision = new PlanDecisionSnapshot(profile, portfolio, new Dictionary<string, long> { ["2:43"] = 1 }, RecommendationResult(now), [existingPlan], capacityExcluded.Append(negativeUtility).ToArray(), true, new PlanDecisionTiming(), now);
+
+        var trace = await service.GetSelectionTraceAsync(decision, CancellationToken.None);
+
+        Assert.Equal(14, trace.GeneratedCandidates);
+        Assert.Equal(14, trace.HardEligibleCandidates);
+        Assert.Equal(1, trace.ResourceEligibleCandidates);
+        Assert.Equal(0, trace.SelectedCandidates);
+        Assert.Empty(trace.ExecutableSignalCandidateIds);
+    }
+
     private static PlanCandidate Candidate(string id, PlanResourceRequirement requirement, long utility) => new(
         id, 1, id, PlanAttention.Active,
         [new PlanStep($"{id}:step", PlanStepAction.SellNow, 42, "Objet", 1, new Money(25), [], PlanStepState.Pending)],

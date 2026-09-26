@@ -293,16 +293,36 @@ internal sealed class PlanEndpointService(
 
     internal async Task<IReadOnlySet<string>> GetExecutableSignalCandidateIdsAsync(PlanDecisionSnapshot decision, CancellationToken cancellationToken)
     {
+        var trace = await GetSelectionTraceAsync(decision, cancellationToken).ConfigureAwait(false);
+        return trace.ExecutableSignalCandidateIds;
+    }
+
+    /// <summary>
+    /// Captures the result of the canonical selection pass for display. This is
+    /// intentionally a projection of <see cref="SelectCandidatesAsync"/>, not
+    /// an explanation-only selector with its own resource rules.
+    /// </summary>
+    internal async Task<PlanDecisionSelectionTrace> GetSelectionTraceAsync(PlanDecisionSnapshot decision, CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(decision);
         if (!decision.AccountEvidenceAvailable || decision.Recommendations?.State != PrimaryRecommendationState.Ready)
-            return new HashSet<string>(StringComparer.Ordinal);
+            return PlanDecisionSelectionTrace.Unavailable(decision.Candidates.Count, decision.Recommendations?.EvidenceError ?? "recommendations_not_ready");
 
         var selection = await SelectCandidatesAsync(decision.Snapshot, decision.VerifiedQuantities, decision.Recommendations,
             decision.Candidates, decision.Plans, cancellationToken).ConfigureAwait(false);
-        return selection.Selection.Plans
-            .Select(candidate => candidate.Id)
-            .Where(id => id.StartsWith("recommendation:", StringComparison.Ordinal))
-            .ToHashSet(StringComparer.Ordinal);
+        return new(
+            decision.Candidates.Count,
+            selection.HardEligible.Count,
+            selection.ResourceEligible.Count,
+            selection.Selection.Plans.Count,
+            selection.PortfolioSizingUnavailable,
+            selection.Selection.ExcludedCandidateIds,
+            selection.Selection.Plans.Select(candidate => candidate.Id)
+                .Where(id => id.StartsWith("recommendation:", StringComparison.Ordinal))
+                .ToHashSet(StringComparer.Ordinal),
+            selection.PortfolioSizingUnavailable && selection.SafeWithoutPortfolioSizing.Count == 0
+                ? decision.Recommendations.EvidenceError ?? "portfolio_sizing_unavailable"
+                : null);
     }
 
     /// <summary>
@@ -742,4 +762,20 @@ internal sealed record PlanDecisionSnapshot(
     IReadOnlyList<PlanCandidate> Candidates,
     bool AccountEvidenceAvailable,
     PlanDecisionTiming Timing,
-    DateTimeOffset CachedAtUtc);
+    DateTimeOffset CachedAtUtc,
+    PlanDecisionSelectionTrace? SelectionTrace = null);
+
+/// <summary>Sanitized selection lineage retained with one decision projection.</summary>
+internal sealed record PlanDecisionSelectionTrace(
+    int GeneratedCandidates,
+    int HardEligibleCandidates,
+    int ResourceEligibleCandidates,
+    int SelectedCandidates,
+    bool PortfolioSizingUnavailable,
+    IReadOnlyList<string> ExcludedCandidateIds,
+    IReadOnlySet<string> ExecutableSignalCandidateIds,
+    string? UnavailableReason)
+{
+    internal static PlanDecisionSelectionTrace Unavailable(int generatedCandidates, string reason) => new(
+        generatedCandidates, 0, 0, 0, true, [], new HashSet<string>(StringComparer.Ordinal), reason);
+}

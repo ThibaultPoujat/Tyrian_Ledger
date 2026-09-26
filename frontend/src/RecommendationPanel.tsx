@@ -546,6 +546,7 @@ function SignalCard({ record }: { record: RecommendationRecord }) {
                 <p>{record.history ? `Historique marché : ${sourceAge(record.history.lastObservedAtUtc, 'aucun échantillon exploitable', 'Dernier échantillon enregistré')}.` : 'Historique marché : inconnu.'}</p>
               </section>
             </div>
+            <button className="calculation-link" onClick={() => window.dispatchEvent(new CustomEvent('tyrian-ledger:open-calculation', { detail: `${record.source}:${record.action}:${record.itemId}` }))} type="button">Voir le calcul complet dans Réglages</button>
           </details>
         </div>
       </article>

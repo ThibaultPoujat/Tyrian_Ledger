@@ -237,10 +237,22 @@ public static class Program
             async (
                 HttpContext context,
                 IAccountCraftingSnapshotService accountCraftingSnapshotService,
+                IPersonalTradingPostGateway personalTradingPost,
+                PlanEndpointService plans,
                 CancellationToken cancellationToken) =>
             {
                 var refresh = await accountCraftingSnapshotService.RefreshWithOutcomeAsync(cancellationToken).ConfigureAwait(false);
                 var result = refresh.Result;
+                if (result.IsSuccess)
+                {
+                    var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
+                    if (scope.IsSuccess && scope.Value is not null)
+                    {
+                        // The old decision could have used earlier verified materials.
+                        // Clear it before any explanation read can reuse that authority.
+                        plans.InvalidateLoopDecision(scope.Value.AccountId);
+                    }
+                }
                 if (!result.IsSuccess && result.ErrorCategory is
                     Gw2ApiErrorCategory.CredentialUnavailable or
                     Gw2ApiErrorCategory.RateLimited or
@@ -417,6 +429,7 @@ public static class Program
         app.MapHistoricalMarketAnalyticsEndpoint();
         app.MapCraftingOpportunityEndpoints();
         app.MapPlanEndpoints();
+        app.MapCalculationExplanationEndpoints();
         app.Map("/api/{**path}", () => Results.NotFound(new { error = "api_route_not_found" }));
 
         MapFrontend(app, builder.Configuration);

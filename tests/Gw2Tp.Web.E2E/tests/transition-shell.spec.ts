@@ -179,7 +179,7 @@ test('presents the execution-first Signal flow at 1920x1080 using only mocked lo
 
 test('keeps the primary shell fixed across normal, zero, stale and degraded states at 1920x1080', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
-  let response = mockRecommendations();
+  let response: Record<string, unknown> = mockRecommendations();
   await page.route('**/api/recommendations', route => route.fulfill({
     contentType: 'application/json',
     status: response.state === 'evidenceUnavailable' ? 503 : 200,
@@ -257,6 +257,27 @@ test('keeps managed local backup recovery usable from Réglages on a narrow view
   const managedBackup = page.getByLabel('Sauvegarde gérée');
   await expect.poll(async () => (await managedBackup.locator('option').count()) > 1).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('renders calculation explanations from a sanitized backend projection at desktop and narrow widths', async ({ page }, testInfo) => {
+  await page.route('**/api/calculation-explanations', route => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(mockCalculationExplanation()),
+  }));
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Réglages' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Comprendre mes calculs' })).toBeVisible();
+  await expect(page.getByText('Liquidités vérifiées')).toBeVisible();
+  await expect(page.getByText('Réserve', { exact: true })).toBeVisible();
+  await page.getByText('Prix, frais et profit').click();
+  await expect(page.getByText(/5 % de frais de mise en vente/)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('calculation-explanation-desktop.png'), fullPage: true });
+
+  await page.setViewportSize({ width: 375, height: 720 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('calculation-explanation-narrow.png'), fullPage: true });
 });
 
 type PrimaryLayout = {
@@ -383,5 +404,26 @@ function mockRecommendations() {
       action(6, 'Sixième opportunité'),
       action(7, 'À attendre', 'WAIT'),
     ],
+  };
+}
+
+function mockCalculationExplanation() {
+  const source = { state: 'known', observedAtUtc: '2026-09-26T08:00:00Z', expiresAtUtc: '2030-09-26T08:05:00Z' };
+  return {
+    version: 1,
+    state: 'ready',
+    theory: {
+      positionSizing: { version: 1, basisPointsPerWhole: 10000, reserveRounding: 'up', capRounding: 'down', purchaseOnly: true },
+      fees: { version: 1, listingFeeBasisPoints: 500, exchangeFeeBasisPoints: 1000, minimumPositiveFeeCopper: '1', rounding: 'up_independently', fractionalCopperRoundingExternallyVerified: false, verification: 'VERIFY-013' },
+      crafting: { missingInputPolicy: 'unknown_never_zero', listingIdentifierPolicy: 'VERIFY-004' },
+    },
+    current: {
+      generatedAtUtc: '2026-09-26T08:00:00Z', cachedAtUtc: '2026-09-26T08:00:00Z', expiresAtUtc: '2030-09-26T08:05:00Z',
+      policy: { cashReserveBasisPoints: 1500, positionSizingVersion: 1, feeVersion: 1, fifoVersion: 1, minimumProfitCopper: '100', minimumRoiBasisPoints: 500 },
+      capital: { availableCash: { copper: '100000' }, totalBankroll: { copper: '150000' }, cashReserve: { copper: '22500' }, reserveStatus: 'Satisfied', reserveShortfall: { copper: '0' }, remainingCashAfterSizing: { copper: '77500' }, evidenceState: 'known' },
+      sources: { account: source, orders: source, market: source, crafting: { state: 'separate_snapshot', observedAtUtc: null, expiresAtUtc: null } },
+    },
+    actions: [],
+    selection: { generatedCandidates: 14, hardEligibleCandidates: 14, resourceEligibleCandidates: 1, selectedCandidates: 0 },
   };
 }
