@@ -56,7 +56,7 @@ public sealed class PlanEndpointMappingTests
             new DecisionLoopSchedulerSettings(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15)),
             () => now.AddMinutes(1));
 
-        store.Publish(snapshot, store.BeginLoopRun());
+        Assert.True(store.TryPublishAndObserve(snapshot, store.BeginLoopRun(), static () => { }));
 
         Assert.Same(fresh, snapshot.Recommendations);
         Assert.Equal("scope-a", snapshot.Profile.AccountScopeId);
@@ -78,12 +78,12 @@ public sealed class PlanEndpointMappingTests
             new DecisionLoopSchedulerSettings(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15)),
             () => clock);
 
-        store.Publish(snapshot, store.BeginLoopRun());
+        Assert.True(store.TryPublishAndObserve(snapshot, store.BeginLoopRun(), static () => { }));
         clock = now.AddMinutes(3);
         Assert.False(store.TryGet("scope-a", out _));
 
         clock = now;
-        store.Publish(snapshot, store.BeginLoopRun());
+        Assert.True(store.TryPublishAndObserve(snapshot, store.BeginLoopRun(), static () => { }));
         store.Invalidate();
         Assert.False(store.TryGet("scope-a", out _));
     }
@@ -99,7 +99,7 @@ public sealed class PlanEndpointMappingTests
 
         _ = store.BeginLoopRun();
         Assert.True(store.TryGetActive(out var active));
-        store.Publish(snapshot, 1);
+        Assert.True(store.TryPublishAndObserve(snapshot, 1, static () => { }));
 
         Assert.Same(snapshot, await active!);
         store.CompleteLoopRun(1);
@@ -118,11 +118,85 @@ public sealed class PlanEndpointMappingTests
 
         var oldGeneration = store.BeginLoopRun();
         store.Invalidate(); // Simulates a successful Start, Complete, or Undo while that loop is still running.
-        store.Publish(snapshot, oldGeneration);
+        Assert.False(store.TryPublishAndObserve(snapshot, oldGeneration, static () => throw new InvalidOperationException("A stale loop must not observe notifications.")));
         store.CompleteLoopRun(oldGeneration);
 
         Assert.False(store.TryGet("scope-a", out _));
     }
+
+    [Fact]
+    public async Task A_plan_mutation_cannot_interleave_between_projection_publication_and_notification_observation()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var profile = new AccountProfile(1, "scope-a", now, now);
+        var portfolio = new AccountPortfolioSnapshot(new AccountScope("scope-a"), new Money(100), CapturedAtUtc: now);
+        var snapshot = new PlanDecisionSnapshot(profile, portfolio, new Dictionary<string, long>(), RecommendationResult(now), [], [], true, new PlanDecisionTiming(), now);
+        var store = new PlanDecisionProjectionStore(new DecisionLoopSchedulerSettings(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15)), () => now);
+        var generation = store.BeginLoopRun();
+        var observationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowObservationToFinish = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invalidationStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var publish = Task.Run(() => store.TryPublishAndObserve(snapshot, generation, () =>
+        {
+            observationStarted.TrySetResult(true);
+            allowObservationToFinish.Task.GetAwaiter().GetResult();
+        }));
+        await observationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var invalidate = Task.Run(() =>
+        {
+            invalidationStarted.TrySetResult(true);
+            store.Invalidate();
+        });
+        await invalidationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.False(invalidate.IsCompleted);
+        allowObservationToFinish.TrySetResult(true);
+        Assert.True(await publish.WaitAsync(TimeSpan.FromSeconds(2)));
+        await invalidate.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(store.TryGet("scope-a", out _));
+    }
+
+    [Fact]
+    public async Task Loop_notification_candidates_require_the_same_verified_inventory_as_plan_selection()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var profile = new AccountProfile(1, "scope-a", now, now);
+        var portfolio = new AccountPortfolioSnapshot(new AccountScope("scope-a"), new Money(100), CapturedAtUtc: now);
+        var candidate = new PlanCandidate(
+            "recommendation:Sell:Inventory:42", 1, "recommendation:Sell:Inventory:42", PlanAttention.Active,
+            [new PlanStep("sell", PlanStepAction.SellNow, 42, "Objet", 2, new Money(25), [], PlanStepState.Pending)],
+            [new PlanResourceRequirement(PlanResourceKind.Inventory, "42", 2, Money.Zero)],
+            new Money(10), Money.Zero, 10_000, 0, 600, 1, true, []);
+        var service = new PlanEndpointService(null!, null!, null!, null!, null!, null!, null!, new PlanOrchestrationService(), null!);
+        var insufficient = new PlanDecisionSnapshot(profile, portfolio, new Dictionary<string, long> { ["2:42"] = 1 }, RecommendationResult(now), [], [candidate], true, new PlanDecisionTiming(), now);
+        var sufficient = insufficient with { VerifiedQuantities = new Dictionary<string, long> { ["2:42"] = 2 } };
+
+        Assert.Empty(await service.GetExecutableSignalCandidateIdsAsync(insufficient, CancellationToken.None));
+        Assert.Contains(candidate.Id, await service.GetExecutableSignalCandidateIdsAsync(sufficient, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Loop_notification_candidates_exclude_generic_resource_conflicts_and_negative_utility()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var profile = new AccountProfile(1, "scope-a", now, now);
+        var portfolio = new AccountPortfolioSnapshot(new AccountScope("scope-a"), new Money(100), CapturedAtUtc: now);
+        var genericConflict = Candidate("recommendation:Sell:Inventory:42", new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", 1, Money.Zero), utility: 1);
+        var negativeUtility = Candidate("recommendation:Sell:Inventory:43", new PlanResourceRequirement(PlanResourceKind.Inventory, "43", 1, Money.Zero), utility: -1);
+        var existingPlan = new PlanRecord("existing", 1, "existing", PlanAttention.Passive, PlanState.InProgress, PlanReconciliationState.None, now,
+            [new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", 1, Money.Zero)], Money.Zero, 0,
+            [new PlanStep("buy", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, new Money(1), [], PlanStepState.Current)], [], 0, PlanHysteresisPolicy.Default);
+        var service = new PlanEndpointService(null!, null!, null!, null!, null!, null!, null!, new PlanOrchestrationService(), null!);
+        var decision = new PlanDecisionSnapshot(profile, portfolio, new Dictionary<string, long> { ["2:43"] = 1 }, RecommendationResult(now), [existingPlan], [genericConflict, negativeUtility], true, new PlanDecisionTiming(), now);
+
+        Assert.Empty(await service.GetExecutableSignalCandidateIdsAsync(decision, CancellationToken.None));
+    }
+
+    private static PlanCandidate Candidate(string id, PlanResourceRequirement requirement, long utility) => new(
+        id, 1, id, PlanAttention.Active,
+        [new PlanStep($"{id}:step", PlanStepAction.SellNow, 42, "Objet", 1, new Money(25), [], PlanStepState.Pending)],
+        [requirement], new Money(1), Money.Zero, 10_000, 0, 600, utility, true, []);
 
     private static PrimaryRecommendationRecord Recommendation(PrimaryRecommendationAction action, PrimaryRecommendationSource source, string? orderId) =>
         new(action, source, PrimaryRecommendationOrderState.NotApplicable, orderId, 42, "Objet", 2, new(50),

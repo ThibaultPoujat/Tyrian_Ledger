@@ -46,6 +46,16 @@ internal sealed class DecisionLoopNotificationLedger
         }
     }
 
+    internal void Invalidate(string accountScopeId)
+    {
+        lock (gate)
+        {
+            // A successful local plan mutation changes the effective planning
+            // state. The next loop will re-arm only fresh actions.
+            GetAccount(accountScopeId).Entries.Clear();
+        }
+    }
+
     internal NotificationLedgerObservation Observe(
         string accountScopeId,
         IReadOnlyCollection<DecisionLoopNotification> current)

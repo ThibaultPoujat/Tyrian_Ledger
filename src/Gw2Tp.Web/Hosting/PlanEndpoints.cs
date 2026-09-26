@@ -101,14 +101,21 @@ internal sealed class PlanDecisionProjectionStore(
         }
     }
 
-    internal void Publish(PlanDecisionSnapshot decision, long loopGeneration)
+    internal bool TryPublishAndObserve(PlanDecisionSnapshot decision, long loopGeneration, Action observe)
     {
-        if (!decision.AccountEvidenceAvailable || decision.Recommendations?.State != PrimaryRecommendationState.Ready) return;
+        ArgumentNullException.ThrowIfNull(observe);
+        if (!decision.AccountEvidenceAvailable || decision.Recommendations?.State != PrimaryRecommendationState.Ready) return false;
         lock (gate)
         {
-            if (active?.Generation != loopGeneration) return;
+            if (active?.Generation != loopGeneration) return false;
             latest = decision;
+            // Keep the notification observation in the same critical section as
+            // projection publication. A successful plan mutation invalidates this
+            // generation under the same lock, so it cannot slip between these
+            // two externally visible results.
+            observe();
             active.Completion.TrySetResult(decision);
+            return true;
         }
     }
 
@@ -159,6 +166,8 @@ internal sealed class PlanEndpointService(
     IPlanOrchestrationService orchestration,
     PlanDecisionProjectionStore loopDecisions)
 {
+    internal event Action<string>? LoopDecisionInvalidated;
+
     public async Task<PlanEndpointResponse> GetAsync(CancellationToken cancellationToken)
     {
         var context = await TryGetLoopDecisionContextAsync(cancellationToken).ConfigureAwait(false)
@@ -168,11 +177,9 @@ internal sealed class PlanEndpointService(
         var visiblePlans = plans.Where(plan => plan.State != PlanState.Invalid).ToArray();
         if (context.Recommendations?.State != PrimaryRecommendationState.Ready)
             return Complete(new { state = "ready", degraded = true, proposals = Array.Empty<object>(), excludedCandidateIds = Array.Empty<string>(), intentionallyFreeCash = Money.Zero, plans = visiblePlans.Select(ToResponse), selection = EmptySelection("recommendations_not_ready", context.DecisionCacheState, context.ReusedDecision) }, context.Timing);
-        var portfolioSizingUnavailable = context.Recommendations.Portfolio is null;
-        var safeWithoutPortfolioSizing = portfolioSizingUnavailable
-            ? context.Candidates.Where(CanExecuteWithoutPortfolioSizing).ToArray()
-            : context.Candidates.ToArray();
-        if (portfolioSizingUnavailable && safeWithoutPortfolioSizing.Length == 0)
+        var selectionTimer = Stopwatch.StartNew();
+        var selection = await SelectCandidatesAsync(context.Snapshot, context.VerifiedQuantities, context.Recommendations, context.Candidates, context.Plans, cancellationToken).ConfigureAwait(false);
+        if (selection.PortfolioSizingUnavailable && selection.SafeWithoutPortfolioSizing.Count == 0)
             return Complete(new
             {
                 state = "ready",
@@ -194,41 +201,23 @@ internal sealed class PlanEndpointService(
                     reusedDecision = context.ReusedDecision,
                     cacheState = context.DecisionCacheState,
                 },
-            }, context.Timing);
+            }, context.Timing, selectionTimer);
 
-        var selectionTimer = Stopwatch.StartNew();
-        var effective = PlanOrchestrationService.ProjectEffectiveResources(context.Snapshot.AvailableCash, context.VerifiedQuantities, plans.SelectMany(plan => plan.Events).ToArray());
-        var reservations = plans.SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray();
-        var reservedCash = reservations.Aggregate(Money.Zero, (total, requirement) => total + requirement.Cash);
-        var availableCash = effective.EffectiveCash - reservedCash;
-        var availableQuantities = AvailableQuantities(effective.Quantities, reservations);
-        var reservedGenericKeys = reservations.Where(requirement => requirement.Quantity > 0 && requirement.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory))
-            .Select(ResourceKey).ToHashSet(StringComparer.Ordinal);
-        var hardEligible = safeWithoutPortfolioSizing.Where(PlanOrchestrationService.IsExecutable).ToArray();
-        var candidates = hardEligible.Where(candidate => candidate.Requirements.Where(requirement => requirement.Quantity > 0)
-            .Where(requirement => requirement.Kind == PlanResourceKind.Inventory)
-            .All(requirement => availableQuantities.TryGetValue(ResourceKey(requirement), out var quantity) && quantity >= requirement.Quantity) &&
-            !candidate.Requirements.Where(requirement => requirement.Quantity > 0 && requirement.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory))
-                .Any(requirement => reservedGenericKeys.Contains(ResourceKey(requirement)))).ToArray();
-        var hardReserve = context.Recommendations.Portfolio?.CashReserve ?? Money.Zero;
-        var selection = availableCash.Copper < 0 || availableCash.Copper < hardReserve.Copper
-            ? new PlanBundleSelection([], Money.Zero, 0, candidates.Select(candidate => candidate.Id).OrderBy(id => id, StringComparer.Ordinal).ToArray(), new Money(Math.Max(0, availableCash.Copper)))
-            : await orchestration.SelectAsync(candidates, availableCash, hardReserve, cancellationToken, availableQuantities).ConfigureAwait(false);
-        var reason = selection.Plans.Count > 0 ? "plans_selected"
-            : hardEligible.Length == 0 ? "hard_constraints"
-            : candidates.Length == 0 ? "resource_conflicts"
-            : availableCash.Copper < hardReserve.Copper ? "cash_reserve"
+        var reason = selection.Selection.Plans.Count > 0 ? "plans_selected"
+            : selection.HardEligible.Count == 0 ? "hard_constraints"
+            : selection.ResourceEligible.Count == 0 ? "resource_conflicts"
+            : selection.AvailableCash.Copper < selection.HardReserve.Copper ? "cash_reserve"
             : "selection_constraints";
-        return Complete(new { state = "ready", degraded = false, proposals = selection.Plans.Select(ToResponse), excludedCandidateIds = selection.ExcludedCandidateIds,
-            intentionallyFreeCash = selection.IntentionallyFreeCash, plans = visiblePlans.Select(ToResponse), selection = new
+        return Complete(new { state = "ready", degraded = false, proposals = selection.Selection.Plans.Select(ToResponse), excludedCandidateIds = selection.Selection.ExcludedCandidateIds,
+            intentionallyFreeCash = selection.Selection.IntentionallyFreeCash, plans = visiblePlans.Select(ToResponse), selection = new
             {
                 recommendationCandidates = context.Recommendations.Actions.Count(IsActionable),
                 generatedCandidates = context.Candidates.Count,
-                rejectedHardConstraints = context.Candidates.Count - hardEligible.Length,
-                rejectedResourceConflicts = hardEligible.Length - candidates.Length,
-                rejectedSelectionConstraints = candidates.Length - selection.Plans.Count,
-                rejectedDecisionSafetyGate = portfolioSizingUnavailable ? context.Candidates.Count - safeWithoutPortfolioSizing.Length : 0,
-                selected = selection.Plans.Count,
+                rejectedHardConstraints = context.Candidates.Count - selection.HardEligible.Count,
+                rejectedResourceConflicts = selection.HardEligible.Count - selection.ResourceEligible.Count,
+                rejectedSelectionConstraints = selection.ResourceEligible.Count - selection.Selection.Plans.Count,
+                rejectedDecisionSafetyGate = selection.PortfolioSizingUnavailable ? context.Candidates.Count - selection.SafeWithoutPortfolioSizing.Count : 0,
+                selected = selection.Selection.Plans.Count,
                 reason,
                 reusedDecision = context.ReusedDecision,
                 cacheState = context.DecisionCacheState,
@@ -254,7 +243,7 @@ internal sealed class PlanEndpointService(
             var existing = await FindByCandidateAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
             return existing is null ? Results.Conflict(new { error = "plan_already_started" }) : Results.Json(new { state = "already_started", plan = ToResponse(existing) });
         }
-        InvalidateLoopDecision();
+        InvalidateLoopDecision(context.Profile.AccountScopeId);
         return Results.Json(new { state = "started", plan = ToResponse(plan) });
     }
 
@@ -268,7 +257,7 @@ internal sealed class PlanEndpointService(
             var cancelled = orchestration.CancelUnperformedStep(plan);
             try { await repository.SaveAsync(context.Profile.Id, cancelled, cancellationToken).ConfigureAwait(false); }
             catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
-            InvalidateLoopDecision();
+            InvalidateLoopDecision(context.Profile.AccountScopeId);
             return Results.Json(new { state = "cancelled", plan = ToResponse(cancelled) });
         }
         Money? price = null;
@@ -277,7 +266,7 @@ internal sealed class PlanEndpointService(
         var updated = orchestration.ReportStep(plan, request.Quantity, price, DateTimeOffset.UtcNow);
         try { await repository.SaveAsync(context.Profile.Id, updated, cancellationToken).ConfigureAwait(false); }
         catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
-        InvalidateLoopDecision();
+        InvalidateLoopDecision(context.Profile.AccountScopeId);
         return Results.Json(new { state = "reported", plan = ToResponse(updated) });
     }
 
@@ -289,7 +278,7 @@ internal sealed class PlanEndpointService(
         var updated = orchestration.UndoLastStep(plan, DateTimeOffset.UtcNow);
         try { await repository.SaveAsync(context.Profile.Id, updated, cancellationToken).ConfigureAwait(false); }
         catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
-        InvalidateLoopDecision();
+        InvalidateLoopDecision(context.Profile.AccountScopeId);
         return Results.Json(new { state = "undone", plan = ToResponse(updated) });
     }
 
@@ -302,21 +291,34 @@ internal sealed class PlanEndpointService(
         return decision;
     }
 
+    internal async Task<IReadOnlySet<string>> GetExecutableSignalCandidateIdsAsync(PlanDecisionSnapshot decision, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(decision);
+        if (!decision.AccountEvidenceAvailable || decision.Recommendations?.State != PrimaryRecommendationState.Ready)
+            return new HashSet<string>(StringComparer.Ordinal);
+
+        var selection = await SelectCandidatesAsync(decision.Snapshot, decision.VerifiedQuantities, decision.Recommendations,
+            decision.Candidates, decision.Plans, cancellationToken).ConfigureAwait(false);
+        return selection.Selection.Plans
+            .Select(candidate => candidate.Id)
+            .Where(id => id.StartsWith("recommendation:", StringComparison.Ordinal))
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
     /// <summary>
     /// Publishes only a completed decision-loop projection.  It is bounded by
     /// the next permitted loop cycle and the original account-evidence expiry;
     /// a plan mutation or a new cycle clears it before any read can reuse it.
     /// </summary>
-    internal void PublishLoopDecision(PlanDecisionSnapshot decision, long loopGeneration)
+    internal bool TryPublishLoopDecisionAndObserve(PlanDecisionSnapshot decision, long loopGeneration, Action observe)
     {
-        if (!decision.AccountEvidenceAvailable || decision.Recommendations?.State != PrimaryRecommendationState.Ready)
-            return;
-        loopDecisions.Publish(decision, loopGeneration);
+        return loopDecisions.TryPublishAndObserve(decision, loopGeneration, observe);
     }
 
-    internal void InvalidateLoopDecision()
+    internal void InvalidateLoopDecision(string accountScopeId)
     {
         loopDecisions.Invalidate();
+        LoopDecisionInvalidated?.Invoke(accountScopeId);
     }
 
     internal long BeginLoopDecision() => loopDecisions.BeginLoopRun();
@@ -362,6 +364,38 @@ internal sealed class PlanEndpointService(
         var refreshedPlans = await ApplyPlanRefreshAsync(refreshedContext, cancellationToken).ConfigureAwait(false);
         refreshTimer.Stop();
         return refreshedContext with { Plans = refreshedPlans, Timing = timing with { PlanRefreshPersistenceMilliseconds = Milliseconds(refreshTimer.Elapsed) } };
+    }
+
+    private async Task<CandidateSelection> SelectCandidatesAsync(
+        AccountPortfolioSnapshot snapshot,
+        IReadOnlyDictionary<string, long> verifiedQuantities,
+        PrimaryRecommendationResult recommendationsResult,
+        IReadOnlyList<PlanCandidate> allCandidates,
+        IReadOnlyList<PlanRecord> plans,
+        CancellationToken cancellationToken)
+    {
+        var portfolioSizingUnavailable = recommendationsResult.Portfolio is null;
+        var safeWithoutPortfolioSizing = portfolioSizingUnavailable
+            ? allCandidates.Where(CanExecuteWithoutPortfolioSizing).ToArray()
+            : allCandidates.ToArray();
+        var effective = PlanOrchestrationService.ProjectEffectiveResources(snapshot.AvailableCash, verifiedQuantities, plans.SelectMany(plan => plan.Events).ToArray());
+        var reservations = plans.SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray();
+        var reservedCash = reservations.Aggregate(Money.Zero, (total, requirement) => total + requirement.Cash);
+        var availableCash = effective.EffectiveCash - reservedCash;
+        var availableQuantities = AvailableQuantities(effective.Quantities, reservations);
+        var reservedGenericKeys = reservations.Where(requirement => requirement.Quantity > 0 && requirement.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory))
+            .Select(ResourceKey).ToHashSet(StringComparer.Ordinal);
+        var hardEligible = safeWithoutPortfolioSizing.Where(PlanOrchestrationService.IsExecutable).ToArray();
+        var resourceEligible = hardEligible.Where(candidate => candidate.Requirements.Where(requirement => requirement.Quantity > 0)
+            .Where(requirement => requirement.Kind == PlanResourceKind.Inventory)
+            .All(requirement => availableQuantities.TryGetValue(ResourceKey(requirement), out var quantity) && quantity >= requirement.Quantity) &&
+            !candidate.Requirements.Where(requirement => requirement.Quantity > 0 && requirement.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory))
+                .Any(requirement => reservedGenericKeys.Contains(ResourceKey(requirement)))).ToArray();
+        var hardReserve = recommendationsResult.Portfolio?.CashReserve ?? Money.Zero;
+        var selected = availableCash.Copper < 0 || availableCash.Copper < hardReserve.Copper
+            ? new PlanBundleSelection([], Money.Zero, 0, resourceEligible.Select(candidate => candidate.Id).OrderBy(id => id, StringComparer.Ordinal).ToArray(), new Money(Math.Max(0, availableCash.Copper)))
+            : await orchestration.SelectAsync(resourceEligible, availableCash, hardReserve, cancellationToken, availableQuantities).ConfigureAwait(false);
+        return new CandidateSelection(portfolioSizingUnavailable, safeWithoutPortfolioSizing, hardEligible, resourceEligible, selected, availableCash, hardReserve);
     }
 
     private async Task<Context?> TryGetLoopDecisionContextAsync(CancellationToken cancellationToken)
@@ -684,6 +718,9 @@ internal sealed class PlanEndpointService(
 
     private sealed record EvidenceCapture(IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? CapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteKinds);
     private sealed record CandidateBuild(IReadOnlyList<PlanCandidate> Candidates, CraftingOpportunityTiming? CraftingTiming);
+    private sealed record CandidateSelection(bool PortfolioSizingUnavailable, IReadOnlyList<PlanCandidate> SafeWithoutPortfolioSizing,
+        IReadOnlyList<PlanCandidate> HardEligible, IReadOnlyList<PlanCandidate> ResourceEligible, PlanBundleSelection Selection,
+        Money AvailableCash, Money HardReserve);
     private static long Milliseconds(TimeSpan elapsed) => Math.Max(0, (long)elapsed.TotalMilliseconds);
 
     private static PlanEndpointResponse Complete(object payload, PlanDecisionTiming timing, Stopwatch? selectionTimer = null)

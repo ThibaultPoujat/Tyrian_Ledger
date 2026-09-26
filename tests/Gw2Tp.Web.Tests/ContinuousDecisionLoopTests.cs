@@ -64,6 +64,20 @@ public sealed class ContinuousDecisionLoopTests
     }
 
     [Fact]
+    public void Mutation_invalidation_clears_only_the_affected_accounts_pending_notifications()
+    {
+        var ledger = new DecisionLoopNotificationLedger();
+        var notification = Notification("signal:inventory:42", "quantity:2", Now);
+
+        _ = ledger.Observe("account-a", [notification]);
+        _ = ledger.Observe("account-b", [notification]);
+        ledger.Invalidate("account-a");
+
+        Assert.Empty(ledger.Pending("account-a"));
+        Assert.Single(ledger.Pending("account-b"));
+    }
+
+    [Fact]
     public void No_action_recommendations_do_not_create_notifications()
     {
         var result = new PrimaryRecommendationResult(
@@ -87,7 +101,59 @@ public sealed class ContinuousDecisionLoopTests
                 [],
                 [new PrimaryRecommendationReason(PrimaryRecommendationReasonCode.BidOutbid, "No action")])]);
 
-        Assert.Empty(ContinuousDecisionLoopService.BuildNotifications(result, [], Now));
+        Assert.Empty(ContinuousDecisionLoopService.BuildNotifications(result, [], new HashSet<string>(), Now));
+    }
+
+    [Fact]
+    public void Actionable_signal_is_not_notified_until_its_candidate_is_selected()
+    {
+        var action = new PrimaryRecommendationRecord(
+            PrimaryRecommendationAction.Sell,
+            PrimaryRecommendationSource.Inventory,
+            PrimaryRecommendationOrderState.NotApplicable,
+            null,
+            42,
+            "Objet",
+            2,
+            new Money(50),
+            new PrimaryRecommendationPriceState(null, new Money(25), new Money(31), null, new Money(30), null, new(new Money(25), new Money(25))),
+            null,
+            null,
+            null,
+            null,
+            [],
+            [new PrimaryRecommendationReason(PrimaryRecommendationReasonCode.PositiveImmediateExit, "Positive exit")]);
+        var result = new PrimaryRecommendationResult(
+            PrimaryRecommendationState.Ready, null, Now, Now, Now, Now,
+            new PrimaryRecommendationPolicies(1, 1, 1, 1, 1, 1, 1, 1, "FastFlip", "TradingPost"),
+            null,
+            [action]);
+
+        Assert.Empty(ContinuousDecisionLoopService.BuildNotifications(result, [], new HashSet<string>(), Now));
+
+        var selected = new HashSet<string> { PlanEndpointService.ToCandidate(action).Id };
+        var notification = Assert.Single(ContinuousDecisionLoopService.BuildNotifications(result, [], selected, Now));
+        Assert.Equal("Sell", notification.ActionCode);
+    }
+
+    [Fact]
+    public void A_signal_rearms_when_verified_selection_makes_it_executable_without_repeating_unchanged_delivery()
+    {
+        var action = new PrimaryRecommendationRecord(
+            PrimaryRecommendationAction.Sell, PrimaryRecommendationSource.Inventory, PrimaryRecommendationOrderState.NotApplicable,
+            null, 42, "Objet", 2, new Money(50),
+            new PrimaryRecommendationPriceState(null, new Money(25), new Money(31), null, new Money(30), null, new(new Money(25), new Money(25))),
+            null, null, null, null, [], [new PrimaryRecommendationReason(PrimaryRecommendationReasonCode.PositiveImmediateExit, "Positive exit")]);
+        var result = new PrimaryRecommendationResult(PrimaryRecommendationState.Ready, null, Now, Now, Now, Now,
+            new PrimaryRecommendationPolicies(1, 1, 1, 1, 1, 1, 1, 1, "FastFlip", "TradingPost"), null, [action]);
+        var ledger = new DecisionLoopNotificationLedger();
+
+        var unavailable = ContinuousDecisionLoopService.BuildNotifications(result, [], new HashSet<string>(), Now);
+        var selected = ContinuousDecisionLoopService.BuildNotifications(result, [], new HashSet<string> { PlanEndpointService.ToCandidate(action).Id }, Now.AddMinutes(1));
+
+        Assert.Empty(ledger.Observe("account-a", unavailable).NewlyActionable);
+        Assert.Single(ledger.Observe("account-a", selected).NewlyActionable);
+        Assert.Empty(ledger.Observe("account-a", selected).NewlyActionable);
     }
 
     [Fact]

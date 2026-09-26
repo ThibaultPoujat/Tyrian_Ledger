@@ -148,6 +148,7 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
         this.plans = plans ?? throw new ArgumentNullException(nameof(plans));
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
         this.applicationLifetime = applicationLifetime ?? throw new ArgumentNullException(nameof(applicationLifetime));
+        this.plans.LoopDecisionInvalidated += OnLoopDecisionInvalidated;
     }
 
     public Task<DecisionLoopRunResult> RunNowAsync(CancellationToken cancellationToken = default)
@@ -296,40 +297,57 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
             return new(false, synchronizationResult, null, GetStatus());
         }
 
-        plans.PublishLoopDecision(decision, loopGeneration);
-
+        var executableSignalCandidateIds = await plans.GetExecutableSignalCandidateIdsAsync(decision, cancellationToken).ConfigureAwait(false);
         var observedAt = RequireUtc(clock.UtcNow);
-        var notificationObservation = notificationLedger.Observe(
-            decision.Profile.AccountScopeId,
-            BuildNotifications(decision.Recommendations, decision.Plans, observedAt));
         var historyObservedAt = decision.Recommendations.Actions
             .Select(action => action.History?.LastObservedAtUtc)
             .Where(value => value is not null)
             .Select(value => value!.Value)
             .OrderByDescending(value => value)
             .FirstOrDefault();
-        if (decision.Recommendations.State != PrimaryRecommendationState.Ready)
+        NotificationLedgerObservation? notificationObservation = null;
+        DecisionLoopStatus? completedStatus = null;
+        var published = plans.TryPublishLoopDecisionAndObserve(decision, loopGeneration, () =>
         {
-            var error = decision.Recommendations.EvidenceError ?? decision.Recommendations.State.ToString();
-            SetDegradedStatus(observedAt, decision.Recommendations, synchronizationResult, historyObservedAt,
+            notificationObservation = notificationLedger.Observe(
                 decision.Profile.AccountScopeId,
-                notificationLedger.GetPreferences(decision.Profile.AccountScopeId).Enabled, notificationObservation.Pending, error, CraftingStatus(craftingRefresh), timing);
+                BuildNotifications(decision.Recommendations, decision.Plans, executableSignalCandidateIds, observedAt));
+            if (decision.Recommendations.State != PrimaryRecommendationState.Ready)
+            {
+                var error = decision.Recommendations.EvidenceError ?? decision.Recommendations.State.ToString();
+                SetDegradedStatus(observedAt, decision.Recommendations, synchronizationResult, historyObservedAt,
+                    decision.Profile.AccountScopeId,
+                    notificationLedger.GetPreferences(decision.Profile.AccountScopeId).Enabled, notificationObservation.Pending, error, CraftingStatus(craftingRefresh), timing);
+            }
+            else
+            {
+                SetReadyStatus(observedAt, decision.Recommendations, synchronizationResult, historyObservedAt,
+                    decision.Profile.AccountScopeId,
+                    notificationLedger.GetPreferences(decision.Profile.AccountScopeId).Enabled, notificationObservation.Pending, CraftingStatus(craftingRefresh), timing);
+            }
+            completedStatus = GetStatus();
+        });
+        if (!published || notificationObservation is null)
+        {
+            SetInterruptedStatus();
             return new(false, synchronizationResult, decision.Recommendations, GetStatus());
         }
-
-        SetReadyStatus(observedAt, decision.Recommendations, synchronizationResult, historyObservedAt,
-            decision.Profile.AccountScopeId,
-            notificationLedger.GetPreferences(decision.Profile.AccountScopeId).Enabled, notificationObservation.Pending, CraftingStatus(craftingRefresh), timing);
-        return new(true, synchronizationResult, decision.Recommendations, GetStatus());
+        if (decision.Recommendations.State != PrimaryRecommendationState.Ready)
+        {
+            return new(false, synchronizationResult, decision.Recommendations, completedStatus!);
+        }
+        return new(true, synchronizationResult, decision.Recommendations, completedStatus!);
     }
 
     internal static IReadOnlyList<DecisionLoopNotification> BuildNotifications(
         PrimaryRecommendationResult recommendations,
         IReadOnlyList<PlanRecord> plans,
+        IReadOnlySet<string> executableSignalCandidateIds,
         DateTimeOffset observedAtUtc)
     {
         var current = new Dictionary<string, DecisionLoopNotification>(StringComparer.Ordinal);
-        foreach (var action in recommendations.Actions.Where(IsActionable))
+        foreach (var action in recommendations.Actions.Where(IsActionable)
+                     .Where(action => executableSignalCandidateIds.Contains(PlanEndpointService.ToCandidate(action).Id)))
         {
             var identity = $"signal:{action.Source}:{action.OrderId ?? action.ItemId.ToString(CultureInfo.InvariantCulture)}";
             var fingerprint = SignalFingerprint(action);
@@ -396,6 +414,34 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
                 Crafting = crafting,
                 LastTiming = timing,
             };
+        }
+    }
+
+    private void SetInterruptedStatus()
+    {
+        lock (stateGate)
+        {
+            // A successful local mutation won the race with this loop. Preserve
+            // the last completed state instead of exposing an indefinitely
+            // running or stale decision; the next permitted loop rebuilds it.
+            status = status with
+            {
+                State = status.LastCycleAtUtc is null
+                    ? DecisionLoopRunState.NeverRun
+                    : status.Recommendations?.State == PrimaryRecommendationState.Ready
+                        ? DecisionLoopRunState.Ready
+                        : DecisionLoopRunState.Degraded,
+            };
+        }
+    }
+
+    private void OnLoopDecisionInvalidated(string accountScopeId)
+    {
+        notificationLedger.Invalidate(accountScopeId);
+        lock (stateGate)
+        {
+            if (string.Equals(status.AccountScopeId, accountScopeId, StringComparison.Ordinal))
+                status = status with { Notifications = [] };
         }
     }
 
