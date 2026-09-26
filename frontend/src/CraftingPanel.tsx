@@ -27,7 +27,7 @@ export default function CraftingPanel() {
   const [retryingSearch, setRetryingSearch] = useState(false);
   const load = () => query.refresh();
   const start = (id: string) => { setMutationError(false); void fetch(`/api/plans/${encodeURIComponent(id)}/start`, { method: 'POST', headers: { 'X-Tyrian-Ledger-Request': '1' } })
-    .then(response => { if (!response.ok) throw new Error('plan_start_failed'); invalidateViewCache(['plans', 'recommendations', 'crafting', 'dashboard']); return load(); }).catch(() => setMutationError(true)); };
+      .then(response => { if (!response.ok) throw new Error('plan_start_failed'); invalidateViewCache(['plans', 'recommendations', 'crafting', 'dashboard', 'calculation-explanations']); return load(); }).catch(() => setMutationError(true)); };
   const refreshCrafting = () => {
     setMutationError(false);
     setRefreshingCrafting(true);
@@ -84,7 +84,7 @@ export default function CraftingPanel() {
       <p>Confiance des données : {confidence(opportunity.confidenceBasisPoints ?? 0)}.</p>
       <p>Temps d’interaction estimé : {Math.max(1, Math.ceil((opportunity.interactionSeconds ?? 0) / 60))} min.</p>
       {opportunity.isActionable && opportunity.planId ? <button disabled={updating || mutationError} onClick={() => start(opportunity.planId!)} type="button">Démarrer ce plan</button> : <p className="operational-status operational-status--warning">Non actionnable : {opportunity.exclusions.map(exclusion).join(', ')}</p>}
-      <details><summary>Pourquoi ?</summary><h4>Approvisionnement et faisabilité</h4><ul>{[...(opportunity.evidenceExplanation ?? []), ...opportunity.procurementExplanation].length > 0 ? [...(opportunity.evidenceExplanation ?? []), ...opportunity.procurementExplanation].map((line, index) => <li key={index}>{line}</li>) : <li>Les prix, frais et profondeurs d’exécution ont été vérifiés avant cette proposition.</li>}</ul><ol>{opportunity.steps.map((step, index) => <li key={`${step.action}-${index}`}>{action(step.action)} — {step.itemName} · {step.quantity} unité{step.quantity === 1 ? '' : 's'}</li>)}</ol></details>
+      <details><summary>Pourquoi ?</summary><h4>Approvisionnement et faisabilité</h4><ul>{[...(opportunity.evidenceExplanation ?? []), ...opportunity.procurementExplanation].length > 0 ? [...(opportunity.evidenceExplanation ?? []), ...opportunity.procurementExplanation].map((line, index) => <li key={index}>{line}</li>) : <li>Les prix, frais et profondeurs d’exécution ont été vérifiés avant cette proposition.</li>}</ul><ol>{opportunity.steps.map((step, index) => <li key={`${step.action}-${index}`}>{action(step.action)} — {step.itemName} · {step.quantity} unité{step.quantity === 1 ? '' : 's'}</li>)}</ol><button className="calculation-link" onClick={() => window.dispatchEvent(new CustomEvent('tyrian-ledger:open-calculation', { detail: opportunity.planId }))} type="button">Voir les règles de calcul</button></details>
     </article></li>)}</ol>
   </section>;
 }

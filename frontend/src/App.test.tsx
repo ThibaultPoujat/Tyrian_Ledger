@@ -165,6 +165,7 @@ type ApiOverrides = {
   localData?: unknown;
   plans?: unknown;
   crafting?: unknown;
+  calculations?: unknown;
 };
 
 function installFetch(overrides: ApiOverrides = {}) {
@@ -207,6 +208,9 @@ function installFetch(overrides: ApiOverrides = {}) {
     }
     if (url === '/api/crafting-opportunities') {
       return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(overrides.crafting ?? { state: 'NoOpportunities', truncationReasons: [], summaryExclusions: [], opportunities: [] }) });
+    }
+    if (url === '/api/calculation-explanations') {
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue(overrides.calculations ?? { version: 1, state: 'unavailable', theory: {}, actions: [], selection: {} }) });
     }
     if (url === '/api/local-data') {
       return Promise.resolve({
@@ -293,6 +297,17 @@ describe('Mes Signaux MVP', () => {
     expect(screen.getByRole('heading', { name: 'Aucun plan à démarrer' })).toBeInTheDocument();
     await waitFor(() => expect(calls.filter(call => String(call.input) === '/api/plans')).toHaveLength(2));
     expect(calls.filter(call => String(call.input) === '/api/crafting-opportunities')).toHaveLength(1);
+  });
+
+  it('shows the French calculation explanation entry without storing account evidence in the browser', async () => {
+    const { calls } = installFetch();
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Réglages' }));
+    expect(await screen.findByRole('heading', { name: 'Comprendre mes calculs' })).toBeInTheDocument();
+    expect(await screen.findByText(/Les valeurs actuelles ont expiré/)).toBeInTheDocument();
+    expect(calls.some(call => String(call.input) === '/api/calculation-explanations')).toBe(true);
+    expect(Storage.prototype.setItem).not.toHaveBeenCalled();
   });
 
   it('announces asynchronous local-host status changes politely', async () => {
