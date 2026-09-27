@@ -144,7 +144,12 @@ internal static class CalculationExplanationEndpoints
 
     private static object Action(PrimaryRecommendationRecord action, PlanDecisionSelectionTrace trace)
     {
-        var candidateId = PlanEndpointService.ToCandidate(action).Id;
+        // Observations such as REVIEW, WAIT, and SKIP intentionally have no
+        // executable Plan candidate.  They still need an explanation, but
+        // must not be force-converted through the action-only plan mapper.
+        var candidateId = PlanEndpointService.IsActionable(action)
+            ? PlanEndpointService.ToCandidate(action).Id
+            : null;
         // Deliberately do not return the candidate ID: buy-order candidate IDs
         // contain an internal order identity that the explanation UI does not
         // need. This stable display key contains only the public action/item
@@ -157,9 +162,9 @@ internal static class CalculationExplanationEndpoints
             action.ItemId,
             action.ItemName,
             action.Quantity,
-            executableSignal = trace.ExecutableSignalCandidateIds.Contains(candidateId),
-            excludedFromSelection = trace.ExcludedCandidateIds.Contains(candidateId, StringComparer.Ordinal),
-            selection = CandidateTrace(candidateId, trace),
+            executableSignal = candidateId is not null && trace.ExecutableSignalCandidateIds.Contains(candidateId),
+            excludedFromSelection = candidateId is not null && trace.ExcludedCandidateIds.Contains(candidateId, StringComparer.Ordinal),
+            selection = candidateId is null ? null : CandidateTrace(candidateId, trace),
             capital = MoneyResponse.From(action.Capital),
             economics = action.Economics is null ? null : new
             {

@@ -102,6 +102,27 @@ public sealed class CalculationExplanationProjectionTests
         Assert.DoesNotContain("\"economicInputCost\":{\"copper\":\"0\"}", json, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Projection_keeps_non_actionable_observations_without_mapping_them_to_plans()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var review = new PrimaryRecommendationRecord(
+            PrimaryRecommendationAction.Review, PrimaryRecommendationSource.Inventory,
+            PrimaryRecommendationOrderState.NotApplicable, null, 42, "Objet observé", 1, new Money(25),
+            new PrimaryRecommendationPriceState(null, new Money(20), new Money(30), null, new Money(30), null),
+            null, null, null, null, [], [new(PrimaryRecommendationReasonCode.InsufficientHistory, "not for browser")]);
+        var recommendations = new PrimaryRecommendationResult(PrimaryRecommendationState.Ready, "buy_sizing_unavailable", now, now, now, now,
+            new PrimaryRecommendationPolicies(1, 1, 1, 1, 1, 1, 1, 1_500, "FastFlip", "TradingPost"), null, [review], now.AddMinutes(5));
+        var snapshot = new PlanDecisionSnapshot(new AccountProfile(1, "private", now, now),
+            new AccountPortfolioSnapshot(new AccountScope("private"), new Money(100)), new Dictionary<string, long>(), recommendations,
+            [], [], true, new PlanDecisionTiming(), now);
+
+        var json = JsonSerializer.Serialize(CalculationExplanationEndpoints.ToResponse(snapshot), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        Assert.Contains("\"action\":\"Review\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"selection\":null", json, StringComparison.Ordinal);
+    }
+
     private static CraftingOpportunity Opportunity(string id, CraftingEconomics economics) => new(
         id, new CraftingRecipe(1, economics.OutputItemId, economics.OutputQuantity, ["Artificer"], 1, [], [new("Item", 71, 1)]),
         "Objet", null, economics, new PlanCandidate(id, 1, id, PlanAttention.Active, [], [], Money.Zero, Money.Zero, 0, 0, 0, 1, true, []), [], [], false);
