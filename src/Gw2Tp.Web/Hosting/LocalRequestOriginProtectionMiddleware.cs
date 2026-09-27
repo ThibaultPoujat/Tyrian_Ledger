@@ -17,6 +17,7 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
     private static readonly PathString InvestmentsPath = "/api/investments";
     private static readonly PathString PlansPath = "/api/plans";
     private static readonly PathString CraftingOpportunitiesPath = "/api/crafting-opportunities";
+    private static readonly PathString CalculationExplanationsPath = "/api/calculation-explanations";
     private static readonly PathString NotificationPreferencesPath = "/api/notifications/preferences";
 
     public async Task InvokeAsync(HttpContext context, LocalRequestOriginValidator originValidator)
@@ -33,6 +34,7 @@ internal sealed class LocalRequestOriginProtectionMiddleware(RequestDelegate nex
                 IsProtectedPath(context.Request.Path, InvestmentsPath) ||
                 IsProtectedPath(context.Request.Path, PlansPath) ||
                 IsProtectedPath(context.Request.Path, CraftingOpportunitiesPath) ||
+                IsProtectedPath(context.Request.Path, CalculationExplanationsPath) ||
                 IsProtectedPath(context.Request.Path, NotificationPreferencesPath));
         var hasOrigin = context.Request.Headers.Origin.Count > 0;
         var unsafeRequestDenied = isUnsafeRequest

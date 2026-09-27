@@ -39,6 +39,22 @@ namespace Gw2Tp.Web.Tests;
 public sealed class LocalHostIntegrationTests
 {
     [Fact]
+    public async Task Calculation_explanation_endpoint_requires_the_same_protected_read_headers_as_other_account_evidence()
+    {
+        await using var app = await StartApplicationAsync("Production");
+        using var client = app.GetTestClient();
+
+        using var missingHeader = await client.GetAsync("/api/calculation-explanations");
+        Assert.Equal(HttpStatusCode.Forbidden, missingHeader.StatusCode);
+
+        using var attacker = new HttpRequestMessage(HttpMethod.Get, "/api/calculation-explanations");
+        attacker.Headers.Add("Origin", "https://attacker.example");
+        attacker.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        using var rejected = await client.SendAsync(attacker);
+        Assert.Equal(HttpStatusCode.Forbidden, rejected.StatusCode);
+    }
+
+    [Fact]
     public async Task Diagnostic_export_requires_protected_local_read_headers()
     {
         const string sensitiveValue = "synthetic-sensitive-authorization-value";

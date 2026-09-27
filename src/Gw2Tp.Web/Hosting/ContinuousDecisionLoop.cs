@@ -297,7 +297,9 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
             return new(false, synchronizationResult, null, GetStatus());
         }
 
-        var executableSignalCandidateIds = await plans.GetExecutableSignalCandidateIdsAsync(decision, cancellationToken).ConfigureAwait(false);
+        var selectionTrace = await plans.GetSelectionTraceAsync(decision, cancellationToken).ConfigureAwait(false);
+        decision = decision with { SelectionTrace = selectionTrace };
+        var executableSignalCandidateIds = selectionTrace.ExecutableSignalCandidateIds;
         var observedAt = RequireUtc(clock.UtcNow);
         var historyObservedAt = decision.Recommendations.Actions
             .Select(action => action.History?.LastObservedAtUtc)

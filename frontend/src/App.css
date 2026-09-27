@@ -840,6 +840,59 @@ p { color: var(--muted); line-height: 1.58; }
   width: min(64rem, 100%);
 }
 
+.settings-panel-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.calculation-transparency details {
+  margin-top: 0.7rem;
+  border-top: 1px solid rgb(152 199 187 / 17%);
+}
+
+.calculation-transparency summary {
+  padding: 0.72rem 0;
+  color: #fffdf6;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.calculation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  padding-bottom: 0.7rem;
+}
+
+.calculation-grid section,
+.calculation-focus {
+  padding: 0.7rem;
+  border: 1px solid rgb(152 199 187 / 16%);
+  border-radius: 0.35rem;
+  background: rgb(8 21 18 / 27%);
+}
+
+.calculation-grid h3,
+.calculation-grid p,
+.calculation-grid ul,
+.calculation-focus strong,
+.calculation-focus span,
+.calculation-meta {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.calculation-grid p + p,
+.calculation-grid ul,
+.calculation-focus span { margin-top: 0.42rem; }
+.calculation-grid ul { padding-left: 1.1rem; }
+.calculation-money { display: flex; justify-content: space-between; gap: 0.5rem; }
+.calculation-meta { margin: 0.65rem 0; color: #afc0bb; }
+.calculation-focus { display: grid; gap: 0.25rem; border-color: rgb(147 229 215 / 28%); }
+.calculation-link { margin-top: 0.65rem; }
+
 .settings-header {
   min-height: 7.8rem;
   padding-bottom: 1.25rem;
@@ -865,6 +918,9 @@ p { color: var(--muted); line-height: 1.58; }
 @media (max-width: 720px) {
   .settings-primary-action { align-items: stretch; flex-direction: column; }
   .settings-primary-action button { align-self: start; }
+  .settings-panel-heading { align-items: stretch; flex-direction: column; }
+  .settings-panel-heading button { align-self: start; }
+  .calculation-grid { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 1400px) {

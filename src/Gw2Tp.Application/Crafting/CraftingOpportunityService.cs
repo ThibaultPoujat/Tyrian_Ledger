@@ -94,7 +94,7 @@ public sealed class CraftingOpportunityService(
         var extra = (recipeLimited ? new[] { CraftingSearchTruncationReason.RecipeLimit } : [])
             .Concat(marketLimited ? new[] { CraftingSearchTruncationReason.MarketDataLimit } : []).Distinct().OrderBy(value => value).ToArray();
         result = extra.Length == 0 ? result : result with { TruncationReasons = result.TruncationReasons.Concat(extra).Distinct().OrderBy(value => value).ToArray() };
-        return Timed(result, preparationTimer, totalTimer, recipesTimer, listingTimer, metadataTimer, historyTimer, planningTimer);
+        return Timed(result with { AccountEvidenceCapturedAtUtc = snapshot.CapturedAtUtc }, preparationTimer, totalTimer, recipesTimer, listingTimer, metadataTimer, historyTimer, planningTimer);
     }
 
     private static CraftingPlannerResult Timed(CraftingPlannerResult result, Stopwatch preparationTimer, Stopwatch totalTimer,

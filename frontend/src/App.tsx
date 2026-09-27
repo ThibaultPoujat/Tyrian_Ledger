@@ -3,6 +3,7 @@ import './App.css';
 import RecommendationPanel from './RecommendationPanel';
 import PlanPanel from './PlanPanel';
 import CraftingPanel from './CraftingPanel';
+import CalculationTransparencyPanel from './CalculationTransparencyPanel';
 import MoneyDisplay from './MoneyDisplay';
 import { invalidateViewCache, putViewCacheData, setViewCacheScope, useViewQuery } from './viewQueryCache';
 
@@ -138,6 +139,7 @@ export default function App() {
   }>({ state: 'checking', missingPermissions: [] });
   const [syncStatus, setSyncStatus] = useState<string>('idle');
   const [activeView, setActiveView] = useState<'signals' | 'plans' | 'crafting' | 'settings'>('signals');
+  const [calculationFocus, setCalculationFocus] = useState<string | null>(null);
   const dashboardQuery = useViewQuery(useMemo(() => ({
     key: 'dashboard', url: '/api/personal-dashboard', init: { headers: localRequestHeaders() }, validate: isDashboard, discardOnError: true,
   }), []));
@@ -153,6 +155,16 @@ export default function App() {
     };
     window.addEventListener('tyrian-ledger:navigate', navigate);
     return () => window.removeEventListener('tyrian-ledger:navigate', navigate);
+  }, []);
+
+  useEffect(() => {
+    const openExplanation = (event: Event) => {
+      const focus = (event as CustomEvent<string | null>).detail;
+      setCalculationFocus(typeof focus === 'string' ? focus : null);
+      setActiveView('settings');
+    };
+    window.addEventListener('tyrian-ledger:open-calculation', openExplanation);
+    return () => window.removeEventListener('tyrian-ledger:open-calculation', openExplanation);
   }, []);
 
   useEffect(() => {
@@ -184,7 +196,7 @@ export default function App() {
   }, []);
 
   const refreshLocalDataViews = () => {
-    invalidateViewCache(['dashboard', 'recommendations', 'plans', 'crafting']);
+    invalidateViewCache(['dashboard', 'recommendations', 'plans', 'crafting', 'calculation-explanations']);
     void dashboardQuery.refresh();
   };
 
@@ -192,7 +204,7 @@ export default function App() {
     setSyncStatus('syncing');
     // The manual cycle itself returns the replacement Signal snapshot. Keep the
     // current view visible until that one coalesced request completes.
-    invalidateViewCache(['plans', 'crafting', 'dashboard']);
+    invalidateViewCache(['plans', 'crafting', 'dashboard', 'calculation-explanations']);
     void fetch('/api/recommendations', {
       headers: { ...localRequestHeaders(), 'X-Tyrian-Ledger-Manual-Refresh': '1' },
     })
@@ -358,6 +370,8 @@ export default function App() {
             </section>
 
             <NotificationSettings />
+
+            <CalculationTransparencyPanel focus={calculationFocus} />
 
             <LocalDataPanel onPersonalDataChanged={refreshLocalDataViews} />
 
