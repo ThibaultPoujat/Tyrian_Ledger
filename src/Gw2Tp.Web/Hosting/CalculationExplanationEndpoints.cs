@@ -1,4 +1,5 @@
 using System.Globalization;
+using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Plans;
@@ -72,6 +73,9 @@ internal static class CalculationExplanationEndpoints
                     minimumProfitCopper = recommendations.Policies.MinimumProfitInCopper.ToString(CultureInfo.InvariantCulture),
                     minimumRoiBasisPoints = recommendations.Policies.MinimumRoiBasisPoints,
                 },
+                capitalState = recommendations.Portfolio is null
+                    ? recommendations.EvidenceError == "buy_sizing_unavailable" ? "purchase_sizing_unavailable" : "unknown"
+                    : "known",
                 capital = recommendations.Portfolio is null ? null : new
                 {
                     availableCash = MoneyResponse.From(recommendations.Portfolio.AvailableCash),
@@ -81,13 +85,21 @@ internal static class CalculationExplanationEndpoints
                     reserveShortfall = MoneyResponse.From(recommendations.Portfolio.CashReserveShortfall),
                     remainingCashAfterSizing = MoneyResponse.From(recommendations.Portfolio.RemainingCashAfterSizing),
                     evidenceState = "known",
+                    exposures = (recommendations.Portfolio.ExistingExposures ?? []).Select(exposure => new
+                    {
+                        kind = exposure.Kind.ToString(),
+                        exposure.ItemId,
+                        exposure.Strategy,
+                        exposure.Category,
+                        capital = MoneyResponse.From(exposure.CapitalAtRisk),
+                    }).ToArray(),
                 },
                 sources = new
                 {
                     account = Source(recommendations.LastSuccessfulSyncAtUtc, recommendations.AccountEvidenceExpiresAtUtc),
                     orders = Source(recommendations.CurrentOrdersObservedAtUtc, recommendations.AccountEvidenceExpiresAtUtc),
                     market = Source(recommendations.ScannerObservedAtUtc, recommendations.AccountEvidenceExpiresAtUtc),
-                    crafting = new { state = "separate_snapshot", observedAtUtc = (DateTimeOffset?)null, expiresAtUtc = (DateTimeOffset?)null },
+                    crafting = new { state = CraftingSourceState(decision.Crafting), observedAtUtc = decision.Crafting?.AccountEvidenceCapturedAtUtc, expiresAtUtc = (DateTimeOffset?)null },
                 },
             },
             actions = recommendations.Actions.Select(action => Action(action, trace)).ToArray(),
@@ -99,8 +111,14 @@ internal static class CalculationExplanationEndpoints
                 candidate = decision.Candidates.FirstOrDefault(candidate => candidate.SourceOpportunityId == plan.SourceOpportunityId) is { } candidate
                     ? Candidate(candidate, trace) : null,
             }).ToArray(),
-            craftingCandidates = decision.Candidates.Where(candidate => candidate.Id.StartsWith("craft:", StringComparison.Ordinal))
-                .Select(candidate => Candidate(candidate, trace)).ToArray(),
+            craftingCandidates = (decision.Crafting?.Opportunities ?? []).Select(opportunity => Crafting(opportunity, trace)).ToArray(),
+            crafting = decision.Crafting is null ? new { state = "unavailable", evidenceFailureCode = (string?)null, summaryExclusions = Array.Empty<string>(), truncationReasons = Array.Empty<string>() } : new
+            {
+                state = decision.Crafting.State.ToString(),
+                evidenceFailureCode = decision.Crafting.EvidenceFailureCode,
+                summaryExclusions = decision.Crafting.SummaryExclusions.Select(value => value.ToString()).ToArray(),
+                truncationReasons = decision.Crafting.TruncationReasons.Select(value => value.ToString()).ToArray(),
+            },
             selection = new
             {
                 generatedCandidates = trace.GeneratedCandidates,
@@ -109,6 +127,17 @@ internal static class CalculationExplanationEndpoints
                 selectedCandidates = trace.SelectedCandidates,
                 trace.PortfolioSizingUnavailable,
                 trace.UnavailableReason,
+                resources = trace.Resources is null ? null : new
+                {
+                    effectiveCash = MoneyResponse.From(trace.Resources.EffectiveCash),
+                    reservedCash = MoneyResponse.From(trace.Resources.ReservedCash),
+                    availableCash = MoneyResponse.From(trace.Resources.AvailableCash),
+                    hardReserve = MoneyResponse.From(trace.Resources.HardReserve),
+                    reservations = trace.Resources.Reservations.Select(Resource).ToArray(),
+                    availableVerifiedInventory = trace.Resources.AvailableQuantities
+                        .Where(pair => pair.Key.StartsWith($"{(int)PlanResourceKind.Inventory}:", StringComparison.Ordinal))
+                        .Select(pair => new { itemId = int.TryParse(pair.Key.AsSpan(2), out var itemId) ? itemId : (int?)null, quantity = pair.Value }).ToArray(),
+                },
             },
         };
     }
@@ -130,6 +159,7 @@ internal static class CalculationExplanationEndpoints
             action.Quantity,
             executableSignal = trace.ExecutableSignalCandidateIds.Contains(candidateId),
             excludedFromSelection = trace.ExcludedCandidateIds.Contains(candidateId, StringComparer.Ordinal),
+            selection = CandidateTrace(candidateId, trace),
             capital = MoneyResponse.From(action.Capital),
             economics = action.Economics is null ? null : new
             {
@@ -164,13 +194,16 @@ internal static class CalculationExplanationEndpoints
 
     private static object Candidate(PlanCandidate candidate, PlanDecisionSelectionTrace trace) => new
     {
-        candidate.Id,
+        // Only craft candidates have a deliberately public-safe ID. Plan and
+        // signal projections link by their already-public plan/action fields.
+        id = candidate.Id.StartsWith("craft:", StringComparison.Ordinal) ? candidate.Id : null,
         candidate.IsHardEligible,
         candidate.Utility,
         modeledProfit = MoneyResponse.From(candidate.ModeledProfit),
         committedCapital = MoneyResponse.From(candidate.CommittedCapital),
-        selected = trace.ExecutableSignalCandidateIds.Contains(candidate.Id),
+        selected = CandidateIsSelected(candidate.Id, trace),
         excludedFromSelection = trace.ExcludedCandidateIds.Contains(candidate.Id, StringComparer.Ordinal),
+        selection = CandidateTrace(candidate.Id, trace),
         exclusions = candidate.ExclusionReasons,
         requirements = candidate.Requirements.Select(requirement => new
         {
@@ -179,6 +212,94 @@ internal static class CalculationExplanationEndpoints
             cash = MoneyResponse.From(requirement.Cash),
         }).ToArray(),
     };
+
+    private static object Resource(PlanResourceRequirement requirement) => new
+    {
+        kind = requirement.Kind.ToString(),
+        itemId = requirement.Kind == PlanResourceKind.Inventory && int.TryParse(requirement.ResourceId, out var itemId) ? itemId : (int?)null,
+        requirement.Quantity,
+        cash = MoneyResponse.From(requirement.Cash),
+    };
+
+    private static object? CandidateTrace(string candidateId, PlanDecisionSelectionTrace trace) => trace.Candidates?
+        .FirstOrDefault(candidate => candidate.CandidateId == candidateId) is { } detail
+            ? new { detail.Stage, detail.Reason } : null;
+
+    private static bool CandidateIsSelected(string candidateId, PlanDecisionSelectionTrace trace) =>
+        trace.ExecutableSignalCandidateIds.Contains(candidateId) || trace.Candidates?
+            .Any(candidate => candidate.CandidateId == candidateId && candidate.Stage == "selected") == true;
+
+    private static object Crafting(CraftingOpportunity opportunity, PlanDecisionSelectionTrace trace) => new
+    {
+        opportunity.Id,
+        outputItemId = opportunity.Recipe.OutputItemId,
+        opportunity.OutputName,
+        state = opportunity.Economics.State.ToString(),
+        isActionable = opportunity.IsActionable,
+        exclusions = opportunity.Exclusions.Select(value => value.ToString()).ToArray(),
+        candidate = opportunity.Candidate is null ? null : Candidate(opportunity.Candidate, trace),
+        economics = new
+        {
+            economicInputCost = FromOptional(opportunity.Economics.EconomicInputCost),
+            outputSale = opportunity.Economics.OutputSale is null ? null : new
+            {
+                grossSaleValue = MoneyResponse.From(opportunity.Economics.OutputSale.GrossSaleValue),
+                listingFee = MoneyResponse.From(opportunity.Economics.OutputSale.ListingFee),
+                exchangeFee = MoneyResponse.From(opportunity.Economics.OutputSale.ExchangeFee),
+                netSaleProceeds = MoneyResponse.From(opportunity.Economics.OutputSale.NetSaleProceeds),
+            },
+            netProfit = FromOptional(opportunity.Economics.NetProfit),
+            totalCost = FromOptional(opportunity.Economics.TotalCost),
+            roi = opportunity.Economics.ModeledRoi is { } roi ? new
+            {
+                profit = MoneyResponse.From(roi.Profit),
+                totalCost = MoneyResponse.From(roi.TotalCost),
+            } : null,
+            uncertainties = opportunity.Economics.Uncertainties.Select(value => value.ToString()).ToArray(),
+            ingredients = opportunity.Economics.Ingredients.Select(ingredient => new
+            {
+                ingredient.ItemId,
+                ingredient.RequiredQuantity,
+                ingredient.OwnedTradableQuantity,
+                ingredient.BoundQuantity,
+                ingredient.UnknownQuantity,
+                ingredient.PurchasedQuantity,
+                strategy = ingredient.Strategy.ToString(),
+                ownedOpportunityCost = FromOptional(ingredient.OwnedOpportunityCost),
+                ownedLiquidation = Evidence(ingredient.OwnedLiquidationEvidence),
+                purchasedAcquisitionCost = FromOptional(ingredient.PurchasedAcquisitionCost),
+                acquisition = ingredient.Acquisition is null ? null : new
+                {
+                    strategy = ingredient.Acquisition.Strategy.ToString(),
+                    ingredient.Acquisition.Quantity,
+                    totalCost = MoneyResponse.From(ingredient.Acquisition.TotalCost),
+                    execution = Evidence(ingredient.Acquisition.ExecutionEvidence),
+                },
+                acquisitionAlternatives = (ingredient.AcquisitionAlternatives ?? []).Select(alternative => new
+                {
+                    strategy = alternative.Strategy.ToString(),
+                    alternative.Quantity,
+                    totalCost = FromOptional(alternative.TotalCost ?? alternative.ExecutionEvidence?.TotalValue),
+                    execution = Evidence(alternative.ExecutionEvidence),
+                }).ToArray(),
+                economicInputCost = FromOptional(ingredient.EconomicInputCost),
+                uncertainties = ingredient.Uncertainties.Select(value => value.ToString()).ToArray(),
+            }).ToArray(),
+        },
+    };
+
+    private static object? FromOptional(Money? money) => money is { } value ? MoneyResponse.From(value) : null;
+
+    private static object? Evidence(CraftingExecutionEvidence? evidence) => evidence is null ? null : new
+    {
+        evidence.RequestedQuantity,
+        evidence.FilledQuantity,
+        isFullyFilled = evidence.IsFullyFilled,
+        totalValue = MoneyResponse.From(evidence.TotalValue),
+    };
+
+    private static string CraftingSourceState(CraftingPlannerResult? crafting) =>
+        crafting?.AccountEvidenceCapturedAtUtc is not null ? "known" : "unknown";
 
     private static object Theory() => new
     {
@@ -189,6 +310,11 @@ internal static class CalculationExplanationEndpoints
             reserveRounding = "up",
             capRounding = "down",
             purchaseOnly = true,
+            highLiquidityItemCapBasisPoints = PositionSizingPolicy.Default.HighLiquidityItemCapBasisPoints,
+            mediumLiquidityItemCapBasisPoints = PositionSizingPolicy.Default.MediumLiquidityItemCapBasisPoints,
+            lowLiquidityItemCapBasisPoints = PositionSizingPolicy.Default.LowLiquidityItemCapBasisPoints,
+            strategyCapBasisPoints = PositionSizingPolicy.Default.StrategyCapBasisPoints,
+            categoryCapBasisPoints = PositionSizingPolicy.Default.CategoryCapBasisPoints,
         },
         fees = new
         {

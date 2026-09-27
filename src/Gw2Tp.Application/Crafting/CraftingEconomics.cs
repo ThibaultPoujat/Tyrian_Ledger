@@ -154,7 +154,8 @@ public sealed record CraftingIngredientEconomics(
     Money? PurchasedAcquisitionCost,
     CraftingAcquisitionSelection? Acquisition,
     Money? EconomicInputCost,
-    IReadOnlyList<CraftingEconomicsUncertainty> Uncertainties);
+    IReadOnlyList<CraftingEconomicsUncertainty> Uncertainties,
+    IReadOnlyList<CraftingAcquisitionAlternative>? AcquisitionAlternatives = null);
 
 /// <summary>
 /// Completed-sale proceeds for the craft output before subtracting input cost.
@@ -360,7 +361,8 @@ public sealed class CraftingEconomicsCalculator : ICraftingEconomicsCalculator
             purchasedAcquisitionCost,
             acquisition,
             economicInputCost,
-            uncertainties.OrderBy(uncertainty => uncertainty).ToArray());
+            uncertainties.OrderBy(uncertainty => uncertainty).ToArray(),
+            ingredient.AcquisitionAlternatives);
     }
 
     private CraftingOutputEconomics? CalculateOutputSale(

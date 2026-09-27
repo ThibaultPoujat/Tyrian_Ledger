@@ -27,7 +27,8 @@ public sealed record PrimaryRecommendationPolicies(
     int MinimumRoiBasisPoints, int CashReserveBasisPoints, string Strategy, string Category);
 public sealed record PrimaryRecommendationPortfolio(
     Money AvailableCash, Money TotalBankroll, Money CashReserve, CashReserveStatus ReserveStatus,
-    Money CashReserveShortfall, Money RemainingCashAfterSizing);
+    Money CashReserveShortfall, Money RemainingCashAfterSizing,
+    IReadOnlyList<PortfolioExposure>? ExistingExposures = null);
 public sealed record PrimaryRecommendationEconomics(
     Money AcquisitionCost, Money GrossSaleValue, Money ListingFee, Money ExchangeFee,
     Money NetSaleProceeds, Money NetProfit, Money TotalCost, string RoiDisplayPercent);

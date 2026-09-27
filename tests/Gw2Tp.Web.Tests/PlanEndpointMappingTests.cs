@@ -216,6 +216,8 @@ public sealed class PlanEndpointMappingTests
         Assert.Equal(1, trace.ResourceEligibleCandidates);
         Assert.Equal(0, trace.SelectedCandidates);
         Assert.Empty(trace.ExecutableSignalCandidateIds);
+        Assert.Equal(13, trace.Candidates!.Count(candidate => candidate.Stage == "generic_resource_conflict"));
+        Assert.Contains(trace.Candidates!, candidate => candidate.CandidateId == negativeUtility.Id && candidate.Stage == "negative_utility_empty_bundle");
     }
 
     private static PlanCandidate Candidate(string id, PlanResourceRequirement requirement, long utility) => new(

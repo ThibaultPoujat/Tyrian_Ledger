@@ -134,9 +134,10 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
         var hasUnknownSellBasis = sellQuantityByItem.Any(pair => pair.Value > knownQuantityByItem.GetValueOrDefault(pair.Key));
 
         PortfolioSizingSnapshot sizingSnapshot;
+        IReadOnlyList<PortfolioExposure>? exposures = null;
         try
         {
-            var exposures = BuildExposures(local);
+            exposures = BuildExposures(local);
             sizingSnapshot = hasUnknownSellBasis
                 ? new PortfolioSizingSnapshot(PortfolioSizingSnapshotState.Unknown, null, null)
                 : new PortfolioSizingSnapshot(PortfolioSizingSnapshotState.Available, portfolioResult.Value.AvailableCash, exposures);
@@ -265,7 +266,7 @@ public sealed class PrimaryRecommendationService : IPrimaryRecommendationService
             sizing.CashReserveStatus is { } reserveStatus && sizing.CashReserveShortfall is { } shortfall
             ? new PrimaryRecommendationPortfolio(
                 portfolioResult.Value.AvailableCash, bankroll, reserve, reserveStatus, shortfall,
-                RemainingCashAfterRecommendations(portfolioResult.Value.AvailableCash, actions))
+                RemainingCashAfterRecommendations(portfolioResult.Value.AvailableCash, actions), exposures)
             : null;
 
         var generatedAtUtc = RequireUtc(clock.UtcNow);

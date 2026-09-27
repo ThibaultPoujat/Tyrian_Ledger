@@ -46,7 +46,8 @@ public sealed record CraftingPlannerResult(
     IReadOnlyList<CraftingSearchTruncationReason> TruncationReasons,
     IReadOnlyList<CraftingOpportunityExclusion> SummaryExclusions,
     string? EvidenceFailureCode = null,
-    CraftingOpportunityTiming? Timing = null);
+    CraftingOpportunityTiming? Timing = null,
+    DateTimeOffset? AccountEvidenceCapturedAtUtc = null);
 
 /// <summary>Sanitized timings for bounded crafting evidence; contains no item or account facts.</summary>
 public sealed record CraftingOpportunityTiming(
