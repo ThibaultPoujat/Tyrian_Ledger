@@ -90,13 +90,8 @@ public sealed class PlanOrchestrationServiceTests
     [Fact]
     public async Task Selection_treats_split_generic_demand_like_its_unsplit_equivalent()
     {
-        var unsplit = ResourceCandidate("unsplit-incoming",
-            [new(PlanResourceKind.ExpectedIncoming, "42", 10, Money.Zero)]);
-        var split = ResourceCandidate("split-incoming",
-            [
-                new(PlanResourceKind.ExpectedIncoming, "42", 4, Money.Zero),
-                new(PlanResourceKind.ExpectedIncoming, "42", 6, Money.Zero),
-            ]);
+        var unsplit = ExpectedIncomingCandidate("unsplit-incoming", [10]);
+        var split = ExpectedIncomingCandidate("split-incoming", [4, 6]);
         var reordered = split with { Id = "reordered-incoming", Requirements = split.Requirements.Reverse().ToArray() };
 
         var unsplitResult = await service.SelectAsync([unsplit], new Money(1_000), Money.Zero);
@@ -176,6 +171,19 @@ public sealed class PlanOrchestrationServiceTests
             ]);
 
         var result = await service.SelectAsync([candidate], new Money(long.MaxValue), Money.Zero);
+
+        Assert.Empty(result.Plans);
+    }
+
+    [Fact]
+    public async Task Selection_excludes_negative_resource_totals_without_throwing()
+    {
+        var negativeQuantity = ResourceCandidate("negative-quantity",
+            [new(PlanResourceKind.Inventory, "42", -1, Money.Zero)]);
+        var negativeCash = ResourceCandidate("negative-cash",
+            [new(PlanResourceKind.Cash, "cash", 0, new Money(-1))]);
+
+        var result = await service.SelectAsync([negativeQuantity, negativeCash], new Money(1_000), Money.Zero);
 
         Assert.Empty(result.Plans);
     }
@@ -731,6 +739,12 @@ public sealed class PlanOrchestrationServiceTests
 
     private static PlanCandidate ResourceCandidate(string id, IReadOnlyList<PlanResourceRequirement> requirements, long utility = 100) =>
         new(id, 1, id, PlanAttention.Active, [Step($"{id}-step", PlanStepAction.SellNow, ResourceStepQuantity(requirements))], requirements,
+            new Money(utility), Money.Zero, 8_000, 0, 600, utility, true, []);
+
+    private static PlanCandidate ExpectedIncomingCandidate(string id, IReadOnlyList<int> quantities, long utility = 100) =>
+        new(id, 1, id, PlanAttention.Active,
+            [new PlanStep($"{id}-order", PlanStepAction.PlaceBuyOrder, 42, "Objet", quantities.Sum(), new Money(100), [], PlanStepState.Current)],
+            quantities.Select(quantity => new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", quantity, Money.Zero)).ToArray(),
             new Money(utility), Money.Zero, 8_000, 0, 600, utility, true, []);
 
     private static int ResourceStepQuantity(IReadOnlyList<PlanResourceRequirement> requirements)
