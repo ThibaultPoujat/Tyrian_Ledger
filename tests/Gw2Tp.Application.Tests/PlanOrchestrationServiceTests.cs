@@ -102,10 +102,12 @@ public sealed class PlanOrchestrationServiceTests
         var unsplitResult = await service.SelectAsync([unsplit], new Money(1_000), Money.Zero);
         var splitResult = await service.SelectAsync([split], new Money(1_000), Money.Zero);
         var reorderedResult = await service.SelectAsync([reordered], new Money(1_000), Money.Zero);
+        var competingResult = await service.SelectAsync([split, reordered], new Money(1_000), Money.Zero);
 
         Assert.Single(unsplitResult.Plans);
         Assert.Single(splitResult.Plans);
         Assert.Single(reorderedResult.Plans);
+        Assert.Single(competingResult.Plans);
     }
 
     [Fact]
@@ -728,8 +730,15 @@ public sealed class PlanOrchestrationServiceTests
             resource is null ? [new(PlanResourceKind.Cash, "cash", 0, new Money(cash))] : [resource], new Money(utility), new Money(cash), 8_000, 0, 600, utility, true, []);
 
     private static PlanCandidate ResourceCandidate(string id, IReadOnlyList<PlanResourceRequirement> requirements, long utility = 100) =>
-        new(id, 1, id, PlanAttention.Active, [Step($"{id}-step", PlanStepAction.SellNow)], requirements,
+        new(id, 1, id, PlanAttention.Active, [Step($"{id}-step", PlanStepAction.SellNow, ResourceStepQuantity(requirements))], requirements,
             new Money(utility), Money.Zero, 8_000, 0, 600, utility, true, []);
+
+    private static int ResourceStepQuantity(IReadOnlyList<PlanResourceRequirement> requirements)
+    {
+        var quantity = requirements.Where(value => value.Kind != PlanResourceKind.Cash && value.Quantity > 0)
+            .Aggregate(0L, (total, value) => checked(total + value.Quantity));
+        return quantity is > 0 and <= int.MaxValue ? (int)quantity : 1;
+    }
 
     private static PlanStep Step(string id, PlanStepAction action, int quantity = 1) =>
         new(id, action, 42, "Objet", quantity, new Money(100), [], PlanStepState.Pending);
