@@ -213,7 +213,11 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(PlanStartResult.ResourcesUnavailable,
             await database.Plans.TryStartAsync(account.Id, second, new Money(2_000), Money.Zero, new Dictionary<string, long>()));
 
-        Assert.Equal(first.Id, active.Id);
+        var stillActive = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(first.Id, stillActive.Id);
+        Assert.Equal(10, PlanOrchestrationService.OutstandingReservations(stillActive)
+            .Where(value => value.Kind == PlanResourceKind.ExpectedIncoming).Sum(value => value.Quantity));
+        Assert.Equal(1, await database.GetTableCountAsync("execution_plans"));
     }
 
     [Fact]
