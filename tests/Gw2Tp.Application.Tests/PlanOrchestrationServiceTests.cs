@@ -88,6 +88,27 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public async Task Selection_treats_split_generic_demand_like_its_unsplit_equivalent()
+    {
+        var unsplit = ResourceCandidate("unsplit-incoming",
+            [new(PlanResourceKind.ExpectedIncoming, "42", 10, Money.Zero)]);
+        var split = ResourceCandidate("split-incoming",
+            [
+                new(PlanResourceKind.ExpectedIncoming, "42", 4, Money.Zero),
+                new(PlanResourceKind.ExpectedIncoming, "42", 6, Money.Zero),
+            ]);
+        var reordered = split with { Id = "reordered-incoming", Requirements = split.Requirements.Reverse().ToArray() };
+
+        var unsplitResult = await service.SelectAsync([unsplit], new Money(1_000), Money.Zero);
+        var splitResult = await service.SelectAsync([split], new Money(1_000), Money.Zero);
+        var reorderedResult = await service.SelectAsync([reordered], new Money(1_000), Money.Zero);
+
+        Assert.Single(unsplitResult.Plans);
+        Assert.Single(splitResult.Plans);
+        Assert.Single(reorderedResult.Plans);
+    }
+
+    [Fact]
     public async Task Selection_keeps_distinct_resource_kinds_separate_when_their_id_matches()
     {
         var candidate = ResourceCandidate("distinct-kinds",
