@@ -177,6 +177,29 @@ public sealed class PlanEndpointMappingTests
     }
 
     [Fact]
+    public async Task Loop_notification_candidates_reject_duplicate_inventory_demands_as_one_combined_requirement()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var profile = new AccountProfile(1, "scope-a", now, now);
+        var portfolio = new AccountPortfolioSnapshot(new AccountScope("scope-a"), new Money(100), CapturedAtUtc: now);
+        var candidate = new PlanCandidate(
+            "recommendation:Sell:Inventory:42:duplicate", 1, "recommendation:Sell:Inventory:42:duplicate", PlanAttention.Active,
+            [new PlanStep("sell-1", PlanStepAction.SellNow, 42, "Objet", 6, new Money(25), [], PlanStepState.Pending),
+             new PlanStep("sell-2", PlanStepAction.SellNow, 42, "Objet", 6, new Money(25), [], PlanStepState.Pending)],
+            [new PlanResourceRequirement(PlanResourceKind.Inventory, "42", 6, Money.Zero),
+             new PlanResourceRequirement(PlanResourceKind.Inventory, "42", 6, Money.Zero)],
+            new Money(10), Money.Zero, 10_000, 0, 600, 1, true, []);
+        var service = new PlanEndpointService(null!, null!, null!, null!, null!, null!, null!, new PlanOrchestrationService(), null!);
+        var decision = new PlanDecisionSnapshot(profile, portfolio, new Dictionary<string, long> { ["2:42"] = 10 },
+            RecommendationResult(now), [], [candidate], true, new PlanDecisionTiming(), now);
+
+        var trace = await service.GetSelectionTraceAsync(decision, CancellationToken.None);
+
+        Assert.Equal(0, trace.ResourceEligibleCandidates);
+        Assert.Empty(trace.ExecutableSignalCandidateIds);
+    }
+
+    [Fact]
     public async Task Loop_notification_candidates_exclude_generic_resource_conflicts_and_negative_utility()
     {
         var now = DateTimeOffset.UtcNow;
