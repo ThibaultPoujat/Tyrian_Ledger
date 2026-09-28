@@ -744,7 +744,9 @@ public sealed class PlanOrchestrationServiceTests
     private static PlanCandidate ExpectedIncomingCandidate(string id, IReadOnlyList<int> quantities, long utility = 100) =>
         new(id, 1, id, PlanAttention.Active,
             [new PlanStep($"{id}-order", PlanStepAction.PlaceBuyOrder, 42, "Objet", quantities.Sum(), new Money(100), [], PlanStepState.Current)],
-            quantities.Select(quantity => new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", quantity, Money.Zero)).ToArray(),
+            quantities.Select(quantity => new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", quantity, Money.Zero))
+                .Append(new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(checked((long)quantities.Sum() * 100))))
+                .ToArray(),
             new Money(utility), Money.Zero, 8_000, 0, 600, utility, true, []);
 
     private static int ResourceStepQuantity(IReadOnlyList<PlanResourceRequirement> requirements)
