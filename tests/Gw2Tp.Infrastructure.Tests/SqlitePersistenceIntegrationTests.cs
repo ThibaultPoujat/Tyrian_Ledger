@@ -1,6 +1,7 @@
 using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.Persistence;
+using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
