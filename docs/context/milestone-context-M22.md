@@ -1,34 +1,39 @@
-# Milestone Context - M22: Continuous Operation, Hardening, and Evaluation
+# Milestone Context — M22
 
-## User outcome
+## Intended outcome
 
-The local application continuously turns permitted fresh evidence into materially new actionable Signals, is dependable to operate and recover, and can evaluate observed plan outcomes without trusting recommendation assumptions indefinitely.
+A quiet, local-first Windows second-screen profit assistant that respects the
+player's session constraints, maintains correct resources/evidence, follows the
+six approved prototypes, and can be installed by the owner and later friends.
 
-## Invariants
+## Current scope and readiness
 
-- Notifications are a delivery surface for deterministic Signals; they never execute trades.
-- Unchanged/no-action conditions are de-duplicated or silent rather than repeatedly interrupting the user.
-- Source refresh/freshness is endpoint-aware and conservative; unresolved external rate/cache contracts stay in VERIFY.
-- Calculation explanations derive from the same canonical, versioned backend decisions and verified account-scoped evidence as actionable Signals/Plans, never a second UI calculator; unknown remains unknown.
-- Local execution shadow reconciles with verified evidence without double counting or silently guessing contradictions.
-- Local host/secret boundaries receive a fresh release audit.
-- Backup/restore is exercised on representative populated data.
-- Outcome evaluation distinguishes started/executed plans from ignored/unexecuted suggestions and preserves rule/configuration versions.
-- Realized strategy attribution is additive and non-overlapping: Trading/Flipping, Crafting, Unclassified. Open/unrealized result stays separate.
-- User-facing release copy on the primary journeys is French.
+The merged loop/calculation work (#95/#145) is a foundation, not proof that the
+audit findings are resolved. P00 / #148 prepares authority and references.
+P01A / #149 is the first bounded code ticket after P00 merges. G01 / #150 tracks
+remaining P01–P06 exits; it is not a coding Goal. #96 remains final hardening,
+then #97 evaluates supported outcomes. INDEX and #98 own exact order.
 
-## Sequence
+[Approved delivery plan](../milestones/approved-delivery-plan.md) maps all 19
+findings and package exits. Only Ready child tickets may be implemented. Each
+package needs decomposition at its checkpoint; do not implement a package in
+one session. Preserve existing work and make corrective tickets explicit.
 
-TKT-M22-01 / #95 follows the M21 `Mes Signaux` plan/crafting foundation and implements the continuous decision loop plus actionable local notification delivery.
+## Shared invariants
 
-TKT-M22-S01 / #145 follows #95 and adds French `Réglages > Comprendre mes calculs` and contextual `Pourquoi ?` with versioned theoretical math, the account's actual inputs and provenance, intermediate results, bound constraints and truthful unknown or degraded cases.
-
-TKT-M22-02 / #96 then hardens the whole 0.1 shape around the primary `Mes Signaux / Artisanat / Réglages` journeys, plan/shadow reconciliation, restart persistence, accessibility, recovery and packaging.
-
-TKT-M22-02 / #96 also validates the privacy, source provenance, accessibility and backend/UI parity of the calculation-explanation surfaces.
-
-TKT-M22-03 / #97 evaluates observed Signal-plan outcomes only after that hardening gate.
+- Integer-copper deterministic financial truth; no gameplay/API writes.
+- Combined resource demands and atomic starts cannot overcommit.
+- Actual API facts supersede provisional reports only with adequate relevant evidence; stale/incomplete snapshots are not proof of contradiction.
+- All-character inventory/capability and equipped/template protection coverage is explicit.
+- Both session objectives, immutable commitments and honest profit/cash/time semantics.
+- Quiet by default; native alerts need actionable urgency and durable deduplication.
+- API requests remain endpoint-aware, cached, bounded and account-epoch scoped.
+- French UI; latest six PNGs mandatory for visual work; 1920×1080 acceptance.
+- Local credentials stay outside browser/SQLite/logs; host remains loopback-only.
+- Recovery, replay, restart and private-data boundaries require meaningful tests.
 
 ## Exit
 
-Critical 0.1 E2E journeys pass, clean-machine start/recovery is documented, and the project can identify weak strategies/components from observed evidence without autonomously changing financial rules or fabricating outcomes for actions the owner never executed.
+P01–P06 gates close with evidence, release hardening passes, owner usage confirms
+worthwhile actions and usable screens, and outcomes remain attributed to evidence
+without inventing profit or allowing autonomous rule changes. Owner merges/releases.

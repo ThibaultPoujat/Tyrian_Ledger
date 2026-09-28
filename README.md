@@ -1,7 +1,8 @@
 # Tyrian Ledger
 
-Tyrian Ledger is a **local-first personal Guild Wars 2 Trading Post assistant**.
-It is built for one player who wants trustworthy accounting, market research,
+Tyrian Ledger is a **local-first Guild Wars 2 second-screen profit assistant**.
+Its first user is the owner, with friend/public distribution possible later.
+It provides trustworthy accounting, market research,
 and explicit manual trading decisions without spreadsheets, cloud accounts, or
 Trading Post automation.
 
@@ -17,7 +18,7 @@ runtime described below.
 Tyrian Ledger should support three practical outcomes:
 
 1. **Act on the small set of worthwhile manual actions.**
-   The default `Mes Signaux` surface presents only actionable Signals, with
+   The default `Signaux` surface presents only actionable Signals, with
    deterministic prices, quantities, modeled results, confidence, freshness,
    and an explanation. No-action analysis remains silent.
 2. **Understand realized performance and evidence.**
@@ -26,8 +27,22 @@ Tyrian Ledger should support three practical outcomes:
    deterministic supporting inputs rather than competing user destinations.
 3. **Operate the local assistant safely.**
    `Réglages` groups account connection, synchronization, local backup and
-   recovery, and safe diagnostics. `Artisanat` is reserved for the later guided
-   crafting-for-profit workspace.
+   recovery, and safe diagnostics. Crafting shares `Signaux` and `Plans`; `Bilan`
+   presents outcomes.
+
+## Approved product and UI target
+
+The latest six approved prototypes are versioned in
+[the visual baseline](docs/ux/tyrian-ledger-visual-reference.md). AI implementers
+must open the relevant PNGs and reviewers must compare real 1920×1080 screenshots.
+The old Sites prototype and first concepts are superseded. Product behavior is
+specified in [approved direction](docs/specs/approved-product-direction.md) and
+[UX](docs/ux/ux.md). These are targets, not claims of completed implementation.
+
+Start one bounded coding Goal using [the handoff](docs/workflow/goal-session.md).
+The first corrective ticket is #149 after preparation #148 merges. Remaining
+[packages P01–P07](docs/milestones/approved-delivery-plan.md) require their gates;
+#150 prevents skipping to release hardening.
 
 ## Target runtime
 
@@ -153,7 +168,7 @@ sequence at **M12** and is planned through **M22**. See
 
 The first usable Signals checkpoint is M21/S03: the application combines
 personal state, live market evidence, owned history, and risk limits into the
-default `Mes Signaux` surface. Scanner, dashboard, inventory, personal-learning
+default `Signaux` surface. Scanner, dashboard, inventory, personal-learning
 and investment engines remain supporting evidence, not alternative primary
 journeys or retained presentation destinations.
 
@@ -172,7 +187,7 @@ functional behavior are satisfactory.
 ## Current implementation state
 
 M12 removed the static Pages product. M13-M21 established the loopback runtime,
-durable local evidence engines, and the first `Mes Signaux` MVP. `CURRENT.md`
+durable local evidence engines, and the first `Signaux` MVP. `CURRENT.md`
 contains the derived live handoff state; issue #98 and
 `docs/milestones/INDEX.md` remain authoritative for execution order.
 

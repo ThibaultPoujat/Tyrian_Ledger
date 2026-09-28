@@ -1,0 +1,59 @@
+{
+  "version": "2026-09-28",
+  "status": "owner-approved",
+  "targetViewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "semantics": "../../tyrian-ledger-visual-reference.md",
+  "screens": [
+    {
+      "id": "signaux",
+      "file": "01-signaux.png",
+      "sha256": "8693a151b240897fab295d338a4a272dc37cf2fc1b0c2fa90505e0ea61756463",
+      "width": 1672,
+      "height": 941,
+      "scope": "Full screen; canonical shell and main Signals layout"
+    },
+    {
+      "id": "plan-comparison",
+      "file": "02-plan-comparison.png",
+      "sha256": "78931d0b1b92ea058267b1f621c376315057e5ea7edecd0c045c641f0254a911",
+      "width": 1672,
+      "height": 941,
+      "scope": "Full screen; alternative plan rows and right recap"
+    },
+    {
+      "id": "active-plan",
+      "file": "03-active-plan.png",
+      "sha256": "be56c76fb4b164178db7dbdbf244b94b51025a3fa42b32b5cdb28d8dd2e9bba9",
+      "width": 1672,
+      "height": 941,
+      "scope": "Full screen; grouped execution and exact instructions"
+    },
+    {
+      "id": "session-preferences",
+      "file": "04-session-preferences.png",
+      "sha256": "b98fea9620caf8e4e1ffc31d93e49247843ad4378570c9d1c488fabd897aba24",
+      "width": 1672,
+      "height": 941,
+      "scope": "Drawer only; background must follow 01-signaux"
+    },
+    {
+      "id": "bilan",
+      "file": "05-bilan.png",
+      "sha256": "0dc056079b1dd55dfd53ee75e184cb3753bee2e335ccb1aae31085c78a587942",
+      "width": 1672,
+      "height": 941,
+      "scope": "Full screen; outcomes and separate capital/time metrics"
+    },
+    {
+      "id": "settings",
+      "file": "06-settings.png",
+      "sha256": "a9e9421127a64ae389822924ec4c2223d69bed1bf1a43b1de2c79964a83ab865",
+      "width": 1672,
+      "height": 941,
+      "scope": "Full screen; coverage, protections and notification readiness"
+    }
+  ]
+}

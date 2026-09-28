@@ -1,5 +1,7 @@
 # Project Specification — Tyrian Ledger Personal Profit Assistant
 
+> Target contract updated 2026-09-28. [Approved product direction](approved-product-direction.md) owns the latest session, reconciliation, protection and distribution decisions. [UX](../ux/ux.md) and the [six-image baseline](../ux/tyrian-ledger-visual-reference.md) own interaction and appearance. These targets are not claims of current implementation.
+
 ## 1. Product statement
 
 Tyrian Ledger is a local-first personal **second-screen Guild Wars 2 profit
@@ -14,7 +16,7 @@ financial rules to continuously answer:
 - what the owner has actually earned;
 - whether an executed plan later matched its modeled expectations.
 
-The primary daily Signals surface is displayed as **`Mes Signaux`**. Scanner,
+The primary daily Signals surface is displayed as **`Signaux`**. Scanner,
 dashboard, raw history, order books, inventory and personal learning are
 supporting engines/evidence, not the product's main responsibilities.
 
@@ -71,27 +73,19 @@ to operate a separate analytics workflow.
 
 ## 4. Repository language and displayed navigation
 
-Repository-facing artifacts use **English**: documentation filenames and normal
-prose, code/type/API/database/migration identifiers, internal domain terms,
-reason codes, tests and configuration keys. French appears in repository docs
-only when quoting or specifying user-facing product copy.
+Repository prose, identifiers and machine-readable state use English. All UI
+copy, errors, notifications and accessibility labels use French.
 
-All user-facing UI/UX labels and text are written in **French**, including
-navigation, actions, errors, empty states, notifications, explanations and
-accessibility text.
+Primary rail: `Signaux / Plans / Bilan`, with `Réglages` at the bottom.
+`Signaux` is home; `Plans` compares alternatives and hosts execution; `Bilan`
+shows supported outcomes. Crafting is an activity in this shared model.
+Settings owns account/coverage, protections, notification readiness and local
+data/recovery. The six approved prototypes are mandatory visual references.
 
-Target displayed primary navigation:
-
-`Mes Signaux / Artisanat / Réglages`
-
-`Mes Signaux` is the displayed label for the default Signals surface.
-`Artisanat` is the displayed label for the deliberate crafting-for-profit
-workspace. `Réglages` owns account/API, health/refresh, risk/bankroll policy,
-notifications, backup/recovery and advanced diagnostics.
-
-Existing investment-position/staged-exit infrastructure is preserved but
-investment discovery/seasonal opportunity research is deferred from the 0.1
-primary experience.
+The first user is the owner; friends may install it and public distribution may
+follow 1.0. Local-first describes compute/private-data location, not a permanent
+single-installation restriction. AI-first means AI develops the code; no runtime
+LLM is required.
 
 ## 5. Canonical product model
 
@@ -117,7 +111,8 @@ secret mechanism. The local host validates it, exposes only safe permission
 status to React and synchronizes the minimum required read-only personal data.
 
 Relevant account scope includes current/completed Trading Post transactions,
-wallet Coin, bank/material storage, recipe unlocks and crafting capability where
+wallet Coin, all character inventories and equipment/templates, bank/material
+storage, recipe unlocks and every character’s crafting capability where
 the verified API/permissions support them.
 
 Partial permission/source failure must degrade only the affected feature and
@@ -131,8 +126,9 @@ the accounting policy.
 
 The main assistant shows:
 
-- **30-day realized profit** as the headline;
-- 7-day and 90-day realized profit as secondary context;
+- Bilan with session, 7-day and 30-day supported realized profit;
+- cash released from surplus separately from economic profit;
+- active time explicitly estimated unless measured;
 - open/unrealized result separately;
 - explicit data coverage and unknown-basis limitations.
 
@@ -162,7 +158,7 @@ The normal user should not need to operate scanner/history pages to benefit from
 these engines. Detailed evidence is available through the displayed `Pourquoi ?`
 control or advanced diagnostics.
 
-### 6.4 Decide what to do — Signals (`Mes Signaux`)
+### 6.4 Decide what to do — Signals (`Signaux`)
 
 The Signals surface attention-gates analysis. Internal states such as `WAIT`,
 `HOLD`, `KEEP BID`, `LEAVE SELL LISTING`, `SKIP`, `REVIEW` and harmless market
@@ -171,9 +167,10 @@ churn normally remain silent.
 The user-facing feed focuses on concrete manual actions such as buy now,
 place/update/cancel buy order, craft, list/relist, and sell/sell partial.
 
-Initial Signal cards show action, item, quantity/relevant price, modeled result,
-confidence and `Pourquoi ?`. Detailed current/history/personal/risk evidence is
-progressively disclosed.
+Show 2–3 compact signals with action/strategy, modeled net gain or cash released,
+active time and capital/delay. Exact item quantities and unit-price instructions
+are visible in the plan preview and execution. Detailed evidence is disclosed
+through `Pourquoi ?`. A large tile is reserved for urgent actionable conditions.
 
 If nothing clears the attention gate, the correct product outcome is an
 understandable zero-Signal state rather than manufactured work.
@@ -195,9 +192,8 @@ incoming materials and other relevant commitments. Two plans cannot consume the
 same resource simultaneously.
 
 The hard bankroll reserve remains protected. A softer opportunity-capital buffer
-may preserve optionality. A preferred attractiveness threshold may relax toward,
-but never below, hard evidence/liquidity/risk floors when meaningful capital
-would otherwise stay idle. The opportunity reserve is not a fixed deployment
+may preserve optionality. Internal attractiveness heuristics may adapt within hard floors, but user
+minimum-gain/time/risk constraints must never be silently relaxed. The opportunity reserve is not a fixed deployment
 percentage.
 
 Compatible-bundle selection is bounded and deterministic, not unbounded
@@ -205,50 +201,36 @@ portfolio optimization or simple top-N sorting.
 
 ### 6.6 Choose Passive or Active attention
 
-Passive and Active are execution/attention paths, not permanent account modes.
+Passive/Active are internal execution characteristics, never assistant modes.
+The assistant is always quiet except for urgent material actionable alerts.
+The player selects a session objective: time for active work or a deadline for
+liquid usable gold, with duration, capital, activities and risk preferences.
+See [the session contract](approved-product-direction.md#2-session-preferences-and-money-constraints).
 
-- **Passive**: typically ~1–3 minutes of interaction, then wait for market fills
-  while playing.
-- **Active**: immediately executable chains, typically ~5–15 minutes per path,
-  with successive paths possible during a longer active session.
-
-A buy-order step may appear in an Active path only as a terminal step; it must
-not block later immediate steps.
-
-If only a few obvious actions exist, a single ordered list is preferable to
-forcing path choice.
-
-Before selection, Passive/Active proposals may be alternatives that overlap
-resources. Once the owner selects displayed `Démarrer`, the chosen plan reserves
-its resources and alternatives are recomputed from what remains. A waiting
-Passive plan may coexist with Active work that uses only unreserved resources.
+Show comparable alternative plans; preview reserves nothing. `Démarrer ce plan`
+revalidates and atomically reserves locally. A passive acquisition may wait for
+fill/collection, then resume a freshly validated craft/sell continuation. Waiting
+is separate from active time and must fit the chosen objective. Existing plans
+retain commitments when preferences change.
 
 ### 6.7 Execute without waiting for API propagation
 
-The current manual instruction receives a short execution/freeze window so
-quantity/price does not silently change while the owner is entering it in game.
-Material invalidation may force an explicit recheck; immaterial market movement
-does not reshuffle the instruction.
+The current instruction remains stable during execution. Material invalidation
+requires an explicit recheck; immaterial changes do not silently change prices.
+Quantities, unit prices/limits and fees are exact read-only instructions.
 
-Effective planning state is:
+Automatic API observation is primary. The exceptional `J’ai effectué cette étape`
+button records one durable provisional event from the displayed instruction,
+then permits safe continuation. Five-minute cache expiry is a retry opportunity,
+not proof. Stale/incomplete evidence is not a contradiction. Reconcile supported
+facts, replace only confirmed portions and never double-count. Unknown actual
+price/basis remains unknown. Material fresh contradiction pauses affected work.
 
-`latest verified ArenaNet state + locally recorded unconfirmed execution events`
-
-The local execution shadow is reversible/provisional and separate from verified
-state. Displayed `Terminé` reports that the issued instruction was performed
-essentially as specified, allowing the next step to be planned immediately.
-Exceptional controls allow different quantity/price or reporting that the action
-was not performed.
-
-Undo must at least support reversing the latest unconfirmed local step. Earlier
-reversal must safely invalidate/reconcile dependent later local steps.
-
-API refresh may confirm earlier completed steps while an Active path continues.
-Verified evidence eventually wins. Material contradiction pauses the affected
-plan for explicit reconciliation rather than guessing.
-
-Executing a listing step does not close the economic outcome; sale/result closes
-only when later evidence supports it.
+The full state/undo/partial/restart contract is in
+[approved product direction](approved-product-direction.md#3-local-confirmation-and-authoritative-reconciliation).
+`Un problème avec cette étape ?` provides guided exceptional correction, not a
+routine quantity/price form. Local undo never undoes gameplay. Executing a
+listing does not close the economic outcome.
 
 ### 6.8 Craft for profit
 
@@ -266,9 +248,8 @@ superior, the craft is not an actionable profit opportunity.
 Output liquidity/history/confidence is required before a theoretical margin can
 become a Signal.
 
-The crafting workspace, displayed as `Artisanat`, presents a small number of
-guided profitable plans rather than an exhaustive world spreadsheet. Qualified
-craft plans may also appear in `Mes Signaux`.
+Crafting appears as qualified signals and plans within `Signaux` and `Plans`.
+It is not a separate top-level workspace or exhaustive recipe spreadsheet.
 
 The crafting workspace may additionally report **crafting value added** versus
 the best realistic input alternative. This analytical measure must not be added
@@ -384,21 +365,11 @@ merging authority.
 
 ## 12. Current success checkpoints
 
-The existing foundation through #92 already provides accounting, live/current
-market analysis, retained history, recommendation/scoring/sizing, personal
-turnover/ranking and crafting-account ingestion.
-
-Next checkpoints:
-
-- after #131, the owner can use a first attention-first French Signals UI
-  displayed as `Mes Signaux` with the new primary navigation;
-- after #133, Signals become stable Active/Passive execution plans with shared
-  resource reservations and responsive shadow/reconciliation;
-- after #93/#94, crafting becomes a first-class economic/guided profit engine;
-- after #95, new state can surface concrete Signals without repeated manual
-  checking;
-- after #96/#97, the 0.1 product is hardened and can evaluate observed plan
-  outcomes without fabricated counterfactuals.
+Follow [approved delivery packages P00–P07](../milestones/approved-delivery-plan.md)
+and the ready-ticket queue in issue #98 / `docs/milestones/INDEX.md`. Historical
+MVP/plan/crafting merges are not proof that the corrective audit findings are
+resolved. #149 fixes duplicate resource aggregation only. #150 holds progression
+until remaining package exit evidence exists.
 
 ## 13. Completion standard for authoritative work
 

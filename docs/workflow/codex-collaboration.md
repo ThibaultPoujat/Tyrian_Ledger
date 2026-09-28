@@ -8,20 +8,15 @@ implementation and does not merge its own PR.
 
 ## Model selection
 
-The authoritative quota-aware policy is
-`docs/workflow/model-effort-guide.md`.
+Use `docs/workflow/model-effort-guide.md` as the sole effort/model authority.
+Astra prepares bounded contracts/checkpoints; Luna implements tickets that
+explicitly permit it. Review models follow the guide, including stronger gates.
+A separate Sol XHigh review is required only for the explicit active list or an
+explicit escalation. Risk still determines test depth and reviewer focus.
 
-Default references:
-
-- R0 mechanical/docs maintenance: **Terra Medium**;
-- R1 normal product implementation: **Terra Medium**, escalating to High when materially cross-layer/stateful/ambiguous;
-- R2 complex cross-layer/stateful implementation: **Terra High**;
-- R3 financial/data/security/statistical/recommendation authority: **Terra High**;
-- NORMAL review: same-run independent Terra review subagent/check plus required tests/CI, using Medium for R0/R1 and High for R2/R3 by default;
-- SOL-GATED review: fresh separate Sol XHigh only for the explicit active ticket list in the model-effort guide, after required validation/CI is green.
-
-Risk class still controls test depth and reviewer focus, but **R3 does not by
-itself require Sol or a separate review session**.
+For a copyable first-ticket prompt and stop conditions, use
+[the Goal handoff](goal-session.md). UI work also requires the local PNG baseline
+and actual screenshot comparison, not chat memory.
 
 ## Ticket lifecycle
 
@@ -32,9 +27,9 @@ itself require Sol or a separate review session**.
 4. If a genuine ambiguity/contradiction cannot be resolved from the repository, Codex asks the owner with a recommended choice and concise alternatives; routine technical choices stay autonomous.
 5. It implements only that ticket in an isolated branch/worktree and validates.
 6. It runs the ticket's review path:
-   - NORMAL: independent Terra review subagent/check in the same implementation run when supported;
+   - NORMAL: independent guide-selected review subagent/check in the same implementation run when supported;
    - SOL-GATED: create/keep the PR Draft, get required validation/CI green, then hand off to a fresh Sol XHigh review session.
-7. Confirmed findings are fixed within ticket scope and revalidated. SOL-GATED fixes use Terra High, then a targeted fresh Sol re-review unless the fix materially broadened scope.
+7. Confirmed findings are fixed within ticket scope and revalidated. SOL-GATED fixes use the guide-selected implementation model/effort, then a targeted fresh Sol re-review unless the fix materially broadened scope.
 8. The owner checks the functional summary/behavior and merges only after the required gate is satisfied.
 9. GitHub closes the issue through `Closes #<issue-number>` and the agent-managed
    `CURRENT.md` handoff keeps repository state current.
@@ -66,7 +61,7 @@ green. Use a fresh context:
 > repository source of truth and exact ticket first. Findings first. Do not
 > modify files or merge.
 
-For NORMAL tickets, the independent Terra review subagent/check inside the
+For NORMAL tickets, the independent guide-selected review subagent/check inside the
 implementation workflow is sufficient by default. Do not create a second owner-
 triggered review session merely out of habit.
 
@@ -89,6 +84,6 @@ option. Never silently replace a required Sol review with a cheaper reviewer.
 ## Historical workflow note
 
 M0-M11 records explain the project's evolution. M12+ is the active local-first
-roadmap. Earlier workflow statements requiring Terra High for every ticket,
+roadmap. Earlier workflow statements requiring the guide-selected implementation model/effort for every ticket,
 actual Plan mode for every implementation, or a fresh separate flagship review
 for every R3 ticket are superseded by the central quota-aware model-effort guide.

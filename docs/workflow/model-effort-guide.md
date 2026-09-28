@@ -1,154 +1,92 @@
-# Codex Model and Reasoning Effort Guide
+# Model and Review Policy
 
-Model names and availability change faster than project architecture. This file
-sets the active **quota-aware execution and review policy**. Risk class describes
-the consequence of an error; it does **not** by itself require a separate Sol
-session.
+Owner direction updated 2026-09-28: Astra prepares bounded contracts, Luna can
+implement sufficiently specified tickets, and stronger review is reserved for
+consequential changes. Model availability/usage accounting is controlled by the
+host product. This policy promises neither a quota saving nor a quota bypass.
 
 ## Principles
 
-1. Tests, CI, deterministic invariants and review evidence are the primary safety
-   system.
-2. Match Terra effort to risk instead of using High for every ticket.
-3. An independent Terra review subagent/check inside the implementation run is
-   sufficient for the NORMAL review path when supported.
-4. Spend a separate Sol session only where subtle failure would materially
-   affect financial/recommendation/state authority or final release safety.
-5. Do not spend Sol review quota on a PR that still has failing required
-   validation/CI unless Sol is explicitly needed to resolve the failure safely.
-6. Escalate any NORMAL ticket to Sol only when Terra reports unresolved
-   high-consequence ambiguity, important findings remain uncertain, or the owner
-   explicitly requests it.
-7. Max effort is an exception, never a default.
+One implementation ticket per Goal/session. Use the smallest relevant context,
+not every historical document/image. Tests, invariants, CI and independent
+review remain mandatory evidence. Do not start another ticket automatically.
 
-## Risk classes and default Terra effort
+Model names here describe roles available to the owner. If the named model or
+independent review is unavailable, preserve a handoff/Draft; report that limit.
+Never pretend an author self-review is independent or silently substitute for a
+required stronger review. Explicit ticket choices below take precedence over
+default implementation model selection.
 
-- **R0 — mechanical/low-consequence maintenance:** Terra Medium by default.
-- **R1 — normal product implementation:** Terra Medium by default; escalate to
-  High when materially cross-layer, stateful or ambiguous.
-- **R2 — complex cross-layer/stateful work:** Terra High by default.
-- **R3 — financial, accounting, persistence/data-loss, security/private-data,
-  statistical, recommendation, reconciliation/state-authority, network-exposure
-  or architecture-authority work:** Terra High by default.
+## Risk and model defaults
 
-A lower default effort never weakens acceptance criteria, tests, CI, security or
-deterministic correctness. If Medium encounters material uncertainty/findings,
-escalate the same ticket to High rather than guessing.
+| Risk | Implementation default | NORMAL independent review |
+|---|---|---|
+| R0: mechanical docs/maintenance | Luna Medium | Luna Medium |
+| R1: bounded UI/product/workflow | Luna High | Luna High |
+| R2: complex cross-layer/stateful | Sol Medium; Luna High only with a fully specified bounded ticket | Sol Medium |
+| R3: money/resources, reconciliation, security or persistence authority | Sol High; Luna High only when explicitly authorized by a bounded contract | Sol High |
 
-R3 still requires stronger tests/reviewer focus, but **R3 does not automatically
-mean a separate Sol review**.
+Astra is used for architecture/product decisions, ticket decomposition and
+milestone evidence checks, or an explicitly requested difficult audit. It is
+not required for routine implementation or every PR. Max is exceptional.
+Risk alone does not imply a *separate Sol XHigh* gate; only the explicit list does.
 
-## Planning mode
+## Planning and Goal boundaries
 
-Every implementation ticket begins with a short in-session plan of no more than
-five steps. Dedicated product Plan mode is not required for every ticket.
+A short in-session plan (at most five steps) is sufficient for a Ready ticket.
+Use dedicated planning for unresolved product/architecture/financial ambiguity
+or owner request. Do not invent exact file-level instructions for a future
+package before its dependencies are implemented.
 
-Use it when:
+See [Goal handoff](goal-session.md). Do not launch parallel worker swarms by
+default. One independent reviewer is appropriate when the contract calls for it.
+After two unsuccessful attempts at the same blocker, diagnose and preserve an
+evidence-rich handoff; escalate instead of repeatedly retrying or broadening scope.
 
-- the owner explicitly requests it;
-- a genuine owner/product decision must be resolved before code changes;
-- requirements/canonical documents materially contradict each other;
-- architecture, destructive behavior, security, financial authority or scope is
-  ambiguous enough that building first would create avoidable rework.
+## NORMAL path
 
-Otherwise make the short plan in-session and proceed. If genuine ambiguity or an
-owner decision appears during implementation, pause and ask with a recommended
-choice and concise alternatives. Do not ask the owner to decide routine
-technical details already authorized by the ticket/repository.
+Implement, validate, inspect the diff and run one independent review using
+`.codex/skills/tyrian-pr-review/SKILL.md` with the model/effort above. The reviewer
+starts from the ticket and diff and checks evidence independently. Same-run
+review is sufficient; a second owner-triggered session is not the default.
+Keep a PR Draft when required validation, review or visual evidence is missing.
+Mark Ready only after required checks and review pass. The owner merges.
 
-## NORMAL implementation and review path
-
-Unless a ticket is in the explicit Sol review gate below:
-
-- plan/implement/fix with the risk-based Terra effort above;
-- run an independent Terra review subagent/check **inside the same implementation
-  run** when supported;
-- R0/R1 review may use Terra Medium by default and escalate to High for material
-  findings/uncertainty;
-- R2/R3 review uses Terra High by default;
-- run all ticket-required tests and CI;
-- a second owner-triggered review session is not required by default;
-- separate review sessions are for explicit escalation or environments that
-  cannot provide independent same-run review;
-- do not put obsolete `R3 requires fresh flagship XHigh` wording in NORMAL PRs.
+TKT-M22-P00 / #148 is a one-time owner-requested Astra planning/documentation
+bootstrap (R1), reviewed independently by Sol Medium for authority/workflow
+consistency. It does not implement runtime financial changes.
 
 ## Separate Sol review gate
 
-The following **currently unmerged roadmap tickets** require a separate fresh
-**Sol XHigh** review before owner merge:
+The following unmerged tickets require fresh independent **Sol XHigh** review:
 
-- #133 / TKT-M21-S05 — Signal plan/resource orchestration, local execution shadow
-  and verified-state reconciliation;
-- #93 / TKT-M21-02 — crafting opportunity-cost economics;
-- #94 / TKT-M21-03 — bounded crafting-path economics and guided plan generation;
-- #96 / TKT-M22-02 — final security/recovery/release hardening.
+- #149 / TKT-M22-P01A — duplicate resource aggregation and atomic start; Luna High implementation explicitly permitted for this bounded fix.
+- #96 / TKT-M22-02 — final security/recovery/release hardening; Sol High implementation default.
 
-Previously completed Sol-gated tickets remain documented in their historical
-issues/PRs and are intentionally omitted from this active list.
+Completed gates #133, #93 and #94 are historical, not active review requirements.
+Add newly ready high-consequence tickets explicitly here when their contracts
+require this gate; do not infer or silently remove gates from labels alone.
 
-For an active SOL-GATED ticket:
+1. Open the implementation PR as **Draft**.
+2. Finish required local validation and green CI before the fresh Sol XHigh pass.
+3. Review with `.codex/skills/tyrian-pr-review/SKILL.md` in an independent context.
+4. Keep Draft for Blocker/Important findings or missing required evidence.
+5. Fix within the same ticket, rerun affected checks and request a targeted fresh
+   Sol re-review of findings/changes. Full review repeats only if scope broadened.
+6. Mark Ready after APPROVE and required validation remain green; stop for owner
+   merge. Do not bypass this gate when quota runs out.
 
-1. Plan/implementation/fixes: **Terra High** by default.
-2. Create the PR as **Draft**.
-3. Complete required local validation and push the implementation.
-4. Let required GitHub CI finish. If CI is red, fix with Terra High and
-   revalidate before spending a Sol review session.
-5. With required validation/CI green, run a fresh separate **Sol XHigh** review
-   using `.codex/skills/tyrian-pr-review/SKILL.md`.
-6. If changes are required, use Terra High for corrections, keep the PR Draft,
-   rerun affected validation/CI, then perform a **targeted fresh Sol re-review**
-   focused on prior findings, changed diff and regression risk.
-7. Require a full Sol re-review only when the fix materially broadens changed
-   authority/scope beyond prior findings.
-8. Mark Ready only after Sol returns APPROVE and required validation is green.
+## Quota and handoff
 
-Draft state is the merge-safety mechanism; the owner should not need to remember
-the list manually.
+Do not claim the entire repository can be safely delivered in one five-hour
+allowance. Keep acceptance examples in tickets, use focused tests first, avoid
+rereading history and save progress in Git. On interruption, record branch/head,
+completed criteria, exact failures, uncommitted state and next action. A later
+session resumes the same ticket. Quota affects scheduling, never truth or gates.
 
-## Current roadmap effort notes
+## Superseded annotations
 
-These tickets are currently expected to use the NORMAL path unless escalated:
-
-- #128 product/docs/roadmap consolidation — R1;
-- #129 self-healing `CURRENT.md` workflow/state maintenance — R2;
-- #130 `Mes Signaux` UX design spike — R1;
-- #131 `Mes Signaux` MVP/new navigation — R2;
-- #132 post-MVP UI/docs/code cleanup — R2;
-- #95 continuous decision loop/actionable notifications — R2;
-- #145 / TKT-M22-S01 calculation transparency and account-scoped decision provenance — R3 NORMAL, Terra High independent review; escalate only for unresolved high-consequence financial/state authority ambiguity;
-- #97 Signal-plan outcome evaluation — R3 NORMAL with Terra High independent
-  review unless a material ambiguity triggers escalation.
-
-Risk/effort may be raised during implementation if actual scope exceeds the
-ticket's expected boundary. Do not lower acceptance criteria because a ticket is
-NORMAL.
-
-## Quota exhaustion
-
-If the owner's included agentic allowance is exhausted:
-
-- do not weaken acceptance criteria or tests;
-- do not substitute a cheaper reviewer for an explicit SOL-GATED review;
-- leave an unfinished SOL-GATED PR Draft and preserve a clear repository
-  handoff;
-- resume implementation/review later rather than bypassing the gate.
-
-Quota pressure changes scheduling/effort allocation, not correctness gates.
-
-## Superseding legacy ticket annotations
-
-This file is authoritative for **model effort, dedicated Plan-mode use,
-review-model selection and PR Draft blocking**. Older ticket/workflow text that
-says every ticket uses Terra High, actual Plan mode is mandatory, an R3 ticket
-automatically requires fresh XHigh, or a NORMAL ticket requires a separate fresh
-review session is superseded.
-
-Ticket acceptance criteria, functional scope, validation requirements and risk
-classification remain authoritative and are not weakened by review-policy
-changes.
-
-## Max effort
-
-Use Max only when XHigh leaves a real unresolved correctness ambiguity, a subtle
-bug survives the normal implementation/review process, the task is unusually
-cross-domain, or the owner explicitly requests the strongest available audit.
+This is the sole authority for model/effort, separate review and Draft blocking.
+Old Terra defaults and blanket R3/XHigh or mandatory Plan-mode language in
+historical tickets are superseded. Functional acceptance, invariants and required
+validation are not weakened. UI work also obeys the visual evidence contract.

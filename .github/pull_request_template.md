@@ -10,7 +10,7 @@
 Set the pull request's actual GitHub milestone to match the implementation issue.
 Review-path selection and model effort are defined by docs/workflow/model-effort-guide.md.
 Do not infer SOL-GATED from R3 alone and do not paste legacy blanket R3/XHigh wording.
-NORMAL review should use the same-run independent Terra review path when supported; do not require a second owner-triggered review session by default.
+NORMAL review should use the same-run independent model-policy-selected review path when supported; do not require a second owner-triggered review session by default.
 SOL-GATED PRs must be opened as Draft, complete required validation/CI before the fresh Sol review, and remain Draft until the required Sol review returns APPROVE.
 -->
 
@@ -36,6 +36,17 @@ VERIFY documents implemented or validated.
 List exact commands/checks and results. For high-risk financial/data/security
 work, include edge/regression evidence rather than only happy-path tests.
 
+## UI evidence (required when UI changes)
+
+- Screen IDs and approved PNGs opened:
+- Actual 1920×1080 screenshots, route/state, fixture, viewport/scale and commit:
+- Paired reference/actual comparison and explained deltas:
+- Keyboard, accessibility and changed error/pending states:
+- Independent reviewer inspected both image sets:
+
+Use `docs/ux/tyrian-ledger-visual-reference.md`. Mark `Not applicable` for a
+non-UI ticket. Missing evidence or material unapproved drift keeps the PR Draft.
+
 ## VERIFY, risks, and follow-up
 
 - VERIFY items added/updated/resolved:
@@ -45,7 +56,7 @@ work, include edge/regression evidence rather than only happy-path tests.
 
 ## Review result
 
-- NORMAL: same-run independent Terra review subagent/check completed when supported; required tests/CI green.
+- NORMAL: same-run independent model-policy-selected review subagent/check completed when supported; required tests/CI green.
 - SOL-GATED: required validation/CI green before the fresh separate Sol XHigh review; keep this PR Draft until APPROVE. After scoped fixes, record the targeted fresh Sol re-review verdict before marking Ready.
 
 <!-- Keep only the review-result line that applies to this PR. -->

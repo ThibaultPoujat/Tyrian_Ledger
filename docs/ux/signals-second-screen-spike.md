@@ -1,3 +1,5 @@
+> SUPERSEDED visual direction: this is the historical first MVP spike. Use [the 2026-09-28 six-image baseline](tyrian-ledger-visual-reference.md) and [current UX](ux.md) for new work.
+
 # Signals Second-Screen UX Spike
 
 GitHub issue: #130

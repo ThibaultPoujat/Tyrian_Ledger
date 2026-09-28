@@ -60,7 +60,7 @@ export function replaceGeneratedBlock(current, generatedBlock) {
   return current.replace(pattern, `${beginMarker}\n${generatedBlock}\n${endMarker}`);
 }
 
-export function deriveLiveState({ index, issue98, guide, ticketByIssue, operational }) {
+export function deriveLiveState({ index, issue98, guide, ticketByIssue, checkpointIssues = new Set(), operational }) {
   const indexOrder = parseExecutionOrder(index, 'docs/milestones/INDEX.md');
   const issueOrder = parseExecutionOrder(issue98, 'issue #98');
   const allReferencedIssues = [...new Set([...indexOrder, ...issueOrder])];
@@ -110,6 +110,7 @@ export function deriveLiveState({ index, issue98, guide, ticketByIssue, operatio
     completed,
     milestone,
     preferred: ticketReference(preferredNumber, ticketByIssue),
+    preferredKind: checkpointIssues.has(preferredNumber) ? 'checkpoint' : 'implementation',
     alternate: alternateNumber === null ? 'None' : ticketReference(alternateNumber, ticketByIssue),
     gates: gates.map((gate) => ticketReference(gate.number, ticketByIssue)),
   };
@@ -120,7 +121,8 @@ export function renderGeneratedBlock(liveState) {
     `- Last completed implementation ticket: \`${ticketReference(liveState.completed.issue.number, liveState.ticketByIssue)}\``,
     `- Last merged implementation PR: \`#${liveState.completed.number}\``,
     `- Active milestone: \`${liveState.milestone}\``,
-    `- Preferred next implementation ticket: \`${liveState.preferred}\``,
+    `- Preferred next implementation ticket: \`${liveState.preferredKind === 'checkpoint' ? 'None — planning checkpoint required' : liveState.preferred}\``,
+    `- Next required checkpoint: \`${liveState.preferredKind === 'checkpoint' ? liveState.preferred : 'None'}\``,
     `- Allowed non-blocking alternate: ${liveState.alternate === 'None' ? '`None`' : `\`${liveState.alternate}\``}`,
     `- Explicit active Sol gates: ${liveState.gates.length === 0 ? '`None`' : liveState.gates.map((gate) => `\`${gate}\``).join(', ')}`,
     '- Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`',
@@ -128,7 +130,12 @@ export function renderGeneratedBlock(liveState) {
 }
 
 export async function readTicketMap(ticketsRoot = join(repositoryRoot, 'docs', 'milestones')) {
+  return (await readTicketContracts(ticketsRoot)).ticketByIssue;
+}
+
+export async function readTicketContracts(ticketsRoot = join(repositoryRoot, 'docs', 'milestones')) {
   const ticketByIssue = new Map();
+  const checkpointIssues = new Set();
   for (const path of await markdownFiles(ticketsRoot)) {
     const fileName = path.split('/').at(-1);
     const ticket = fileName.match(/^(TKT-[A-Z0-9-]+)\.md$/)?.[1];
@@ -138,19 +145,22 @@ export async function readTicketMap(ticketsRoot = join(repositoryRoot, 'docs', '
     if (!issue) continue;
     const number = Number(issue);
     if (ticketByIssue.has(number)) throw new Error(`Issue #${number} is mapped by more than one ticket contract.`);
+    const kind = content.match(/^Ticket type:\s*(\S+)\s*$/m)?.[1] ?? 'implementation';
+    if (!['implementation', 'checkpoint'].includes(kind)) throw new Error(`Issue #${number} has an unsupported ticket type: ${kind}.`);
+    if (kind === 'checkpoint') checkpointIssues.add(number);
     ticketByIssue.set(number, ticket);
   }
-  return ticketByIssue;
+  return { ticketByIssue, checkpointIssues };
 }
 
 export async function updateCurrentLiveState({ root = repositoryRoot, operational }) {
-  const [current, index, guide, ticketByIssue] = await Promise.all([
+  const [current, index, guide, { ticketByIssue, checkpointIssues }] = await Promise.all([
     readFile(join(root, 'CURRENT.md'), 'utf8'),
     readFile(join(root, 'docs', 'milestones', 'INDEX.md'), 'utf8'),
     readFile(join(root, 'docs', 'workflow', 'model-effort-guide.md'), 'utf8'),
-    readTicketMap(join(root, 'docs', 'milestones')),
+    readTicketContracts(join(root, 'docs', 'milestones')),
   ]);
-  const state = deriveLiveState({ index, issue98: operational.issue98Body, guide, ticketByIssue, operational });
+  const state = deriveLiveState({ index, issue98: operational.issue98Body, guide, ticketByIssue, checkpointIssues, operational });
   const updated = replaceGeneratedBlock(current, renderGeneratedBlock(state));
   if (updated !== current) await writeFile(join(root, 'CURRENT.md'), updated);
   return { changed: updated !== current, state };

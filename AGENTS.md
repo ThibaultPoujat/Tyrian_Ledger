@@ -6,10 +6,14 @@ Build Tyrian Ledger as a **local-first second-screen personal Guild Wars 2 profi
 assistant**. The product continuously turns account/market evidence into the
 smallest useful set of concrete manual actions for the owner to perform in game.
 
-The primary daily Signals surface is displayed as **`Mes Signaux`**. The 0.1
+The primary daily Signals surface is displayed as **`Signaux`**. The 0.1
 economic focus is Trading Post flipping/trading plus crafting. Existing
 investment-position/staged-exit infrastructure is preserved, but investment
 discovery/seasonality is deferred from the 0.1 critical path.
+
+The approved target is Windows 1920×1080 landscape. Session objectives include
+active work and liquid-gold deadlines. The owner is the first user, with possible
+friend/public distribution later; local-first does not prohibit distribution.
 
 The coding model is a development tool only. It is never part of runtime
 financial truth and never executes gameplay or Trading Post actions.
@@ -93,7 +97,7 @@ Never rewrite durable `CURRENT.md` narrative merely to update live ticket state.
 5. The assigned ticket under `docs/milestones/<M>/tickets/`.
 6. `docs/verification/VERIFY-REGISTER.md` entries relevant to the ticket.
 7. `docs/workflow/model-effort-guide.md`.
-8. `docs/specs/signals.md` for Signal/plan/UI/crafting-orchestration work.
+8. `docs/specs/approved-product-direction.md` and relevant sections of `docs/specs/signals.md` for product/plan work; for UI work, also read `docs/ux/ux.md`, `docs/ux/tyrian-ledger-visual-reference.md` and **open the relevant approved PNGs** before coding. Non-UI tickets need not load all images.
 9. Only additional specialized specifications, ADRs, tests and source files
    needed by the ticket.
 
@@ -121,7 +125,7 @@ corrective action is required.
 
 Displayed primary navigation:
 
-`Mes Signaux / Artisanat / Réglages`
+`Signaux / Plans / Bilan`, with `Réglages` at the bottom
 
 Scanner, dashboard, raw inventory, retained history, personal learning and order
 books are supporting engines/evidence rather than primary user destinations.
@@ -191,12 +195,13 @@ See:
 
 ## Current roadmap discipline
 
-Issue #98 and `docs/milestones/INDEX.md` define the explicit execution order.
-Within current M21, **do not infer execution order from numeric issue/ticket
-numbers**. The owner-approved transition sequence intentionally places
-#129-#133 before the remaining crafting tickets #93/#94.
-
-One implementation ticket remains the normal unit of work.
+Issue #98 and `docs/milestones/INDEX.md` define explicit order. The approved
+corrective packages are in `docs/milestones/approved-delivery-plan.md`.
+P00 / #148 prepares the repository. P01A / #149 is the first bounded code fix.
+G01 / #150 is a tracking gate, **not an executable coding ticket**. A checkpoint
+must prepare the next ready child ticket; do not implement all packages in one
+Goal or skip directly to #96. Merged old feature tickets are not proof that
+newly identified audit findings have been corrected.
 
 ## Ticket and session discipline
 
@@ -225,62 +230,29 @@ cannot finish safely, but it remains scoped to the same ticket.
 
 ## Review policy
 
-There are two review paths. **Risk class alone does not select Sol.**
+Use `docs/workflow/model-effort-guide.md` as the single model/effort authority.
+Every implementation ticket uses `.codex/skills/tyrian-pr-review/SKILL.md` for an
+independent review; same-run review is sufficient for NORMAL when supported.
+Use one focused reviewer, not a default worker swarm. Self-review alone is not
+independent evidence. Risk alone does not select the separate Sol XHigh gate.
 
-### NORMAL
+SOL-GATED PRs remain Draft until required validation/CI are green and the fresh
+independent Sol XHigh review approves. Missing review capability/quota means
+preserve Draft and handoff, not silently bypass the gate. Owner merges.
 
-For tickets not explicitly listed in the active Sol gate:
-
-- use risk-based Terra effort from `docs/workflow/model-effort-guide.md`;
-- run an independent Terra review subagent/check inside the implementation run
-  when supported;
-- R0/R1 review may use Terra Medium by default; R2/R3 uses Terra High by
-  default, escalating for material uncertainty/findings;
-- run all ticket-required tests and CI;
-- a second owner-triggered review session is not a default merge requirement;
-- do not put obsolete blanket `R3 requires fresh flagship XHigh` wording in a
-  NORMAL PR.
-
-Escalate to Sol only if unresolved high-consequence ambiguity remains, an
-important review finding remains uncertain, or the owner explicitly requests it.
-
-### SOL-GATED
-
-Only the explicit active list in `docs/workflow/model-effort-guide.md` requires
-separate fresh Sol XHigh review.
-
-For those tickets:
-
-1. implement/fix with Terra High by default;
-2. create the PR as **Draft**;
-3. complete required local validation and let required GitHub CI go green;
-4. only then spend the fresh separate Sol XHigh review session using
-   `.codex/skills/tyrian-pr-review/SKILL.md`;
-5. keep the PR Draft while findings remain;
-6. fix confirmed findings with Terra High and rerun affected validation/CI;
-7. use a targeted fresh Sol re-review focused on prior findings/diff/regression
-   risk unless fixes materially broadened scope;
-8. mark Ready only after APPROVE and green validation;
-9. the owner still makes the final merge decision.
-
-If quota is exhausted, preserve Draft/handoff and do not bypass the required
-Sol gate.
+UI PRs require actual 1920×1080 application screenshots compared with the
+relevant six approved reference PNGs. The reviewer must open both. Missing
+visual evidence or material unapproved design drift is an Important finding.
+See `docs/ux/tyrian-ledger-visual-reference.md` for exact coverage and overrides.
+Do not substitute the old Sites prototype, earlier concepts or a new redesign.
 
 ## Model and reasoning guidance
 
-- R0 mechanical/docs/repository maintenance: Terra Medium by default.
-- R1 normal product implementation: Terra Medium by default; escalate to High
-  when materially cross-layer/stateful/ambiguous.
-- R2 complex cross-layer/stateful implementation: Terra High by default.
-- R3 financial/data/security/statistical/recommendation/state-authority work:
-  Terra High by default.
-- Dedicated Plan mode: exception for genuine ambiguity/high consequence or owner
-  request; a short in-session plan remains mandatory.
-- NORMAL review: same-run independent Terra review/check plus required tests/CI.
-- Separate Sol XHigh: only explicit active Sol gates or explicit escalation.
-- Max: only for unresolved ambiguity after XHigh or explicit owner request.
-
-Never lower tests/correctness because a cheaper review path is used.
+The model-effort guide owns defaults. The owner requests Astra for precise
+planning/checkpoints and Luna for bounded implementation where specified.
+Use `docs/workflow/goal-session.md` for the one-ticket Goal contract. Do not
+weaken validation for a cheaper model or claim quota behavior the host has not
+established. Stop after the assigned ticket's PR/handoff, never auto-merge.
 
 ## Decision gates reserved for the owner
 

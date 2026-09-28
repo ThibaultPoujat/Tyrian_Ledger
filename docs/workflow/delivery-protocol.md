@@ -71,9 +71,9 @@ TKT-M21-S01 / #129 provides deterministic post-merge maintenance of the generate
 
 All tickets not listed in the explicit active Sol gate in `docs/workflow/model-effort-guide.md` use the normal Plus-constrained path:
 
-- risk-based Terra planning/implementation from the model-effort guide rather than High for every ticket;
-- independent Terra review subagent/check **inside the implementation run** when the coding environment supports it;
-- Medium review by default for R0/R1 and High for R2/R3, escalating when findings/uncertainty justify it;
+- risk-based guide-selected planning/implementation from the model-effort guide rather than High for every ticket;
+- independent guide-selected review subagent/check **inside the implementation run** when the coding environment supports it;
+- select independent review model/effort from the guide; escalate material uncertainty;
 - all ticket-required tests/checks and CI;
 - PR may be opened Ready for Review;
 - no second owner-triggered review session or separate Sol review is a merge gate unless the implementation/reviewer reports unresolved high-consequence ambiguity or the owner explicitly escalates.
@@ -86,12 +86,12 @@ Only the explicit active ticket list in `docs/workflow/model-effort-guide.md` is
 
 For a SOL-GATED ticket:
 
-1. Implement/fix with Terra High by default.
+1. Implement/fix with the ticket-authorized implementation model/effort by default.
 2. Open the PR as **Draft** and state `Review path: SOL-GATED` in the PR body.
 3. Complete required local validation and push the implementation.
-4. Let required GitHub CI finish. If CI is red, fix with Terra High and revalidate before spending a Sol review session.
+4. Let required GitHub CI finish. If CI is red, fix with the ticket-authorized implementation model/effort and revalidate before spending a Sol review session.
 5. With required validation/CI green, run a fresh separate Sol XHigh review using `.codex/skills/tyrian-pr-review/SKILL.md`.
-6. If the review requests changes, use Terra High for fixes, rerun affected validation/CI, and keep the PR Draft.
+6. If the review requests changes, use the ticket-authorized implementation model/effort for fixes, rerun affected validation/CI, and keep the PR Draft.
 7. Run a **targeted fresh Sol re-review** focused on prior findings, changed diff and regression risk. Require a full Sol re-review only if fixes materially broadened reviewed authority/scope.
 8. After Sol returns APPROVE and required validation remains green, mark the PR **Ready for Review**.
 9. The owner performs the final merge decision.
@@ -100,7 +100,7 @@ The Draft state is the merge blocker. Do not rely on the owner remembering a che
 
 ## Review handoff
 
-NORMAL tickets should complete their independent review with a Terra review subagent/check in the implementation run when supported. A second separate review session remains optional and should not be started merely out of habit.
+NORMAL tickets should complete their independent review with a guide-selected review subagent/check in the implementation run when supported. A second separate review session remains optional and should not be started merely out of habit.
 
 SOL-GATED tickets require the separate fresh Sol review described above after required validation/CI is green. The Sol reviewer should report findings first and must not broaden ticket scope.
 
@@ -122,7 +122,7 @@ When a ticket introduces or touches product UI, verify that user-facing labels, 
 - [ ] PR body contains `Closes #<issue-number>`.
 - [ ] PR GitHub milestone matches the implementation issue milestone, or tooling limitation is reported explicitly.
 - [ ] PR body names the correct review path without obsolete blanket R3/XHigh language.
-- [ ] NORMAL: same-run independent Terra review subagent/check completed when supported and CI is green.
+- [ ] NORMAL: same-run independent guide-selected review subagent/check completed when supported and CI is green.
 - [ ] SOL-GATED: required validation/CI was green before Sol review; PR remains Draft until Sol XHigh APPROVE; only then is it marked Ready.
 - [ ] Any SOL-GATED fixes were revalidated before targeted fresh Sol re-review.
 - [ ] PR not merged by the coding/review agent.

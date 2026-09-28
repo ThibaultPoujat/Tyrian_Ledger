@@ -5,6 +5,7 @@ import {
   deriveLiveState,
   parseNonBlockingAlternate,
   parseSolGates,
+  readTicketContracts,
   readTicketMap,
   renderGeneratedBlock,
   replaceGeneratedBlock,
@@ -14,13 +15,14 @@ const repositoryRoot = new URL('../../', import.meta.url);
 const fixtureUrl = new URL('../fixtures/live-state-after-138.json', import.meta.url);
 
 async function sourceFixture() {
-  const [index, guide, fixture, ticketByIssue] = await Promise.all([
-    readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8'),
-    readFile(new URL('docs/workflow/model-effort-guide.md', repositoryRoot), 'utf8'),
+  const [fixture, ticketByIssue] = await Promise.all([
     readFile(fixtureUrl, 'utf8'),
     readTicketMap(new URL('docs/milestones/', repositoryRoot).pathname),
   ]);
-  return { index, guide, operational: JSON.parse(fixture), ticketByIssue };
+  // Historical regression cases must retain their historical authorities when
+  // the active roadmap and review gates legitimately change.
+  const operational = JSON.parse(fixture);
+  return { index: operational.roadmapIndex, guide: operational.modelGuide, operational, ticketByIssue };
 }
 
 async function liveState(overrides = {}) {
@@ -171,6 +173,36 @@ test('the generated-state writer cannot modify durable CURRENT.md prose', () => 
   assert.match(updated, /- New generated value/);
   assert.throws(() => replaceGeneratedBlock('no markers', '- replacement'), /exactly one generated live-state block/);
   assert.throws(() => replaceGeneratedBlock(`${end()}\n${begin()}`, '- replacement'), /exactly one generated live-state block/);
+});
+
+test('the corrective roadmap stops coding at the explicit integration checkpoint', async () => {
+  const [index, guide, fixture, { ticketByIssue, checkpointIssues }] = await Promise.all([
+    readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8'),
+    readFile(new URL('docs/workflow/model-effort-guide.md', repositoryRoot), 'utf8'),
+    readFile(new URL('../fixtures/live-state-corrective-preparation.json', import.meta.url), 'utf8'),
+    readTicketContracts(new URL('docs/milestones/', repositoryRoot).pathname),
+  ]);
+  const operational = JSON.parse(fixture);
+  function current() {
+    return deriveLiveState({ index, issue98: operational.issue98Body, guide, ticketByIssue, checkpointIssues, operational });
+  }
+  assert.equal(current().preferred, 'TKT-M22-P00 / #148');
+  assert.equal(current().preferredKind, 'implementation');
+  assert.equal(current().alternate, 'None');
+  assert.equal(current().completed.number, 146);
+  assert.deepEqual(current().gates, ['TKT-M22-P01A / #149', 'TKT-M22-02 / #96']);
+  operational.issues[148].state = 'CLOSED';
+  assert.equal(current().preferred, 'TKT-M22-P01A / #149');
+  operational.issues[149].state = 'CLOSED';
+  assert.equal(current().preferred, 'TKT-M22-G01 / #150');
+  assert.equal(current().preferredKind, 'checkpoint');
+  const block = renderGeneratedBlock(current());
+  assert.match(block, /Preferred next implementation ticket: `None — planning checkpoint required`/);
+  assert.match(block, /Next required checkpoint: `TKT-M22-G01 \/ #150`/);
+  assert.doesNotMatch(block, /Preferred next implementation ticket: `TKT-/);
+  operational.issues[150].state = 'CLOSED';
+  assert.equal(current().preferred, 'TKT-M22-02 / #96');
+  assert.equal(current().preferredKind, 'implementation');
 });
 
 function begin() { return '<!-- BEGIN GENERATED LIVE STATE -->'; }
