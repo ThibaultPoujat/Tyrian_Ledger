@@ -67,29 +67,29 @@ The next session recovers from authoritative GitHub/repository state; it does no
 
 ## Review paths
 
-Review-model selection and effort are defined centrally in `docs/workflow/model-effort-guide.md`. **R3 by itself does not require Sol.**
+Review-model selection and effort are defined centrally in `docs/workflow/model-effort-guide.md`. **R3 by itself does not require a separate Sol XHigh session.**
 
 ### NORMAL
 
 For tickets not listed in the explicit Sol gate:
 
-- use the risk-based Terra effort from the model-effort guide rather than High for every ticket;
-- use an independent Terra review subagent/check **inside the same implementation run** when supported;
-- use Medium review by default for R0/R1 and High for R2/R3, escalating when findings or uncertainty justify it;
+- use the risk-based guide-selected effort from the model-effort guide rather than High for every ticket;
+- use an independent guide-selected review subagent/check **inside the same implementation run** when supported;
+- select review model/effort solely from the guide; escalate material uncertainty;
 - run all ticket-required tests and CI;
 - a second owner-triggered review session is optional, not a merge requirement;
-- escalate to Sol only for unresolved high-consequence ambiguity, uncertain Important/Blocker findings, or explicit owner request.
+- escalate beyond the assigned review path only for unresolved high-consequence ambiguity, uncertain Important/Blocker findings, or explicit owner request.
 
 ### SOL-GATED
 
 For the explicit active Sol-gated ticket list:
 
-- implement/fix with Terra High by default;
+- implement/fix with the guide-selected implementation model/effort by default;
 - open the PR as Draft;
 - complete required local validation and let required GitHub CI go green before spending the Sol review session;
 - use `.codex/skills/tyrian-pr-review/SKILL.md` in a fresh separate Sol XHigh session;
 - keep the PR Draft while findings remain;
-- fix confirmed findings with Terra High, rerun affected validation/CI, and use a targeted fresh Sol re-review unless the fix materially broadened the authority/scope under review;
+- fix confirmed findings with the guide-selected implementation model/effort, rerun affected validation/CI, and use a targeted fresh Sol re-review unless the fix materially broadened the authority/scope under review;
 - after APPROVE and green validation, mark the PR Ready for Review;
 - owner performs the final merge.
 

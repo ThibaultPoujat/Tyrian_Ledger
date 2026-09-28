@@ -1,5 +1,7 @@
 # Architecture - Personal Local-First Runtime
 
+> Target product/UX and Windows lifecycle clarification: [ADR-011](../adr/ADR-011-approved-session-assistant-and-visual-authority.md). The tray companion and corrective evidence/read-model work are planned requirements, not already delivered capabilities. Follow the approved package gates; this does not authorize a stack rewrite.
+
 ## 1. Target stack
 
 - .NET 10 / ASP.NET Core local host
@@ -12,7 +14,7 @@
 - built-in structured logging with secret/account-data redaction rules
 
 The M10-M11 static GitHub Pages topology is superseded by ADR-010 and is
-transition code to retire during M12.
+historical architecture; it is not an active product runtime.
 
 ## 2. Runtime topology
 

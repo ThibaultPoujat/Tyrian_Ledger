@@ -1,6 +1,6 @@
 ---
 name: tyrian-pr-review
-description: Review a Tyrian Ledger pull request or ticket branch independently for correctness, acceptance-criteria coverage, financial/data/security invariants, tests, and scope. Use as the separate review skill for SOL-GATED tickets and explicit escalations; NORMAL tickets may use the same checklist through an independent Terra review subagent/check.
+description: Review a Tyrian Ledger pull request or ticket branch independently for correctness, acceptance-criteria coverage, financial/data/security invariants, tests, and scope. Use as the separate review skill for SOL-GATED tickets and explicit escalations; NORMAL tickets may use the same checklist through an independent model-policy-selected review subagent/check.
 metadata:
   short-description: Independent Tyrian Ledger PR review
 ---
@@ -10,7 +10,7 @@ metadata:
 ## Purpose
 
 Perform a findings-first independent review of one Tyrian Ledger ticket PR. The
-same review discipline applies whether invoked by a NORMAL independent Terra
+same review discipline applies whether invoked by a NORMAL independent model-policy-selected
 subagent/check or by a fresh separate SOL-GATED review session.
 
 Default behavior is **review only**. Do not silently modify the branch. If the
@@ -52,7 +52,7 @@ class, review path, required tests, owner decisions, and functional outcome.
 
 For a SOL-GATED review, confirm required implementation validation/CI is green
 before spending the full review pass. If it is red for an ordinary implementation
-failure, return the PR for Terra fixes rather than performing an expensive full
+failure, return the PR for the ticket-authorized implementation-model fixes rather than performing an expensive full
 Sol audit. Continue only when Sol is explicitly needed to resolve a blocking
 high-consequence ambiguity in the failing state.
 
@@ -86,6 +86,14 @@ cannot be bypassed by composition.
 
 For security, inspect actual data flow from secret store -> gateway ->
 application -> browser/logs, not only redaction helper names.
+
+For UI work, open each relevant original PNG from
+`docs/ux/prototypes/2026-09-28/manifest.json` and the actual rendered screenshots.
+Apply `docs/ux/tyrian-ledger-visual-reference.md`, including approved semantic
+overrides. Report missing visual evidence or material unapproved drift as an
+Important finding; require Draft until resolved. Do not approve fidelity from
+source inspection alone. For a baseline-only documentation PR, verify the six
+original assets/manifest and contract; runtime screenshots are not required.
 
 ### 4. Validate tests and evidence
 
@@ -134,7 +142,7 @@ If there are no findings, say so explicitly; do not invent stylistic nits.
 
 Use `docs/workflow/model-effort-guide.md` as authority.
 
-- **NORMAL:** an independent Terra review subagent/check in the implementation run is sufficient by default together with ticket-required tests and CI. Use Medium by default for R0/R1 and High for R2/R3, escalating when findings/uncertainty justify it. A second separate review session is optional.
+- **NORMAL:** an independent model-policy-selected review subagent/check in the implementation run is sufficient by default together with ticket-required tests and CI. Select model and effort from the guide; do not infer them from old defaults. A second separate review session is optional.
 - **SOL-GATED:** review in a fresh separate Sol XHigh session after required validation/CI is green. The PR must remain Draft until this review returns APPROVE and required validation remains green.
 - Risk class R3 alone does not select Sol.
 

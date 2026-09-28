@@ -39,66 +39,57 @@ Historical ticket files remain useful evidence but are not active backlog contra
 | M21 | Signals and Crafting Intelligence | [TKT-M21-01](M21/tickets/TKT-M21-01.md), [TKT-M21-S01](M21/tickets/TKT-M21-S01.md), [TKT-M21-S02](M21/tickets/TKT-M21-S02.md), [TKT-M21-S03](M21/tickets/TKT-M21-S03.md), [TKT-M21-S04](M21/tickets/TKT-M21-S04.md), [TKT-M21-S05](M21/tickets/TKT-M21-S05.md), [TKT-M21-02](M21/tickets/TKT-M21-02.md), [TKT-M21-03](M21/tickets/TKT-M21-03.md) |
 | M22 | Continuous Operation, Hardening, and Evaluation | [TKT-M22-01](M22/tickets/TKT-M22-01.md), [TKT-M22-S01](M22/tickets/TKT-M22-S01.md), [TKT-M22-02](M22/tickets/TKT-M22-02.md), [TKT-M22-03](M22/tickets/TKT-M22-03.md) |
 
-The displayed UI labels for the primary surfaces remain French (`Mes Signaux`, `Artisanat`, `Réglages`); milestone/ticket/domain terminology remains English.
+## Corrective contracts
+
+| Ticket | Purpose | Readiness |
+|---|---|---|
+| [TKT-M22-P00](M22/tickets/TKT-M22-P00.md) / #148 | Approved product, six visual references and workflow preparation | Current preparation PR; no runtime change |
+| [TKT-M22-P01A](M22/tickets/TKT-M22-P01A.md) / #149 | Aggregate resource demands in selection and atomic start | Ready after #148 merges; first coding ticket |
+| [TKT-M22-G01](M22/tickets/TKT-M22-G01.md) / #150 | P01–P06 integration/checkpoint evidence | Tracking gate only; not an executable coding Goal |
+
+Target navigation is `Signaux / Plans / Bilan`, with `Réglages` at the bottom.
+See [approved packages and exit criteria](approved-delivery-plan.md).
 
 ## Current explicit execution order
 
-M12-M20, TKT-M21-01, and #128 are complete. The preferred owner sequence is:
+The historical predecessors remain listed for deterministic handoff generation.
+They are closed; their merged features do not imply the audit findings are fixed.
+The owner-approved corrective sequence now precedes release hardening:
 
 ```text
-#128               consolidate Signals product/docs/roadmap
- -> #129 TKT-M21-S01  self-healing CURRENT live state
- -> #130 TKT-M21-S02  Signals UX spike (displayed as Mes Signaux)
- -> #131 TKT-M21-S03  Signals MVP + primary navigation
- -> #132 TKT-M21-S04  post-MVP cleanup
- -> #133 TKT-M21-S05  plan/Active-Passive/shadow/reconciliation engine
- -> #93  TKT-M21-02   crafting economic truth
- -> #94  TKT-M21-03   guided crafting paths + crafting UI (Artisanat)
- -> #95  TKT-M22-01   continuous decision loop + actionable notifications
- -> #145 TKT-M22-S01  calculation transparency: theory + actual account/decision inputs
- -> #96  TKT-M22-02   hardening/packaging
- -> #97  TKT-M22-03   Signal-plan outcome evaluation
+#128 -> #129 -> #130 -> #131 -> #132 -> #133 -> #93 -> #94 -> #95 -> #145
+ -> #148 TKT-M22-P00   approved product and visual baseline
+ -> #149 TKT-M22-P01A  duplicate resource demand correctness
+ -> #150 TKT-M22-G01   tracking gate for remaining P01–P06 evidence
+ -> #96  TKT-M22-02    release hardening after all prerequisite packages
+ -> #97  TKT-M22-03    outcome evaluation acceptance
 ```
 
-#129 is preferred before #130, but it is explicitly **non-blocking for the MVP**. While #129 remains open after #128 merges, #130 may start before it when #129 becomes non-trivial or would delay #131. Once #130 closes, #131 may continue on the same allowed route because #131 depends on #130, not on completion of #129. The documented session-start reconciliation/manual generated-block repair remains the fallback.
+No active non-blocking alternate is authorized. Do not start the tracking gate as
+one coding task. After #149, create the next bounded Ready child ticket and insert
+it before #150 in both this file and issue #98. Keep #150 open until all package
+exit evidence exists and the owner accepts progression. Do not skip it because
+there are no more ready coding tickets. New dependencies/review gates must be
+explicitly recorded before implementation.
 
-Do not infer the next ticket from GitHub issue number ordering. Issue #98 and this explicit sequence/exception are authoritative for execution order and must agree; GitHub contributes operational open/closed/merged/milestone state, not roadmap ordering. `CURRENT.md` combines those sources for handoff.
+## Historical non-blocking rule
 
-## Product checkpoints
+Retained for the existing deterministic updater and historical regression cases;
+all of these predecessor issues are closed. This grants no new alternate route:
 
-- after TKT-M21-S03 / #131: first usable attention-first French Signals UI displayed as `Mes Signaux`;
-- after TKT-M21-S05 / #133: stable executable Active/Passive plans with responsive reversible local shadow/reconciliation;
-- after TKT-M21-03 / #94: crafting is a first-class guided profit engine with the workspace displayed as `Artisanat`;
-- after TKT-M22-01 / #95: permitted state changes can surface materially new Signals without repeated manual checking;
-- after TKT-M22-S01 / #145: French settings and contextual `Pourquoi ?` disclose canonical math, current account inputs, provenance and exact exclusion reasons without duplicating financial logic;
-- after TKT-M22-02 and TKT-M22-03: the 0.1 shape is hardened and can evaluate observed outcomes without fabricated counterfactuals.
+**MVP non-blocking exception:** #129 is preferred before #130. After #128 merges,
+#130 may start before #129. #131 depends on #130, not on completion of #129.
 
-Investment-position/staged-exit infrastructure delivered in M20 remains valid, but new investment-discovery/seasonality work is deferred beyond the 0.1 focus.
+## Authority and checkpoints
 
-## Dependency spine
+GitHub owns merged/open/closed/milestone state. Issue #98 and this file own order;
+`docs/workflow/model-effort-guide.md` owns effort and active Sol gates.
+`CURRENT.md` is a derived handoff, not permission to start a non-Ready gate.
+Source contradictions must be repaired, not resolved by numeric issue order.
 
-```text
-M12-M18 local/account/history foundation
- -> M19 deterministic recommendation foundation
- -> M20 personal evidence
- -> M21-01 crafting-account evidence
- -> Signals transition (S01-S05)
- -> crafting economics/path UI (M21-02/03)
- -> continuous loop/calculation transparency/hardening/evaluation (M22)
-```
-
-After TKT-M18-02, keep the local collector running during subsequent development whenever practical so owned history continues to accumulate.
-
-## Generated handoff authority split
-
-The generated live-state block in `CURRENT.md` is a derived handoff/cache view and has no independent authority. Its fields come from:
-
-- **Operational delivery state:** GitHub merged PRs, issue open/closed state, and milestone assignment/title.
-- **Execution order / next valid ticket:** issue #98 and the explicit sequence plus its documented non-blocking exception in this file.
-- **Review effort and gates:** `docs/workflow/model-effort-guide.md`.
-
-If issue #98 and this file disagree on execution order or the non-blocking #129/#130 exception, repair the contradiction before continuing; do not infer the answer from numeric issue ordering. TKT-M21-S01 / #129 makes the generated block self-healing after merges, with per-field session-start reconciliation as fallback.
-
-## GitHub Milestone objects
-
-Existing GitHub milestone objects M12-M22 are retained. The M21 object is reused for the Signals transition plus remaining crafting work so renumbering is unnecessary. Repository docs define the explicit execution order above.
+P00–P07 in [the delivery plan](approved-delivery-plan.md) map all 19 audit findings.
+P01/P02 share an integration gate. P05 requires the latest six reference images,
+actual application screenshots and owner usability review. P06 requires Windows
+notification/lifecycle evidence with the UI closed. P07 requires release evidence.
+Existing M12–M22 GitHub milestone objects are retained; corrective tickets belong
+to M22. Optional external-history research #139 does not block resource repairs.

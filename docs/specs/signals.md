@@ -1,5 +1,7 @@
 # Signals — Second-Screen Profit Assistant Specification
 
+> Target contract updated 2026-09-28. [Approved product direction](approved-product-direction.md) owns the latest session, reconciliation, protection and distribution decisions. [UX](../ux/ux.md) and the [six-image baseline](../ux/tyrian-ledger-visual-reference.md) own interaction and appearance. These targets are not claims of current implementation.
+
 ## 1. Product purpose
 
 Tyrian Ledger is not primarily a market-analysis application. It is a
@@ -42,30 +44,15 @@ renders them in French.
 
 ## 3. Primary surface and navigation
 
-The primary daily **Signals** surface is displayed to the user as **`Mes Signaux`**.
+Primary rail: `Signaux / Plans / Bilan`, with `Réglages` at the bottom.
+Signals is home. Plans compares alternatives for the selected session and hosts
+active/waiting executions. Bilan presents supported outcomes. Crafting shares
+these destinations; it is an activity, not a competing top-level workspace.
+Raw inventory, scanner, history and order-book analysis are contextual evidence.
 
-Target displayed primary navigation after the shared plan engine is available:
-
-- `Mes Signaux` — what manual action is worth performing now;
-- `Plans` — started/manual execution paths that still have lifecycle or
-  reconciliation work;
-- `Artisanat` — deliberate guided crafting-for-profit workspace;
-- `Réglages` — API/account, refresh/health, risk/bankroll policy, alerts,
-  backup/recovery, data health and advanced diagnostics.
-
-Dashboard, scanner, raw inventory, personal-learning tables, order-book detail
-and raw history remain supporting engines/evidence. They are not competing
-primary destinations. Diagnostic access may remain where useful, but the normal
-user should not need to operate those engines directly.
-
-`Mes Signaux` is the default/home destination. `Plans` must not be exposed as a
-fake functional destination before #133 implements its typed plan state. Until
-the crafting workspace is implemented, `Artisanat` may be visible but
-disabled/clearly unavailable rather than opening a fake empty workspace.
-
-Visual/interaction direction is recorded in `docs/ux/ux.md` and
-`docs/ux/tyrian-ledger-visual-reference.md`. Those references do not override
-the semantic/domain rules in this specification.
+Use [UX](../ux/ux.md) and open the corresponding
+[approved PNGs](../ux/tyrian-ledger-visual-reference.md) before visual work.
+The assistant has one quiet behavior, with rare urgent actionable alerts.
 
 ## 4. Canonical internal vocabulary
 
@@ -128,7 +115,7 @@ counterfactual profit.
 
 ## 5. Attention gate — silence is a feature
 
-If something appears in the normal `Mes Signaux` action feed, it is there because
+If something appears in the normal `Signaux` action feed, it is there because
 the owner should act.
 
 Conceptual eligibility sequence:
@@ -171,49 +158,22 @@ Exact final copy is a UX decision; semantics remain backend-authoritative.
 
 ## 7. Signal-card information hierarchy
 
-The normal secondary card is intentionally small. One truly corrective or
-time-sensitive action may receive dominant priority treatment, while other
-eligible actions remain compact. Distinct action families may use different
-iconography/layout emphasis for fast recognition, but explicit action semantics
-remain structured and color is never the only cue.
+Show 2–3 compact useful choices: action/strategy, modeled net gain or cash
+released, active time, capital required and delay/uncertainty. A larger band is
+reserved for genuinely urgent action. Use explicit labels as well as icons/color.
 
-The card makes these scannable first:
-
-- concrete action;
-- item;
-- quantity;
-- relevant price/maximum price where applicable;
-- modeled profit/result;
-- confidence;
-- `Pourquoi ?` progressive disclosure.
-
-Detailed ROI, spread, order-book depth, retained-history components, personal
-evidence, anomaly flags, portfolio constraints and calculation assumptions sit
-behind `Pourquoi ?` unless they are themselves the reason the instruction must
-change.
-
-Data age/freshness reflects the actual relevant source. The UI must not invent a
-single fake global age when endpoints have different cache/refresh semantics.
+`Voir le plan` opens a non-committing preview. Exact item, quantity and unit
+price/limit belong in the preview/execution instructions. `Pourquoi ?` discloses
+backend evidence and binding constraints. Prices and quantities are read-only.
+Per-source freshness must be truthful; do not invent one universal API age.
 
 ## 8. MVP before full plan execution
 
-The first usable Signals MVP deliberately arrives before the full plan engine. It
-reuses existing recommendation/accounting/history/personal-ranking engines and:
-
-- makes `Mes Signaux` the home page;
-- introduced the first-MVP navigation `Mes Signaux / Artisanat / Réglages`;
-  the post-#133 target adds the functional `Plans` destination;
-- applies the attention gate to hide no-action noise;
-- uses minimal cards plus `Pourquoi ?`;
-- displays truthful operational freshness/health;
-- shows compact realized performance;
-- provides a useful zero-Signal state;
-- provides a functional `Réglages` destination by grouping/reusing existing
-  account/status/data/risk controls rather than adding a dead placeholder.
-
-It does **not** yet implement Active/Passive path construction, `Démarrer`,
-`Terminé`, Undo or local execution shadow state. Those belong to the shared plan
-engine.
+Historical context: the earlier MVP and shared plan engine have been merged.
+Their original rollout is not the current backlog. Corrective packages are in
+[the approved plan](../milestones/approved-delivery-plan.md); current readiness
+is governed by issue #98 and the milestone index. Do not recreate old navigation
+or infer that a merged ticket resolved newly discovered lifecycle gaps.
 
 ## 9. Opportunity-to-plan selection
 
@@ -287,10 +247,10 @@ Use two conceptual thresholds:
 - **preferred attractiveness floor** — the level normally worth interrupting the
   user for.
 
-If meaningful deployable capital remains idle, the preferred floor may relax
-toward the hard floor. The hard floor never relaxes. An action must still clear
-an absolute value/attention threshold; trivial profit is not useful merely
-because it is safe.
+An internal attractiveness heuristic may adapt within hard floors, but user
+minimum gain, active-time, capital and risk limits never relax automatically.
+Explain a binding preference and offer an optional change; idle capital alone
+is not a reason to interrupt the player with a plan below their threshold.
 
 ## 11. Passive and Active execution paths
 
@@ -322,18 +282,16 @@ owner may perform successive Active paths for much longer overall. Prefer:
 A buy-order step may occur inside an Active path only as the terminal step. It
 must not block later immediate steps in the same path waiting for a fill.
 
-Before selection, displayed Passive and Active proposals may be alternative
+Before selection, plan proposals may be alternative
 hypothetical bundles and therefore may overlap resources. After `Démarrer`, the
 selected plan reserves its resources and all alternatives are immediately
 recomputed from what remains.
 
-When there are only a few obvious independent actions, the UI may show one
-ordered action list rather than manufacturing unnecessary Passive/Active
-ceremony.
-
-A future optional displayed time-budget control such as `2 min / 10 min / 20+
-min` may shape Active-plan construction. It is an input to planning, not a
-persistent operating mode.
+The comparison screen presents alternatives within the selected session.
+The current session controls are required, including both active-work time and
+liquid-gold deadline objectives, rather than a future optional feature. Internal
+Passive/Active orientation must not replace those objectives or create a mode
+toggle. A waiting acquisition can resume a freshly validated continuation.
 
 ## 12. Plan order, explanation and stability
 
@@ -411,15 +369,17 @@ Examples of projected effects:
   the canonical model;
 - a completed buy-order placement can provisionally reserve committed gold.
 
-### `Terminé`
+### Exceptional local confirmation
 
-`Terminé` means the user reports that the just-issued instruction was performed
-essentially as specified. It does not claim that ArenaNet has already confirmed
-it and does not close the economic outcome.
+Automatic evidence detection is primary. `J’ai effectué cette étape` is an
+exceptional report of the displayed exact instruction, persisted idempotently
+and labelled `Déclaré effectué · vérification en attente`. It is not proof of
+actual price or API confirmation. Safe dependent work may continue locally.
 
-Exceptional secondary controls must allow the user to report a materially
-different executed quantity/price **or that the action was not performed** rather
-than forcing false exact evidence.
+`Un problème avec cette étape ?` handles mistaken/different actions with guided
+correction and evidence. No routine quantity/price entry. The complete pending,
+partial, unresolved, contradiction and settled contract is in
+[approved product direction](approved-product-direction.md#3-local-confirmation-and-authoritative-reconciliation).
 
 ### Undo
 
@@ -441,7 +401,7 @@ Rules:
    immaterial change;
 2. reconcile/confirm already completed shadow events whenever evidence supports
    them;
-3. after `Terminé`, use the latest verified snapshot plus remaining local events
+3. after `J’ai effectué cette étape`, use the latest verified snapshot plus remaining local events
    to recompute the next instruction;
 4. material safety/economic invalidation may interrupt with explicit recheck;
 5. refresh does not by itself require the user to wait before continuing the
@@ -504,9 +464,9 @@ mode.
 If selling raw inputs is economically superior, the craft must not become a
 Signal merely because its output price exceeds purchased ingredient cost.
 
-Craft opportunities also require output liquidity/history/confidence. The
-crafting workspace displayed as `Artisanat` is for deliberate crafting time,
-while qualifying craft plans may also surface in `Mes Signaux`.
+Craft opportunities also require output liquidity/history/confidence.
+Qualified crafting opportunities share `Signaux` and `Plans`, including the
+same session comparison and execution model as trading.
 
 ## 19. Continuous decision loop
 
@@ -525,9 +485,10 @@ health remains visually separate from profit Signals.
 
 ## 20. Performance semantics
 
-Main assistant headline: **30-day realized profit**.
-
-Secondary context: 7-day and 90-day realized profit.
+Bilan owns session, 7-day and 30-day supported outcomes. Keep verified realized
+profit, cash released from surplus, estimated/measured active time and remaining
+commitments separate. Unknown basis never qualifies as verified profit. Signals
+prioritizes worthwhile actions, not a performance dashboard.
 
 Internal realized strategy categories are additive and non-overlapping for the
 same supported population/window:
@@ -542,7 +503,7 @@ Later deterministic evidence may reclassify them.
 
 Open/unrealized result is always separate from realized headline performance.
 
-The crafting workspace may additionally show **crafting value added**: economic
+A crafting plan may additionally show **crafting value added**: economic
 value created versus the best realistic alternative for the consumed inputs.
 This is analytical context and must not be added again to global realized profit.
 
@@ -582,16 +543,9 @@ remains the first focus.
 
 ## 24. Rollout sequence
 
-The owner-approved rollout prioritizes a usable main surface quickly:
-
-1. canonical product/docs transition;
-2. self-healing `CURRENT.md` generated live-state maintenance using the explicit authority split;
-3. UX design spike;
-4. Signals MVP displayed as `Mes Signaux` + new primary navigation;
-5. cleanup of superseded UI/docs/code after the MVP proves replacement paths;
-6. full plan engine with Active/Passive, reservations, shadow/Undo/reconciliation;
-7. crafting economic truth;
-8. guided bounded crafting plans;
-9. continuous decision loop/local notifications;
-10. hardening/packaging;
-11. observed plan-outcome evaluation.
+Use [approved delivery packages](../milestones/approved-delivery-plan.md).
+P00 freezes product/visual authority; P01–P04 repair correctness/evidence and
+session-aware decisions; P05 implements the approved views; P06 delivers Windows
+operation; P07 validates release evidence. A bounded fixture-backed UI ticket
+may be scheduled early explicitly. One Goal never implements an entire package.
+Readiness and actual execution order remain issue #98 plus the milestone index.

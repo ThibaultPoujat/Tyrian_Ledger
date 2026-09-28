@@ -6,7 +6,7 @@ Tyrian Ledger is a **local-first second-screen personal Guild Wars 2 profit
 assistant**. It turns market/account evidence into a small number of concrete
 manual actions while the owner continues to play the game.
 
-The primary daily Signals surface is displayed as **`Mes Signaux`**. The
+The primary daily Signals surface is displayed as **`Signaux`**. The
 application is not a trading bot, gameplay bot, order executor, browser
 automator, or autonomous game agent. Codex/coding agents are development tools
 only; no application LLM participates in runtime financial truth.
@@ -26,7 +26,7 @@ opportunity discovery/seasonality is deferred from the 0.1 critical path.
 
 Target displayed primary navigation:
 
-`Mes Signaux / Artisanat / Réglages`
+`Signaux / Plans / Bilan`, with `Réglages` at the bottom
 
 Dashboard, scanner, raw inventory, personal learning, order books and retained
 history are supporting engines/evidence rather than primary product
@@ -57,7 +57,7 @@ step clears the relevant evidence, resource, risk, freshness and attention gates
 
 Internal analysis does not automatically deserve attention. `WAIT`, `HOLD`,
 `KEEP BID`, `REVIEW`, harmless undercut/outbid and similar no-action states
-normally remain silent on the displayed `Mes Signaux` surface unless they imply
+normally remain silent on the displayed `Signaux` surface unless they imply
 a concrete corrective action.
 
 Canonical domain lifecycle:
@@ -135,22 +135,21 @@ not restore it as a product runtime.
 
 ## Product priorities from current baseline
 
-The accounting/scanner/history/recommendation/personal-learning foundations are
-already built. Current priority order is:
+The latest owner-approved contract is
+`docs/specs/approved-product-direction.md`; visual authority is the six PNGs in
+`docs/ux/tyrian-ledger-visual-reference.md`. Read those selectively for the ticket.
+Target: Windows 1920×1080 landscape, quiet second-screen use, configurable session
+constraints, both active-work and liquid-gold deadline objectives.
 
-1. make generated project handoff state self-healing from its explicit authorities;
-2. validate and ship the first usable French Signals UI (`Mes Signaux`) MVP quickly;
-3. remove superseded UI/docs/code after replacement paths are proven;
-4. add deterministic plan/bundle selection, Passive/Active paths, resource
-   reservations, reversible local execution shadow state, Undo and ArenaNet
-   reconciliation;
-5. complete crafting economic truth and guided bounded crafting plans;
-6. add the continuous decision loop/actionable local notifications;
-7. harden/pack/evaluate observed plan outcomes.
+AI-first means AI writes/tests/maintains the code. The owner reviews product
+behavior and merges. Local-first permits future distribution to friends/public
+while account/private data and computation remain local.
 
-The explicit execution sequence is maintained in issue #98 and
-`docs/milestones/INDEX.md`; operational delivery status comes from GitHub, and
-the generated live block in `CURRENT.md` combines those sources for handoff.
+The corrective sequence is P00–P07 in `docs/milestones/approved-delivery-plan.md`.
+Merged feature tickets are not proof that new audit findings are fixed. First
+coding ticket #149 is limited to duplicate resource aggregation. Tracking gate
+#150 prevents skipping the remaining packages; it is not an executable Goal.
+Issue #98 and the milestone index own order; GitHub owns delivery state.
 
 ## Effective planning state
 
@@ -165,8 +164,9 @@ contradiction pauses for explicit reconciliation rather than guessing.
 
 ## Performance semantics
 
-Main assistant headline performance is 30-day realized profit, with 7-day and
-90-day realized results as secondary context. Open/unrealized result is separate.
+Bilan owns session/7-day/30-day supported outcomes. Verified profit, cash released
+from surplus, active time (estimated unless measured) and open commitments remain
+separate. The main Signals surface prioritizes actions.
 
 Internal realized strategy categories must be additive/non-overlapping for the
 same supported population/window:
@@ -194,10 +194,10 @@ source silently.
 
 `CURRENT.md` keeps durable narrative plus a bounded generated live-state block
 that combines these authorities. The generated block is not independently
-authoritative. TKT-M21-S01 / #129 adds deterministic post-merge automation with
+authoritative. TKT-M21-S01 / #129 provides deterministic post-merge automation with
 no AI quota.
 
-Before that ticket lands, and as a fallback afterward, a coding agent compares
+As a session-start fallback, a coding agent compares
 each generated field with its owning authority at session start and repairs
 stale generated state before relying on it. The owner should not manually
 maintain normal handoff state.
@@ -231,7 +231,7 @@ choices remain autonomous.
 
 Review follows the model-effort guide:
 
-- NORMAL tickets use an independent Terra review subagent/check in the same run
+- NORMAL tickets use an independent review subagent/check with the guide-selected model in the same run
   when supported;
 - SOL-GATED tickets stay Draft, complete required validation/CI before fresh
   separate Sol XHigh review, and use targeted fresh Sol re-review after scoped

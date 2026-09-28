@@ -99,3 +99,15 @@ Apply only relevant sections; do not generate noise from inapplicable checks.
 - Bound/non-tradable/unknown input states explicit.
 - Recipe cycles/depth/candidate limits handled.
 - Output liquidity/history considered before calling margin actionable.
+
+## Approved UI fidelity and interactions
+
+- Relevant original PNGs and actual 1920×1080 app screenshots opened.
+- Shared rail, session strip, compact density, gold/navy treatment and bottom status match the approved baseline.
+- Required textual overrides applied: both objectives, exceptional local confirmation, safe continuation and honest cash/profit/time labels.
+- No old Sites/first-concept layout, editable execution prices/quantities, or mode switch reintroduced.
+- Preview reserves nothing; Start revalidates; the backend handles compatibility.
+- Empty/stale/pending/contradiction/protection/permission states covered where changed.
+- Keyboard, drawer focus/escape, contrast, French labels and zoom evidence present.
+- Screenshot fixture, viewport, route/state and commit identified; no account secrets/private data.
+- Reference image integrity is separate from implemented-UI visual regression.
