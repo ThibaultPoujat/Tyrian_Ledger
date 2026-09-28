@@ -205,11 +205,13 @@ public sealed class SqlitePersistenceIntegrationTests
         var second = ExpectedIncomingPlan("plan:generic-b", "opportunity:generic-b", [6, 4]);
 
         Assert.Equal(PlanStartResult.Started,
-            await database.Plans.TryStartAsync(account.Id, first, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
-        Assert.Equal(PlanStartResult.ResourcesUnavailable,
-            await database.Plans.TryStartAsync(account.Id, second, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
-
+            await database.Plans.TryStartAsync(account.Id, first, new Money(2_000), Money.Zero, new Dictionary<string, long>()));
         var active = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(10, PlanOrchestrationService.OutstandingReservations(active)
+            .Where(value => value.Kind == PlanResourceKind.ExpectedIncoming).Sum(value => value.Quantity));
+        Assert.Equal(PlanStartResult.ResourcesUnavailable,
+            await database.Plans.TryStartAsync(account.Id, second, new Money(2_000), Money.Zero, new Dictionary<string, long>()));
+
         Assert.Equal(first.Id, active.Id);
     }
 
@@ -1695,8 +1697,10 @@ public sealed class SqlitePersistenceIntegrationTests
         var steps = quantities.Select((quantity, index) =>
             new PlanStep($"{planId}:list:{index}", PlanStepAction.List, 42, "Objet", quantity, new Money(100), [],
                 index == 0 ? PlanStepState.Current : PlanStepState.Pending)).ToArray();
+        var reservations = steps.Select(step => new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0,
+            Gw2TradingPostFeePolicy.Create().CalculateFees(new Money(checked(step.UnitPrice!.Value.Copper * step.Quantity))).ListingFee)).ToArray();
         return new PlanRecord(planId, 1, opportunityId, PlanAttention.Active, PlanState.InProgress,
-            PlanReconciliationState.None, FirstObservedAtUtc, [], Money.Zero, 0, steps, [], 0, PlanHysteresisPolicy.Default);
+            PlanReconciliationState.None, FirstObservedAtUtc, reservations, Money.Zero, 0, steps, [], 0, PlanHysteresisPolicy.Default);
     }
 
     private static PlanRecord ExpectedIncomingPlan(string planId, string opportunityId, IReadOnlyList<int> quantities)
@@ -1705,7 +1709,9 @@ public sealed class SqlitePersistenceIntegrationTests
         {
             new PlanStep($"{planId}:order", PlanStepAction.PlaceBuyOrder, 42, "Objet", quantities.Sum(), new Money(100), [], PlanStepState.Current),
         };
-        var reservations = quantities.Select(quantity => new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", quantity, Money.Zero)).ToArray();
+        var reservations = quantities.Select(quantity => new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", quantity, Money.Zero))
+            .Append(new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(checked((long)quantities.Sum() * 100))))
+            .ToArray();
         return new PlanRecord(planId, 1, opportunityId, PlanAttention.Active, PlanState.InProgress,
             PlanReconciliationState.None, FirstObservedAtUtc, reservations, Money.Zero, 0, steps, [], 0, PlanHysteresisPolicy.Default);
     }
