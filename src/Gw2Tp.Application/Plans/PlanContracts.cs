@@ -14,6 +14,9 @@ public enum PlanEvidenceKind { BuyOrder = 1, SellListing, CompletedBuy, Complete
 /// <summary>Versioned, typed resource demand. Money is always exact copper.</summary>
 public sealed record PlanResourceRequirement(PlanResourceKind Kind, string ResourceId, long Quantity, Money Cash);
 
+/// <summary>A checked, canonical aggregate of equivalent resource requirements.</summary>
+public sealed record PlanResourceDemand(PlanResourceKind Kind, string ResourceId, long Quantity, Money Cash);
+
 public sealed record PlanStep(
     string Id, PlanStepAction Action, int ItemId, string ItemName, int Quantity,
     Money? UnitPrice, IReadOnlyList<string> DependsOnStepIds, PlanStepState State,
