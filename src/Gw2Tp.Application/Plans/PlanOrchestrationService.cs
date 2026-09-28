@@ -499,11 +499,18 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     private static IReadOnlyDictionary<string, long> BuildCapacities(PlanCandidate[] candidates, IReadOnlyDictionary<string, long>? supplied)
     {
         var capacities = supplied is null ? new Dictionary<string, long>(StringComparer.Ordinal) : new Dictionary<string, long>(supplied, StringComparer.Ordinal);
-        foreach (var requirement in candidates.SelectMany(candidate => candidate.Requirements).Where(value => value.Quantity > 0))
+        var fallbackCapacities = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var candidate in candidates)
         {
-            var key = ResourceKey(requirement);
-            if (!capacities.ContainsKey(key) && (supplied is null || requirement.Kind != PlanResourceKind.Inventory)) capacities[key] = requirement.Quantity;
+            if (!TryAggregateResourceDemands(candidate.Requirements, out var demands)) continue;
+            foreach (var demand in demands.Values.Where(value => value.Kind != PlanResourceKind.Cash && value.Quantity > 0))
+            {
+                var key = ResourceKey(new PlanResourceRequirement(demand.Kind, demand.ResourceId, demand.Quantity, demand.Cash));
+                if (capacities.ContainsKey(key) || (supplied is not null && demand.Kind == PlanResourceKind.Inventory)) continue;
+                fallbackCapacities[key] = Math.Max(fallbackCapacities.GetValueOrDefault(key), demand.Quantity);
+            }
         }
+        foreach (var fallback in fallbackCapacities) capacities[fallback.Key] = fallback.Value;
         return capacities;
     }
 
