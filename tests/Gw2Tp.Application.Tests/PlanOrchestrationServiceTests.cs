@@ -97,7 +97,7 @@ public sealed class PlanOrchestrationServiceTests
         var unsplitResult = await service.SelectAsync([unsplit], new Money(1_000), Money.Zero);
         var splitResult = await service.SelectAsync([split], new Money(1_000), Money.Zero);
         var reorderedResult = await service.SelectAsync([reordered], new Money(1_000), Money.Zero);
-        var competingResult = await service.SelectAsync([split, reordered], new Money(1_000), Money.Zero);
+        var competingResult = await service.SelectAsync([split, reordered], new Money(3_000), Money.Zero);
 
         Assert.Single(unsplitResult.Plans);
         Assert.Single(splitResult.Plans);
