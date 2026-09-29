@@ -26,6 +26,7 @@ button alone cannot protect this server boundary.
 - `src/Gw2Tp.Infrastructure/Persistence/SqlitePlanRepository.cs`: scoped plan reads, optimistic concurrency and atomic durable mutation.
 - `src/Gw2Tp.Infrastructure/Persistence/SqliteSchemaMigrator.cs` only if the chosen receipt storage requires a focused schema change.
 - `src/Gw2Tp.Web/Hosting/PlanEndpoints.cs`: completion transport mapping and committed revision/step context in responses.
+- `src/Gw2Tp.Web/Hosting/AccountViewScopeTokenService.cs`: reuse the existing opaque account-view scope mechanism for transport binding; do not expose account IDs or credentials.
 - `frontend/src/PlanPanel.tsx` and `PlanPanel.test.tsx`: transport metadata and logical retry identity only.
 - Existing application, SQLite integration and plan endpoint test suites; `tests/Gw2Tp.Web.E2E/tests/transition-shell.spec.ts` only where fixtures/contracts require adjustment.
 
@@ -48,6 +49,17 @@ The current account is resolved by the trusted local host, never accepted from
 an untrusted request as authorization. Bind the operation to that account and
 execution. Missing/invalid identity metadata fails explicitly; do not fall back
 to whichever step happens to be current. Wire revision values losslessly.
+
+Return an opaque account-view scope with displayed execution context and require
+that original scope as a transport guard on completion requests. At command
+admission, compare it with the host's freshly resolved current account scope
+before receipt lookup or mutation. Reject a mismatch without disclosing either
+account's execution/receipt; do not silently retarget. Pin the admitted trusted
+account context through the scoped transaction. The guard is not authorization
+or part of the durable command fingerprint: a receipt remains account-scoped and
+replayable after restart using freshly issued context for that same account.
+Process-local guard rotation may invalidate an old browser's pending recovery;
+this ticket does not promise persistence of the browser retry queue.
 
 ### New logical command
 
@@ -107,18 +119,29 @@ Keep a lost-response retry associated with its original step even if a query
 refresh advances the displayed execution. Store pending operations above the
 individual PlanCard so an advanced or terminal plan cannot discard their identity.
 
-The bounded recovery interaction is the existing **Actualiser** action: if a
-command has an unknown network outcome, this explicit refresh first retries that
-original pending command once with its original ID/context/payload, then reads
-current plans. With no pending command, Actualiser remains a normal read. Do not
-schedule an automatic retry loop or retry on background query refresh. Concurrent
-refresh clicks coalesce while that retry is in flight; if it fails ambiguously
-again, retain the pending operation for the next explicit Actualiser action.
-Keep it even when its original card disappears after cancellation/terminal state.
-After a definitive acknowledgement or rejection, clear that pending operation and
-read current state. A new completion action on step B uses B's identity and a new
-command ID; it must never act as the retry trigger for pending step A. Never send
-a pending operation under a newly selected account's context.
+The bounded recovery interaction is the existing **Actualiser** action:
+
+1. Snapshot pending operations with unknown outcomes, in creation order. Before
+   any replay, obtain fresh current account-view scope from the trusted host;
+   cached React/decision-loop status is insufficient. A focused read-only context
+   response may be added/reused, but must resolve current host account context,
+   not a previous decision snapshot. It must not rerun candidate discovery.
+2. If scope is unavailable, send no completion POST and retain pending operations.
+   If it differs from their original scope, discard those old-scope operations
+   without posting or rebinding them, then read current plans. This includes
+   process-local scope rotation after host restart; durable receipts are retained.
+3. Retry each matching snapshot entry once, sequentially, with its original
+   ID/step/revision/guard/payload, then read current plans. The server guard also
+   covers a switch between preflight and command admission: reject the old guard,
+   stop remaining replays and refresh context. No old command is applied to the
+   new account. Newly pending entries wait for another explicit Actualiser.
+
+With no pending command, Actualiser remains a normal read. Background query
+refresh never replays. Concurrent explicit refresh clicks coalesce during this
+recovery cycle; do not schedule an automatic retry loop. Retain ambiguous outcomes
+for the next explicit Actualiser, including when the original card disappears;
+clear each definitively acknowledged/rejected operation. A new action on step B
+uses B's identity and a new command ID and is never a retry trigger for pending A.
 
 Network/request tests must prove this recovery path and the distinction between
 retrying A and intentionally acting on B. The server remains safe if another tab
@@ -143,9 +166,13 @@ contract; do not silently expand into the approved screen rebuild.
 | Report, then undo, then retry original report | Acknowledges original history; does not reapply undone effects |
 | Report later reconciled/confirmed; retry | Remains once-only; no new provisional effect |
 | Other account tries the execution/receipt | No mutation and no private receipt/plan disclosure |
+| Account changes before Actualiser, even while cached scope still says old account | Fresh preflight detects mismatch; no old completion POST; discard old pending entries and read current account |
+| Account changes between preflight and command admission | Original guard rejected before receipt lookup/mutation; stop remaining retries; no cross-account effect/disclosure |
+| Scope preflight unavailable / several ambiguous operations | No POST while scope unavailable; otherwise creation-order once-per-entry retries; concurrent clicks coalesce; no automatic loop |
+| Host restart rotates browser scope; receipt retried through fresh same-account context | Old browser queue discarded without POST; durable original receipt still acknowledges the same command without reapplication |
 | Read/start/complete/undo result used for next fresh command | Actual committed revision; no systematic stale-revision rejection |
 | Existing client double click / response loss / refresh while pending | Same logical operation retains step, revision, payload and ID; never silently targets next step |
-| Explicit Actualiser after A advances to B or A's card disappears | One retry of original A, then read; no report for B and no recreated terminal card |
+| Explicit Actualiser after A advances to B or A's card disappears | Fresh matching scope check, one retry of original A, then read; no report for B and no recreated terminal card |
 | Automatic query refresh or explicit new action on B while A is pending | Background read does not replay; B action has distinct B identity and is never interpreted as retry A |
 
 Use public endpoint/application and real SQLite integration tests, not only a
