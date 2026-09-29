@@ -17,49 +17,50 @@ For a UI ticket, also specify screen IDs from the six-image manifest, required
 states and screenshot/interaction acceptance. The agent must open the referenced
 PNGs before implementation. Never ask Luna to infer the latest design from chat.
 
-## First implementation Goal (after #148 merges)
+## Current implementation Goal — P01B (after #153 merges)
 
-Use Luna High if available, then paste:
+P01A / #149 merged in PR #152. Its checkpoint is
+[recorded here](../milestones/M22/checkpoint-p01a.md). Use **Luna High** if
+available for the next bounded ticket, then paste:
 
 ```text
-Implement only TKT-M22-P01A / GitHub issue #149 in
+Implement only TKT-M22-P01B / GitHub issue #154 in
 ThibaultPoujat/Tyrian_Ledger, based on current develop.
 
-Read AGENTS.md and reconcile CURRENT.md with its owning authorities. Read
-its M22 context, docs/milestones/M22/tickets/TKT-M22-P01A.md,
-docs/workflow/model-effort-guide.md and relevant VERIFY/spec/source files.
-Confirm the P00 dependency #148 is merged. This is a resource-correctness fix,
-not permission to implement the rest of P01 or redesign the UI.
+Read AGENTS.md and reconcile CURRENT.md with its authorities. Read the M22
+context, docs/milestones/M22/tickets/TKT-M22-P01B.md and model-effort guide.
+Confirm checkpoint preparation #153 and resource fix #149 are merged.
 
-Use an isolated branch/worktree and a short plan. Reproduce the duplicate-demand
-failure, implement the shared checked aggregation policy in selection and atomic
-start, then validate every ticket vector. Preserve existing residual-production,
-hard-reserve, account and transaction semantics. Do not invent missing capacity.
+Use an isolated branch/worktree. Reproduce the sequential-completion retry
+failure, then implement the ticket's step/revision-bound command contract,
+atomic durable receipt and state transition, replay/conflict behavior and
+minimal client transport wiring. Follow every acceptance vector and non-goal.
+Do not rebuild the UI or implement later reconciliation/lifecycle packages.
 
 Use the repository skill $tyrian-pr-review. This ticket is SOL-GATED: open a
-Draft PR, run required tests/CI, then obtain fresh independent Sol XHigh review
-when available. Do not impersonate that review from the Luna author context.
-If unavailable, leave Draft with exact review handoff. Fix confirmed findings
-within this ticket; never weaken tests or change a gate for quota reasons.
+Draft PR, run required tests/CI, then obtain fresh independent Sol XHigh review.
+If that reviewer is unavailable, leave Draft with the exact review handoff.
+Do not impersonate the stronger review or weaken tests/gates for quota reasons.
 
-Commit with [TKT-M22-P01A], push, open/update a PR targeting develop with
-Closes #149 and matching actual milestone. Record acceptance evidence,
-commands/results, VERIFY limitations and exact next action. Stop at handoff.
-Do not merge, start #150 as coding work, or begin another ticket.
+Commit with [TKT-M22-P01B], target develop, include Closes #154 and actual M22
+milestone. Record evidence, commands/results, VERIFY limitations and next action.
+Stop after this ticket. Do not merge, implement #150 or start another ticket.
 ```
 
-This ticket has no UI changes; it does not need all six PNGs in context.
+The client change is transport-only. The six prototypes remain authoritative
+for later visual work; no new screen implementation is part of this ticket.
 
 ## Separate review prompt
 
 ```text
-Use $tyrian-pr-review to review the PR for TKT-M22-P01A / #149 in a fresh
-Sol XHigh context. Resolve the actual current PR/base/head and current guide.
-Confirm required validation/CI are green, then independently inspect the diff
-and recompute resource vectors. Review selection and the transactional start
-boundary, including existing reservations, overflow and competing starts.
-Do not edit or merge. Return findings with evidence, acceptance matrix and
-APPROVE / CHANGES REQUESTED / BLOCKED. Keep Draft if required evidence is missing.
+Use $tyrian-pr-review to review the PR for TKT-M22-P01B / #154 in a fresh
+Sol XHigh context. Resolve current PR/base/head, ticket and model guide.
+Confirm required validation/CI are green. Independently inspect receipt/state
+atomicity, sequential/concurrent retries, stale step/revision, payload conflicts,
+restart, cancellation/undo replay, account isolation, committed revisions and
+client logical-request identity. Check that #149 resource invariants remain.
+Do not edit or merge. Return findings, acceptance evidence and
+APPROVE / CHANGES REQUESTED / BLOCKED. Keep Draft for missing required evidence.
 ```
 
 ## Future UI ticket addition
@@ -81,5 +82,5 @@ or material unapproved drift. Do not replace or regenerate approved references.
 The owner merges only after required evidence/review. A later planning session
 checks package exits and creates the next Ready child ticket. Update both #98
 and INDEX before starting it. Keep #150 open until P01–P06 exits are evidenced;
-#149 alone does not complete that gate. Technical record maintenance is the
+Neither #149 nor #154 alone completes that gate. Technical record maintenance is the
 AI's responsibility; the owner evaluates behavior and product fit.
