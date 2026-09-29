@@ -2,14 +2,34 @@ using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Application.Plans;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.PersonalTradingPost;
+using Gw2Tp.Application.MarketData;
 using Gw2Tp.Domain.Finance;
 using Gw2Tp.Web.Hosting;
+using Microsoft.AspNetCore.Http;
 using Xunit;
 
 namespace Gw2Tp.Web.Tests;
 
 public sealed class PlanEndpointMappingTests
 {
+    [Fact]
+    public async Task Completion_scope_guard_rejects_a_switch_before_profile_or_receipt_lookup()
+    {
+        var scopeTokens = new AccountViewScopeTokenService();
+        var originalScope = scopeTokens.GetToken("account-a");
+        var completion = new CompletionServiceSpy();
+        var service = new PlanEndpointService(
+            null!, null!, new FixedAccountScopeGateway("account-b"), null!, null!, null!, null!,
+            new PlanOrchestrationService(), null!, scopeTokens, completion);
+
+        var result = await service.CompleteAsync("plan-1",
+            new PlanStepCompletion("step-a", "1", "command-a", "ReportPerformed", 1, "100"),
+            originalScope, CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status409Conflict, ((IStatusCodeHttpResult)result).StatusCode);
+        Assert.Equal(0, completion.Calls);
+    }
+
     [Fact]
     public void Buy_recommendation_remains_a_manual_buy_order_with_bid_price()
     {
@@ -264,4 +284,30 @@ public sealed class PlanEndpointMappingTests
         new PrimaryRecommendationPortfolio(new Money(100), new Money(100), new Money(15), CashReserveStatus.Satisfied, Money.Zero, new Money(85)),
         [],
         now.AddMinutes(10));
+
+    private sealed class CompletionServiceSpy : IPlanCompletionCommandService
+    {
+        public int Calls { get; private set; }
+
+        public Task<PlanCompletionResult> CompleteAsync(long accountProfileId, PlanCompletionCommand command,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(new PlanCompletionResult(PlanCompletionStatus.Invalid));
+        }
+    }
+
+    private sealed class FixedAccountScopeGateway(string accountId) : IPersonalTradingPostGateway
+    {
+        public Task<Gw2ApiResult<AccountScope>> GetAccountScopeAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Gw2ApiResult<AccountScope>.Success(new AccountScope(accountId)));
+
+        public Task<Gw2ApiResult<PersonalTransactionPage>> GetCurrentBuyOrdersAsync(int page, CancellationToken cancellationToken = default) => Failure();
+        public Task<Gw2ApiResult<PersonalTransactionPage>> GetCurrentSellListingsAsync(int page, CancellationToken cancellationToken = default) => Failure();
+        public Task<Gw2ApiResult<PersonalTransactionPage>> GetCompletedBuyHistoryAsync(int page, CancellationToken cancellationToken = default) => Failure();
+        public Task<Gw2ApiResult<PersonalTransactionPage>> GetCompletedSellHistoryAsync(int page, CancellationToken cancellationToken = default) => Failure();
+
+        private static Task<Gw2ApiResult<PersonalTransactionPage>> Failure() =>
+            Task.FromResult(Gw2ApiResult<PersonalTransactionPage>.Failure(Gw2ApiErrorCategory.UpstreamUnavailable));
+    }
 }

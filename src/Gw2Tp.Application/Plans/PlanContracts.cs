@@ -65,6 +65,35 @@ public sealed record PlanRecord(
     DateTimeOffset? CancellationReconciliationExpiresAtUtc = null,
     bool IsReconciliationOnly = false);
 
+public enum PlanCompletionOperation { ReportPerformed = 1, NotPerformed }
+
+/// <summary>A logical user command bound to one displayed execution step and durable revision.</summary>
+public sealed record PlanCompletionCommand(
+    string PlanId,
+    string StepId,
+    long ExpectedRevision,
+    string CommandId,
+    PlanCompletionOperation Operation,
+    int Quantity,
+    Money? UnitPrice);
+
+/// <summary>Durable identity and committed result of one step-completion command.</summary>
+public sealed record PlanCompletionReceipt(
+    string PlanId,
+    string CommandId,
+    string StepId,
+    long ExpectedRevision,
+    PlanCompletionOperation Operation,
+    int Quantity,
+    Money? UnitPrice,
+    long CommittedRevision,
+    string? EventId,
+    DateTimeOffset CreatedAtUtc);
+
+public enum PlanCompletionStatus { Applied = 1, AlreadyApplied, Conflict, NotFound, Invalid }
+
+public sealed record PlanCompletionResult(PlanCompletionStatus Status, PlanCompletionReceipt? Receipt = null);
+
 public sealed record PlanVerifiedEvidence(
     string Identity, PlanEvidenceKind Kind, int ItemId, int Quantity, Money UnitPrice,
     DateTimeOffset CreatedAtUtc, DateTimeOffset ObservedAtUtc,
@@ -87,7 +116,15 @@ public interface IPlanRepository
     Task<PlanStartResult> TryStartAsync(long accountProfileId, PlanRecord plan, Money verifiedCash,
         Money hardReserve, IReadOnlyDictionary<string, long> verifiedQuantities,
         CancellationToken cancellationToken = default);
+    Task<PlanCompletionResult> CompleteStepAsync(long accountProfileId, PlanCompletionCommand command,
+        Func<PlanRecord, PlanRecord> transition, CancellationToken cancellationToken = default);
     Task SaveAsync(long accountProfileId, PlanRecord plan, CancellationToken cancellationToken = default);
+}
+
+public interface IPlanCompletionCommandService
+{
+    Task<PlanCompletionResult> CompleteAsync(long accountProfileId, PlanCompletionCommand command,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IPlanOrchestrationService

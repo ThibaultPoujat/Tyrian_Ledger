@@ -5,7 +5,7 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFactory)
 {
-    private const int LatestVersion = 10;
+    private const int LatestVersion = 11;
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> LatestSchemaColumns =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
@@ -104,6 +104,11 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             {
                 "plan_id", "account_profile_id", "state", "payload_json", "updated_at_utc", "revision",
             },
+            ["plan_completion_receipts"] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "account_profile_id", "plan_id", "command_id", "step_id", "expected_revision", "operation",
+                "quantity", "unit_price_in_copper", "committed_revision", "event_id", "created_at_utc",
+            },
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, SqliteColumnDefinition>> LatestColumnDefinitions =
@@ -130,6 +135,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_recipe_unlocks"] = Columns(("account_profile_id", "INTEGER", true, 1), ("recipe_id", "INTEGER", true, 2)),
             ["account_crafting_disciplines"] = Columns(("account_profile_id", "INTEGER", true, 1), ("discipline", "TEXT", true, 2), ("rating", "INTEGER", true, 0), ("is_active", "INTEGER", true, 0)),
             ["execution_plans"] = Columns(("plan_id", "TEXT", true, 1), ("account_profile_id", "INTEGER", true, 0), ("state", "INTEGER", true, 0), ("payload_json", "TEXT", true, 0), ("updated_at_utc", "TEXT", true, 0), ("revision", "INTEGER", true, 0)),
+            ["plan_completion_receipts"] = Columns(("account_profile_id", "INTEGER", true, 1), ("plan_id", "TEXT", true, 2), ("command_id", "TEXT", true, 3), ("step_id", "TEXT", true, 0), ("expected_revision", "INTEGER", true, 0), ("operation", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0), ("unit_price_in_copper", "INTEGER", false, 0), ("committed_revision", "INTEGER", true, 0), ("event_id", "TEXT", false, 0), ("created_at_utc", "TEXT", true, 0)),
         };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<SqliteIndexDefinition>> RequiredIndexes =
@@ -149,6 +155,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_recipe_unlocks"] = [new(null, true, ["account_profile_id", "recipe_id"])],
             ["account_crafting_disciplines"] = [new(null, true, ["account_profile_id", "discipline"], "BINARY")],
             ["execution_plans"] = [new(null, true, ["plan_id"], "BINARY"), new("ix_execution_plans_account_state", false, ["account_profile_id", "state"])],
+            ["plan_completion_receipts"] = [new(null, true, ["account_profile_id", "plan_id", "command_id"], "BINARY")],
         };
 
     private static readonly IReadOnlyList<SqliteForeignKeyDefinition> RequiredForeignKeys =
@@ -169,6 +176,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         new("account_crafting_recipe_unlocks", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
         new("account_crafting_disciplines", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
         new("execution_plans", "account_profile_id", "account_profiles", "id"),
+        new("plan_completion_receipts", "account_profile_id", "account_profiles", "id"),
     ];
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> RequiredCheckConstraints =
@@ -193,6 +201,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_recipe_unlocks"] = Checks("account_profile_id>0", "recipe_id>0"),
             ["account_crafting_disciplines"] = Checks("account_profile_id>0", "length(discipline)>0", "rating>=0", "is_activein(0,1)"),
             ["execution_plans"] = Checks("length(plan_id)>0", "account_profile_id>0", "statebetween1and7", "length(payload_json)>0", "revision>=0"),
+            ["plan_completion_receipts"] = Checks("account_profile_id>0", "length(plan_id)>0", "length(command_id)between1and128", "length(step_id)>0", "expected_revision>=0", "operationin(1,2)", "quantity>=0", "unit_price_in_copper>=0", "committed_revision>expected_revision", "(operation=1andquantity>0)or(operation=2andquantity=0andunit_price_in_copperisnull)", "length(created_at_utc)>0"),
         };
 
     // Version 6 was briefly published with this stricter equivalent constraint.
@@ -558,6 +567,28 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 SELECT account_profile_id, discipline, rating, is_active FROM account_crafting_disciplines;
             DROP TABLE account_crafting_disciplines;
             ALTER TABLE account_crafting_disciplines_replacement RENAME TO account_crafting_disciplines;
+            """),
+        new(
+            11,
+            "durable_plan_completion_command_receipts",
+            """
+            CREATE TABLE plan_completion_receipts (
+                account_profile_id INTEGER NOT NULL CHECK (account_profile_id > 0),
+                plan_id TEXT NOT NULL COLLATE BINARY CHECK (length(plan_id) > 0),
+                command_id TEXT NOT NULL COLLATE BINARY CHECK (length(command_id) BETWEEN 1 AND 128),
+                step_id TEXT NOT NULL COLLATE BINARY CHECK (length(step_id) > 0),
+                expected_revision INTEGER NOT NULL CHECK (expected_revision >= 0),
+                operation INTEGER NOT NULL CHECK (operation IN (1, 2)),
+                quantity INTEGER NOT NULL CHECK (quantity >= 0),
+                unit_price_in_copper INTEGER NULL CHECK (unit_price_in_copper >= 0),
+                committed_revision INTEGER NOT NULL CHECK (committed_revision > expected_revision),
+                event_id TEXT NULL,
+                created_at_utc TEXT NOT NULL CHECK (length(created_at_utc) > 0),
+                CHECK ((operation = 1 AND quantity > 0) OR (operation = 2 AND quantity = 0 AND unit_price_in_copper IS NULL)),
+                CONSTRAINT fk_plan_completion_receipts_account FOREIGN KEY (account_profile_id)
+                    REFERENCES account_profiles(id) ON DELETE RESTRICT,
+                PRIMARY KEY (account_profile_id, plan_id, command_id)
+            );
             """),
     ];
 
@@ -983,6 +1014,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_recipe_unlocks"] = $"account_profile_id <= 0 OR recipe_id <= 0 OR recipe_id > {Int32Maximum}",
             ["account_crafting_disciplines"] = $"account_profile_id <= 0 OR trim(discipline) = '' OR rating < 0 OR rating > {Int32Maximum} OR is_active NOT IN (0, 1)",
             ["execution_plans"] = $"trim(plan_id) = '' OR account_profile_id <= 0 OR state NOT BETWEEN 1 AND 7 OR trim(payload_json) = ''",
+            ["plan_completion_receipts"] = "account_profile_id <= 0 OR trim(plan_id) = '' OR length(command_id) NOT BETWEEN 1 AND 128 OR trim(step_id) = '' OR expected_revision < 0 OR operation NOT IN (1, 2) OR quantity < 0 OR (unit_price_in_copper IS NOT NULL AND unit_price_in_copper < 0) OR committed_revision <= expected_revision OR (operation = 1 AND quantity <= 0) OR (operation = 2 AND (quantity <> 0 OR unit_price_in_copper IS NOT NULL))",
             ["schema_migrations"] = "version <= 0 OR trim(name) = ''",
             ["user_settings"] = $"singleton_id <> 1 OR settings_version <= 0 OR settings_version > {Int32Maximum} OR (minimum_profit_in_copper IS NOT NULL AND (minimum_profit_in_copper < 0 OR minimum_profit_in_copper > {Int32Maximum})) OR (minimum_roi_basis_points IS NOT NULL AND (minimum_roi_basis_points < 0 OR minimum_roi_basis_points > 10000)) OR (cash_reserve_basis_points IS NOT NULL AND (cash_reserve_basis_points < 0 OR cash_reserve_basis_points > 10000))",
         };
