@@ -185,6 +185,14 @@ The row is updated transactionally with each local transition, while the event
 sequence remains in the plan payload for deterministic reconstruction and later
 reconciliation with verified account evidence.
 
+Migration 11 adds `plan_completion_receipts`, keyed by account profile, plan,
+and logical command ID. A receipt records the submitted step/revision/operation
+and canonical quantity/price, committed revision, and resulting event identity
+when the operation produced an event. The plan transition and receipt are
+committed in the same SQLite transaction. Receipts remain available while their
+account data is retained, are included in ordinary database backup/restore, and
+are cleared before plan/account rows during explicit personal-data reset.
+
 No migration in M14 creates a credential, API-key, authorization,
 token, raw-upstream-payload, accounting, market-history, position, or
 recommendation table.

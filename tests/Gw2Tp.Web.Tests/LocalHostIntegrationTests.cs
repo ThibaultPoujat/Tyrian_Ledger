@@ -39,6 +39,26 @@ namespace Gw2Tp.Web.Tests;
 public sealed class LocalHostIntegrationTests
 {
     [Fact]
+    public async Task Plan_completion_requires_explicit_step_revision_and_command_identity_at_the_public_route()
+    {
+        await using var app = await StartApplicationAsync("Production");
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/plans/plan-1/complete")
+        {
+            Content = JsonContent.Create(new { quantity = 1, unitPriceCopper = "100" }),
+        };
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        request.Headers.Add("Origin", "http://localhost");
+        request.Headers.Add(PlanEndpointService.AccountViewScopeHeader, "opaque-view-scope");
+
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("completion_identity_required", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Calculation_explanation_endpoint_requires_the_same_protected_read_headers_as_other_account_evidence()
     {
         await using var app = await StartApplicationAsync("Production");
@@ -118,7 +138,7 @@ public sealed class LocalHostIntegrationTests
                 await connection.OpenAsync();
                 await using var command = connection.CreateCommand();
                 command.CommandText = "SELECT COUNT(*) FROM schema_migrations;";
-                Assert.Equal(10L, await command.ExecuteScalarAsync());
+                Assert.Equal(11L, await command.ExecuteScalarAsync());
             }
 
         }
@@ -1044,7 +1064,7 @@ public sealed class LocalHostIntegrationTests
             {
                 await connection.OpenAsync(timeout.Token);
                 await using var command = connection.CreateCommand();
-                command.CommandText = "SELECT COUNT(*) FROM schema_migrations WHERE version = 10;";
+                command.CommandText = "SELECT COUNT(*) FROM schema_migrations WHERE version = 11;";
                 Assert.Equal(1L, await command.ExecuteScalarAsync(timeout.Token));
             }
 

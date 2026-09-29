@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Gw2Tp.Application.Plans;
+using Gw2Tp.Domain.Finance;
+using Microsoft.Data.Sqlite;
 
 namespace Gw2Tp.Infrastructure.Persistence;
 
@@ -146,6 +148,138 @@ internal sealed class SqlitePlanRepository(
         return PlanStartResult.Started;
     }
 
+    public async Task<PlanCompletionResult> CompleteStepAsync(
+        long accountProfileId,
+        PlanCompletionCommand command,
+        Func<PlanRecord, PlanRecord> transition,
+        CancellationToken cancellationToken = default)
+    {
+        if (accountProfileId <= 0) throw new ArgumentOutOfRangeException(nameof(accountProfileId));
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(transition);
+        if (string.IsNullOrWhiteSpace(command.PlanId) || command.PlanId.Length > 256 ||
+            string.IsNullOrWhiteSpace(command.CommandId) || command.CommandId.Length > 128)
+            return new(PlanCompletionStatus.Invalid);
+
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        var existingReceipt = await FindReceiptAsync(connection, transaction, accountProfileId, command, cancellationToken).ConfigureAwait(false);
+        if (existingReceipt is not null)
+        {
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return new(Matches(existingReceipt, command) ? PlanCompletionStatus.AlreadyApplied : PlanCompletionStatus.Conflict,
+                Matches(existingReceipt, command) ? existingReceipt : null);
+        }
+
+        if (!IsValidCommand(command))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new(PlanCompletionStatus.Invalid);
+        }
+
+        PlanRecord? storedPlan;
+        await using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "SELECT payload_json, revision FROM execution_plans WHERE plan_id = $planId AND account_profile_id = $accountProfileId;";
+            read.Parameters.AddWithValue("$planId", command.PlanId);
+            read.Parameters.AddWithValue("$accountProfileId", accountProfileId);
+            await using var reader = await read.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            storedPlan = await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+                ? (JsonSerializer.Deserialize<PlanRecord>(reader.GetString(0), SerializerOptions)
+                    ?? throw new InvalidDataException("The stored plan payload is invalid.")) with { Revision = reader.GetInt64(1) }
+                : null;
+        }
+
+        if (storedPlan is null)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new(PlanCompletionStatus.NotFound);
+        }
+
+        if (!CanAdmit(storedPlan, command))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new(PlanCompletionStatus.Conflict);
+        }
+
+        PlanRecord transitioned;
+        try
+        {
+            transitioned = transition(storedPlan);
+        }
+        catch (InvalidOperationException)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new(PlanCompletionStatus.Invalid);
+        }
+
+        if (!string.Equals(transitioned.Id, storedPlan.Id, StringComparison.Ordinal) || transitioned.Revision != storedPlan.Revision)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new(PlanCompletionStatus.Invalid);
+        }
+
+        var committedRevision = checked(storedPlan.Revision + 1);
+        var committedPlan = transitioned with { Revision = committedRevision };
+        var updatedAt = SqlitePersistenceValues.ToUtcTimestamp(DateTimeOffset.UtcNow, "updatedAtUtc");
+        await using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText = """
+                UPDATE execution_plans
+                SET state = $state, payload_json = $payload, updated_at_utc = $updatedAtUtc, revision = $nextRevision
+                WHERE plan_id = $planId AND account_profile_id = $accountProfileId AND revision = $expectedRevision;
+                """;
+            update.Parameters.AddWithValue("$planId", command.PlanId);
+            update.Parameters.AddWithValue("$accountProfileId", accountProfileId);
+            update.Parameters.AddWithValue("$state", (int)committedPlan.State);
+            update.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(committedPlan, SerializerOptions));
+            update.Parameters.AddWithValue("$updatedAtUtc", updatedAt);
+            update.Parameters.AddWithValue("$expectedRevision", command.ExpectedRevision);
+            update.Parameters.AddWithValue("$nextRevision", committedRevision);
+            if (await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return new(PlanCompletionStatus.Conflict);
+            }
+        }
+
+        var eventId = transitioned.Events.FirstOrDefault(value =>
+            !storedPlan.Events.Any(previous => string.Equals(previous.Id, value.Id, StringComparison.Ordinal)))?.Id;
+        var receipt = new PlanCompletionReceipt(command.PlanId, command.CommandId, command.StepId,
+            command.ExpectedRevision, command.Operation, command.Quantity, command.UnitPrice, committedRevision,
+            eventId, DateTimeOffset.UtcNow);
+        await using (var insert = connection.CreateCommand())
+        {
+            insert.Transaction = transaction;
+            insert.CommandText = """
+                INSERT INTO plan_completion_receipts
+                    (account_profile_id, plan_id, command_id, step_id, expected_revision, operation, quantity,
+                     unit_price_in_copper, committed_revision, event_id, created_at_utc)
+                VALUES ($accountProfileId, $planId, $commandId, $stepId, $expectedRevision, $operation, $quantity,
+                        $unitPrice, $committedRevision, $eventId, $createdAtUtc);
+                """;
+            insert.Parameters.AddWithValue("$accountProfileId", accountProfileId);
+            insert.Parameters.AddWithValue("$planId", receipt.PlanId);
+            insert.Parameters.AddWithValue("$commandId", receipt.CommandId);
+            insert.Parameters.AddWithValue("$stepId", receipt.StepId);
+            insert.Parameters.AddWithValue("$expectedRevision", receipt.ExpectedRevision);
+            insert.Parameters.AddWithValue("$operation", (int)receipt.Operation);
+            insert.Parameters.AddWithValue("$quantity", receipt.Quantity);
+            insert.Parameters.AddWithValue("$unitPrice", (object?)receipt.UnitPrice?.Copper ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$committedRevision", receipt.CommittedRevision);
+            insert.Parameters.AddWithValue("$eventId", (object?)receipt.EventId ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$createdAtUtc", SqlitePersistenceValues.ToUtcTimestamp(receipt.CreatedAtUtc, "createdAtUtc"));
+            await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new(PlanCompletionStatus.Applied, receipt);
+    }
+
     public async Task SaveAsync(long accountProfileId, PlanRecord plan, CancellationToken cancellationToken = default)
     {
         if (accountProfileId <= 0) throw new ArgumentOutOfRangeException(nameof(accountProfileId));
@@ -176,6 +310,54 @@ internal sealed class SqlitePlanRepository(
             throw new PlanConcurrencyException();
         }
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<PlanCompletionReceipt?> FindReceiptAsync(SqliteConnection connection,
+        SqliteTransaction transaction, long accountProfileId, PlanCompletionCommand command,
+        CancellationToken cancellationToken)
+    {
+        await using var read = connection.CreateCommand();
+        read.Transaction = transaction;
+        read.CommandText = """
+            SELECT plan_id, command_id, step_id, expected_revision, operation, quantity,
+                   unit_price_in_copper, committed_revision, event_id, created_at_utc
+            FROM plan_completion_receipts
+            WHERE account_profile_id = $accountProfileId AND plan_id = $planId AND command_id = $commandId;
+            """;
+        read.Parameters.AddWithValue("$accountProfileId", accountProfileId);
+        read.Parameters.AddWithValue("$planId", command.PlanId);
+        read.Parameters.AddWithValue("$commandId", command.CommandId);
+        await using var reader = await read.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) return null;
+        return new PlanCompletionReceipt(reader.GetString(0), reader.GetString(1), reader.GetString(2),
+            reader.GetInt64(3), (PlanCompletionOperation)reader.GetInt32(4), reader.GetInt32(5),
+            reader.IsDBNull(6) ? null : new Money(reader.GetInt64(6)), reader.GetInt64(7),
+            reader.IsDBNull(8) ? null : reader.GetString(8), SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(9), "plan_completion_receipts.created_at_utc"));
+    }
+
+    private static bool Matches(PlanCompletionReceipt receipt, PlanCompletionCommand command) =>
+        string.Equals(receipt.PlanId, command.PlanId, StringComparison.Ordinal) &&
+        string.Equals(receipt.CommandId, command.CommandId, StringComparison.Ordinal) &&
+        string.Equals(receipt.StepId, command.StepId, StringComparison.Ordinal) &&
+        receipt.ExpectedRevision == command.ExpectedRevision && receipt.Operation == command.Operation &&
+        receipt.Quantity == command.Quantity && receipt.UnitPrice == command.UnitPrice;
+
+    private static bool IsValidCommand(PlanCompletionCommand command) =>
+        !string.IsNullOrWhiteSpace(command.PlanId) && command.PlanId.Length <= 256 &&
+        !string.IsNullOrWhiteSpace(command.StepId) && command.StepId.Length <= 256 &&
+        !string.IsNullOrWhiteSpace(command.CommandId) && command.CommandId.Length <= 128 && command.ExpectedRevision >= 0 &&
+        Enum.IsDefined(command.Operation) &&
+        (command.Operation == PlanCompletionOperation.ReportPerformed
+            ? command.Quantity > 0 && command.UnitPrice is not { Copper: < 0 }
+            : command.Quantity == 0 && command.UnitPrice is null);
+
+    private static bool CanAdmit(PlanRecord plan, PlanCompletionCommand command)
+    {
+        if (plan.Revision != command.ExpectedRevision || plan.State != PlanState.InProgress ||
+            plan.CurrentStepOrdinal < 0 || plan.CurrentStepOrdinal >= plan.Steps.Count) return false;
+        var current = plan.Steps[plan.CurrentStepOrdinal];
+        return current.State == PlanStepState.Current &&
+            string.Equals(current.Id, command.StepId, StringComparison.Ordinal);
     }
 
     private static bool HasResourceConflict(

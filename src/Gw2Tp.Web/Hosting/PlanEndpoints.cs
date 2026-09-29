@@ -23,14 +23,22 @@ internal static class PlanEndpoints
         });
         endpoints.MapPost("/api/plans/{planId}/start", (string planId, PlanEndpointService service, CancellationToken cancellationToken) =>
             service.StartAsync(planId, cancellationToken));
-        endpoints.MapPost("/api/plans/{planId}/complete", (string planId, PlanStepCompletion request, PlanEndpointService service, CancellationToken cancellationToken) =>
-            service.CompleteAsync(planId, request, cancellationToken));
+        endpoints.MapGet("/api/plans/context", (PlanEndpointService service, CancellationToken cancellationToken) =>
+            service.GetAccountViewContextAsync(cancellationToken));
+        endpoints.MapPost("/api/plans/{planId}/complete", (string planId, PlanStepCompletion request, HttpContext context, PlanEndpointService service, CancellationToken cancellationToken) =>
+            service.CompleteAsync(planId, request, context.Request.Headers[PlanEndpointService.AccountViewScopeHeader].ToString(), cancellationToken));
         endpoints.MapPost("/api/plans/{planId}/undo", (string planId, PlanEndpointService service, CancellationToken cancellationToken) =>
             service.UndoAsync(planId, cancellationToken));
     }
 }
 
-internal sealed record PlanStepCompletion(int Quantity, string? UnitPriceCopper, bool NotPerformed = false);
+internal sealed record PlanStepCompletion(
+    string? StepId,
+    string? ExpectedRevision,
+    string? CommandId,
+    string? Operation,
+    int Quantity,
+    string? UnitPriceCopper);
 
 /// <summary>Sanitized phase timings for a Plans read; contains no account or market facts.</summary>
 internal sealed record PlanDecisionTiming(
@@ -164,19 +172,27 @@ internal sealed class PlanEndpointService(
     IPersonalTradingPostRepository profiles,
     IPlanRepository repository,
     IPlanOrchestrationService orchestration,
-    PlanDecisionProjectionStore loopDecisions)
+    PlanDecisionProjectionStore loopDecisions,
+    AccountViewScopeTokenService? accountViewScopes = null,
+    IPlanCompletionCommandService? completionCommands = null)
 {
+    internal const string AccountViewScopeHeader = "X-Tyrian-Ledger-Account-View-Scope";
+    private readonly AccountViewScopeTokenService scopeTokens = accountViewScopes ?? new();
+    private readonly IPlanCompletionCommandService commandService = completionCommands ??
+        new PlanCompletionCommandService(repository, orchestration);
+
     internal event Action<string>? LoopDecisionInvalidated;
 
     public async Task<PlanEndpointResponse> GetAsync(CancellationToken cancellationToken)
     {
         var context = await TryGetLoopDecisionContextAsync(cancellationToken).ConfigureAwait(false)
             ?? await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
-        if (context is null) return Complete(new { state = "unavailable", proposals = Array.Empty<object>(), plans = Array.Empty<object>(), selection = EmptySelection("account_evidence_unavailable") }, new PlanDecisionTiming());
+        if (context is null) return Complete(new { state = "unavailable", proposals = Array.Empty<object>(), plans = Array.Empty<object>(), selection = EmptySelection("account_evidence_unavailable"), accountCacheScope = (string?)null }, new PlanDecisionTiming());
         var plans = context.Plans;
         var visiblePlans = plans.Where(plan => plan.State != PlanState.Invalid).ToArray();
+        var accountCacheScope = scopeTokens.GetToken(context.Profile.AccountScopeId);
         if (context.Recommendations?.State != PrimaryRecommendationState.Ready)
-            return Complete(new { state = "ready", degraded = true, proposals = Array.Empty<object>(), excludedCandidateIds = Array.Empty<string>(), intentionallyFreeCash = Money.Zero, plans = visiblePlans.Select(ToResponse), selection = EmptySelection("recommendations_not_ready", context.DecisionCacheState, context.ReusedDecision) }, context.Timing);
+            return Complete(new { state = "ready", degraded = true, proposals = Array.Empty<object>(), excludedCandidateIds = Array.Empty<string>(), intentionallyFreeCash = Money.Zero, plans = visiblePlans.Select(ToResponse), selection = EmptySelection("recommendations_not_ready", context.DecisionCacheState, context.ReusedDecision), accountCacheScope }, context.Timing);
         var selectionTimer = Stopwatch.StartNew();
         var selection = await SelectCandidatesAsync(context.Snapshot, context.VerifiedQuantities, context.Recommendations, context.Candidates, context.Plans, cancellationToken).ConfigureAwait(false);
         if (selection.PortfolioSizingUnavailable && selection.SafeWithoutPortfolioSizing.Count == 0)
@@ -188,6 +204,7 @@ internal sealed class PlanEndpointService(
                 excludedCandidateIds = Array.Empty<string>(),
                 intentionallyFreeCash = Money.Zero,
                 plans = visiblePlans.Select(ToResponse),
+                accountCacheScope,
                 selection = new
                 {
                     recommendationCandidates = context.Recommendations.Actions.Count(IsActionable),
@@ -221,7 +238,15 @@ internal sealed class PlanEndpointService(
                 reason,
                 reusedDecision = context.ReusedDecision,
                 cacheState = context.DecisionCacheState,
-            } }, context.Timing, selectionTimer);
+            }, accountCacheScope }, context.Timing, selectionTimer);
+    }
+
+    public async Task<IResult> GetAccountViewContextAsync(CancellationToken cancellationToken)
+    {
+        var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
+        if (!scope.IsSuccess || scope.Value is null)
+            return Results.Json(new { state = "unavailable", accountCacheScope = (string?)null }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        return Results.Json(new { state = "ready", accountCacheScope = scopeTokens.GetToken(scope.Value.AccountId) });
     }
 
     public async Task<IResult> StartAsync(string planId, CancellationToken cancellationToken)
@@ -243,31 +268,71 @@ internal sealed class PlanEndpointService(
             var existing = await FindByCandidateAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
             return existing is null ? Results.Conflict(new { error = "plan_already_started" }) : Results.Json(new { state = "already_started", plan = ToResponse(existing) });
         }
+        var committed = await FindAsync(context.Profile.Id, plan.Id, cancellationToken).ConfigureAwait(false);
+        if (committed is null) return Results.Conflict(new { error = "plan_start_not_visible" });
         InvalidateLoopDecision(context.Profile.AccountScopeId);
-        return Results.Json(new { state = "started", plan = ToResponse(plan) });
+        return Results.Json(new { state = "started", plan = ToResponse(committed) });
     }
 
-    public async Task<IResult> CompleteAsync(string planId, PlanStepCompletion request, CancellationToken cancellationToken)
+    public async Task<IResult> CompleteAsync(string planId, PlanStepCompletion request, string accountViewScope, CancellationToken cancellationToken)
     {
-        var context = await RequireContextAsync(cancellationToken).ConfigureAwait(false);
-        var plan = await FindAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
-        if (plan is null) return Results.NotFound(new { error = "plan_not_found" });
-        if (request.NotPerformed)
-        {
-            var cancelled = orchestration.CancelUnperformedStep(plan);
-            try { await repository.SaveAsync(context.Profile.Id, cancelled, cancellationToken).ConfigureAwait(false); }
-            catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
-            InvalidateLoopDecision(context.Profile.AccountScopeId);
-            return Results.Json(new { state = "cancelled", plan = ToResponse(cancelled) });
-        }
+        if (string.IsNullOrWhiteSpace(accountViewScope)) return Results.BadRequest(new { error = "completion_context_required" });
+        if (string.IsNullOrWhiteSpace(planId) ||
+            string.IsNullOrWhiteSpace(request.StepId) || string.IsNullOrWhiteSpace(request.CommandId) ||
+            !long.TryParse(request.ExpectedRevision, NumberStyles.None, CultureInfo.InvariantCulture, out var expectedRevision) || expectedRevision < 0)
+            return Results.BadRequest(new { error = "completion_identity_required" });
+
+        PlanCompletionOperation operation;
+        if (string.Equals(request.Operation, "ReportPerformed", StringComparison.Ordinal)) operation = PlanCompletionOperation.ReportPerformed;
+        else if (string.Equals(request.Operation, "NotPerformed", StringComparison.Ordinal)) operation = PlanCompletionOperation.NotPerformed;
+        else return Results.BadRequest(new { error = "invalid_completion_operation" });
+
         Money? price = null;
-        if (request.UnitPriceCopper is not null && (!long.TryParse(request.UnitPriceCopper, out var copper) || copper < 0)) return Results.BadRequest(new { error = "invalid_unit_price" });
-        if (request.UnitPriceCopper is not null) price = new Money(long.Parse(request.UnitPriceCopper, System.Globalization.CultureInfo.InvariantCulture));
-        var updated = orchestration.ReportStep(plan, request.Quantity, price, DateTimeOffset.UtcNow);
-        try { await repository.SaveAsync(context.Profile.Id, updated, cancellationToken).ConfigureAwait(false); }
-        catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
-        InvalidateLoopDecision(context.Profile.AccountScopeId);
-        return Results.Json(new { state = "reported", plan = ToResponse(updated) });
+        if (request.UnitPriceCopper is not null)
+        {
+            if (!long.TryParse(request.UnitPriceCopper, NumberStyles.None, CultureInfo.InvariantCulture, out var copper) || copper < 0)
+                return Results.BadRequest(new { error = "invalid_unit_price" });
+            price = new Money(copper);
+        }
+
+        var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
+        if (!scope.IsSuccess || scope.Value is null) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        var currentAccountViewScope = scopeTokens.GetToken(scope.Value.AccountId);
+        if (!string.Equals(accountViewScope, currentAccountViewScope, StringComparison.Ordinal))
+            return Results.Conflict(new { error = "account_scope_changed" });
+
+        var profile = await profiles.FindAccountProfileAsync(scope.Value.AccountId, cancellationToken).ConfigureAwait(false);
+        if (profile is null) return Results.NotFound(new { error = "plan_not_found" });
+        var command = new PlanCompletionCommand(planId, request.StepId, expectedRevision, request.CommandId,
+            operation, request.Quantity, price);
+        var result = await commandService.CompleteAsync(profile.Id, command, cancellationToken).ConfigureAwait(false);
+        if (result.Status is PlanCompletionStatus.Applied or PlanCompletionStatus.AlreadyApplied)
+        {
+            if (result.Status == PlanCompletionStatus.Applied) InvalidateLoopDecision(scope.Value.AccountId);
+            var receipt = result.Receipt!;
+            var state = operation == PlanCompletionOperation.NotPerformed ? "cancelled" : "reported";
+            return Results.Json(new
+            {
+                state = result.Status == PlanCompletionStatus.AlreadyApplied ? "already_applied" : state,
+                acknowledgement = new
+                {
+                    status = result.Status == PlanCompletionStatus.AlreadyApplied ? "already_applied" : "applied",
+                    receiptId = receipt.CommandId,
+                    receipt.CommandId,
+                    receipt.PlanId,
+                    receipt.StepId,
+                    committedRevision = receipt.CommittedRevision.ToString(CultureInfo.InvariantCulture),
+                    receipt.EventId,
+                },
+            });
+        }
+
+        return result.Status switch
+        {
+            PlanCompletionStatus.NotFound => Results.NotFound(new { error = "plan_not_found" }),
+            PlanCompletionStatus.Conflict => Results.Conflict(new { error = "plan_command_conflict" }),
+            _ => Results.BadRequest(new { error = "invalid_completion_command" }),
+        };
     }
 
     public async Task<IResult> UndoAsync(string planId, CancellationToken cancellationToken)
@@ -279,7 +344,7 @@ internal sealed class PlanEndpointService(
         try { await repository.SaveAsync(context.Profile.Id, updated, cancellationToken).ConfigureAwait(false); }
         catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
         InvalidateLoopDecision(context.Profile.AccountScopeId);
-        return Results.Json(new { state = "undone", plan = ToResponse(updated) });
+        return Results.Json(new { state = "undone", plan = ToResponse(updated with { Revision = updated.Revision + 1 }) });
     }
 
     internal async Task<PlanDecisionSnapshot?> GetDecisionSnapshotAsync(CancellationToken cancellationToken)
@@ -801,7 +866,7 @@ internal sealed class PlanEndpointService(
 
     private static string ResourceKey(PlanResourceRequirement requirement) => PlanOrchestrationService.ResourceKey(requirement);
     private static object ToResponse(PlanCandidate plan) => new { id = plan.Id, attention = plan.Attention.ToString(), modeledProfit = plan.ModeledProfit, committedCapital = plan.CommittedCapital, interactionSeconds = plan.ExpectedInteractionSeconds, steps = plan.Steps.Select(ToResponse) };
-    private static object ToResponse(PlanRecord plan) => new { id = plan.Id, attention = plan.Attention.ToString(), state = plan.State.ToString(), reconciliationState = plan.ReconciliationState.ToString(), modeledProfit = plan.ModeledProfit, currentStepOrdinal = plan.CurrentStepOrdinal, steps = plan.Steps.Select(ToResponse), hasUndoableEvent = plan.Events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) };
+    private static object ToResponse(PlanRecord plan) => new { id = plan.Id, attention = plan.Attention.ToString(), state = plan.State.ToString(), reconciliationState = plan.ReconciliationState.ToString(), modeledProfit = plan.ModeledProfit, currentStepOrdinal = plan.CurrentStepOrdinal, revision = plan.Revision.ToString(CultureInfo.InvariantCulture), steps = plan.Steps.Select(ToResponse), hasUndoableEvent = plan.Events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) };
     private static object ToResponse(PlanStep step) => new { id = step.Id, action = step.Action.ToString(), itemName = step.ItemName, quantity = step.Quantity, unitPrice = step.UnitPrice, state = step.State.ToString() };
 
     private sealed record EvidenceCapture(IReadOnlyCollection<PlanVerifiedEvidence> Evidence, DateTimeOffset? CapturedAtUtc, IReadOnlySet<PlanEvidenceKind> CompleteKinds);
