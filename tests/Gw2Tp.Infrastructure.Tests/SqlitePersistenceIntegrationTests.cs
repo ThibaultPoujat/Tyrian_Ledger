@@ -1,6 +1,7 @@
 using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.Persistence;
+using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
@@ -165,6 +166,168 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(1, outcomes.Count(outcome => outcome == PlanStartResult.Started));
         Assert.Equal(1, outcomes.Count(outcome => outcome == PlanStartResult.AlreadyStarted));
         Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+    }
+
+    [Fact]
+    public async Task Direct_start_rejects_duplicate_inventory_demands_without_persisting_a_partial_plan()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("duplicate-demand-account", FirstObservedAtUtc);
+        var plan = InventoryPlan("plan:duplicate-demand", "opportunity:duplicate-demand", [6, 6]);
+
+        var result = await database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), Money.Zero,
+            new Dictionary<string, long> { ["2:42"] = 10 });
+
+        Assert.Equal(PlanStartResult.ResourcesUnavailable, result);
+        Assert.Empty(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(0, await database.GetTableCountAsync("execution_plans"));
+    }
+
+    [Fact]
+    public async Task Direct_start_accepts_split_inventory_demands_exactly_at_capacity()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("split-demand-account", FirstObservedAtUtc);
+        var plan = InventoryPlan("plan:split-demand", "opportunity:split-demand", [5, 5]);
+
+        var result = await database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), Money.Zero,
+            new Dictionary<string, long> { ["2:42"] = 10 });
+
+        Assert.Equal(PlanStartResult.Started, result);
+        Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+    }
+
+    [Fact]
+    public async Task Competing_atomic_starts_reject_equivalent_split_generic_demands_after_one_reservation()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("competing-generic-demand-account", FirstObservedAtUtc);
+        var first = ExpectedIncomingPlan("plan:generic-a", "opportunity:generic-a", [4, 6]);
+        var second = ExpectedIncomingPlan("plan:generic-b", "opportunity:generic-b", [6, 4]);
+
+        Assert.Equal(PlanStartResult.Started,
+            await database.Plans.TryStartAsync(account.Id, first, new Money(2_000), Money.Zero, new Dictionary<string, long>()));
+        var active = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(10, PlanOrchestrationService.OutstandingReservations(active)
+            .Where(value => value.Kind == PlanResourceKind.ExpectedIncoming).Sum(value => value.Quantity));
+        Assert.Equal(PlanStartResult.ResourcesUnavailable,
+            await database.Plans.TryStartAsync(account.Id, second, new Money(2_000), Money.Zero, new Dictionary<string, long>()));
+
+        var stillActive = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(first.Id, stillActive.Id);
+        Assert.Equal(10, PlanOrchestrationService.OutstandingReservations(stillActive)
+            .Where(value => value.Kind == PlanResourceKind.ExpectedIncoming).Sum(value => value.Quantity));
+        Assert.Equal(1, await database.GetTableCountAsync("execution_plans"));
+    }
+
+    [Fact]
+    public async Task Competing_atomic_starts_cannot_both_commit_the_same_remaining_inventory()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("competing-demand-account", FirstObservedAtUtc);
+        var first = InventoryPlan("plan:competing-a", "opportunity:competing-a", [6]);
+        var second = InventoryPlan("plan:competing-b", "opportunity:competing-b", [6]);
+        var capacity = new Dictionary<string, long> { ["2:42"] = 10 };
+
+        var results = await Task.WhenAll(
+            database.Plans.TryStartAsync(account.Id, first, new Money(1_000), Money.Zero, capacity),
+            database.Plans.TryStartAsync(account.Id, second, new Money(1_000), Money.Zero, capacity));
+
+        Assert.Equal(1, results.Count(result => result == PlanStartResult.Started));
+        Assert.Equal(1, results.Count(result => result == PlanStartResult.ResourcesUnavailable));
+        Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+    }
+
+    [Fact]
+    public async Task Existing_outstanding_inventory_reservation_is_combined_with_all_new_duplicate_demands()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("existing-reservation-account", FirstObservedAtUtc);
+        var existing = InventoryPlan("plan:existing-reservation", "opportunity:existing-reservation", [4]);
+        var replacement = InventoryPlan("plan:replacement", "opportunity:replacement", [4, 4]);
+        var capacity = new Dictionary<string, long> { ["2:42"] = 10 };
+
+        Assert.Equal(PlanStartResult.Started,
+            await database.Plans.TryStartAsync(account.Id, existing, new Money(1_000), Money.Zero, capacity));
+        Assert.Equal(PlanStartResult.ResourcesUnavailable,
+            await database.Plans.TryStartAsync(account.Id, replacement, new Money(1_000), Money.Zero, capacity));
+
+        var active = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(existing.Id, active.Id);
+    }
+
+    [Fact]
+    public async Task Direct_start_aggregates_cash_amounts_and_rejects_crossing_the_hard_reserve()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("cash-demand-account", FirstObservedAtUtc);
+        var plan = new PlanRecord("plan:cash-demand", 1, "opportunity:cash-demand", PlanAttention.Active, PlanState.InProgress,
+            PlanReconciliationState.None, FirstObservedAtUtc,
+            [
+                new(PlanResourceKind.Cash, "first", long.MaxValue, new Money(450)),
+                new(PlanResourceKind.Cash, "second", long.MaxValue, new Money(450)),
+            ],
+            Money.Zero, 0,
+            [new PlanStep("plan:cash-demand:order", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, new Money(900), [], PlanStepState.Current)],
+            [], 0, PlanHysteresisPolicy.Default);
+
+        var result = await database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), new Money(101),
+            new Dictionary<string, long>());
+
+        Assert.Equal(PlanStartResult.ResourcesUnavailable, result);
+        Assert.Equal(0, await database.GetTableCountAsync("execution_plans"));
+    }
+
+    [Fact]
+    public async Task Direct_start_rejects_checked_overflow_without_writing_any_plan()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("overflow-demand-account", FirstObservedAtUtc);
+        var plan = new PlanRecord("plan:overflow-demand", 1, "opportunity:overflow-demand", PlanAttention.Active, PlanState.InProgress,
+            PlanReconciliationState.None, FirstObservedAtUtc,
+            [
+                new(PlanResourceKind.Cash, "first", 0, new Money(long.MaxValue)),
+                new(PlanResourceKind.Cash, "second", 0, new Money(1)),
+            ],
+            Money.Zero, 0, [], [], 0, PlanHysteresisPolicy.Default);
+
+        var result = await database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), Money.Zero,
+            new Dictionary<string, long>());
+
+        Assert.Equal(PlanStartResult.ResourcesUnavailable, result);
+        Assert.Empty(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(0, await database.GetTableCountAsync("execution_plans"));
+    }
+
+    [Fact]
+    public async Task Direct_start_rejects_negative_resource_totals_without_writing_any_plan()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("negative-demand-account", FirstObservedAtUtc);
+        var invalidPlans = new[]
+        {
+            new PlanRecord("plan:negative-cash", 1, "opportunity:negative-cash", PlanAttention.Active, PlanState.InProgress,
+                PlanReconciliationState.None, FirstObservedAtUtc,
+                [new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(-1))], Money.Zero, 0,
+                [new PlanStep("plan:negative-cash:order", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, Money.Zero, [], PlanStepState.Current)],
+                [], 0, PlanHysteresisPolicy.Default),
+            new PlanRecord("plan:negative-quantity", 1, "opportunity:negative-quantity", PlanAttention.Active, PlanState.InProgress,
+                PlanReconciliationState.None, FirstObservedAtUtc,
+                [new PlanResourceRequirement(PlanResourceKind.Inventory, "42", -1, Money.Zero)], Money.Zero, 0,
+                [new PlanStep("plan:negative-quantity:order", PlanStepAction.PlaceBuyOrder, 42, "Objet", 1, Money.Zero, [], PlanStepState.Current)],
+                [], 0, PlanHysteresisPolicy.Default),
+        };
+
+        foreach (var plan in invalidPlans)
+        {
+            var result = await database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), Money.Zero,
+                new Dictionary<string, long> { ["2:42"] = 10 });
+
+            Assert.Equal(PlanStartResult.ResourcesUnavailable, result);
+        }
+
+        Assert.Empty(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(0, await database.GetTableCountAsync("execution_plans"));
     }
 
     [Fact]
@@ -1532,6 +1695,30 @@ public sealed class SqlitePersistenceIntegrationTests
         return new PlanRecord(planId, 1, opportunityId, PlanAttention.Active, PlanState.Invalid, PlanReconciliationState.Compatible,
             capturedAtUtc, [], Money.Zero, -1, [step], [execution], 0, PlanHysteresisPolicy.Default,
             LastEvidenceCapturedAtUtc: capturedAtUtc, IsCancelled: true, CancellationReconciliationExpiresAtUtc: retentionExpiresAtUtc);
+    }
+
+    private static PlanRecord InventoryPlan(string planId, string opportunityId, IReadOnlyList<int> quantities)
+    {
+        var steps = quantities.Select((quantity, index) =>
+            new PlanStep($"{planId}:list:{index}", PlanStepAction.List, 42, "Objet", quantity, new Money(100), [],
+                index == 0 ? PlanStepState.Current : PlanStepState.Pending)).ToArray();
+        var reservations = steps.Select(step => new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0,
+            Gw2TradingPostFeePolicy.Create().CalculateFees(new Money(checked(step.UnitPrice!.Value.Copper * step.Quantity))).ListingFee)).ToArray();
+        return new PlanRecord(planId, 1, opportunityId, PlanAttention.Active, PlanState.InProgress,
+            PlanReconciliationState.None, FirstObservedAtUtc, reservations, Money.Zero, 0, steps, [], 0, PlanHysteresisPolicy.Default);
+    }
+
+    private static PlanRecord ExpectedIncomingPlan(string planId, string opportunityId, IReadOnlyList<int> quantities)
+    {
+        var steps = new[]
+        {
+            new PlanStep($"{planId}:order", PlanStepAction.PlaceBuyOrder, 42, "Objet", quantities.Sum(), new Money(100), [], PlanStepState.Current),
+        };
+        var reservations = quantities.Select(quantity => new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", quantity, Money.Zero))
+            .Append(new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(checked((long)quantities.Sum() * 100))))
+            .ToArray();
+        return new PlanRecord(planId, 1, opportunityId, PlanAttention.Active, PlanState.InProgress,
+            PlanReconciliationState.None, FirstObservedAtUtc, reservations, Money.Zero, 0, steps, [], 0, PlanHysteresisPolicy.Default);
     }
 
     private static IReadOnlySet<PlanEvidenceKind> Complete(params PlanEvidenceKind[] kinds) => new HashSet<PlanEvidenceKind>(kinds);

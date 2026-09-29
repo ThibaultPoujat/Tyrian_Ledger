@@ -50,6 +50,145 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public async Task Selection_aggregates_duplicate_inventory_demands_before_comparing_capacity()
+    {
+        var candidate = ResourceCandidate("duplicate-inventory",
+            [
+                new(PlanResourceKind.Inventory, "42", 6, Money.Zero),
+                new(PlanResourceKind.Inventory, "42", 6, Money.Zero),
+            ]);
+
+        var result = await service.SelectAsync([candidate], new Money(1_000), Money.Zero,
+            availableQuantities: new Dictionary<string, long> { ["2:42"] = 10 });
+
+        Assert.Empty(result.Plans);
+    }
+
+    [Fact]
+    public async Task Selection_treats_split_and_reordered_equivalent_demands_the_same()
+    {
+        var split = ResourceCandidate("split-inventory",
+            [
+                new(PlanResourceKind.Inventory, "42", 5, Money.Zero),
+                new(PlanResourceKind.Inventory, "42", 5, Money.Zero),
+            ]);
+        var reordered = split with
+        {
+            Id = "reordered-inventory",
+            Requirements = split.Requirements.Reverse().ToArray(),
+        };
+
+        var splitResult = await service.SelectAsync([split], new Money(1_000), Money.Zero,
+            availableQuantities: new Dictionary<string, long> { ["2:42"] = 10 });
+        var reorderedResult = await service.SelectAsync([reordered], new Money(1_000), Money.Zero,
+            availableQuantities: new Dictionary<string, long> { ["2:42"] = 10 });
+
+        Assert.Single(splitResult.Plans);
+        Assert.Single(reorderedResult.Plans);
+    }
+
+    [Fact]
+    public async Task Selection_treats_split_generic_demand_like_its_unsplit_equivalent()
+    {
+        var unsplit = ExpectedIncomingCandidate("unsplit-incoming", [10]);
+        var split = ExpectedIncomingCandidate("split-incoming", [4, 6]);
+        var reordered = split with { Id = "reordered-incoming", Requirements = split.Requirements.Reverse().ToArray() };
+
+        var unsplitResult = await service.SelectAsync([unsplit], new Money(1_000), Money.Zero);
+        var splitResult = await service.SelectAsync([split], new Money(1_000), Money.Zero);
+        var reorderedResult = await service.SelectAsync([reordered], new Money(1_000), Money.Zero);
+        var competingResult = await service.SelectAsync([split, reordered], new Money(3_000), Money.Zero);
+
+        Assert.Single(unsplitResult.Plans);
+        Assert.Single(splitResult.Plans);
+        Assert.Single(reorderedResult.Plans);
+        Assert.Single(competingResult.Plans);
+    }
+
+    [Fact]
+    public async Task Selection_keeps_distinct_resource_kinds_separate_when_their_id_matches()
+    {
+        var candidate = ResourceCandidate("distinct-kinds",
+            [
+                new(PlanResourceKind.Inventory, "42", 6, Money.Zero),
+                new(PlanResourceKind.ExpectedIncoming, "42", 6, Money.Zero),
+            ]);
+
+        var result = await service.SelectAsync([candidate], new Money(1_000), Money.Zero,
+            availableQuantities: new Dictionary<string, long> { ["2:42"] = 10 });
+
+        Assert.Single(result.Plans);
+    }
+
+    [Fact]
+    public async Task Selection_rejects_two_competing_demands_that_exceed_one_shared_capacity()
+    {
+        var first = ResourceCandidate("competing-a", [new(PlanResourceKind.Inventory, "42", 6, Money.Zero)], utility: 2);
+        var second = ResourceCandidate("competing-b", [new(PlanResourceKind.Inventory, "42", 6, Money.Zero)], utility: 1);
+
+        var result = await service.SelectAsync([first, second], new Money(1_000), Money.Zero,
+            availableQuantities: new Dictionary<string, long> { ["2:42"] = 10 });
+
+        Assert.Single(result.Plans);
+        Assert.Equal("competing-a", result.Plans[0].Id);
+    }
+
+    [Fact]
+    public async Task Selection_does_not_authorize_inventory_when_the_supplied_capacity_omits_the_key()
+    {
+        var candidate = ResourceCandidate("missing-inventory",
+            [new(PlanResourceKind.Inventory, "42", 1, Money.Zero)]);
+
+        var result = await service.SelectAsync([candidate], new Money(1_000), Money.Zero,
+            availableQuantities: new Dictionary<string, long>());
+
+        Assert.Empty(result.Plans);
+    }
+
+    [Fact]
+    public async Task Selection_aggregates_cash_amounts_and_ignores_cash_quantity()
+    {
+        var candidate = ResourceCandidate("duplicate-cash",
+            [
+                new(PlanResourceKind.Cash, "first", long.MaxValue, new Money(400)),
+                new(PlanResourceKind.Cash, "second", long.MaxValue, new Money(400)),
+            ]);
+
+        var eligible = await service.SelectAsync([candidate], new Money(1_000), new Money(100));
+        var reserved = await service.SelectAsync([candidate], new Money(1_000), new Money(201));
+
+        Assert.Single(eligible.Plans);
+        Assert.Empty(reserved.Plans);
+    }
+
+    [Fact]
+    public async Task Selection_excludes_invalid_checked_totals_without_throwing()
+    {
+        var candidate = ResourceCandidate("overflow",
+            [
+                new(PlanResourceKind.Cash, "cash-a", 0, new Money(long.MaxValue)),
+                new(PlanResourceKind.Cash, "cash-b", 0, new Money(1)),
+            ]);
+
+        var result = await service.SelectAsync([candidate], new Money(long.MaxValue), Money.Zero);
+
+        Assert.Empty(result.Plans);
+    }
+
+    [Fact]
+    public async Task Selection_excludes_negative_resource_totals_without_throwing()
+    {
+        var negativeQuantity = ResourceCandidate("negative-quantity",
+            [new(PlanResourceKind.Inventory, "42", -1, Money.Zero)]);
+        var negativeCash = ResourceCandidate("negative-cash",
+            [new(PlanResourceKind.Cash, "cash", 0, new Money(-1))]);
+
+        var result = await service.SelectAsync([negativeQuantity, negativeCash], new Money(1_000), Money.Zero);
+
+        Assert.Empty(result.Plans);
+    }
+
+    [Fact]
     public async Task Selection_preselects_by_utility_so_a_late_high_value_candidate_is_not_lost()
     {
         var candidates = Enumerable.Range(0, 20).Select(index => Candidate($"low-{index:00}", 1, 1, 1)).ToList();
@@ -597,6 +736,25 @@ public sealed class PlanOrchestrationServiceTests
     private static PlanCandidate Candidate(string id, long cash, long utility, int quantity, PlanResourceRequirement? resource = null, PlanAttention attention = PlanAttention.Active, IReadOnlyList<PlanStep>? steps = null) =>
         new(id, 1, id, attention, steps ?? [Step($"{id}-step", PlanStepAction.BuyNow, quantity)],
             resource is null ? [new(PlanResourceKind.Cash, "cash", 0, new Money(cash))] : [resource], new Money(utility), new Money(cash), 8_000, 0, 600, utility, true, []);
+
+    private static PlanCandidate ResourceCandidate(string id, IReadOnlyList<PlanResourceRequirement> requirements, long utility = 100) =>
+        new(id, 1, id, PlanAttention.Active, [Step($"{id}-step", PlanStepAction.SellNow, ResourceStepQuantity(requirements))], requirements,
+            new Money(utility), Money.Zero, 8_000, 0, 600, utility, true, []);
+
+    private static PlanCandidate ExpectedIncomingCandidate(string id, IReadOnlyList<int> quantities, long utility = 100) =>
+        new(id, 1, id, PlanAttention.Active,
+            [new PlanStep($"{id}-order", PlanStepAction.PlaceBuyOrder, 42, "Objet", quantities.Sum(), new Money(100), [], PlanStepState.Current)],
+            quantities.Select(quantity => new PlanResourceRequirement(PlanResourceKind.ExpectedIncoming, "42", quantity, Money.Zero))
+                .Append(new PlanResourceRequirement(PlanResourceKind.Cash, "cash", 0, new Money(checked((long)quantities.Sum() * 100))))
+                .ToArray(),
+            new Money(utility), Money.Zero, 8_000, 0, 600, utility, true, []);
+
+    private static int ResourceStepQuantity(IReadOnlyList<PlanResourceRequirement> requirements)
+    {
+        var quantity = requirements.Where(value => value.Kind != PlanResourceKind.Cash && value.Quantity > 0)
+            .Aggregate(0L, (total, value) => checked(total + value.Quantity));
+        return quantity is > 0 and <= int.MaxValue ? (int)quantity : 1;
+    }
 
     private static PlanStep Step(string id, PlanStepAction action, int quantity = 1) =>
         new(id, action, 42, "Objet", quantity, new Money(100), [], PlanStepState.Pending);

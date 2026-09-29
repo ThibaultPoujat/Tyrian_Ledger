@@ -410,11 +410,7 @@ internal sealed class PlanEndpointService(
         var reservedGenericKeys = reservations.Where(requirement => requirement.Quantity > 0 && requirement.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory))
             .Select(ResourceKey).ToHashSet(StringComparer.Ordinal);
         var hardEligible = safeWithoutPortfolioSizing.Where(PlanOrchestrationService.IsExecutable).ToArray();
-        var resourceEligible = hardEligible.Where(candidate => candidate.Requirements.Where(requirement => requirement.Quantity > 0)
-            .Where(requirement => requirement.Kind == PlanResourceKind.Inventory)
-            .All(requirement => availableQuantities.TryGetValue(ResourceKey(requirement), out var quantity) && quantity >= requirement.Quantity) &&
-            !candidate.Requirements.Where(requirement => requirement.Quantity > 0 && requirement.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory))
-                .Any(requirement => reservedGenericKeys.Contains(ResourceKey(requirement)))).ToArray();
+        var resourceEligible = hardEligible.Where(candidate => IsResourceEligible(candidate, availableQuantities, reservedGenericKeys)).ToArray();
         var hardReserve = recommendationsResult.Portfolio?.CashReserve ?? Money.Zero;
         var selected = availableCash.Copper < 0 || availableCash.Copper < hardReserve.Copper
             ? new PlanBundleSelection([], Money.Zero, 0, resourceEligible.Select(candidate => candidate.Id).OrderBy(id => id, StringComparer.Ordinal).ToArray(), new Money(Math.Max(0, availableCash.Copper)))
@@ -744,6 +740,25 @@ internal sealed class PlanEndpointService(
         return available;
     }
 
+    private static bool IsResourceEligible(PlanCandidate candidate, IReadOnlyDictionary<string, long> availableQuantities,
+        IReadOnlySet<string> reservedGenericKeys)
+    {
+        if (!PlanOrchestrationService.TryAggregateResourceDemands(candidate.Requirements, out var demands)) return false;
+        foreach (var pair in demands)
+        {
+            if (pair.Value.Quantity <= 0 || pair.Value.Kind == PlanResourceKind.Cash) continue;
+            if (pair.Value.Kind == PlanResourceKind.Inventory)
+            {
+                if (!availableQuantities.TryGetValue(pair.Key, out var quantity) || quantity < pair.Value.Quantity) return false;
+            }
+            else if (reservedGenericKeys.Contains(pair.Key))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // These labels are captured beside the canonical selection pass.  They are
     // not a second selector: every membership check references the exact
     // intermediate set used above to produce PlanBundleSelection.
@@ -757,19 +772,21 @@ internal sealed class PlanEndpointService(
         if (!hard.Contains(candidate)) return "hard_constraint_rejected";
         if (!resources.Contains(candidate))
         {
-            var inventory = candidate.Requirements.FirstOrDefault(requirement => requirement.Kind == PlanResourceKind.Inventory && requirement.Quantity > 0 &&
-                (!availableQuantities.TryGetValue(ResourceKey(requirement), out var quantity) || quantity < requirement.Quantity));
-            if (inventory is not null)
+            if (!PlanOrchestrationService.TryAggregateResourceDemands(candidate.Requirements, out var demands)) return "resource_rejected";
+            var inventory = demands.FirstOrDefault(pair => pair.Value.Kind == PlanResourceKind.Inventory && pair.Value.Quantity > 0 &&
+                (!availableQuantities.TryGetValue(pair.Key, out var quantity) || quantity < pair.Value.Quantity));
+            if (inventory.Value is not null)
             {
-                var effective = effectiveQuantities.GetValueOrDefault(ResourceKey(inventory));
-                return effective <= 0 ? "no_verified_inventory" : effective >= inventory.Quantity ? "inventory_reserved" : "insufficient_verified_inventory";
+                var effective = effectiveQuantities.GetValueOrDefault(inventory.Key);
+                return effective <= 0 ? "no_verified_inventory" : effective >= inventory.Value.Quantity ? "inventory_reserved" : "insufficient_verified_inventory";
             }
-            return candidate.Requirements.Any(requirement => requirement.Quantity > 0 && requirement.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory) && reservedGenericKeys.Contains(ResourceKey(requirement)))
+            return demands.Any(pair => pair.Value.Quantity > 0 && pair.Value.Kind is not (PlanResourceKind.Cash or PlanResourceKind.Inventory) && reservedGenericKeys.Contains(pair.Key))
                 ? "generic_resource_conflict" : "resource_rejected";
         }
         if (availableCash.Copper < 0 || availableCash.Copper < hardReserve.Copper) return "insufficient_cash_or_listing_fee_capacity";
         if (selected.Contains(candidate.Id)) return "selected";
-        var requiredCash = candidate.Requirements.Aggregate(Money.Zero, (total, requirement) => total + requirement.Cash);
+        if (!PlanOrchestrationService.TryAggregateResourceDemands(candidate.Requirements, out var candidateDemands)) return "resource_rejected";
+        var requiredCash = candidateDemands.Values.SingleOrDefault(value => value.Kind == PlanResourceKind.Cash)?.Cash ?? Money.Zero;
         if (requiredCash.Copper > (availableCash - hardReserve).Copper) return "insufficient_cash_or_listing_fee_capacity";
         return candidate.Utility <= 0 ? "negative_utility_empty_bundle" : "selection_rejected";
     }
@@ -782,7 +799,7 @@ internal sealed class PlanEndpointService(
         CandidateStage(candidate, sizingUnavailable, safe, hard, resources, selected, availableCash, hardReserve,
             effectiveQuantities, availableQuantities, reservedGenericKeys);
 
-    private static string ResourceKey(PlanResourceRequirement requirement) => $"{(int)requirement.Kind}:{requirement.ResourceId}";
+    private static string ResourceKey(PlanResourceRequirement requirement) => PlanOrchestrationService.ResourceKey(requirement);
     private static object ToResponse(PlanCandidate plan) => new { id = plan.Id, attention = plan.Attention.ToString(), modeledProfit = plan.ModeledProfit, committedCapital = plan.CommittedCapital, interactionSeconds = plan.ExpectedInteractionSeconds, steps = plan.Steps.Select(ToResponse) };
     private static object ToResponse(PlanRecord plan) => new { id = plan.Id, attention = plan.Attention.ToString(), state = plan.State.ToString(), reconciliationState = plan.ReconciliationState.ToString(), modeledProfit = plan.ModeledProfit, currentStepOrdinal = plan.CurrentStepOrdinal, steps = plan.Steps.Select(ToResponse), hasUndoableEvent = plan.Events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) };
     private static object ToResponse(PlanStep step) => new { id = step.Id, action = step.Action.ToString(), itemName = step.ItemName, quantity = step.Quantity, unitPrice = step.UnitPrice, state = step.State.ToString() };

@@ -81,14 +81,48 @@ internal sealed class SqlitePlanRepository(
             }
         }
 
-        var events = active.SelectMany(value => value.Events).ToArray();
-        var effective = PlanOrchestrationService.ProjectEffectiveResources(verifiedCash, verifiedQuantities, events);
-        var reservations = active.SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray();
-        var reservedCash = reservations.Aggregate(Gw2Tp.Domain.Finance.Money.Zero, (total, value) => total + value.Cash);
-        var candidateCash = plan.Reservations
-            .Aggregate(Gw2Tp.Domain.Finance.Money.Zero, (total, value) => total + value.Cash);
-        if ((effective.EffectiveCash - hardReserve - reservedCash - candidateCash).Copper < 0 ||
-            HasResourceConflict(plan, reservations, effective.Quantities))
+        if (verifiedCash.Copper < 0 || hardReserve.Copper < 0 || verifiedQuantities.Any(value => value.Value < 0))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return PlanStartResult.ResourcesUnavailable;
+        }
+
+        PlanEffectiveResources effective;
+        IReadOnlyList<PlanResourceRequirement> reservations;
+        IReadOnlyList<PlanResourceRequirement> candidateReservations;
+        try
+        {
+            var events = active.SelectMany(value => value.Events).ToArray();
+            effective = PlanOrchestrationService.ProjectEffectiveResources(verifiedCash, verifiedQuantities, events);
+            reservations = active.SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray();
+            candidateReservations = PlanOrchestrationService.OutstandingReservations(plan).ToArray();
+        }
+        catch (OverflowException)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return PlanStartResult.ResourcesUnavailable;
+        }
+
+        if (!PlanOrchestrationService.TryAggregateResourceDemands(reservations, out var existingDemands) ||
+            !PlanOrchestrationService.TryAggregateResourceDemands(candidateReservations, out var candidateDemands) ||
+            !PlanOrchestrationService.TryAggregateResourceDemands(plan.Reservations, out var declaredDemands))
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return PlanStartResult.ResourcesUnavailable;
+        }
+
+        var reservedCash = CashDemand(existingDemands);
+        var candidateCash = CashDemand(declaredDemands);
+        try
+        {
+            if ((effective.EffectiveCash - hardReserve - reservedCash - candidateCash).Copper < 0 ||
+                HasResourceConflict(candidateDemands, existingDemands, effective.Quantities))
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return PlanStartResult.ResourcesUnavailable;
+            }
+        }
+        catch (OverflowException)
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
             return PlanStartResult.ResourcesUnavailable;
@@ -145,19 +179,20 @@ internal sealed class SqlitePlanRepository(
     }
 
     private static bool HasResourceConflict(
-        PlanRecord plan,
-        IReadOnlyCollection<PlanResourceRequirement> existingReservations,
+        IReadOnlyDictionary<string, PlanResourceDemand> candidateDemands,
+        IReadOnlyDictionary<string, PlanResourceDemand> existingDemands,
         IReadOnlyDictionary<string, long> verifiedQuantities)
     {
-        foreach (var requirement in PlanOrchestrationService.OutstandingReservations(plan).Where(value => value.Quantity > 0))
+        foreach (var pair in candidateDemands)
         {
-            var key = ResourceKey(requirement);
-            var used = existingReservations.Where(value => ResourceKey(value) == key).Sum(value => value.Quantity);
-            if (verifiedQuantities.TryGetValue(key, out var capacity))
+            var demand = pair.Value;
+            if (demand.Kind == PlanResourceKind.Cash || demand.Quantity <= 0) continue;
+            var used = existingDemands.GetValueOrDefault(pair.Key)?.Quantity ?? 0;
+            if (verifiedQuantities.TryGetValue(pair.Key, out var capacity))
             {
-                if (checked(used + requirement.Quantity) > capacity) return true;
+                if (capacity < 0 || checked(used + demand.Quantity) > capacity) return true;
             }
-            else if (requirement.Kind == PlanResourceKind.Inventory || used > 0)
+            else if (demand.Kind == PlanResourceKind.Inventory || used > 0)
             {
                 return true;
             }
@@ -165,5 +200,6 @@ internal sealed class SqlitePlanRepository(
         return false;
     }
 
-    private static string ResourceKey(PlanResourceRequirement requirement) => $"{(int)requirement.Kind}:{requirement.ResourceId}";
+    private static Gw2Tp.Domain.Finance.Money CashDemand(IReadOnlyDictionary<string, PlanResourceDemand> demands) =>
+        demands.Values.SingleOrDefault(value => value.Kind == PlanResourceKind.Cash)?.Cash ?? Gw2Tp.Domain.Finance.Money.Zero;
 }

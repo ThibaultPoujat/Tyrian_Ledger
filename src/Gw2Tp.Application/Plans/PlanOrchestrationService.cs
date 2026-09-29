@@ -390,8 +390,60 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         return plan with { Events = events, Steps = steps, ReconciliationState = events.Any(e => e.State == PlanShadowEventState.PendingConfirmation) ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible };
     }
 
-    public static bool IsExecutable(PlanCandidate candidate) => candidate.IsHardEligible && (candidate.Steps.Count > 0 || candidate.Attention == PlanAttention.Passive) && candidate.Requirements.All(requirement => requirement.Quantity >= 0 && requirement.Cash.Copper >= 0) &&
-        (candidate.Attention != PlanAttention.Active || candidate.Steps.Select((step, index) => (step, index)).All(pair => pair.step.Action != PlanStepAction.PlaceBuyOrder || pair.index == candidate.Steps.Count - 1));
+    public static bool IsExecutable(PlanCandidate candidate) => candidate.IsHardEligible && (candidate.Steps.Count > 0 || candidate.Attention == PlanAttention.Passive) &&
+        (candidate.Attention != PlanAttention.Active || candidate.Steps.Select((step, index) => (step, index)).All(pair => pair.step.Action != PlanStepAction.PlaceBuyOrder || pair.index == candidate.Steps.Count - 1)) &&
+        TryAggregateResourceDemands(candidate.Requirements, out _);
+
+    /// <summary>
+    /// Aggregates equivalent requirements with checked arithmetic. Cash is keyed
+    /// by the canonical cash identity and uses only its amount; non-cash
+    /// resources use only their quantity. The other field is intentionally not
+    /// treated as a second demand dimension.
+    /// </summary>
+    public static bool TryAggregateResourceDemands(
+        IEnumerable<PlanResourceRequirement> requirements,
+        out IReadOnlyDictionary<string, PlanResourceDemand> aggregated)
+    {
+        ArgumentNullException.ThrowIfNull(requirements);
+        var result = new Dictionary<string, PlanResourceDemand>(StringComparer.Ordinal);
+        try
+        {
+            foreach (var requirement in requirements)
+            {
+                var key = ResourceKey(requirement);
+                if (requirement.Kind == PlanResourceKind.Cash)
+                {
+                    if (requirement.Cash.Copper < 0) { aggregated = result; return false; }
+                    var current = result.GetValueOrDefault(key);
+                    var amount = checked((current?.Cash.Copper ?? 0) + requirement.Cash.Copper);
+                    result[key] = new PlanResourceDemand(PlanResourceKind.Cash, "cash", 0, new Money(amount));
+                }
+                else
+                {
+                    if (requirement.Quantity < 0) { aggregated = result; return false; }
+                    var current = result.GetValueOrDefault(key);
+                    var quantity = checked((current?.Quantity ?? 0) + requirement.Quantity);
+                    result[key] = new PlanResourceDemand(requirement.Kind, requirement.ResourceId, quantity, Money.Zero);
+                }
+            }
+        }
+        catch (OverflowException)
+        {
+            aggregated = result;
+            return false;
+        }
+
+        aggregated = result;
+        return true;
+    }
+
+    /// <summary>Returns the canonical kind-plus-identity key used for resource accounting.</summary>
+    public static string ResourceKey(PlanResourceRequirement requirement)
+    {
+        ArgumentNullException.ThrowIfNull(requirement);
+        var identity = requirement.Kind == PlanResourceKind.Cash ? "cash" : requirement.ResourceId;
+        return $"{(int)requirement.Kind}:{identity}";
+    }
 
     private static Selection SelectWithin(PlanCandidate[] candidates, Money capacity, IReadOnlyDictionary<string, long> quantities, CancellationToken cancellationToken)
     {
@@ -411,21 +463,59 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         }
         Search(candidates, index + 1, capacity, selected, cash, utility, quantities, capacities, ref best, cancellationToken);
         var candidate = candidates[index];
-        var candidateCash = candidate.Requirements.Aggregate(Money.Zero, (sum, requirement) => sum + requirement.Cash);
-        if ((cash + candidateCash).Copper > capacity.Copper || candidate.Requirements.Any(requirement => requirement.Quantity > 0 && checked(quantities.GetValueOrDefault(Key(requirement)) + requirement.Quantity) > capacities.GetValueOrDefault(Key(requirement), long.MaxValue))) return;
-        var nextQuantities = new Dictionary<string, long>(quantities, StringComparer.Ordinal);
-        foreach (var requirement in candidate.Requirements.Where(requirement => requirement.Quantity > 0)) nextQuantities[Key(requirement)] = checked(nextQuantities.GetValueOrDefault(Key(requirement)) + requirement.Quantity);
-        selected.Add(candidate);
-        Search(candidates, index + 1, capacity, selected, cash + candidateCash, checked(utility + (int)Math.Clamp(candidate.Utility, int.MinValue, int.MaxValue)), nextQuantities, capacities, ref best, cancellationToken);
-        selected.RemoveAt(selected.Count - 1);
+        var added = false;
+        try
+        {
+            if (!TryAggregateResourceDemands(candidate.Requirements, out var candidateDemands)) return;
+            var candidateCash = CashDemand(candidateDemands);
+            if ((cash + candidateCash).Copper > capacity.Copper) return;
+            foreach (var demand in candidateDemands)
+            {
+                if (demand.Value.Kind == PlanResourceKind.Cash || demand.Value.Quantity <= 0) continue;
+                if (!capacities.TryGetValue(demand.Key, out var resourceCapacity))
+                {
+                    if (demand.Value.Kind == PlanResourceKind.Inventory) return;
+                    resourceCapacity = demand.Value.Quantity;
+                }
+                if (resourceCapacity < 0 || checked(quantities.GetValueOrDefault(demand.Key) + demand.Value.Quantity) > resourceCapacity) return;
+            }
+            var nextQuantities = new Dictionary<string, long>(quantities, StringComparer.Ordinal);
+            foreach (var demand in candidateDemands.Where(demand => demand.Value.Kind != PlanResourceKind.Cash && demand.Value.Quantity > 0))
+                nextQuantities[demand.Key] = checked(nextQuantities.GetValueOrDefault(demand.Key) + demand.Value.Quantity);
+            selected.Add(candidate);
+            added = true;
+            Search(candidates, index + 1, capacity, selected, cash + candidateCash, checked(utility + (int)Math.Clamp(candidate.Utility, int.MinValue, int.MaxValue)), nextQuantities, capacities, ref best, cancellationToken);
+        }
+        catch (OverflowException)
+        {
+            return;
+        }
+        finally
+        {
+            if (added) selected.RemoveAt(selected.Count - 1);
+        }
     }
 
     private static IReadOnlyDictionary<string, long> BuildCapacities(PlanCandidate[] candidates, IReadOnlyDictionary<string, long>? supplied)
     {
         var capacities = supplied is null ? new Dictionary<string, long>(StringComparer.Ordinal) : new Dictionary<string, long>(supplied, StringComparer.Ordinal);
-        foreach (var requirement in candidates.SelectMany(candidate => candidate.Requirements).Where(value => value.Quantity > 0)) if (!capacities.ContainsKey(Key(requirement))) capacities[Key(requirement)] = requirement.Quantity;
+        var fallbackCapacities = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var candidate in candidates)
+        {
+            if (!TryAggregateResourceDemands(candidate.Requirements, out var demands)) continue;
+            foreach (var demand in demands.Values.Where(value => value.Kind != PlanResourceKind.Cash && value.Quantity > 0))
+            {
+                var key = ResourceKey(new PlanResourceRequirement(demand.Kind, demand.ResourceId, demand.Quantity, demand.Cash));
+                if (capacities.ContainsKey(key) || (supplied is not null && demand.Kind == PlanResourceKind.Inventory)) continue;
+                fallbackCapacities[key] = Math.Max(fallbackCapacities.GetValueOrDefault(key), demand.Quantity);
+            }
+        }
+        foreach (var fallback in fallbackCapacities) capacities[fallback.Key] = fallback.Value;
         return capacities;
     }
+
+    private static Money CashDemand(IReadOnlyDictionary<string, PlanResourceDemand> demands) =>
+        demands.Values.SingleOrDefault(value => value.Kind == PlanResourceKind.Cash)?.Cash ?? Money.Zero;
 
     private static Money OpportunityReserve(Money deployable, PlanCandidate[] eligible)
     {
@@ -671,7 +761,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         _ => true,
     };
 
-    private static string Key(PlanResourceRequirement requirement) => $"{(int)requirement.Kind}:{requirement.ResourceId}";
+    private static string Key(PlanResourceRequirement requirement) => ResourceKey(requirement);
     private static DateTimeOffset RequireUtc(DateTimeOffset value) => value.Offset == TimeSpan.Zero ? value : throw new ArgumentException("Timestamp must be UTC.", nameof(value));
 
     private sealed record Selection(IReadOnlyList<PlanCandidate> Plans, Money Cash, int Utility, IReadOnlyDictionary<string, long> Quantities)
