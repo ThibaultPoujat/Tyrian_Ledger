@@ -43,8 +43,10 @@ Historical ticket files remain useful evidence but are not active backlog contra
 
 | Ticket | Purpose | Readiness |
 |---|---|---|
-| [TKT-M22-P00](M22/tickets/TKT-M22-P00.md) / #148 | Approved product, six visual references and workflow preparation | Current preparation PR; no runtime change |
-| [TKT-M22-P01A](M22/tickets/TKT-M22-P01A.md) / #149 | Aggregate resource demands in selection and atomic start | Ready after #148 merges; first coding ticket |
+| [TKT-M22-P00](M22/tickets/TKT-M22-P00.md) / #148 | Approved product, six visual references and workflow preparation | Merged in #151; target baseline recorded |
+| [TKT-M22-P01A](M22/tickets/TKT-M22-P01A.md) / #149 | Aggregate resource demands in selection and atomic start | Merged in #152; F01 resource-admission fix complete |
+| [TKT-M22-C01](M22/tickets/TKT-M22-C01.md) / #153 | P01A checkpoint and next ticket preparation | Planning/docs preparation; no application change |
+| [TKT-M22-P01B](M22/tickets/TKT-M22-P01B.md) / #154 | Step-bound durable completion commands | Ready after #153 merges |
 | [TKT-M22-G01](M22/tickets/TKT-M22-G01.md) / #150 | P01–P06 integration/checkpoint evidence | Tracking gate only; not an executable coding Goal |
 
 Target navigation is `Signaux / Plans / Bilan`, with `Réglages` at the bottom.
@@ -60,13 +62,15 @@ The owner-approved corrective sequence now precedes release hardening:
 #128 -> #129 -> #130 -> #131 -> #132 -> #133 -> #93 -> #94 -> #95 -> #145
  -> #148 TKT-M22-P00   approved product and visual baseline
  -> #149 TKT-M22-P01A  duplicate resource demand correctness
+ -> #153 TKT-M22-C01   P01A checkpoint and P01B preparation
+ -> #154 TKT-M22-P01B  step-bound durable completion commands
  -> #150 TKT-M22-G01   tracking gate for remaining P01–P06 evidence
  -> #96  TKT-M22-02    release hardening after all prerequisite packages
  -> #97  TKT-M22-03    outcome evaluation acceptance
 ```
 
 No active non-blocking alternate is authorized. Do not start the tracking gate as
-one coding task. After #149, create the next bounded Ready child ticket and insert
+one coding task. After #154, create the next bounded Ready child ticket and insert
 it before #150 in both this file and issue #98. Keep #150 open until all package
 exit evidence exists and the owner accepts progression. Do not skip it because
 there are no more ready coding tickets. New dependencies/review gates must be
@@ -79,6 +83,9 @@ all of these predecessor issues are closed. This grants no new alternate route:
 
 **MVP non-blocking exception:** #129 is preferred before #130. After #128 merges,
 #130 may start before #129. #131 depends on #130, not on completion of #129.
+
+The [P01A checkpoint](M22/checkpoint-p01a.md) records accepted #152 evidence and
+why command replay safety is next. Completing #154 will still not close P01.
 
 ## Authority and checkpoints
 

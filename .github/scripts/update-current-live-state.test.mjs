@@ -176,13 +176,12 @@ test('the generated-state writer cannot modify durable CURRENT.md prose', () => 
 });
 
 test('the corrective roadmap stops coding at the explicit integration checkpoint', async () => {
-  const [index, guide, fixture, { ticketByIssue, checkpointIssues }] = await Promise.all([
-    readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8'),
-    readFile(new URL('docs/workflow/model-effort-guide.md', repositoryRoot), 'utf8'),
+  const [fixture, { ticketByIssue, checkpointIssues }] = await Promise.all([
     readFile(new URL('../fixtures/live-state-corrective-preparation.json', import.meta.url), 'utf8'),
     readTicketContracts(new URL('docs/milestones/', repositoryRoot).pathname),
   ]);
   const operational = JSON.parse(fixture);
+  const { roadmapIndex: index, modelGuide: guide } = operational;
   function current() {
     return deriveLiveState({ index, issue98: operational.issue98Body, guide, ticketByIssue, checkpointIssues, operational });
   }
@@ -203,6 +202,28 @@ test('the corrective roadmap stops coding at the explicit integration checkpoint
   operational.issues[150].state = 'CLOSED';
   assert.equal(current().preferred, 'TKT-M22-02 / #96');
   assert.equal(current().preferredKind, 'implementation');
+});
+
+test('P01A checkpoint prepares only P01B before returning to the integration gate', async () => {
+  const [index, guide, fixture, { ticketByIssue, checkpointIssues }] = await Promise.all([
+    readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8'),
+    readFile(new URL('docs/workflow/model-effort-guide.md', repositoryRoot), 'utf8'),
+    readFile(new URL('../fixtures/live-state-p01a-checkpoint.json', import.meta.url), 'utf8'),
+    readTicketContracts(new URL('docs/milestones/', repositoryRoot).pathname),
+  ]);
+  const operational = JSON.parse(fixture);
+  const current = () => deriveLiveState({ index, issue98: operational.issue98Body, guide, ticketByIssue, checkpointIssues, operational });
+  assert.equal(current().completed.number, 152);
+  assert.equal(current().preferred, 'TKT-M22-C01 / #153');
+  assert.equal(current().alternate, 'None');
+  assert.deepEqual(current().gates, ['TKT-M22-P01B / #154', 'TKT-M22-02 / #96']);
+  operational.issues[153].state = 'CLOSED';
+  assert.equal(current().preferred, 'TKT-M22-P01B / #154');
+  assert.equal(current().preferredKind, 'implementation');
+  operational.issues[154].state = 'CLOSED';
+  assert.equal(current().preferred, 'TKT-M22-G01 / #150');
+  assert.match(renderGeneratedBlock(current()), /Preferred next implementation ticket: `None — planning checkpoint required`/);
+  assert.match(renderGeneratedBlock(current()), /Next required checkpoint: `TKT-M22-G01 \/ #150`/);
 });
 
 function begin() { return '<!-- BEGIN GENERATED LIVE STATE -->'; }

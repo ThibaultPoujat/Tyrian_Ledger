@@ -10,7 +10,9 @@ six approved prototypes, and can be installed by the owner and later friends.
 
 The merged loop/calculation work (#95/#145) is a foundation, not proof that the
 audit findings are resolved. P00 / #148 prepares authority and references.
-P01A / #149 is the first bounded code ticket after P00 merges. G01 / #150 tracks
+P01A / #149 merged in #152; the [checkpoint](../milestones/M22/checkpoint-p01a.md)
+records accepted resource-admission evidence. C01 / #153 prepares P01B / #154
+(step-bound durable completion commands), Ready after #153 merges. G01 / #150 tracks
 remaining P01–P06 exits; it is not a coding Goal. #96 remains final hardening,
 then #97 evaluates supported outcomes. INDEX and #98 own exact order.
 

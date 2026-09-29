@@ -91,9 +91,10 @@ All financial, persistence, resource, security and reconciliation changes requir
 ## Ready queue and checkpoints
 
 - P00: TKT-M22-P00 / #148 freezes these authorities and references.
-- First coding ticket: TKT-M22-P01A / #149, duplicate resource demand only; Ready after P00 merges.
-- TKT-M22-G01 / #150 is a tracking gate, NOT an executable coding ticket. After #149, plan the next bounded ticket and insert it before this gate in both roadmap authorities. Keep the gate open until P01–P06 exits are evidenced and the owner accepts progression.
-- Remaining P01 work must be split into idempotent reports/residual reconciliation, partial execution, passive continuation and settled/repeatable execution tickets with explicit contracts and review gates. Do not bundle them into #149.
+- Completed first coding ticket: TKT-M22-P01A / #149, duplicate resource demand only, merged in #152. Evidence: [P01A checkpoint](M22/checkpoint-p01a.md).
+- Current preparation: TKT-M22-C01 / #153; next coding ticket: TKT-M22-P01B / #154, durable step-bound completion commands, Ready after #153 merges.
+- TKT-M22-G01 / #150 is a tracking gate, NOT an executable coding ticket. After #154, plan the next bounded ticket and insert it before this gate in both roadmap authorities. Keep the gate open until P01–P06 exits are evidenced and the owner accepts progression.
+- Remaining P01 work must be split into idempotent reports/residual reconciliation, partial execution, passive continuation and settled/repeatable execution tickets with explicit contracts and review gates. Do not bundle them into #149 or #154; #154 addresses command identity/receipts only.
 - #96 remains the final security/recovery/release gate, after P01–P06. #97 verifies outcome evaluation; the Bilan UI and underlying accounting must already work before release acceptance.
 - #139 external-history research is optional and cannot block resource/lifecycle corrections.
 - A fixture UI ticket and Windows notification feasibility spike may be inserted early after dependency review. They require their own ready contracts; this does not authorize silently parallelizing the whole roadmap.

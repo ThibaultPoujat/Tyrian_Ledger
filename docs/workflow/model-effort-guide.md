@@ -60,10 +60,10 @@ consistency. It does not implement runtime financial changes.
 
 The following unmerged tickets require fresh independent **Sol XHigh** review:
 
-- #149 / TKT-M22-P01A — duplicate resource aggregation and atomic start; Luna High implementation explicitly permitted for this bounded fix.
+- #154 / TKT-M22-P01B — durable step-bound completion commands; Luna High implementation explicitly permitted for this bounded fix.
 - #96 / TKT-M22-02 — final security/recovery/release hardening; Sol High implementation default.
 
-Completed gates #133, #93 and #94 are historical, not active review requirements.
+Completed gates #133, #93, #94 and #149 are historical, not active review requirements.
 Add newly ready high-consequence tickets explicitly here when their contracts
 require this gate; do not infer or silently remove gates from labels alone.
 
