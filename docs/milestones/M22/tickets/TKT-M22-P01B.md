@@ -104,10 +104,26 @@ action on a different displayed step creates a new ID. Do not automatically turn
 a failed or timed-out request into an instruction for the newly current step.
 
 Keep a lost-response retry associated with its original step even if a query
-refresh advances the displayed execution. Network/request tests must prove this.
-The server remains safe if a second tab or a direct caller uses another ID.
-No new automatic retry loop, quantity/price UI, layout, copy, style or visual
-redesign is part of this ticket. Keep changes to existing transport/state wiring.
+refresh advances the displayed execution. Store pending operations above the
+individual PlanCard so an advanced or terminal plan cannot discard their identity.
+
+The bounded recovery interaction is the existing **Actualiser** action: if a
+command has an unknown network outcome, this explicit refresh first retries that
+original pending command once with its original ID/context/payload, then reads
+current plans. With no pending command, Actualiser remains a normal read. Do not
+schedule an automatic retry loop or retry on background query refresh. Concurrent
+refresh clicks coalesce while that retry is in flight; if it fails ambiguously
+again, retain the pending operation for the next explicit Actualiser action.
+Keep it even when its original card disappears after cancellation/terminal state.
+After a definitive acknowledgement or rejection, clear that pending operation and
+read current state. A new completion action on step B uses B's identity and a new
+command ID; it must never act as the retry trigger for pending step A. Never send
+a pending operation under a newly selected account's context.
+
+Network/request tests must prove this recovery path and the distinction between
+retrying A and intentionally acting on B. The server remains safe if another tab
+or direct caller uses another ID. No new quantity/price UI, layout, copy, style or
+visual redesign is part of this ticket. Keep changes to transport/state wiring.
 No screenshot-based claim of P05 completion is permitted. If rendering changes
 become necessary, record the scope change and apply the normal visual evidence
 contract; do not silently expand into the approved screen rebuild.
@@ -129,6 +145,8 @@ contract; do not silently expand into the approved screen rebuild.
 | Other account tries the execution/receipt | No mutation and no private receipt/plan disclosure |
 | Read/start/complete/undo result used for next fresh command | Actual committed revision; no systematic stale-revision rejection |
 | Existing client double click / response loss / refresh while pending | Same logical operation retains step, revision, payload and ID; never silently targets next step |
+| Explicit Actualiser after A advances to B or A's card disappears | One retry of original A, then read; no report for B and no recreated terminal card |
+| Automatic query refresh or explicit new action on B while A is pending | Background read does not replay; B action has distinct B identity and is never interpreted as retry A |
 
 Use public endpoint/application and real SQLite integration tests, not only a
 helper test. Include at least one reproducible pre-fix regression. Keep #149's
