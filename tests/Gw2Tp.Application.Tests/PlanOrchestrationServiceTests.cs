@@ -523,6 +523,31 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public void Account_reconciliation_uses_the_least_overcoverage_among_minimum_identity_sets()
+    {
+        var scope = new AccountScope("account-scope");
+        var planB = service.ReportStep(service.Start(Candidate("opportunity-b", 0, 10, 8), Now) with { Id = "plan-b" },
+            8, new Money(100), Now.AddSeconds(10));
+        var planA = service.ReportStep(service.Start(Candidate("opportunity-a", 0, 10, 10), Now) with { Id = "plan-a" },
+            10, new Money(100), Now.AddSeconds(10));
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(1),
+        [
+            new PlanVerifiedEvidence("CompletedBuy:1", PlanEvidenceKind.CompletedBuy, 42, 7, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+            new PlanVerifiedEvidence("CompletedBuy:2", PlanEvidenceKind.CompletedBuy, 42, 3, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+            new PlanVerifiedEvidence("CompletedBuy:3", PlanEvidenceKind.CompletedBuy, 42, 8, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+        ]);
+
+        var reconciled = service.ReconcileAccountPlans([planB, planA], scope, frame, Now.AddMinutes(1));
+
+        Assert.All(reconciled, plan => Assert.Equal(PlanShadowEventState.Confirmed, plan.Events.Single().State));
+        Assert.Equal(["CompletedBuy:1", "CompletedBuy:2"], reconciled[0].Events.Single().VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:3"], reconciled[1].Events.Single().VerifiedEvidenceIds);
+    }
+
+    [Fact]
     public void Account_reconciliation_retains_owned_evidence_before_claiming_only_the_remaining_quantity()
     {
         var scope = new AccountScope("account-scope");

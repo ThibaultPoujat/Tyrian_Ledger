@@ -714,32 +714,70 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var ownedEvidence = matching.Where(value => ownedEvidenceIds.Contains(value.Identity)).ToArray();
         long supportedQuantity = Math.Max(execution.VerifiedQuantity.GetValueOrDefault(),
             Math.Min((long)execution.Quantity, ownedEvidence.Sum(value => (long)value.Quantity)));
-        var newlyClaimedEvidence = new List<PlanVerifiedEvidence>();
-        var unclaimedEvidence = matching.Where(value => !ownedEvidenceIds.Contains(value.Identity)).ToList();
-        while (supportedQuantity < execution.Quantity && unclaimedEvidence.Count > 0)
-        {
-            var remainingQuantity = execution.Quantity - supportedQuantity;
-            // Prefer the smallest identity that completes the residual. If none can,
-            // the largest partial identity preserves the minimum claim count.
-            var candidate = unclaimedEvidence.Where(value => value.Quantity >= remainingQuantity)
-                .OrderBy(value => value.Quantity)
-                .ThenByDescending(value => value.CreatedAtUtc)
-                .ThenBy(value => value.Identity, StringComparer.Ordinal)
-                .FirstOrDefault()
-                ?? unclaimedEvidence.OrderByDescending(value => value.Quantity)
-                    .ThenByDescending(value => value.CreatedAtUtc)
-                    .ThenBy(value => value.Identity, StringComparer.Ordinal)
-                    .First();
-            newlyClaimedEvidence.Add(candidate);
-            unclaimedEvidence.Remove(candidate);
-            supportedQuantity = Math.Min((long)execution.Quantity, supportedQuantity + candidate.Quantity);
-        }
+        var newlyClaimedEvidence = SelectMinimumSupportingEvidence(
+            matching.Where(value => !ownedEvidenceIds.Contains(value.Identity)).ToArray(),
+            execution.Quantity - supportedQuantity);
+        supportedQuantity = Math.Min((long)execution.Quantity,
+            supportedQuantity + newlyClaimedEvidence.Sum(value => (long)value.Quantity));
         var priceEvidence = ownedEvidence.FirstOrDefault() ?? newlyClaimedEvidence.FirstOrDefault();
         if (priceEvidence is null || supportedQuantity <= 0) return false;
         quantity = (int)supportedQuantity;
         unitPrice = priceEvidence.UnitPrice;
         verifiedEvidenceIds = newlyClaimedEvidence.Select(value => value.Identity).Distinct(StringComparer.Ordinal).ToArray();
         return true;
+    }
+
+    private static IReadOnlyList<PlanVerifiedEvidence> SelectMinimumSupportingEvidence(
+        IReadOnlyList<PlanVerifiedEvidence> evidence, long remainingQuantity)
+    {
+        if (remainingQuantity <= 0 || evidence.Count == 0) return [];
+        var stable = evidence.OrderByDescending(value => value.CreatedAtUtc)
+            .ThenBy(value => value.Identity, StringComparer.Ordinal).ToArray();
+        var byQuantity = stable.OrderByDescending(value => value.Quantity)
+            .ThenByDescending(value => value.CreatedAtUtc)
+            .ThenBy(value => value.Identity, StringComparer.Ordinal).ToArray();
+        long availableQuantity = 0;
+        var minimumClaimCount = 0;
+        foreach (var candidate in byQuantity)
+        {
+            availableQuantity += candidate.Quantity;
+            minimumClaimCount++;
+            if (availableQuantity >= remainingQuantity) break;
+        }
+        if (availableQuantity < remainingQuantity) return stable;
+
+        var upperBound = byQuantity.Take(minimumClaimCount).Sum(value => (long)value.Quantity);
+        var states = Enumerable.Range(0, minimumClaimCount + 1)
+            .Select(_ => new Dictionary<long, int[]>()).ToArray();
+        states[0][0] = [];
+        for (var candidateIndex = 0; candidateIndex < stable.Length; candidateIndex++)
+        {
+            var maximumCount = Math.Min(minimumClaimCount, candidateIndex + 1);
+            for (var count = maximumCount; count >= 1; count--)
+            {
+                foreach (var state in states[count - 1])
+                {
+                    var sum = state.Key + stable[candidateIndex].Quantity;
+                    if (sum > upperBound) continue;
+                    var selection = state.Value.Append(candidateIndex).ToArray();
+                    if (!states[count].TryGetValue(sum, out var existing) || IsLexicographicallyEarlier(selection, existing))
+                        states[count][sum] = selection;
+                }
+            }
+        }
+
+        var selectedSum = states[minimumClaimCount].Keys.Where(sum => sum >= remainingQuantity).Min();
+        return states[minimumClaimCount][selectedSum].Select(index => stable[index]).ToArray();
+    }
+
+    private static bool IsLexicographicallyEarlier(IReadOnlyList<int> candidate, IReadOnlyList<int> existing)
+    {
+        for (var index = 0; index < candidate.Count; index++)
+        {
+            if (candidate[index] == existing[index]) continue;
+            return candidate[index] < existing[index];
+        }
+        return false;
     }
 
     private static bool IsCompatibleEvidenceKind(PlanEvidenceKind expected, PlanEvidenceKind actual) => expected switch
