@@ -579,6 +579,27 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public void Account_reconciliation_leaves_evidence_unclaimed_when_exact_selection_exceeds_its_safety_budget()
+    {
+        var scope = new AccountScope("account-scope");
+        var reported = service.ReportStep(service.Start(Candidate("bounded-selection", 0, 10, 5_000), Now) with { Id = "plan-a" },
+            5_000, new Money(100), Now.AddSeconds(10));
+        var evidence = Enumerable.Range(0, 1_000)
+            .Select(index => new PlanVerifiedEvidence($"CompletedBuy:{index:D4}", PlanEvidenceKind.CompletedBuy, 42,
+                100 + index % 151, new Money(100), Now.AddSeconds(5), Now.AddMinutes(1)))
+            .ToArray();
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(1), evidence);
+
+        var first = service.ReconcileAccountPlans([reported], scope, frame, Now.AddMinutes(1)).Single();
+        var replayed = service.ReconcileAccountPlans([first], scope, frame, Now.AddMinutes(1)).Single();
+
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, first.Events.Single().State);
+        Assert.Null(first.Events.Single().VerifiedQuantity);
+        Assert.Empty(first.Events.Single().VerifiedEvidenceIds ?? []);
+        Assert.Equal(first.Events, replayed.Events);
+    }
+
+    [Fact]
     public void Only_complete_relevant_evidence_can_create_a_contradiction()
     {
         var buy = Candidate("contradiction", 200, 50, 2, steps: [Step("step", PlanStepAction.BuyNow, 2)]);

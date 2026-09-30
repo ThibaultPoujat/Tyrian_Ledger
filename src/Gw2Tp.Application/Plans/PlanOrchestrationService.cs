@@ -8,6 +8,8 @@ namespace Gw2Tp.Application.Plans;
 public sealed class PlanOrchestrationService : IPlanOrchestrationService
 {
     public const int MaximumCandidates = 18;
+    private const int MaximumEvidenceSelectionStates = 10_000;
+    private const int MaximumEvidenceSelectionWork = 25_000;
     public static readonly TimeSpan DefaultObservationWindow = TimeSpan.FromMinutes(15);
     public static readonly TimeSpan CancellationReconciliationRetentionWindow = TimeSpan.FromMinutes(30);
 
@@ -717,6 +719,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var newlyClaimedEvidence = SelectMinimumSupportingEvidence(
             matching.Where(value => !ownedEvidenceIds.Contains(value.Identity)).ToArray(),
             execution.Quantity - supportedQuantity);
+        if (newlyClaimedEvidence is null) return false;
         supportedQuantity = Math.Min((long)execution.Quantity,
             supportedQuantity + newlyClaimedEvidence.Sum(value => (long)value.Quantity));
         var priceEvidence = ownedEvidence.FirstOrDefault() ?? newlyClaimedEvidence.FirstOrDefault();
@@ -727,7 +730,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         return true;
     }
 
-    private static IReadOnlyList<PlanVerifiedEvidence> SelectMinimumSupportingEvidence(
+    private static IReadOnlyList<PlanVerifiedEvidence>? SelectMinimumSupportingEvidence(
         IReadOnlyList<PlanVerifiedEvidence> evidence, long remainingQuantity)
     {
         if (remainingQuantity <= 0 || evidence.Count == 0) return [];
@@ -745,11 +748,14 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             if (availableQuantity >= remainingQuantity) break;
         }
         if (availableQuantity < remainingQuantity) return stable;
+        if (minimumClaimCount == stable.Length) return stable;
 
         var upperBound = byQuantity.Take(minimumClaimCount).Sum(value => (long)value.Quantity);
         var states = Enumerable.Range(0, minimumClaimCount + 1)
             .Select(_ => new Dictionary<long, int[]>()).ToArray();
         states[0][0] = [];
+        var storedStateCount = 1;
+        var workCount = 0;
         for (var candidateIndex = 0; candidateIndex < stable.Length; candidateIndex++)
         {
             var maximumCount = Math.Min(minimumClaimCount, candidateIndex + 1);
@@ -757,11 +763,20 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             {
                 foreach (var state in states[count - 1])
                 {
+                    // Exact allocation is preferable to a greedy fallback, but reconciliation must not
+                    // monopolize the SQLite transaction on adversarially large evidence sets. Crossing
+                    // either deterministic budget leaves the execution unresolved and claims nothing.
+                    if (++workCount > MaximumEvidenceSelectionWork) return null;
                     var sum = state.Key + stable[candidateIndex].Quantity;
                     if (sum > upperBound) continue;
-                    var selection = state.Value.Append(candidateIndex).ToArray();
-                    if (!states[count].TryGetValue(sum, out var existing) || IsLexicographicallyEarlier(selection, existing))
-                        states[count][sum] = selection;
+                    if (!states[count].TryGetValue(sum, out var existing))
+                    {
+                        if (storedStateCount >= MaximumEvidenceSelectionStates) return null;
+                        states[count][sum] = [.. state.Value, candidateIndex];
+                        storedStateCount++;
+                    }
+                    else if (IsLexicographicallyEarlier(state.Value, candidateIndex, existing))
+                        states[count][sum] = [.. state.Value, candidateIndex];
                 }
             }
         }
@@ -770,14 +785,14 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         return states[minimumClaimCount][selectedSum].Select(index => stable[index]).ToArray();
     }
 
-    private static bool IsLexicographicallyEarlier(IReadOnlyList<int> candidate, IReadOnlyList<int> existing)
+    private static bool IsLexicographicallyEarlier(IReadOnlyList<int> prefix, int appended, IReadOnlyList<int> existing)
     {
-        for (var index = 0; index < candidate.Count; index++)
+        for (var index = 0; index < prefix.Count; index++)
         {
-            if (candidate[index] == existing[index]) continue;
-            return candidate[index] < existing[index];
+            if (prefix[index] == existing[index]) continue;
+            return prefix[index] < existing[index];
         }
-        return false;
+        return appended < existing[^1];
     }
 
     private static bool IsCompatibleEvidenceKind(PlanEvidenceKind expected, PlanEvidenceKind actual) => expected switch
