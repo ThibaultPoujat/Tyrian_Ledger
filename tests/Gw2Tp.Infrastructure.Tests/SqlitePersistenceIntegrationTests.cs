@@ -260,6 +260,41 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Stale_reconciliation_save_cannot_overwrite_a_concurrent_completion_or_its_receipt()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("reconciliation-completion-race", FirstObservedAtUtc);
+        var plan = TwoStepPlan("plan:reconciliation-completion-race");
+        Assert.Equal(PlanStartResult.Started,
+            await database.Plans.TryStartAsync(account.Id, plan, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+
+        var orchestration = new PlanOrchestrationService();
+        var completions = new PlanCompletionCommandService(database.Plans, orchestration);
+        var firstCommand = new PlanCompletionCommand(plan.Id, "step:a", 1, "race-first", PlanCompletionOperation.ReportPerformed, 1, new Money(100));
+        Assert.Equal(PlanCompletionStatus.Applied, (await completions.CompleteAsync(account.Id, firstCommand)).Status);
+
+        var stale = Assert.Single(await database.Plans.GetReconciliationCandidatesAsync(account.Id));
+        var accountScope = new AccountScope(account.AccountScopeId);
+        var staleReconciliation = orchestration.ReconcileWithVerifiedState(stale, accountScope,
+            TradingPostFrame(accountScope, DateTimeOffset.UtcNow.AddMinutes(1), "race-capture", new Money(1_000)));
+        Assert.False(PlanRecordSemantics.AreEqual(stale, staleReconciliation));
+        Assert.Equal("race-capture", staleReconciliation.Events.Single(value => value.StepId == "step:a").LastNegativeEvidenceCaptureId);
+
+        var secondCommand = new PlanCompletionCommand(plan.Id, "step:b", stale.Revision, "race-second", PlanCompletionOperation.ReportPerformed, 1, new Money(150));
+        var secondCompletion = await completions.CompleteAsync(account.Id, secondCommand);
+        Assert.Equal(PlanCompletionStatus.Applied, secondCompletion.Status);
+
+        await Assert.ThrowsAsync<PlanConcurrencyException>(() => database.Plans.SaveAsync(account.Id, staleReconciliation));
+
+        var latest = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        Assert.Equal(stale.Revision + 1, latest.Revision);
+        Assert.Equal(2, latest.Events.Count);
+        Assert.Contains(latest.Events, value => value.StepId == "step:b");
+        Assert.Equal(PlanCompletionStatus.AlreadyApplied, (await completions.CompleteAsync(account.Id, secondCommand)).Status);
+        Assert.Equal(2, await database.GetTableCountAsync("plan_completion_receipts"));
+    }
+
+    [Fact]
     public async Task Receipt_survives_repository_reopen_and_replay_after_undo_does_not_restore_the_effect()
     {
         await using var database = await TestDatabase.CreateAsync();
