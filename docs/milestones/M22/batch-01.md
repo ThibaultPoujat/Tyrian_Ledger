@@ -44,7 +44,7 @@ Next session verifies the merge and current review head; no owner doc editing.
 
 | Ticket | Evidence PR / reviewed head / CI / preview |
 |---|---|
-| #158 | To be supplied by implementation |
+| #158 | [PR #163](https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/163); code head [`04bb199`](https://github.com/ThibaultPoujat/Tyrian_Ledger/commit/04bb199c3b9f77094bf32824714f1041e7375700); [CI run 36721182118](https://github.com/ThibaultPoujat/Tyrian_Ledger/actions/runs/36721182118) green. Sol XHigh review unavailable: model usage limit until 2026-10-04 18:06 (timezone unspecified); keep Draft. API-only; no visual preview applies. |
 | #159 | To be supplied by implementation |
 | #160 | To be supplied by implementation; include preview command and screenshots |
 | #161 | To be supplied by implementation; include combined owner preview |
