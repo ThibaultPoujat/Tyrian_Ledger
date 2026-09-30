@@ -41,22 +41,28 @@ Historical ticket files remain useful evidence but are not active backlog contra
 
 ## Corrective contracts
 
-| Ticket | Purpose | Readiness |
-|---|---|---|
-| [TKT-M22-P00](M22/tickets/TKT-M22-P00.md) / #148 | Approved product, six visual references and workflow preparation | Merged in #151; target baseline recorded |
-| [TKT-M22-P01A](M22/tickets/TKT-M22-P01A.md) / #149 | Aggregate resource demands in selection and atomic start | Merged in #152; F01 resource-admission fix complete |
-| [TKT-M22-C01](M22/tickets/TKT-M22-C01.md) / #153 | P01A checkpoint and next ticket preparation | Planning/docs preparation; no application change |
-| [TKT-M22-P01B](M22/tickets/TKT-M22-P01B.md) / #154 | Step-bound durable completion commands | Ready after #153 merges |
-| [TKT-M22-G01](M22/tickets/TKT-M22-G01.md) / #150 | P01–P06 integration/checkpoint evidence | Tracking gate only; not an executable coding Goal |
+Completed foundations: P00 / #148 in #151, P01A / #149 in #152,
+C01 / #153 in #155, P01B / #154 in #156. Accepted evidence is linked in
+[batch B1](M22/batch-01.md); old feature merges do not close new audit findings.
 
-Target navigation is `Signaux / Plans / Bilan`, with `Réglages` at the bottom.
-See [approved packages and exit criteria](approved-delivery-plan.md).
+| Ticket | Purpose | Conditional readiness |
+|---|---|---|
+| [C02 / #157](M22/tickets/TKT-M22-C02.md) | Remaining delivery map and four-ticket preparation | Current planning/workflow preparation |
+| [P01C / #158](M22/tickets/TKT-M22-P01C.md) | Source-scoped reconciliation evidence | After #157 merges |
+| [P01D / #159](M22/tickets/TKT-M22-P01D.md) | Safe partial completion and bounded residual instructions | After #158 merges with required evidence |
+| [P05A / #160](M22/tickets/TKT-M22-P05A.md) | Approved Signaux, shell and session preview | After #159 merges |
+| [P05B / #161](M22/tickets/TKT-M22-P05B.md) | Approved comparison and execution preview | After #160 merges |
+| [G01 / #150](M22/tickets/TKT-M22-G01.md) | Batch / P01–P06 integration checkpoint | Tracking gate only, not a coding Goal |
+
+See the [remaining dependency map](remaining-delivery-map.md),
+[approved package exits](approved-delivery-plan.md) and
+[reusable Goal](../workflow/goal-session.md). Only B1's four implementation
+contracts are prepared. Future map units are Planned, not Ready.
 
 ## Current explicit execution order
 
-The historical predecessors remain listed for deterministic handoff generation.
-They are closed; their merged features do not imply the audit findings are fixed.
-The owner-approved corrective sequence now precedes release hardening:
+Historical predecessors remain listed for deterministic handoff generation.
+The approved batch precedes the integration gate and release hardening:
 
 ```text
 #128 -> #129 -> #130 -> #131 -> #132 -> #133 -> #93 -> #94 -> #95 -> #145
@@ -64,39 +70,37 @@ The owner-approved corrective sequence now precedes release hardening:
  -> #149 TKT-M22-P01A  duplicate resource demand correctness
  -> #153 TKT-M22-C01   P01A checkpoint and P01B preparation
  -> #154 TKT-M22-P01B  step-bound durable completion commands
- -> #150 TKT-M22-G01   tracking gate for remaining P01–P06 evidence
- -> #96  TKT-M22-02    release hardening after all prerequisite packages
+ -> #157 TKT-M22-C02   rolling delivery map and B1 preparation
+ -> #158 TKT-M22-P01C  source-scoped reconciliation evidence
+ -> #159 TKT-M22-P01D  partial completion and safe residual instructions
+ -> #160 TKT-M22-P05A  approved Signaux and session preview
+ -> #161 TKT-M22-P05B  approved comparison and execution preview
+ -> #150 TKT-M22-G01   batch checkpoint; remaining P01–P06 exit evidence
+ -> #96  TKT-M22-02    release hardening after package acceptance
  -> #97  TKT-M22-03    outcome evaluation acceptance
 ```
 
-No active non-blocking alternate is authorized. Do not start the tracking gate as
-one coding task. After #154, create the next bounded Ready child ticket and insert
-it before #150 in both this file and issue #98. Keep #150 open until all package
-exit evidence exists and the owner accepts progression. Do not skip it because
-there are no more ready coding tickets. New dependencies/review gates must be
-explicitly recorded before implementation.
+No active non-blocking alternate is authorized. Each new Goal checks actual
+predecessor merges/review and its entry conditions; an open or preferred ticket
+is not automatically Ready. After each B1 merge, use the next prepared contract
+without an Astra planning session. After #161, stop coding at #150: assess B1
+and prepare the next 3–5 contracts in both order authorities. Keep #150 open
+until P01–P06 exits and owner progression approval. No automatic next-ticket
+execution, auto-merge or skip to #96/#97.
 
 ## Historical non-blocking rule
 
-Retained for the existing deterministic updater and historical regression cases;
-all of these predecessor issues are closed. This grants no new alternate route:
+Retained for the deterministic updater and historical regressions; these issues
+are closed and grant no active alternate route:
 
 **MVP non-blocking exception:** #129 is preferred before #130. After #128 merges,
 #130 may start before #129. #131 depends on #130, not on completion of #129.
 
-The [P01A checkpoint](M22/checkpoint-p01a.md) records accepted #152 evidence and
-why command replay safety is next. Completing #154 will still not close P01.
-
 ## Authority and checkpoints
 
-GitHub owns merged/open/closed/milestone state. Issue #98 and this file own order;
-`docs/workflow/model-effort-guide.md` owns effort and active Sol gates.
-`CURRENT.md` is a derived handoff, not permission to start a non-Ready gate.
-Source contradictions must be repaired, not resolved by numeric issue order.
-
-P00–P07 in [the delivery plan](approved-delivery-plan.md) map all 19 audit findings.
-P01/P02 share an integration gate. P05 requires the latest six reference images,
-actual application screenshots and owner usability review. P06 requires Windows
-notification/lifecycle evidence with the UI closed. P07 requires release evidence.
-Existing M12–M22 GitHub milestone objects are retained; corrective tickets belong
-to M22. Optional external-history research #139 does not block resource repairs.
+GitHub owns delivery state; #98 and this file own order; the model guide owns
+review assignment. CURRENT is derived and is not permission to start an unready
+contract. Source disagreement fails closed. Corrective work stays in M22; future
+map identifiers are not issue numbers. #139 external-history research remains
+optional. P01/P02 close together; fixture UI is not live functionality; original
+six PNGs and actual screenshots remain mandatory. Owner merges/releases.

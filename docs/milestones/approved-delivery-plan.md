@@ -90,13 +90,26 @@ All financial, persistence, resource, security and reconciliation changes requir
 
 ## Ready queue and checkpoints
 
-- P00: TKT-M22-P00 / #148 freezes these authorities and references.
-- Completed first coding ticket: TKT-M22-P01A / #149, duplicate resource demand only, merged in #152. Evidence: [P01A checkpoint](M22/checkpoint-p01a.md).
-- Current preparation: TKT-M22-C01 / #153; next coding ticket: TKT-M22-P01B / #154, durable step-bound completion commands, Ready after #153 merges.
-- TKT-M22-G01 / #150 is a tracking gate, NOT an executable coding ticket. After #154, plan the next bounded ticket and insert it before this gate in both roadmap authorities. Keep the gate open until P01–P06 exits are evidenced and the owner accepts progression.
-- Remaining P01 work must be split into idempotent reports/residual reconciliation, partial execution, passive continuation and settled/repeatable execution tickets with explicit contracts and review gates. Do not bundle them into #149 or #154; #154 addresses command identity/receipts only.
-- #96 remains the final security/recovery/release gate, after P01–P06. #97 verifies outcome evaluation; the Bilan UI and underlying accounting must already work before release acceptance.
-- #139 external-history research is optional and cannot block resource/lifecycle corrections.
-- A fixture UI ticket and Windows notification feasibility spike may be inserted early after dependency review. They require their own ready contracts; this does not authorize silently parallelizing the whole roadmap.
+P00, P01A and P01B are merged foundations; see [B1 evidence](M22/batch-01.md).
+Owner direction on 2026-09-29 replaces planning after every child with rolling
+batches: one complete [remaining delivery map](remaining-delivery-map.md), the
+next 3–5 detailed contracts, then a batch checkpoint. C02 / #157 prepares B1:
+#158 evidence, #159 partial safety, #160 Signaux/session preview and #161 plan
+comparison/execution preview. Exact order remains INDEX plus #98.
 
-Each checkpoint records acceptance evidence, actual screenshots where relevant, unresolved VERIFY items and the next ready ticket. Product usability approval does not replace technical validation. AI prepares and maintains the contracts; the owner need not edit code or workflow files.
+After each owner merge, the next Goal checks its prepared contract's entry
+conditions and proceeds without a new Astra session. Per-PR independent review,
+one implementation per Goal and owner merge remain. At #150, prepare the next
+batch; keep that tracking gate open until all P01–P06 exits are evidenced and
+the owner approves progression. Do not use it as a large coding task.
+
+B1 does not finish P01 or P05. Remaining settlement/repetition, passive
+continuation, general residual recovery, complete account evidence, collection,
+economics, live UI adapters, outcomes/settings and Windows operation are mapped
+with dependencies and proof. Early UI is clearly labelled fixtures in reusable
+application components. #96/#97 remain final release/outcome gates, and #139 is
+optional. No audit finding is closed merely by writing its future plan.
+
+Each batch checkpoint records integrated acceptance, screenshots where relevant,
+remaining VERIFY items and the next 3–5 contracts. AI maintains the records;
+the owner evaluates product fit and merges, not code or workflow documents.

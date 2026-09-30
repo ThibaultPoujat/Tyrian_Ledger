@@ -16,11 +16,17 @@ owner accepts progression. #149 alone does not satisfy it.
 
 ## Checkpoint procedure
 
-After each child merges, use a bounded planning session to review its evidence,
-record remaining package exits and prepare the next small Ready child ticket.
-Insert that ticket before this gate in BOTH #98 and INDEX. Assign an explicit
-model/review gate. Stop for the next implementation session; never implement all
-remaining packages from this tracking contract.
+At each batch exit, Astra reviews the completed batch evidence and owner product
+feedback, records remaining exits, then prepares the next 3–5 bounded Ready
+contracts. Insert their exact order before this gate in BOTH #98 and INDEX.
+Assign model/review requirements explicitly. Future units are mapped in
+[remaining-delivery-map.md](../../remaining-delivery-map.md).
+
+Within a prepared batch, each owner merge allows the next Goal to verify its
+entry conditions and implement that contract without another planning session.
+Current batch: [B1](../batch-01.md), #158 → #159 → #160 → #161 after preparation
+#157. Stop coding here after #161. Never implement the entire tracking issue,
+auto-merge, skip an unmet prerequisite or silently relax a review gate.
 
 Required exit evidence: repeatable resource/lifecycle slice; complete supported
 account evidence and equipment protections; endpoint-aware bounded caching and
