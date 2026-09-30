@@ -715,7 +715,12 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         long supportedQuantity = Math.Max(execution.VerifiedQuantity.GetValueOrDefault(),
             Math.Min((long)execution.Quantity, ownedEvidence.Sum(value => (long)value.Quantity)));
         var newlyClaimedEvidence = new List<PlanVerifiedEvidence>();
-        foreach (var candidate in matching.Where(value => !ownedEvidenceIds.Contains(value.Identity)))
+        // Largest quantities first minimize the number of claimed identities;
+        // provenance and identity break ties deterministically.
+        foreach (var candidate in matching.Where(value => !ownedEvidenceIds.Contains(value.Identity))
+            .OrderByDescending(value => value.Quantity)
+            .ThenByDescending(value => value.CreatedAtUtc)
+            .ThenBy(value => value.Identity, StringComparer.Ordinal))
         {
             if (supportedQuantity >= execution.Quantity) break;
             newlyClaimedEvidence.Add(candidate);

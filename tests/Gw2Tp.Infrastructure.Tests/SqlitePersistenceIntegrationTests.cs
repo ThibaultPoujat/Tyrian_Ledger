@@ -394,21 +394,21 @@ public sealed class SqlitePersistenceIntegrationTests
         await using var database = await TestDatabase.CreateAsync();
         var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("account-evidence-allocation", FirstObservedAtUtc);
         var orchestration = new PlanOrchestrationService();
-        foreach (var planId in new[] { "plan-a", "plan-b" })
+        foreach (var (planId, quantity) in new[] { ("plan-a", 10), ("plan-b", 4) })
         {
-            var plan = TwoStepPlan(planId, 10);
+            var plan = TwoStepPlan(planId, quantity);
             Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, plan,
                 new Money(10_000), Money.Zero, new Dictionary<string, long>()));
             var started = Assert.Single(await database.Plans.GetStartedAsync(account.Id), value => value.Id == plan.Id);
             await database.Plans.SaveAsync(account.Id,
-                orchestration.ReportStep(started, 10, new Money(100), FirstObservedAtUtc.AddSeconds(10)));
+                orchestration.ReportStep(started, quantity, new Money(100), FirstObservedAtUtc.AddSeconds(10)));
         }
 
         var scope = new AccountScope(account.AccountScopeId);
         var evaluatedAt = FirstObservedAtUtc.AddMinutes(1);
         var frame = TradingPostFrame(scope, evaluatedAt, "two-real-purchases", new Money(8_000), completed:
         [
-            new PlanVerifiedEvidence("CompletedBuy:1", PlanEvidenceKind.CompletedBuy, 42, 10, new Money(100),
+            new PlanVerifiedEvidence("CompletedBuy:1", PlanEvidenceKind.CompletedBuy, 42, 4, new Money(100),
                 FirstObservedAtUtc.AddSeconds(5), evaluatedAt),
             new PlanVerifiedEvidence("CompletedBuy:2", PlanEvidenceKind.CompletedBuy, 42, 10, new Money(100),
                 FirstObservedAtUtc.AddSeconds(5), evaluatedAt),
@@ -420,8 +420,8 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(["plan-a", "plan-b"], reconciled.Select(plan => plan.Id));
         Assert.All(reconciled, plan => Assert.Equal(PlanShadowEventState.Confirmed,
             plan.Events.Single(value => value.StepId == "step:a").State));
-        Assert.Equal(["CompletedBuy:1"], reconciled[0].Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
-        Assert.Equal(["CompletedBuy:2"], reconciled[1].Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:2"], reconciled[0].Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:1"], reconciled[1].Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
 
         var reopened = new SqlitePlanRepository(new SqliteConnectionFactory(database.Path), new SqliteDatabaseGate());
         var beforeReplay = await reopened.GetReconciliationCandidatesAsync(account.Id);
