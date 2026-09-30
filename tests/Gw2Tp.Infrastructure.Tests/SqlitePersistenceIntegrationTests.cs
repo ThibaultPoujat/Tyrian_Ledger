@@ -170,6 +170,54 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Reconciliation_snapshot_does_not_mix_a_sync_committed_between_logical_reads()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var accountId = "reconciliation-read-atomicity";
+        await database.SynchronizationStore.CommitSuccessfulSyncAsync(new PersonalTradingPostSuccessfulSync(
+            accountId, [CompletedTransaction(5001, PersonalTradingPostSide.Buy, 42, 100, 1)],
+            new CurrentPersonalTradingPostOrderSnapshot(FirstObservedAtUtc,
+                [CurrentOrder(7001, PersonalTradingPostSide.Buy, 42, 100, 1)]), [],
+            FirstObservedAtUtc, FirstObservedAtUtc, FirstObservedAtUtc));
+        var profile = Assert.IsType<AccountProfile>(await database.PersonalTradingPost.FindAccountProfileAsync(accountId));
+        var reader = new SqlitePersonalTradingPostRepository(database.Factory, new SqliteDatabaseGate());
+        var concurrentWriter = new SqlitePersonalTradingPostSynchronizationStore(database.Factory, new SqliteDatabaseGate());
+        var syncB = new PersonalTradingPostSuccessfulSync(accountId,
+            [CompletedTransaction(5002, PersonalTradingPostSide.Buy, 42, 100, 1)],
+            new CurrentPersonalTradingPostOrderSnapshot(SecondObservedAtUtc,
+                [CurrentOrder(7002, PersonalTradingPostSide.Buy, 42, 100, 1)]), [],
+            SecondObservedAtUtc, FirstObservedAtUtc, SecondObservedAtUtc);
+        var writerStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task? writerTask = null;
+        var writerCommittedBeforeSnapshotFinished = false;
+        async Task InterleaveWriter(int logicalRead, CancellationToken cancellationToken)
+        {
+            if (logicalRead != 2) return;
+            writerTask = Task.Run(async () =>
+            {
+                writerStarted.TrySetResult(true);
+                await concurrentWriter.CommitSuccessfulSyncAsync(syncB, cancellationToken);
+            }, cancellationToken);
+            await writerStarted.Task.WaitAsync(TimeSpan.FromSeconds(2), cancellationToken);
+            await Task.Delay(75, cancellationToken);
+            writerCommittedBeforeSnapshotFinished = writerTask.IsCompleted;
+        }
+
+        var snapshot = await reader.GetReconciliationSnapshotAsync(profile, CancellationToken.None, InterleaveWriter);
+        await (writerTask ?? throw new InvalidOperationException("The concurrent sync writer did not start.")).WaitAsync(TimeSpan.FromSeconds(5));
+        var latest = await database.PersonalTradingPost.GetReconciliationSnapshotAsync(profile);
+
+        Assert.False(writerCommittedBeforeSnapshotFinished);
+        Assert.Equal(FirstObservedAtUtc, snapshot.AccountProfile.LastSuccessfulSyncAtUtc);
+        Assert.Equal(FirstObservedAtUtc, snapshot.CurrentOrders?.ObservedAtUtc);
+        Assert.Equal([7001L], snapshot.CurrentOrders?.Orders.Select(value => value.ExternalOrderId));
+        Assert.Equal([5001L], snapshot.CompletedTransactions.Select(value => value.Transaction.ExternalTransactionId));
+        Assert.Equal(SecondObservedAtUtc, latest.AccountProfile.LastSuccessfulSyncAtUtc);
+        Assert.Equal([7002L], latest.CurrentOrders?.Orders.Select(value => value.ExternalOrderId));
+        Assert.Equal([5001L, 5002L], latest.CompletedTransactions.Select(value => value.Transaction.ExternalTransactionId));
+    }
+
+    [Fact]
     public async Task Sequential_retry_of_a_completed_step_acknowledges_its_sqlite_receipt_without_advancing_the_next_step()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -295,6 +343,52 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Concurrent_account_reconciliation_consumes_one_transaction_identity_once_across_plans_and_restart()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("account-evidence-claim-race", FirstObservedAtUtc);
+        var orchestration = new PlanOrchestrationService();
+        foreach (var planId in new[] { "plan-a", "plan-b" })
+        {
+            var plan = TwoStepPlan(planId);
+            Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, plan,
+                new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+            var started = Assert.Single(await database.Plans.GetStartedAsync(account.Id), value => value.Id == plan.Id);
+            await database.Plans.SaveAsync(account.Id,
+                orchestration.ReportStep(started, 1, new Money(100), FirstObservedAtUtc.AddSeconds(10)));
+        }
+
+        var scope = new AccountScope(account.AccountScopeId);
+        var evaluatedAt = FirstObservedAtUtc.AddMinutes(1);
+        var frame = TradingPostFrame(scope, evaluatedAt, "one-real-purchase", new Money(800), completed:
+        [
+            new PlanVerifiedEvidence("CompletedBuy:123", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100),
+                FirstObservedAtUtc.AddSeconds(5), evaluatedAt),
+        ]);
+        var firstRepository = new SqlitePlanRepository(new SqliteConnectionFactory(database.Path), new SqliteDatabaseGate());
+        var secondRepository = new SqlitePlanRepository(new SqliteConnectionFactory(database.Path), new SqliteDatabaseGate());
+        Task<IReadOnlyList<PlanRecord>> ReconcileAsync(IPlanRepository repository) => repository.ApplyAccountReconciliationAsync(
+            account.Id, stored => orchestration.ReconcileAccountPlans(stored, scope, frame, evaluatedAt));
+
+        await Task.WhenAll(ReconcileAsync(firstRepository), ReconcileAsync(secondRepository));
+
+        var persisted = await database.Plans.GetReconciliationCandidatesAsync(account.Id);
+        var alpha = Assert.Single(persisted, plan => plan.Id == "plan-a");
+        var beta = Assert.Single(persisted, plan => plan.Id == "plan-b");
+        Assert.Equal(PlanShadowEventState.Confirmed, alpha.Events.Single(value => value.StepId == "step:a").State);
+        Assert.Equal(["CompletedBuy:123"], alpha.Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, beta.Events.Single(value => value.StepId == "step:a").State);
+        Assert.Empty(beta.Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds ?? []);
+
+        var reopened = new SqlitePlanRepository(new SqliteConnectionFactory(database.Path), new SqliteDatabaseGate());
+        var beforeReplay = await reopened.GetReconciliationCandidatesAsync(account.Id);
+        var replay = await reopened.ApplyAccountReconciliationAsync(account.Id,
+            stored => orchestration.ReconcileAccountPlans(stored, scope, frame, evaluatedAt));
+        Assert.Equal(beforeReplay.Select(value => value.Revision), replay.Select(value => value.Revision));
+        Assert.Single(replay.SelectMany(value => value.Events).SelectMany(value => value.VerifiedEvidenceIds ?? []));
+    }
+
+    [Fact]
     public async Task Receipt_survives_repository_reopen_and_replay_after_undo_does_not_restore_the_effect()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -319,6 +413,40 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(0, afterReplay.CurrentStepOrdinal);
         Assert.Equal(PlanShadowEventState.Reversed, Assert.Single(afterReplay.Events).State);
         Assert.Equal(1, await database.GetTableCountAsync("plan_completion_receipts"));
+    }
+
+    [Fact]
+    public async Task Undo_after_contradiction_persists_a_cleared_reason_across_repository_reopen()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("undo-clears-reason", FirstObservedAtUtc);
+        var orchestration = new PlanOrchestrationService();
+        var plan = TwoStepPlan("undo-clears-reason");
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, plan,
+            new Money(1_000), Money.Zero, new Dictionary<string, long>()));
+        var started = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        var reported = orchestration.ReportStep(started, 1, new Money(100), FirstObservedAtUtc.AddSeconds(10));
+        await database.Plans.SaveAsync(account.Id, reported);
+        var contradicted = reported with
+        {
+            State = PlanState.ReconciliationRequired,
+            ReconciliationState = PlanReconciliationState.Contradicted,
+            ConsecutiveContradictionCount = 2,
+            ReconciliationReason = PlanReconciliationReason.CraftInventoryMismatch,
+            Revision = reported.Revision + 1,
+        };
+        await database.Plans.SaveAsync(account.Id, contradicted);
+
+        var reopened = new SqlitePlanRepository(new SqliteConnectionFactory(database.Path), new SqliteDatabaseGate());
+        var afterReopen = Assert.Single(await reopened.GetReconciliationCandidatesAsync(account.Id));
+        var undone = orchestration.UndoLastStep(afterReopen, FirstObservedAtUtc.AddMinutes(1));
+        await reopened.SaveAsync(account.Id, undone);
+        var persisted = Assert.Single(await reopened.GetStartedAsync(account.Id));
+
+        Assert.Equal(PlanState.InProgress, persisted.State);
+        Assert.Equal(PlanReconciliationState.None, persisted.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.None, persisted.ReconciliationReason);
+        Assert.Equal(PlanShadowEventState.Reversed, Assert.Single(persisted.Events).State);
     }
 
     [Fact]

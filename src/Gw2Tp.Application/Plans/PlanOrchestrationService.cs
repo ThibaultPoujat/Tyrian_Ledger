@@ -180,6 +180,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             State = hasUnresolvedPriorExecution ? PlanState.ReconciliationRequired : PlanState.Invalid,
             ReconciliationState = hasUnresolvedPriorExecution ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.None,
             IsCancelled = true,
+            ReconciliationReason = !hasUnresolvedPriorExecution || plan.ReconciliationState == PlanReconciliationState.Contradicted
+                ? PlanReconciliationReason.None : plan.ReconciliationReason,
         };
     }
 
@@ -194,11 +196,14 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var events = plan.Events.Select(e => e.Id == last.Id ? e with { State = PlanShadowEventState.Reversed } : invalidated.Contains(e.Id) ? e with { State = PlanShadowEventState.Invalidated } : e).ToArray();
         var ordinal = plan.Steps.Select((step, index) => (step, index)).Single(pair => pair.step.Id == last.StepId).index;
         var steps = plan.Steps.Select((step, index) => index >= ordinal ? step with { State = index == ordinal ? PlanStepState.Current : PlanStepState.Invalidated } : step).ToArray();
-        return plan with { Events = events, Steps = steps, CurrentStepOrdinal = ordinal, State = PlanState.InProgress, ReconciliationState = PlanReconciliationState.None, IsCancelled = false };
+        return plan with { Events = events, Steps = steps, CurrentStepOrdinal = ordinal, State = PlanState.InProgress,
+            ReconciliationState = PlanReconciliationState.None, IsCancelled = false,
+            ReconciliationReason = PlanReconciliationReason.None };
     }
 
     /// <summary>Applies account-scoped evidence without inferring completeness across source boundaries.</summary>
-    public PlanRecord ReconcileWithVerifiedState(PlanRecord plan, AccountScope trustedAccountScope, PlanEvidenceFrame evidenceFrame)
+    public PlanRecord ReconcileWithVerifiedState(PlanRecord plan, AccountScope trustedAccountScope, PlanEvidenceFrame evidenceFrame,
+        IReadOnlySet<string>? accountClaimedEvidenceIds = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(trustedAccountScope);
@@ -254,8 +259,12 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             }
             if (execution.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed)
             {
-                var claimedEvidenceIds = events.Where(value => value.Id != execution.Id)
-                    .SelectMany(value => value.VerifiedEvidenceIds ?? []).ToHashSet(StringComparer.Ordinal);
+                var ownEvidenceIds = (execution.VerifiedEvidenceIds ?? []).ToHashSet(StringComparer.Ordinal);
+                var claimedEvidenceIds = accountClaimedEvidenceIds is null
+                    ? new HashSet<string>(StringComparer.Ordinal)
+                    : accountClaimedEvidenceIds.Where(value => !ownEvidenceIds.Contains(value)).ToHashSet(StringComparer.Ordinal);
+                claimedEvidenceIds.UnionWith(events.Where(value => value.Id != execution.Id)
+                    .SelectMany(value => value.VerifiedEvidenceIds ?? []));
                 var availableEvidence = evidenceSet.Where(value => !claimedEvidenceIds.Contains(value.Identity)).ToArray();
                 var relevantFingerprint = RelevantEvidenceFingerprint(plan, execution, availableEvidence);
                 var negativeCapture = execution.Action == PlanStepAction.Craft
@@ -402,6 +411,9 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                 : plan.ReconciliationReason;
         if (!stillAwaitingEvidence && reconciliation != PlanReconciliationState.Contradicted)
             reconciliationReason = PlanReconciliationReason.None;
+        else if (plan.ReconciliationState == PlanReconciliationState.Contradicted &&
+            reconciliation != PlanReconciliationState.Contradicted && observedReason == PlanReconciliationReason.None)
+            reconciliationReason = PlanReconciliationReason.None;
         var cancellationRetentionExpiresAt = plan.CancellationReconciliationExpiresAtUtc;
         if (state == PlanState.Invalid && plan.IsCancelled && cancellationRetentionExpiresAt is null &&
             events.Any(value => value.Action == PlanStepAction.CancelBuyOrder && value.State == PlanShadowEventState.Confirmed))
@@ -418,6 +430,35 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             CancellationReconciliationExpiresAtUtc = cancellationRetentionExpiresAt, IsReconciliationOnly = isReconciliationOnly,
             ReconciliationReason = reconciliationReason };
         return PlanRecordSemantics.AreEqual(plan, updated) ? plan : updated with { LastObservedAtUtc = evaluatedAt };
+    }
+
+    /// <summary>Reconciles an account's eligible plans in stable order while sharing durable evidence claims.</summary>
+    public IReadOnlyList<PlanRecord> ReconcileAccountPlans(IReadOnlyList<PlanRecord> accountPlans,
+        AccountScope trustedAccountScope, PlanEvidenceFrame evidenceFrame, DateTimeOffset evaluationTimeUtc,
+        Func<PlanRecord, PlanRecord>? afterReconcile = null)
+    {
+        ArgumentNullException.ThrowIfNull(accountPlans);
+        ArgumentNullException.ThrowIfNull(trustedAccountScope);
+        ArgumentNullException.ThrowIfNull(evidenceFrame);
+        var evaluationTime = RequireUtc(evaluationTimeUtc);
+        var claimedEvidenceIds = accountPlans.SelectMany(plan => plan.Events)
+            .SelectMany(execution => execution.VerifiedEvidenceIds ?? [])
+            .ToHashSet(StringComparer.Ordinal);
+        var candidates = accountPlans
+            .Where(plan => plan.State is PlanState.InProgress or PlanState.Waiting or PlanState.RecheckRequired or
+                PlanState.ReconciliationRequired or PlanState.ExecutionComplete ||
+                IsCancellationReconciliationRetained(plan, evaluationTime))
+            .OrderBy(plan => plan.StartedAtUtc)
+            .ThenBy(plan => plan.Id, StringComparer.Ordinal);
+        var updated = new List<PlanRecord>();
+        foreach (var plan in candidates)
+        {
+            var reconciled = ReconcileWithVerifiedState(plan, trustedAccountScope, evidenceFrame, claimedEvidenceIds);
+            if (afterReconcile is not null) reconciled = afterReconcile(reconciled);
+            updated.Add(reconciled);
+            claimedEvidenceIds.UnionWith(reconciled.Events.SelectMany(value => value.VerifiedEvidenceIds ?? []));
+        }
+        return updated;
     }
 
     // Kept internal for existing deterministic application tests; production callers use the typed frame.
@@ -490,7 +531,12 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var confirmed = confirmedEventIds.ToHashSet(StringComparer.Ordinal);
         var events = plan.Events.Select(e => confirmed.Contains(e.Id) && e.State == PlanShadowEventState.PendingConfirmation ? e with { State = PlanShadowEventState.Confirmed } : e).ToArray();
         var steps = plan.Steps.Select(step => events.Any(e => e.StepId == step.Id && e.State == PlanShadowEventState.Confirmed) ? step with { State = PlanStepState.Confirmed } : step).ToArray();
-        return plan with { Events = events, Steps = steps, ReconciliationState = events.Any(e => e.State == PlanShadowEventState.PendingConfirmation) ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible };
+        var nextReconciliation = events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed)
+            ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible;
+        return plan with { Events = events, Steps = steps, ReconciliationState = nextReconciliation,
+            ReconciliationReason = nextReconciliation == PlanReconciliationState.Compatible ||
+                plan.ReconciliationState == PlanReconciliationState.Contradicted
+                ? PlanReconciliationReason.None : plan.ReconciliationReason };
     }
 
     public static bool IsExecutable(PlanCandidate candidate) => candidate.IsHardEligible && (candidate.Steps.Count > 0 || candidate.Attention == PlanAttention.Passive) &&

@@ -137,6 +137,8 @@ public sealed class AdaptiveMarketSamplingPolicyTests
         public Task RecordSuccessfulSyncAsync(AccountProfile accountProfile, DateTimeOffset completedAtUtc, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task UpsertCompletedTransactionsAsync(AccountProfile accountProfile, IReadOnlyCollection<CompletedPersonalTradingPostTransaction> transactions, DateTimeOffset observedAtUtc, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<StoredCompletedPersonalTradingPostTransaction>> GetCompletedTransactionsAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<PersonalTradingPostReconciliationSnapshot> GetReconciliationSnapshotAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PersonalTradingPostReconciliationSnapshot(accountProfile, snapshot, []));
         public Task<PersonalTradingPostHistoryCoverage> GetHistoryCoverageAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task ReplaceCurrentOrderSnapshotAsync(AccountProfile accountProfile, CurrentPersonalTradingPostOrderSnapshot snapshot, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<IReadOnlyList<CurrentPersonalTradingPostOrder>> GetCurrentOrdersAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => throw new NotSupportedException();

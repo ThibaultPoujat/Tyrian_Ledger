@@ -185,6 +185,13 @@ public interface IPlanRepository
 {
     Task<IReadOnlyList<PlanRecord>> GetStartedAsync(long accountProfileId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PlanRecord>> GetReconciliationCandidatesAsync(long accountProfileId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Applies one deterministic account-wide reconciliation view and commits all resulting plan revisions atomically.
+    /// The callback receives every stored plan so durable evidence identities remain claimed after plans become terminal.
+    /// </summary>
+    Task<IReadOnlyList<PlanRecord>> ApplyAccountReconciliationAsync(long accountProfileId,
+        Func<IReadOnlyList<PlanRecord>, IReadOnlyList<PlanRecord>> reconcile,
+        CancellationToken cancellationToken = default);
     Task<PlanStartResult> TryStartAsync(long accountProfileId, PlanRecord plan, Money verifiedCash,
         Money hardReserve, IReadOnlyDictionary<string, long> verifiedQuantities,
         CancellationToken cancellationToken = default);
@@ -208,7 +215,11 @@ public interface IPlanOrchestrationService
     PlanRecord ReportStep(PlanRecord plan, int quantity, Money? unitPrice, DateTimeOffset occurredAtUtc);
     PlanRecord CancelUnperformedStep(PlanRecord plan);
     PlanRecord UndoLastStep(PlanRecord plan, DateTimeOffset occurredAtUtc);
-    PlanRecord ReconcileWithVerifiedState(PlanRecord plan, AccountScope trustedAccountScope, PlanEvidenceFrame evidenceFrame);
+    PlanRecord ReconcileWithVerifiedState(PlanRecord plan, AccountScope trustedAccountScope, PlanEvidenceFrame evidenceFrame,
+        IReadOnlySet<string>? accountClaimedEvidenceIds = null);
+    IReadOnlyList<PlanRecord> ReconcileAccountPlans(IReadOnlyList<PlanRecord> accountPlans,
+        AccountScope trustedAccountScope, PlanEvidenceFrame evidenceFrame, DateTimeOffset evaluationTimeUtc,
+        Func<PlanRecord, PlanRecord>? afterReconcile = null);
     PlanRecord ApplyRefresh(PlanRecord plan, PlanCandidate? currentCandidate, bool evidenceReady);
     PlanRecord Reconcile(PlanRecord plan, IReadOnlyCollection<string> confirmedEventIds, bool materiallyContradicted);
 }

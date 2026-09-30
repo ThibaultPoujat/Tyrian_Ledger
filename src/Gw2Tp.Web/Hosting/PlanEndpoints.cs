@@ -596,37 +596,25 @@ internal sealed class PlanEndpointService(
 
     private async Task<IReadOnlyList<PlanRecord>> ReconcilePlansAsync(Context context, bool applyRefresh, CancellationToken cancellationToken)
     {
-        var plans = context.Plans.Count > 0
-            ? context.Plans
-            : await repository.GetReconciliationCandidatesAsync(context.Profile.Id, cancellationToken).ConfigureAwait(false);
-        var updated = new List<PlanRecord>(plans.Count);
-        foreach (var plan in plans)
+        if (!context.AccountEvidenceAvailable || context.EvidenceFrame is null)
         {
-            if (!context.AccountEvidenceAvailable) { updated.Add(plan); continue; }
-            if (context.EvidenceFrame is null) { updated.Add(plan); continue; }
-            var reconciled = orchestration.ReconcileWithVerifiedState(plan, context.Snapshot.AccountScope, context.EvidenceFrame);
-            if (applyRefresh)
-            {
-                var candidate = context.Candidates.SingleOrDefault(value => value.SourceOpportunityId == plan.SourceOpportunityId);
-                reconciled = orchestration.ApplyRefresh(reconciled, candidate, context.Recommendations?.State == PrimaryRecommendationState.Ready);
-            }
-            try
-            {
-                if (PlanRecordSemantics.AreEqual(plan, reconciled))
-                {
-                    updated.Add(plan);
-                    continue;
-                }
-                await repository.SaveAsync(context.Profile.Id, reconciled, cancellationToken).ConfigureAwait(false);
-                updated.Add(reconciled with { Revision = reconciled.Revision + 1 });
-            }
-            catch (PlanConcurrencyException)
-            {
-                var latest = await FindReconciliationCandidateAsync(context.Profile.Id, plan.Id, cancellationToken).ConfigureAwait(false);
-                if (latest is not null) updated.Add(latest);
-            }
+            return context.Plans.Count > 0
+                ? context.Plans
+                : await repository.GetReconciliationCandidatesAsync(context.Profile.Id, cancellationToken).ConfigureAwait(false);
         }
-        return updated;
+
+        return await repository.ApplyAccountReconciliationAsync(context.Profile.Id, storedPlans =>
+        {
+            return orchestration.ReconcileAccountPlans(storedPlans, context.Snapshot.AccountScope,
+                context.EvidenceFrame, DateTimeOffset.UtcNow, applyRefresh
+                    ? plan =>
+                    {
+                        var candidate = context.Candidates.SingleOrDefault(value => value.SourceOpportunityId == plan.SourceOpportunityId);
+                        return orchestration.ApplyRefresh(plan, candidate,
+                            context.Recommendations?.State == PrimaryRecommendationState.Ready);
+                    }
+                    : null);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<IReadOnlyList<PlanRecord>> ApplyPlanRefreshAsync(Context context, CancellationToken cancellationToken)
@@ -756,22 +744,22 @@ internal sealed class PlanEndpointService(
     private async Task<EvidenceCapture> ReadEvidenceAsync(AccountProfile profile, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        CurrentPersonalTradingPostOrderSnapshot? current;
-        try { current = await profiles.GetLatestCurrentOrderSnapshotAsync(profile, cancellationToken).ConfigureAwait(false); }
+        PersonalTradingPostReconciliationSnapshot? snapshot;
+        try { snapshot = await profiles.GetReconciliationSnapshotAsync(profile, cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch { current = null; }
-        IReadOnlyList<StoredCompletedPersonalTradingPostTransaction>? completed;
-        try { completed = await profiles.GetCompletedTransactionsAsync(profile, cancellationToken).ConfigureAwait(false); }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch { completed = null; }
+        catch { snapshot = null; }
+        var current = snapshot?.CurrentOrders;
+        var completed = snapshot?.CompletedTransactions;
 
-        var fetchedAt = current?.ObservedAtUtc ?? profile.LastSuccessfulSyncAtUtc;
+        var capturedProfile = snapshot?.AccountProfile ?? profile;
+        var fetchedAt = current?.ObservedAtUtc ?? capturedProfile.LastSuccessfulSyncAtUtc;
         var captureId = fetchedAt is { } capturedAt ? $"trading-post-sync:{capturedAt.UtcTicks}" : null;
-        var sharedComplete = current is not null && completed is not null && profile.LastSuccessfulSyncAtUtc == current.ObservedAtUtc;
+        var sharedComplete = snapshot is not null && current is not null &&
+            capturedProfile.LastSuccessfulSyncAtUtc == current.ObservedAtUtc;
         var currentProvenance = new PlanEvidenceProvenance(captureId, current?.ObservedAtUtc,
             UpstreamObservedAtUtc: null,
             current is null ? PlanEvidenceAvailability.Unavailable : PlanEvidenceAvailability.Available,
-            current is null ? PlanEvidenceCompleteness.Unknown : profile.LastSuccessfulSyncAtUtc == current.ObservedAtUtc
+            current is null ? PlanEvidenceCompleteness.Unknown : capturedProfile.LastSuccessfulSyncAtUtc == current.ObservedAtUtc
                 ? PlanEvidenceCompleteness.Complete : PlanEvidenceCompleteness.Partial,
             current is null ? new HashSet<string>(StringComparer.Ordinal) : new HashSet<string>(new[] { "buy_orders", "sell_listings" }, StringComparer.Ordinal));
         var completedProvenance = new PlanEvidenceProvenance(captureId, fetchedAt,

@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Plans;
+using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Domain.Finance;
 using Xunit;
 
@@ -220,6 +221,31 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public void Undo_cancel_and_manual_reconcile_clear_a_reason_when_they_leave_contradicted_state()
+    {
+        var candidate = Candidate("reason-reset", 100, 50, 1,
+            steps: [Step("reason-first", PlanStepAction.BuyNow), Step("reason-second", PlanStepAction.List)]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
+        var contradicted = reported with
+        {
+            State = PlanState.ReconciliationRequired,
+            ReconciliationState = PlanReconciliationState.Contradicted,
+            ReconciliationReason = PlanReconciliationReason.CraftInventoryMismatch,
+        };
+
+        var undone = service.UndoLastStep(contradicted, Now.AddMinutes(1));
+        var cancelled = service.CancelUnperformedStep(contradicted);
+        var manuallyReconciled = service.Reconcile(contradicted, [contradicted.Events[0].Id], materiallyContradicted: false);
+
+        Assert.Equal(PlanReconciliationState.None, undone.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.None, undone.ReconciliationReason);
+        Assert.Equal(PlanReconciliationState.AwaitingEvidence, cancelled.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.None, cancelled.ReconciliationReason);
+        Assert.Equal(PlanReconciliationState.Compatible, manuallyReconciled.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.None, manuallyReconciled.ReconciliationReason);
+    }
+
+    [Fact]
     public void Listing_shadow_effect_uses_the_canonical_non_refundable_listing_fee()
     {
         var candidate = Candidate("listing", 0, 50, 2,
@@ -352,6 +378,27 @@ public sealed class PlanOrchestrationServiceTests
         Assert.Equal(PlanShadowEventState.Confirmed, confirmed.Events[0].State);
         Assert.Equal(2, confirmed.Events[0].VerifiedQuantity);
         Assert.Equal(800, PlanOrchestrationService.ProjectEffectiveResources(new Money(800), new Dictionary<string, long> { ["2:42"] = 2 }, confirmed.Events).EffectiveCash.Copper);
+    }
+
+    [Fact]
+    public void Account_reconciliation_claims_one_transaction_identity_in_stable_plan_order()
+    {
+        var scope = new AccountScope("account-scope");
+        var planB = service.ReportStep(service.Start(Candidate("opportunity-b", 0, 10, 1), Now) with { Id = "plan-b" },
+            1, new Money(100), Now.AddSeconds(10));
+        var planA = service.ReportStep(service.Start(Candidate("opportunity-a", 0, 10, 1), Now) with { Id = "plan-a" },
+            1, new Money(100), Now.AddSeconds(10));
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("CompletedBuy:123", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1))]);
+
+        var reconciled = service.ReconcileAccountPlans([planB, planA], scope, frame, Now.AddMinutes(1));
+
+        Assert.Equal(["plan-a", "plan-b"], reconciled.Select(plan => plan.Id));
+        Assert.Equal(PlanShadowEventState.Confirmed, reconciled[0].Events.Single().State);
+        Assert.Equal(["CompletedBuy:123"], reconciled[0].Events.Single().VerifiedEvidenceIds);
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled[1].Events.Single().State);
+        Assert.Empty(reconciled[1].Events.Single().VerifiedEvidenceIds ?? []);
     }
 
     [Fact]
@@ -763,4 +810,22 @@ public sealed class PlanOrchestrationServiceTests
         new(id, action, 42, "Objet", quantity, new Money(100), [], PlanStepState.Pending);
 
     private static IReadOnlySet<PlanEvidenceKind> Complete(params PlanEvidenceKind[] kinds) => new HashSet<PlanEvidenceKind>(kinds);
+
+    private static PlanEvidenceFrame CompleteTradingPostFrame(AccountScope scope, DateTimeOffset evaluatedAtUtc,
+        IReadOnlyList<PlanVerifiedEvidence> completed)
+    {
+        var unavailablePhysical = new PlanEvidenceProvenance(null, null, null, PlanEvidenceAvailability.Unavailable,
+            PlanEvidenceCompleteness.Unknown, new HashSet<string>(StringComparer.Ordinal));
+        var completeCurrent = new PlanEvidenceProvenance("capture", evaluatedAtUtc, null, PlanEvidenceAvailability.Available,
+            PlanEvidenceCompleteness.Complete, new HashSet<string>(["buy_orders", "sell_listings"], StringComparer.Ordinal));
+        var completeTransactions = new PlanEvidenceProvenance("capture", evaluatedAtUtc, null, PlanEvidenceAvailability.Available,
+            PlanEvidenceCompleteness.Complete, new HashSet<string>(["completed_buys", "completed_sells"], StringComparer.Ordinal));
+        var cash = new PlanEvidenceSource<Money>(new("cash:capture", evaluatedAtUtc, null,
+            PlanEvidenceAvailability.Available, PlanEvidenceCompleteness.Complete,
+            new HashSet<string>(["coin"], StringComparer.Ordinal)), new Money(1_000));
+        return new PlanEvidenceFrame(scope, evaluatedAtUtc,
+            new PlanEvidenceSource<IReadOnlyDictionary<string, long>>(unavailablePhysical, null), cash,
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completeCurrent, []),
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completeTransactions, completed));
+    }
 }
