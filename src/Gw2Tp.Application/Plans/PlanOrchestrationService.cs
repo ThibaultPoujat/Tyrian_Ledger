@@ -710,10 +710,23 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             (execution.UnitPrice is null || value.UnitPrice == execution.UnitPrice.Value))
             .OrderByDescending(value => value.CreatedAtUtc).ThenBy(value => value.Identity, StringComparer.Ordinal).ToArray();
         if (matching.Length == 0) return false;
-        quantity = Math.Min(execution.Quantity, matching.Sum(value => value.Quantity));
-        unitPrice = matching[0].UnitPrice;
-        verifiedEvidenceIds = matching.Select(value => value.Identity).Distinct(StringComparer.Ordinal).ToArray();
-        return quantity > 0;
+        var ownedEvidenceIds = (execution.VerifiedEvidenceIds ?? []).ToHashSet(StringComparer.Ordinal);
+        var ownedEvidence = matching.Where(value => ownedEvidenceIds.Contains(value.Identity)).ToArray();
+        long supportedQuantity = Math.Max(execution.VerifiedQuantity.GetValueOrDefault(),
+            Math.Min((long)execution.Quantity, ownedEvidence.Sum(value => (long)value.Quantity)));
+        var newlyClaimedEvidence = new List<PlanVerifiedEvidence>();
+        foreach (var candidate in matching.Where(value => !ownedEvidenceIds.Contains(value.Identity)))
+        {
+            if (supportedQuantity >= execution.Quantity) break;
+            newlyClaimedEvidence.Add(candidate);
+            supportedQuantity = Math.Min((long)execution.Quantity, supportedQuantity + candidate.Quantity);
+        }
+        var priceEvidence = ownedEvidence.FirstOrDefault() ?? newlyClaimedEvidence.FirstOrDefault();
+        if (priceEvidence is null || supportedQuantity <= 0) return false;
+        quantity = (int)supportedQuantity;
+        unitPrice = priceEvidence.UnitPrice;
+        verifiedEvidenceIds = newlyClaimedEvidence.Select(value => value.Identity).Distinct(StringComparer.Ordinal).ToArray();
+        return true;
     }
 
     private static bool IsCompatibleEvidenceKind(PlanEvidenceKind expected, PlanEvidenceKind actual) => expected switch

@@ -389,6 +389,52 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Account_reconciliation_allocates_surplus_transactions_across_plans_and_preserves_claims_after_restart()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("account-evidence-allocation", FirstObservedAtUtc);
+        var orchestration = new PlanOrchestrationService();
+        foreach (var planId in new[] { "plan-a", "plan-b" })
+        {
+            var plan = TwoStepPlan(planId, 10);
+            Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, plan,
+                new Money(10_000), Money.Zero, new Dictionary<string, long>()));
+            var started = Assert.Single(await database.Plans.GetStartedAsync(account.Id), value => value.Id == plan.Id);
+            await database.Plans.SaveAsync(account.Id,
+                orchestration.ReportStep(started, 10, new Money(100), FirstObservedAtUtc.AddSeconds(10)));
+        }
+
+        var scope = new AccountScope(account.AccountScopeId);
+        var evaluatedAt = FirstObservedAtUtc.AddMinutes(1);
+        var frame = TradingPostFrame(scope, evaluatedAt, "two-real-purchases", new Money(8_000), completed:
+        [
+            new PlanVerifiedEvidence("CompletedBuy:1", PlanEvidenceKind.CompletedBuy, 42, 10, new Money(100),
+                FirstObservedAtUtc.AddSeconds(5), evaluatedAt),
+            new PlanVerifiedEvidence("CompletedBuy:2", PlanEvidenceKind.CompletedBuy, 42, 10, new Money(100),
+                FirstObservedAtUtc.AddSeconds(5), evaluatedAt),
+        ]);
+
+        var reconciled = await database.Plans.ApplyAccountReconciliationAsync(account.Id,
+            stored => orchestration.ReconcileAccountPlans(stored, scope, frame, evaluatedAt));
+
+        Assert.Equal(["plan-a", "plan-b"], reconciled.Select(plan => plan.Id));
+        Assert.All(reconciled, plan => Assert.Equal(PlanShadowEventState.Confirmed,
+            plan.Events.Single(value => value.StepId == "step:a").State));
+        Assert.Equal(["CompletedBuy:1"], reconciled[0].Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:2"], reconciled[1].Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
+
+        var reopened = new SqlitePlanRepository(new SqliteConnectionFactory(database.Path), new SqliteDatabaseGate());
+        var beforeReplay = await reopened.GetReconciliationCandidatesAsync(account.Id);
+        var replay = await reopened.ApplyAccountReconciliationAsync(account.Id,
+            stored => orchestration.ReconcileAccountPlans(stored, scope, frame, evaluatedAt));
+
+        Assert.Equal(beforeReplay.Select(value => value.Revision), replay.Select(value => value.Revision));
+        var claimedIds = replay.SelectMany(value => value.Events).SelectMany(value => value.VerifiedEvidenceIds ?? []).ToArray();
+        Assert.Equal(2, claimedIds.Length);
+        Assert.Equal(2, claimedIds.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
     public async Task Receipt_survives_repository_reopen_and_replay_after_undo_does_not_restore_the_effect()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -2094,12 +2140,12 @@ public sealed class SqlitePersistenceIntegrationTests
             PlanReconciliationState.None, FirstObservedAtUtc, reservations, Money.Zero, 0, steps, [], 0, PlanHysteresisPolicy.Default);
     }
 
-    private static PlanRecord TwoStepPlan(string planId) => new(
+    private static PlanRecord TwoStepPlan(string planId, int quantity = 1) => new(
         planId, 1, $"opportunity:{planId}", PlanAttention.Active, PlanState.InProgress,
         PlanReconciliationState.None, FirstObservedAtUtc, [], Money.Zero, 0,
         [
-            new PlanStep("step:a", PlanStepAction.BuyNow, 42, "Objet", 1, new Money(100), [], PlanStepState.Current),
-            new PlanStep("step:b", PlanStepAction.SellNow, 42, "Objet", 1, new Money(150), [], PlanStepState.Pending),
+            new PlanStep("step:a", PlanStepAction.BuyNow, 42, "Objet", quantity, new Money(100), [], PlanStepState.Current),
+            new PlanStep("step:b", PlanStepAction.SellNow, 42, "Objet", quantity, new Money(150), [], PlanStepState.Pending),
         ], [], 0, PlanHysteresisPolicy.Default);
 
     private static PlanRecord ExpectedIncomingPlan(string planId, string opportunityId, IReadOnlyList<int> quantities)
