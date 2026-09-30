@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Finance;
+using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Domain.Finance;
 
 namespace Gw2Tp.Application.Plans;
@@ -196,23 +197,50 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         return plan with { Events = events, Steps = steps, CurrentStepOrdinal = ordinal, State = PlanState.InProgress, ReconciliationState = PlanReconciliationState.None, IsCancelled = false };
     }
 
-    /// <summary>Applies verified account evidence to pending events without double-counting confirmed effects.</summary>
-    public PlanRecord ReconcileWithVerifiedState(PlanRecord plan, Money verifiedCash, IReadOnlyDictionary<string, long> verifiedQuantities, DateTimeOffset observedAtUtc,
-        IReadOnlyCollection<PlanVerifiedEvidence>? evidence = null, DateTimeOffset? evidenceCapturedAtUtc = null,
-        IReadOnlySet<PlanEvidenceKind>? completeEvidenceKinds = null)
+    /// <summary>Applies account-scoped evidence without inferring completeness across source boundaries.</summary>
+    public PlanRecord ReconcileWithVerifiedState(PlanRecord plan, AccountScope trustedAccountScope, PlanEvidenceFrame evidenceFrame)
     {
         ArgumentNullException.ThrowIfNull(plan);
-        ArgumentNullException.ThrowIfNull(verifiedQuantities);
-        var observed = RequireUtc(observedAtUtc);
-        var baselineCash = plan.BaselineVerifiedCash ?? verifiedCash;
-        var baselineQuantities = plan.BaselineVerifiedQuantities ?? verifiedQuantities;
-        var expectedCash = baselineCash;
+        ArgumentNullException.ThrowIfNull(trustedAccountScope);
+        ArgumentNullException.ThrowIfNull(evidenceFrame);
+        ArgumentNullException.ThrowIfNull(evidenceFrame.AccountScope);
+        ArgumentNullException.ThrowIfNull(evidenceFrame.PhysicalInventory);
+        ArgumentNullException.ThrowIfNull(evidenceFrame.Cash);
+        ArgumentNullException.ThrowIfNull(evidenceFrame.CurrentOrders);
+        ArgumentNullException.ThrowIfNull(evidenceFrame.CompletedTransactions);
+        var evaluatedAt = RequireUtc(evidenceFrame.EvaluationTimeUtc);
+        if (string.IsNullOrWhiteSpace(trustedAccountScope.AccountId) ||
+            !string.Equals(trustedAccountScope.AccountId, evidenceFrame.AccountScope.AccountId, StringComparison.Ordinal)) return plan;
+        ValidateProvenance(evidenceFrame.PhysicalInventory.Provenance);
+        ValidateProvenance(evidenceFrame.Cash.Provenance);
+        ValidateProvenance(evidenceFrame.CurrentOrders.Provenance);
+        ValidateProvenance(evidenceFrame.CompletedTransactions.Provenance);
+
+        var physical = evidenceFrame.PhysicalInventory.Provenance.Availability == PlanEvidenceAvailability.Available
+            ? evidenceFrame.PhysicalInventory.Value ?? new Dictionary<string, long>(StringComparer.Ordinal)
+            : new Dictionary<string, long>(StringComparer.Ordinal);
+        Money? sourceCash = evidenceFrame.Cash.Provenance.Availability == PlanEvidenceAvailability.Available &&
+            evidenceFrame.Cash.Provenance.Completeness == PlanEvidenceCompleteness.Complete &&
+            !string.IsNullOrWhiteSpace(evidenceFrame.Cash.Provenance.CaptureId) && evidenceFrame.Cash.Provenance.FetchedAtUtc is not null
+            ? evidenceFrame.Cash.Value : null;
+        var verifiedCash = sourceCash ?? plan.BaselineVerifiedCash ?? Money.Zero;
+        var evidenceSet = (SourceValue(evidenceFrame.CurrentOrders) ?? [])
+            .Concat(SourceValue(evidenceFrame.CompletedTransactions) ?? []).ToArray();
+        var baselineCash = plan.BaselineVerifiedCash ?? sourceCash;
+        var baselineQuantities = plan.BaselineVerifiedQuantities is null
+            ? new Dictionary<string, long>(StringComparer.Ordinal)
+            : new Dictionary<string, long>(plan.BaselineVerifiedQuantities, StringComparer.Ordinal);
+        var expectedCash = baselineCash ?? Money.Zero;
         var expectedQuantities = new Dictionary<string, long>(baselineQuantities, StringComparer.Ordinal);
         var events = plan.Events.ToArray();
-        var freshCapture = evidenceCapturedAtUtc is { } captured && (plan.LastEvidenceCapturedAtUtc is null || captured > plan.LastEvidenceCapturedAtUtc.Value);
-        var evidenceSet = evidence ?? [];
+        var tpCapture = CompleteTradingPostCapture(evidenceFrame);
+        var freshCapture = tpCapture is not null && IsNewCapture(tpCapture, plan.LastEvidenceCaptureId, plan.LastEvidenceCapturedAtUtc);
+        var physicalCapture = CompletePhysicalInventoryCapture(evidenceFrame.PhysicalInventory);
+        var freshPhysicalCapture = physicalCapture is not null && IsNewPhysicalCapture(physicalCapture,
+            plan.LastPhysicalInventoryCaptureId, plan.LastPhysicalInventoryFetchedAtUtc, plan.LastPhysicalInventoryObservedAtUtc);
         var fingerprint = EvidenceFingerprint(evidenceSet);
         var contradictions = 0;
+        var observedReason = PlanReconciliationReason.None;
         var blockedByPending = false;
         var cancellationEvidenceConflict = false;
         foreach (var execution in plan.Events.OrderBy(value => value.Sequence))
@@ -224,92 +252,111 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                 cancellationEvidenceConflict = true;
                 blockedByPending = true;
             }
-            if (execution.State == PlanShadowEventState.PendingConfirmation || execution.State == PlanShadowEventState.PartiallyConfirmed)
+            if (execution.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed)
             {
                 var claimedEvidenceIds = events.Where(value => value.Id != execution.Id)
                     .SelectMany(value => value.VerifiedEvidenceIds ?? []).ToHashSet(StringComparer.Ordinal);
                 var availableEvidence = evidenceSet.Where(value => !claimedEvidenceIds.Contains(value.Identity)).ToArray();
                 var relevantFingerprint = RelevantEvidenceFingerprint(plan, execution, availableEvidence);
-                var canUseNegativeEvidence = freshCapture && HasCompleteRelevantObservation(execution, completeEvidenceKinds);
+                var negativeCapture = execution.Action == PlanStepAction.Craft
+                    ? CompleteInventoryCapture(evidenceFrame.PhysicalInventory, execution)
+                    : CompleteTradingPostCapture(evidenceFrame);
+                var canUseNegativeEvidence = negativeCapture is not null && IsNewEventNegativeCapture(execution, negativeCapture) &&
+                    (execution.Action == PlanStepAction.Craft ? freshPhysicalCapture : freshCapture);
                 if (!blockedByPending && HasCancellationFillEvidence(plan, execution, availableEvidence))
                 {
                     cancellationEvidenceConflict = true;
+                    observedReason = PlanReconciliationReason.CancellationLateFill;
                     blockedByPending = true;
-                    if (freshCapture) events[index] = execution with { LastRelevantEvidenceFingerprint = relevantFingerprint };
+                    if (canUseNegativeEvidence) events[index] = execution with { LastRelevantEvidenceFingerprint = relevantFingerprint };
                 }
-                else if (!blockedByPending && IsCancellationAbsence(plan, execution, availableEvidence, freshCapture, completeEvidenceKinds))
+                else if (!blockedByPending && IsCancellationAbsence(plan, execution, availableEvidence, canUseNegativeEvidence))
                 {
-                    var capturedAt = RequireUtc(evidenceCapturedAtUtc!.Value);
+                    var capturedAt = RequireUtc(negativeCapture!.FetchedAtUtc!.Value);
                     var firstNegativeCapture = execution.FirstNegativeEvidenceCapturedAtUtc ?? capturedAt;
                     var negativeCaptureCount = checked(execution.NegativeEvidenceCaptureCount + 1);
-                    if (negativeCaptureCount >= 2 && capturedAt - firstNegativeCapture >= DefaultObservationWindow)
+                    var nextEvent = execution with
                     {
-                        events[index] = execution with
-                        {
-                            State = PlanShadowEventState.Confirmed,
-                            VerifiedQuantity = execution.Quantity,
-                            VerifiedUnitPrice = execution.UnitPrice,
-                            LastRelevantEvidenceFingerprint = relevantFingerprint,
-                            VerifiedEvidenceIds = [],
-                            FirstNegativeEvidenceCapturedAtUtc = firstNegativeCapture,
-                            NegativeEvidenceCaptureCount = negativeCaptureCount,
-                        };
-                    }
-                    else
-                    {
-                        events[index] = execution with
-                        {
-                            LastRelevantEvidenceFingerprint = relevantFingerprint,
-                            FirstNegativeEvidenceCapturedAtUtc = firstNegativeCapture,
-                            NegativeEvidenceCaptureCount = negativeCaptureCount,
-                        };
-                    }
+                        State = negativeCaptureCount >= 2 && capturedAt - firstNegativeCapture >= DefaultObservationWindow
+                            ? PlanShadowEventState.Confirmed : execution.State,
+                        VerifiedQuantity = negativeCaptureCount >= 2 && capturedAt - firstNegativeCapture >= DefaultObservationWindow
+                            ? execution.Quantity : execution.VerifiedQuantity,
+                        VerifiedUnitPrice = negativeCaptureCount >= 2 && capturedAt - firstNegativeCapture >= DefaultObservationWindow
+                            ? execution.UnitPrice : execution.VerifiedUnitPrice,
+                        LastRelevantEvidenceFingerprint = relevantFingerprint,
+                        VerifiedEvidenceIds = [],
+                        FirstNegativeEvidenceCapturedAtUtc = firstNegativeCapture,
+                        NegativeEvidenceCaptureCount = negativeCaptureCount,
+                        LastNegativeEvidenceCaptureId = negativeCapture.CaptureId,
+                        LastNegativeEvidenceCapturedAtUtc = capturedAt,
+                    };
+                    events[index] = nextEvent;
                 }
-                else if (!blockedByPending && TryMatchEvidence(plan, execution, availableEvidence, out var observedQuantity, out var observedPrice, out var verifiedEvidenceIds))
+                else if (!cancellationEvidenceConflict &&
+                    (!blockedByPending || execution.Action is PlanStepAction.List or PlanStepAction.Relist &&
+                        plan.Events.Any(value => value.Sequence < execution.Sequence && value.Action == PlanStepAction.Craft &&
+                            value.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed)) &&
+                    TryMatchEvidence(plan, execution, availableEvidence, out var observedQuantity, out var observedPrice, out var verifiedEvidenceIds))
                 {
                     var cumulativeQuantity = Math.Max(execution.VerifiedQuantity.GetValueOrDefault(), observedQuantity);
                     var nextState = cumulativeQuantity >= execution.Quantity ? PlanShadowEventState.Confirmed : PlanShadowEventState.PartiallyConfirmed;
                     events[index] = execution with { State = nextState, VerifiedQuantity = cumulativeQuantity, VerifiedUnitPrice = observedPrice,
                         LastRelevantEvidenceFingerprint = freshCapture ? relevantFingerprint : execution.LastRelevantEvidenceFingerprint,
-                        VerifiedEvidenceIds = verifiedEvidenceIds };
+                        VerifiedEvidenceIds = (execution.VerifiedEvidenceIds ?? []).Concat(verifiedEvidenceIds).Distinct(StringComparer.Ordinal).ToArray() };
                     if (nextState == PlanShadowEventState.PartiallyConfirmed) blockedByPending = true;
                 }
                 else if (!blockedByPending && execution.Action == PlanStepAction.Craft)
                 {
-                    if (TryMatchCraftInventory(execution, expectedQuantities, verifiedQuantities, out var craftContradicted))
+                    var inventorySource = evidenceFrame.PhysicalInventory;
+                    var craftContradicted = false;
+                    if (HasInventoryCoverage(inventorySource, execution) &&
+                        TryMatchCraftInventory(execution, expectedQuantities, physical, inventorySource.Provenance.CoverageKeys, out craftContradicted))
                     {
                         events[index] = execution with { State = PlanShadowEventState.Confirmed, VerifiedQuantity = execution.Quantity,
                             VerifiedUnitPrice = execution.UnitPrice, VerifiedEvidenceIds = [] };
                     }
-                    else if (craftContradicted)
+                    else if (HasInventoryCoverage(inventorySource, execution) && craftContradicted)
                     {
-                        contradictions++;
                         blockedByPending = true;
-                    }
-                    else if (freshCapture && evidenceCapturedAtUtc is { } capturedAt)
-                    {
-                        var firstNegativeCapture = execution.FirstNegativeEvidenceCapturedAtUtc ?? capturedAt;
-                        var negativeCaptureCount = checked(execution.NegativeEvidenceCaptureCount + 1);
-                        events[index] = execution with { FirstNegativeEvidenceCapturedAtUtc = firstNegativeCapture, NegativeEvidenceCaptureCount = negativeCaptureCount };
-                        if (negativeCaptureCount >= 2 && capturedAt - firstNegativeCapture >= DefaultObservationWindow)
-                            contradictions += 2;
+                        if (canUseNegativeEvidence)
+                        {
+                            var capturedAt = RequireUtc(negativeCapture!.UpstreamObservedAtUtc!.Value);
+                            var firstNegativeCapture = execution.FirstNegativeEvidenceCapturedAtUtc ?? capturedAt;
+                            var negativeCaptureCount = checked(execution.NegativeEvidenceCaptureCount + 1);
+                            events[index] = execution with { FirstNegativeEvidenceCapturedAtUtc = firstNegativeCapture,
+                                NegativeEvidenceCaptureCount = negativeCaptureCount, LastNegativeEvidenceCaptureId = negativeCapture.CaptureId,
+                                LastNegativeEvidenceCapturedAtUtc = capturedAt };
+                            if (negativeCaptureCount >= 2 && capturedAt - firstNegativeCapture >= DefaultObservationWindow)
+                            {
+                                contradictions += 2;
+                                observedReason = PlanReconciliationReason.CraftInventoryMismatch;
+                            }
+                        }
                     }
                 }
                 else if (execution.ExpectedEvidenceKind is not null)
                 {
                     blockedByPending = true;
                     var persistentCancellation = execution.Action == PlanStepAction.CancelBuyOrder && IsCancellationStillVisible(plan, execution, availableEvidence);
-                    if (canUseNegativeEvidence && execution.ExpectedObservableUntilUtc is { } deadline && observed > deadline &&
+                    if (canUseNegativeEvidence && execution.ExpectedObservableUntilUtc is { } deadline && evaluatedAt > deadline &&
                         (persistentCancellation || !string.Equals(relevantFingerprint, execution.LastRelevantEvidenceFingerprint, StringComparison.Ordinal)))
                     {
                         contradictions++;
+                        observedReason = persistentCancellation
+                            ? PlanReconciliationReason.CancellationStillVisible
+                            : PlanReconciliationReason.TradingPostEvidenceMismatch;
                     }
-                    if (freshCapture) events[index] = execution with
+                    if (canUseNegativeEvidence)
                     {
-                        LastRelevantEvidenceFingerprint = relevantFingerprint,
-                        FirstNegativeEvidenceCapturedAtUtc = persistentCancellation ? null : execution.FirstNegativeEvidenceCapturedAtUtc,
-                        NegativeEvidenceCaptureCount = persistentCancellation ? 0 : execution.NegativeEvidenceCaptureCount,
-                    };
+                        events[index] = execution with
+                        {
+                            LastRelevantEvidenceFingerprint = relevantFingerprint,
+                            FirstNegativeEvidenceCapturedAtUtc = persistentCancellation ? null : execution.FirstNegativeEvidenceCapturedAtUtc,
+                            NegativeEvidenceCaptureCount = persistentCancellation ? 0 : execution.NegativeEvidenceCaptureCount,
+                            LastNegativeEvidenceCaptureId = negativeCapture!.CaptureId,
+                            LastNegativeEvidenceCapturedAtUtc = negativeCapture.FetchedAtUtc,
+                        };
+                    }
                 }
             }
             var effective = events[index].State switch
@@ -321,12 +368,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             };
             foreach (var effect in effective) Apply(expectedQuantities, ref expectedCash, effect);
         }
-        // A chain may consume an intermediate output and list the final output
-        // before the next account snapshot. Confirm craft events collectively
-        // only when their complete net inventory projection matches verified
-        // state, never from a same-item listing alone.
         if (!events.Any(value => (value.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) && value.Action != PlanStepAction.Craft) &&
-            CraftShadowProjectionMatchesVerified(events, expectedQuantities, verifiedQuantities))
+            CraftShadowProjectionMatchesVerified(events, expectedQuantities, physical, evidenceFrame.PhysicalInventory))
         {
             events = events.Select(value => value.State == PlanShadowEventState.PendingConfirmation && value.Action == PlanStepAction.Craft
                 ? value with { State = PlanShadowEventState.Confirmed, VerifiedQuantity = value.Quantity, VerifiedUnitPrice = value.UnitPrice, VerifiedEvidenceIds = [] }
@@ -352,16 +395,73 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             };
         }).ToArray();
         if (!stillAwaitingEvidence && state == PlanState.RecheckRequired) state = CompatibleLifecycleState(plan, updatedSteps);
+        var reconciliationReason = cancellationEvidenceConflict
+            ? PlanReconciliationReason.CancellationLateFill
+            : observedReason != PlanReconciliationReason.None
+                ? observedReason
+                : plan.ReconciliationReason;
+        if (!stillAwaitingEvidence && reconciliation != PlanReconciliationState.Contradicted)
+            reconciliationReason = PlanReconciliationReason.None;
         var cancellationRetentionExpiresAt = plan.CancellationReconciliationExpiresAtUtc;
         if (state == PlanState.Invalid && plan.IsCancelled && cancellationRetentionExpiresAt is null &&
             events.Any(value => value.Action == PlanStepAction.CancelBuyOrder && value.State == PlanShadowEventState.Confirmed))
+            cancellationRetentionExpiresAt = RequireUtc(tpCapture?.FetchedAtUtc ?? evaluatedAt) + CancellationReconciliationRetentionWindow;
+        var updated = plan with { Events = events, Steps = updatedSteps, State = state, ReconciliationState = reconciliation, BaselineVerifiedCash = baselineCash,
+            BaselineVerifiedQuantities = plan.BaselineVerifiedQuantities is null ? null : new Dictionary<string, long>(baselineQuantities, StringComparer.Ordinal), ConsecutiveContradictionCount = contradictionCount,
+            LastObservedAtUtc = plan.LastObservedAtUtc,
+            LastEvidenceCapturedAtUtc = freshCapture ? tpCapture!.FetchedAtUtc : plan.LastEvidenceCapturedAtUtc,
+            LastEvidenceCaptureId = freshCapture ? tpCapture!.CaptureId : plan.LastEvidenceCaptureId,
+            LastEvidenceFingerprint = freshCapture ? fingerprint : plan.LastEvidenceFingerprint,
+            LastPhysicalInventoryCaptureId = freshPhysicalCapture ? physicalCapture!.CaptureId : plan.LastPhysicalInventoryCaptureId,
+            LastPhysicalInventoryFetchedAtUtc = freshPhysicalCapture ? physicalCapture!.FetchedAtUtc : plan.LastPhysicalInventoryFetchedAtUtc,
+            LastPhysicalInventoryObservedAtUtc = freshPhysicalCapture ? physicalCapture!.UpstreamObservedAtUtc : plan.LastPhysicalInventoryObservedAtUtc,
+            CancellationReconciliationExpiresAtUtc = cancellationRetentionExpiresAt, IsReconciliationOnly = isReconciliationOnly,
+            ReconciliationReason = reconciliationReason };
+        return PlanRecordSemantics.AreEqual(plan, updated) ? plan : updated with { LastObservedAtUtc = evaluatedAt };
+    }
+
+    // Kept internal for existing deterministic application tests; production callers use the typed frame.
+    internal PlanRecord ReconcileWithVerifiedState(PlanRecord plan, Money verifiedCash,
+        IReadOnlyDictionary<string, long> verifiedQuantities, DateTimeOffset observedAtUtc,
+        IReadOnlyCollection<PlanVerifiedEvidence>? evidence = null, DateTimeOffset? evidenceCapturedAtUtc = null,
+        IReadOnlySet<PlanEvidenceKind>? completeEvidenceKinds = null)
+    {
+        var at = RequireUtc(evidenceCapturedAtUtc ?? observedAtUtc);
+        var scope = new AccountScope("synthetic-test-account");
+        var completeQuantities = new Dictionary<string, long>(verifiedQuantities, StringComparer.Ordinal);
+        var fullCoverage = plan.Events.SelectMany(value => value.Effects)
+            .Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity != 0)
+            .Select(Key).Concat(verifiedQuantities.Keys).ToHashSet(StringComparer.Ordinal);
+        foreach (var key in fullCoverage) completeQuantities.TryAdd(key, 0);
+        var inventory = new PlanEvidenceSource<IReadOnlyDictionary<string, long>>(
+            new($"test-inventory:{at.UtcTicks}", at, at, PlanEvidenceAvailability.Available, PlanEvidenceCompleteness.Complete, fullCoverage), completeQuantities);
+        var cash = new PlanEvidenceSource<Money>(new($"test-cash:{at.UtcTicks}", at, at, PlanEvidenceAvailability.Available, PlanEvidenceCompleteness.Complete, new HashSet<string>(StringComparer.Ordinal)), verifiedCash);
+        var evidenceRows = evidence ?? [];
+        var tpAvailability = PlanEvidenceAvailability.Available;
+        var tpCompleteness = completeEvidenceKinds is null ? PlanEvidenceCompleteness.Partial : PlanEvidenceCompleteness.Complete;
+        var tpId = $"test-trading-post:{at.UtcTicks}";
+        var current = new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(
+            new(tpId, at, at, tpAvailability, tpCompleteness, new HashSet<string>(new[] { "buy_orders", "sell_listings" }, StringComparer.Ordinal)),
+            evidenceRows.Where(value => value.Kind is PlanEvidenceKind.BuyOrder or PlanEvidenceKind.SellListing).ToArray());
+        var completed = new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(
+            new(tpId, at, at, tpAvailability, tpCompleteness, new HashSet<string>(new[] { "completed_buys", "completed_sells" }, StringComparer.Ordinal)),
+            evidenceRows.Where(value => value.Kind is PlanEvidenceKind.CompletedBuy or PlanEvidenceKind.CompletedSell).ToArray());
+        var seeded = plan with
         {
-            cancellationRetentionExpiresAt = RequireUtc(evidenceCapturedAtUtc ?? observed) + CancellationReconciliationRetentionWindow;
-        }
-        return plan with { Events = events, Steps = updatedSteps, State = state, ReconciliationState = reconciliation, BaselineVerifiedCash = baselineCash,
-            BaselineVerifiedQuantities = new Dictionary<string, long>(baselineQuantities, StringComparer.Ordinal), ConsecutiveContradictionCount = contradictionCount, LastObservedAtUtc = observed,
-            LastEvidenceCapturedAtUtc = freshCapture ? evidenceCapturedAtUtc : plan.LastEvidenceCapturedAtUtc, LastEvidenceFingerprint = freshCapture ? fingerprint : plan.LastEvidenceFingerprint,
-            CancellationReconciliationExpiresAtUtc = cancellationRetentionExpiresAt, IsReconciliationOnly = isReconciliationOnly };
+            BaselineVerifiedCash = plan.BaselineVerifiedCash ?? verifiedCash,
+            BaselineVerifiedQuantities = SeedSyntheticBaseline(plan, completeQuantities),
+        };
+        return ReconcileWithVerifiedState(seeded, scope, new PlanEvidenceFrame(scope, RequireUtc(observedAtUtc), inventory, cash, current, completed));
+    }
+
+    private static IReadOnlyDictionary<string, long> SeedSyntheticBaseline(PlanRecord plan, IReadOnlyDictionary<string, long> quantities)
+    {
+        var baseline = plan.BaselineVerifiedQuantities is null
+            ? new Dictionary<string, long>(quantities, StringComparer.Ordinal)
+            : new Dictionary<string, long>(plan.BaselineVerifiedQuantities, StringComparer.Ordinal);
+        foreach (var key in plan.Events.SelectMany(value => value.Effects).Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity != 0).Select(Key))
+            baseline.TryAdd(key, 0);
+        return baseline;
     }
 
     /// <summary>Freezes the current step and marks it for recheck only on material evidence loss.</summary>
@@ -375,7 +475,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var improvementThreshold = Math.Max(1, Math.Abs(plan.BaselineUtility) * plan.HysteresisPolicy.MaterialImprovementBasisPoints / 10_000);
         var materiallyImproved = currentCandidate is not null && currentCandidate.Utility >= plan.BaselineUtility + improvementThreshold;
         return materiallyChanged || materiallyImproved
-            ? plan with { State = PlanState.RecheckRequired, ReconciliationState = PlanReconciliationState.AwaitingEvidence }
+            ? plan with { State = PlanState.RecheckRequired, ReconciliationState = PlanReconciliationState.AwaitingEvidence,
+                ReconciliationReason = PlanReconciliationReason.OpportunityChanged }
             : plan;
     }
 
@@ -383,7 +484,9 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(confirmedEventIds);
-        if (materiallyContradicted) return plan with { State = PlanState.ReconciliationRequired, ReconciliationState = PlanReconciliationState.Contradicted };
+        if (materiallyContradicted) return plan with { State = PlanState.ReconciliationRequired,
+            ReconciliationState = PlanReconciliationState.Contradicted,
+            ReconciliationReason = PlanReconciliationReason.TradingPostEvidenceMismatch };
         var confirmed = confirmedEventIds.ToHashSet(StringComparer.Ordinal);
         var events = plan.Events.Select(e => confirmed.Contains(e.Id) && e.State == PlanShadowEventState.PendingConfirmation ? e with { State = PlanShadowEventState.Confirmed } : e).ToArray();
         var steps = plan.Steps.Select(step => events.Any(e => e.StepId == step.Id && e.State == PlanShadowEventState.Confirmed) ? step with { State = PlanStepState.Confirmed } : step).ToArray();
@@ -552,7 +655,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         if (step is null) return false;
         var issuedAt = execution.IssuedAtUtc ?? step.IssuedAtUtc ?? plan.StartedAtUtc;
         var matching = evidence.Where(value => IsCompatibleEvidenceKind(expectedKind, value.Kind) && value.ItemId == step.ItemId && value.Quantity > 0 &&
-            value.CreatedAtUtc >= issuedAt && value.ObservedAtUtc >= execution.OccurredAtUtc &&
+            value.CreatedAtUtc >= issuedAt && value.CapturedAtUtc >= execution.OccurredAtUtc &&
             (step.ExternalIdentity is null || string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal)) &&
             (execution.UnitPrice is null || value.UnitPrice == execution.UnitPrice.Value))
             .OrderByDescending(value => value.CreatedAtUtc).ThenBy(value => value.Identity, StringComparer.Ordinal).ToArray();
@@ -570,19 +673,6 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         _ => expected == actual,
     };
 
-    private static bool HasCompleteRelevantObservation(PlanExecutionEvent execution, IReadOnlySet<PlanEvidenceKind>? completeKinds)
-    {
-        if (execution.ExpectedEvidenceKind is not { } expected || completeKinds is null) return false;
-        if (execution.Action == PlanStepAction.CancelBuyOrder)
-            return completeKinds.Contains(PlanEvidenceKind.BuyOrder) && completeKinds.Contains(PlanEvidenceKind.CompletedBuy);
-        return expected switch
-        {
-            PlanEvidenceKind.BuyOrder => completeKinds.Contains(PlanEvidenceKind.BuyOrder) && completeKinds.Contains(PlanEvidenceKind.CompletedBuy),
-            PlanEvidenceKind.SellListing => completeKinds.Contains(PlanEvidenceKind.SellListing) && completeKinds.Contains(PlanEvidenceKind.CompletedSell),
-            _ => completeKinds.Contains(expected),
-        };
-    }
-
     private static string RelevantEvidenceFingerprint(PlanRecord plan, PlanExecutionEvent execution, IEnumerable<PlanVerifiedEvidence> evidence)
     {
         if (execution.ExpectedEvidenceKind is not { } expected) return string.Empty;
@@ -592,11 +682,11 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         if (execution.Action == PlanStepAction.CancelBuyOrder)
         {
             return EvidenceFingerprint(evidence.Where(value => value.Kind == PlanEvidenceKind.BuyOrder && value.ItemId == step.ItemId &&
-                value.ObservedAtUtc >= execution.OccurredAtUtc &&
+                value.CapturedAtUtc >= execution.OccurredAtUtc &&
                 string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal)));
         }
         return EvidenceFingerprint(evidence.Where(value => IsCompatibleEvidenceKind(expected, value.Kind) && value.ItemId == step.ItemId &&
-            value.CreatedAtUtc >= issuedAt && value.ObservedAtUtc >= execution.OccurredAtUtc &&
+            value.CreatedAtUtc >= issuedAt && value.CapturedAtUtc >= execution.OccurredAtUtc &&
             (step.ExternalIdentity is null || string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal))));
     }
 
@@ -612,31 +702,109 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
 
     private static bool TryMatchCraftInventory(PlanExecutionEvent execution,
         IReadOnlyDictionary<string, long> expectedBefore, IReadOnlyDictionary<string, long> observed,
-        out bool contradicted)
+        IReadOnlySet<string> coverageKeys, out bool contradicted)
     {
         contradicted = false;
         var effects = execution.Effects.Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity != 0).ToArray();
-        if (effects.Length == 0) return false;
+        if (effects.Length == 0 || effects.Any(effect => !coverageKeys.Contains(Key(effect)) || !expectedBefore.ContainsKey(Key(effect)))) return false;
+        var matches = true;
         foreach (var effect in effects)
         {
             var key = Key(effect);
-            var before = expectedBefore.GetValueOrDefault(key);
+            var before = expectedBefore[key];
             var target = checked(before + effect.Quantity);
             var actual = observed.GetValueOrDefault(key);
             if (actual == target) continue;
-            if (effect.Quantity > 0 ? actual > target : actual < target) contradicted = true;
-            return false;
+            matches = false;
+            contradicted = true;
         }
-        return true;
+        return matches;
     }
 
     private static bool CraftShadowProjectionMatchesVerified(IReadOnlyCollection<PlanExecutionEvent> events,
-        IReadOnlyDictionary<string, long> expected, IReadOnlyDictionary<string, long> observed)
+        IReadOnlyDictionary<string, long> expected, IReadOnlyDictionary<string, long> observed,
+        PlanEvidenceSource<IReadOnlyDictionary<string, long>> physicalInventory)
     {
-        var keys = events.Where(value => value.Action == PlanStepAction.Craft && value.State == PlanShadowEventState.PendingConfirmation)
+        var craftEvents = events.Where(value => value.Action == PlanStepAction.Craft && value.State == PlanShadowEventState.PendingConfirmation).ToArray();
+        var keys = craftEvents
             .SelectMany(value => value.Effects).Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity != 0)
             .Select(Key).Distinct(StringComparer.Ordinal).ToArray();
-        return keys.Length > 0 && keys.All(key => expected.GetValueOrDefault(key) == observed.GetValueOrDefault(key));
+        var provenance = physicalInventory.Provenance;
+        return keys.Length > 0 && provenance.Availability == PlanEvidenceAvailability.Available &&
+            provenance.Completeness == PlanEvidenceCompleteness.Complete && !string.IsNullOrWhiteSpace(provenance.CaptureId) &&
+            provenance.UpstreamObservedAtUtc is { } sourceObservedAt && craftEvents.All(value => sourceObservedAt >= value.OccurredAtUtc) &&
+            keys.All(key => provenance.CoverageKeys.Contains(key) && expected.ContainsKey(key) && expected.GetValueOrDefault(key) == observed.GetValueOrDefault(key));
+    }
+
+    private static T? SourceValue<T>(PlanEvidenceSource<T> source) =>
+        source.Provenance.Availability == PlanEvidenceAvailability.Available &&
+        !string.IsNullOrWhiteSpace(source.Provenance.CaptureId) && source.Provenance.FetchedAtUtc is not null
+            ? source.Value : default;
+
+    private static void ValidateProvenance(PlanEvidenceProvenance provenance)
+    {
+        ArgumentNullException.ThrowIfNull(provenance);
+        if (provenance.FetchedAtUtc is { } fetched) _ = RequireUtc(fetched);
+        if (provenance.UpstreamObservedAtUtc is { } observed) _ = RequireUtc(observed);
+    }
+
+    private static PlanEvidenceProvenance? CompleteTradingPostCapture(PlanEvidenceFrame frame)
+    {
+        var current = frame.CurrentOrders.Provenance;
+        var completed = frame.CompletedTransactions.Provenance;
+        if (current.Availability != PlanEvidenceAvailability.Available || completed.Availability != PlanEvidenceAvailability.Available ||
+            current.Completeness != PlanEvidenceCompleteness.Complete || completed.Completeness != PlanEvidenceCompleteness.Complete ||
+            string.IsNullOrWhiteSpace(current.CaptureId) || !string.Equals(current.CaptureId, completed.CaptureId, StringComparison.Ordinal) ||
+            current.FetchedAtUtc is not { } fetched || completed.FetchedAtUtc != fetched ||
+            !current.CoverageKeys.IsSupersetOf(new[] { "buy_orders", "sell_listings" }) ||
+            !completed.CoverageKeys.IsSupersetOf(new[] { "completed_buys", "completed_sells" }) ||
+            frame.CurrentOrders.Value is null || frame.CompletedTransactions.Value is null) return null;
+        return current;
+    }
+
+    private static PlanEvidenceProvenance? CompleteInventoryCapture(
+        PlanEvidenceSource<IReadOnlyDictionary<string, long>> source, PlanExecutionEvent execution) =>
+        HasInventoryCoverage(source, execution) ? source.Provenance : null;
+
+    private static PlanEvidenceProvenance? CompletePhysicalInventoryCapture(
+        PlanEvidenceSource<IReadOnlyDictionary<string, long>> source)
+    {
+        var provenance = source.Provenance;
+        return source.Value is not null && provenance.Availability == PlanEvidenceAvailability.Available &&
+            provenance.Completeness == PlanEvidenceCompleteness.Complete && !string.IsNullOrWhiteSpace(provenance.CaptureId) &&
+            provenance.FetchedAtUtc is not null && provenance.UpstreamObservedAtUtc is not null ? provenance : null;
+    }
+
+    private static bool HasInventoryCoverage(PlanEvidenceSource<IReadOnlyDictionary<string, long>> source, PlanExecutionEvent execution)
+    {
+        var provenance = source.Provenance;
+        var requiredKeys = execution.Effects.Where(effect => effect.Kind == PlanResourceKind.Inventory && effect.Quantity != 0)
+            .Select(Key).Distinct(StringComparer.Ordinal).ToArray();
+        return requiredKeys.Length > 0 && source.Value is not null && provenance.Availability == PlanEvidenceAvailability.Available &&
+            provenance.Completeness == PlanEvidenceCompleteness.Complete && !string.IsNullOrWhiteSpace(provenance.CaptureId) &&
+            provenance.UpstreamObservedAtUtc is { } observedAt && observedAt >= execution.OccurredAtUtc &&
+            requiredKeys.All(provenance.CoverageKeys.Contains);
+    }
+
+    private static bool IsNewCapture(PlanEvidenceProvenance provenance, string? previousCaptureId, DateTimeOffset? previousCapturedAtUtc) =>
+        !string.IsNullOrWhiteSpace(provenance.CaptureId) && provenance.FetchedAtUtc is { } fetchedAt &&
+        !string.Equals(provenance.CaptureId, previousCaptureId, StringComparison.Ordinal) &&
+        (previousCapturedAtUtc is null || fetchedAt > previousCapturedAtUtc.Value);
+
+    private static bool IsNewPhysicalCapture(PlanEvidenceProvenance provenance, string? previousCaptureId,
+        DateTimeOffset? previousFetchedAtUtc, DateTimeOffset? previousObservedAtUtc) =>
+        !string.IsNullOrWhiteSpace(provenance.CaptureId) && provenance.FetchedAtUtc is { } fetchedAt &&
+        provenance.UpstreamObservedAtUtc is { } observedAt && !string.Equals(provenance.CaptureId, previousCaptureId, StringComparison.Ordinal) &&
+        (previousFetchedAtUtc is null || fetchedAt > previousFetchedAtUtc.Value) &&
+        (previousObservedAtUtc is null || observedAt > previousObservedAtUtc.Value);
+
+    private static bool IsNewEventNegativeCapture(PlanExecutionEvent execution, PlanEvidenceProvenance provenance)
+    {
+        var capturedAt = execution.Action == PlanStepAction.Craft ? provenance.UpstreamObservedAtUtc : provenance.FetchedAtUtc;
+        return !string.IsNullOrWhiteSpace(provenance.CaptureId) && capturedAt is { } at &&
+            at >= execution.OccurredAtUtc &&
+            !string.Equals(provenance.CaptureId, execution.LastNegativeEvidenceCaptureId, StringComparison.Ordinal) &&
+            (execution.LastNegativeEvidenceCapturedAtUtc is null || at > execution.LastNegativeEvidenceCapturedAtUtc.Value);
     }
 
     private static bool MateriallyDifferent(long? replacement, long? current)
@@ -651,13 +819,13 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         .Select(value => $"{value.Kind}:{value.Identity}:{value.ItemId}:{value.Quantity}:{value.UnitPrice.Copper}:{value.CreatedAtUtc.UtcTicks}"));
 
     private static bool IsCancellationAbsence(PlanRecord plan, PlanExecutionEvent execution,
-        IReadOnlyCollection<PlanVerifiedEvidence> evidence, bool freshCapture, IReadOnlySet<PlanEvidenceKind>? completeKinds)
+        IReadOnlyCollection<PlanVerifiedEvidence> evidence, bool freshCapture)
     {
-        if (execution.Action != PlanStepAction.CancelBuyOrder || !freshCapture || !HasCompleteRelevantObservation(execution, completeKinds)) return false;
+        if (execution.Action != PlanStepAction.CancelBuyOrder || !freshCapture) return false;
         var step = plan.Steps.FirstOrDefault(value => value.Id == execution.StepId);
         if (string.IsNullOrWhiteSpace(step?.ExternalIdentity)) return false;
         return !evidence.Any(value => value.Kind == PlanEvidenceKind.BuyOrder && value.ItemId == step.ItemId &&
-            value.ObservedAtUtc >= execution.OccurredAtUtc &&
+            value.CapturedAtUtc >= execution.OccurredAtUtc &&
             string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal));
     }
 
@@ -668,7 +836,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         if (step is null) return false;
         var issuedAt = execution.IssuedAtUtc ?? step.IssuedAtUtc ?? plan.StartedAtUtc;
         return evidence.Any(value => value.Kind == PlanEvidenceKind.CompletedBuy && value.ItemId == step.ItemId &&
-            value.ObservedAtUtc >= execution.OccurredAtUtc &&
+            value.CapturedAtUtc >= execution.OccurredAtUtc &&
             (string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal) ||
              value.CreatedAtUtc >= issuedAt && (execution.UnitPrice is not { } price || value.UnitPrice == price)));
     }
@@ -686,7 +854,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         if (execution.Action != PlanStepAction.CancelBuyOrder) return false;
         var step = plan.Steps.FirstOrDefault(value => value.Id == execution.StepId);
         return !string.IsNullOrWhiteSpace(step?.ExternalIdentity) && evidence.Any(value => value.Kind == PlanEvidenceKind.BuyOrder && value.ItemId == step.ItemId &&
-            value.ObservedAtUtc >= execution.OccurredAtUtc &&
+            value.CapturedAtUtc >= execution.OccurredAtUtc &&
             string.Equals(step.ExternalIdentity, value.ExternalIdentity ?? value.Identity, StringComparison.Ordinal));
     }
 

@@ -368,6 +368,7 @@ public sealed class PlanOrchestrationServiceTests
         Assert.Equal(PlanState.RecheckRequired, firstMismatch.State);
         Assert.Equal(PlanState.RecheckRequired, unrelated.State);
         Assert.Equal(PlanState.ReconciliationRequired, secondMismatch.State);
+        Assert.Equal(PlanReconciliationReason.TradingPostEvidenceMismatch, secondMismatch.ReconciliationReason);
     }
 
     [Fact]
@@ -464,6 +465,7 @@ public sealed class PlanOrchestrationServiceTests
         Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled.Events[0].State);
         Assert.Equal(PlanState.ReconciliationRequired, reconciled.State);
         Assert.Equal(PlanReconciliationState.Contradicted, reconciled.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.CancellationLateFill, reconciled.ReconciliationReason);
     }
 
     [Fact]
@@ -513,11 +515,12 @@ public sealed class PlanOrchestrationServiceTests
         var first = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(16),
             [current], Now.AddMinutes(16), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
         var second = service.ReconcileWithVerifiedState(first, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(17),
-            [current with { ObservedAtUtc = Now.AddMinutes(17) }], Now.AddMinutes(17), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+            [current with { CapturedAtUtc = Now.AddMinutes(17) }], Now.AddMinutes(17), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
 
         Assert.Equal(PlanState.RecheckRequired, first.State);
         Assert.Equal(PlanState.ReconciliationRequired, second.State);
         Assert.Equal(PlanReconciliationState.Contradicted, second.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.CancellationStillVisible, second.ReconciliationReason);
     }
 
     [Fact]

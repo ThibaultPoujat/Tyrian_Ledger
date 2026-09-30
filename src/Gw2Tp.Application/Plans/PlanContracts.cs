@@ -1,4 +1,6 @@
 using Gw2Tp.Domain.Finance;
+using Gw2Tp.Application.PersonalTradingPost;
+using System.Text.Json;
 
 namespace Gw2Tp.Application.Plans;
 
@@ -8,8 +10,11 @@ public enum PlanStepAction { BuyNow = 1, PlaceBuyOrder, CancelBuyOrder, List, Re
 public enum PlanStepState { Pending = 1, Current, LocallyReported, AwaitingConfirmation, Confirmed, PartiallyConfirmed, RecheckRequired, Invalidated }
 public enum PlanShadowEventState { PendingConfirmation = 1, Confirmed, PartiallyConfirmed, Reversed, Invalidated }
 public enum PlanReconciliationState { None = 1, AwaitingEvidence, Compatible, Contradicted }
+public enum PlanReconciliationReason { None = 0, CraftInventoryMismatch, TradingPostEvidenceMismatch, CancellationStillVisible, CancellationLateFill, OpportunityChanged }
 public enum PlanResourceKind { Cash = 1, Inventory, OpenOrderExposure, Position, ExpectedIncoming }
 public enum PlanEvidenceKind { BuyOrder = 1, SellListing, CompletedBuy, CompletedSell }
+public enum PlanEvidenceAvailability { Unknown = 0, Available, Unavailable }
+public enum PlanEvidenceCompleteness { Unknown = 0, Partial, Complete }
 
 /// <summary>Versioned, typed resource demand. Money is always exact copper.</summary>
 public sealed record PlanResourceRequirement(PlanResourceKind Kind, string ResourceId, long Quantity, Money Cash);
@@ -46,7 +51,8 @@ public sealed record PlanExecutionEvent(
     Money? VerifiedUnitPrice = null, PlanEvidenceKind? ExpectedEvidenceKind = null,
     DateTimeOffset? IssuedAtUtc = null, string? LastRelevantEvidenceFingerprint = null,
     IReadOnlyList<string>? VerifiedEvidenceIds = null, PlanStepAction? Action = null,
-    DateTimeOffset? FirstNegativeEvidenceCapturedAtUtc = null, int NegativeEvidenceCaptureCount = 0);
+    DateTimeOffset? FirstNegativeEvidenceCapturedAtUtc = null, int NegativeEvidenceCaptureCount = 0,
+    string? LastNegativeEvidenceCaptureId = null, DateTimeOffset? LastNegativeEvidenceCapturedAtUtc = null);
 
 public sealed record PlanRecord(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,
@@ -63,7 +69,12 @@ public sealed record PlanRecord(
     long Revision = 0,
     bool IsCancelled = false,
     DateTimeOffset? CancellationReconciliationExpiresAtUtc = null,
-    bool IsReconciliationOnly = false);
+    bool IsReconciliationOnly = false,
+    string? LastEvidenceCaptureId = null,
+    string? LastPhysicalInventoryCaptureId = null,
+    DateTimeOffset? LastPhysicalInventoryFetchedAtUtc = null,
+    DateTimeOffset? LastPhysicalInventoryObservedAtUtc = null,
+    PlanReconciliationReason ReconciliationReason = PlanReconciliationReason.None);
 
 public enum PlanCompletionOperation { ReportPerformed = 1, NotPerformed }
 
@@ -96,8 +107,69 @@ public sealed record PlanCompletionResult(PlanCompletionStatus Status, PlanCompl
 
 public sealed record PlanVerifiedEvidence(
     string Identity, PlanEvidenceKind Kind, int ItemId, int Quantity, Money UnitPrice,
-    DateTimeOffset CreatedAtUtc, DateTimeOffset ObservedAtUtc,
+    DateTimeOffset CreatedAtUtc, DateTimeOffset CapturedAtUtc,
     string? ExternalIdentity = null);
+
+/// <summary>Source-local capture facts; fetch time and upstream observation time remain distinct.</summary>
+public sealed record PlanEvidenceProvenance(
+    string? CaptureId,
+    DateTimeOffset? FetchedAtUtc,
+    DateTimeOffset? UpstreamObservedAtUtc,
+    PlanEvidenceAvailability Availability,
+    PlanEvidenceCompleteness Completeness,
+    IReadOnlySet<string> CoverageKeys);
+
+public sealed record PlanEvidenceSource<T>(PlanEvidenceProvenance Provenance, T? Value);
+
+/// <summary>A trusted, account-scoped reconciliation input with independent source provenance.</summary>
+public sealed record PlanEvidenceFrame(
+    AccountScope AccountScope,
+    DateTimeOffset EvaluationTimeUtc,
+    PlanEvidenceSource<IReadOnlyDictionary<string, long>> PhysicalInventory,
+    PlanEvidenceSource<Money> Cash,
+    PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>> CurrentOrders,
+    PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>> CompletedTransactions);
+
+/// <summary>Structural comparison for durable plans containing record collections and dictionaries.</summary>
+public static class PlanRecordSemantics
+{
+    public static bool AreEqual(PlanRecord left, PlanRecord right)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+        using var leftJson = JsonDocument.Parse(JsonSerializer.Serialize(left));
+        using var rightJson = JsonDocument.Parse(JsonSerializer.Serialize(right));
+        return Equal(leftJson.RootElement, rightJson.RootElement);
+    }
+
+    private static bool Equal(JsonElement left, JsonElement right)
+    {
+        if (left.ValueKind != right.ValueKind) return false;
+        switch (left.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var leftProperties = left.EnumerateObject().OrderBy(value => value.Name, StringComparer.Ordinal).ToArray();
+                var rightProperties = right.EnumerateObject().OrderBy(value => value.Name, StringComparer.Ordinal).ToArray();
+                return leftProperties.Length == rightProperties.Length && leftProperties.Zip(rightProperties)
+                    .All(pair => pair.First.Name == pair.Second.Name && Equal(pair.First.Value, pair.Second.Value));
+            case JsonValueKind.Array:
+                var leftItems = left.EnumerateArray().ToArray();
+                var rightItems = right.EnumerateArray().ToArray();
+                return leftItems.Length == rightItems.Length && leftItems.Zip(rightItems).All(pair => Equal(pair.First, pair.Second));
+            case JsonValueKind.String:
+                return left.GetString() == right.GetString();
+            case JsonValueKind.Number:
+                return left.GetRawText() == right.GetRawText();
+            case JsonValueKind.True:
+            case JsonValueKind.False:
+            case JsonValueKind.Null:
+            case JsonValueKind.Undefined:
+                return true;
+            default:
+                return left.GetRawText() == right.GetRawText();
+        }
+    }
+}
 
 public sealed class PlanConcurrencyException : InvalidOperationException
 {
@@ -136,11 +208,7 @@ public interface IPlanOrchestrationService
     PlanRecord ReportStep(PlanRecord plan, int quantity, Money? unitPrice, DateTimeOffset occurredAtUtc);
     PlanRecord CancelUnperformedStep(PlanRecord plan);
     PlanRecord UndoLastStep(PlanRecord plan, DateTimeOffset occurredAtUtc);
-    PlanRecord ReconcileWithVerifiedState(PlanRecord plan, Money verifiedCash,
-        IReadOnlyDictionary<string, long> verifiedQuantities, DateTimeOffset observedAtUtc,
-        IReadOnlyCollection<PlanVerifiedEvidence>? evidence = null,
-        DateTimeOffset? evidenceCapturedAtUtc = null,
-        IReadOnlySet<PlanEvidenceKind>? completeEvidenceKinds = null);
+    PlanRecord ReconcileWithVerifiedState(PlanRecord plan, AccountScope trustedAccountScope, PlanEvidenceFrame evidenceFrame);
     PlanRecord ApplyRefresh(PlanRecord plan, PlanCandidate? currentCandidate, bool evidenceReady);
     PlanRecord Reconcile(PlanRecord plan, IReadOnlyCollection<string> confirmedEventIds, bool materiallyContradicted);
 }

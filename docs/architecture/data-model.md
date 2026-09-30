@@ -193,6 +193,24 @@ committed in the same SQLite transaction. Receipts remain available while their
 account data is retained, are included in ordinary database backup/restore, and
 are cleared before plan/account rows during explicit personal-data reset.
 
+Reconciliation inputs use an application `PlanEvidenceFrame`; the frame itself
+is not persisted. It carries the trusted account scope, explicit UTC evaluation
+time, and separate source provenance for physical inventory, coin, current TP
+orders, and completed transactions. Provenance distinguishes local fetch time
+from optional upstream observation time and retains capture identity,
+availability, completeness, and coverage. The plan JSON stores only the
+resulting evidence-consumption identities, per-event negative-observation
+progress, and source-capture high-water marks needed to reject replayed or
+out-of-order frames under the existing revision/CAS writes.
+The current bank/material producer is partial because it omits all-character
+inventory. Atomic TP synchronization shares one local capture identity across
+its order and transaction sources when all required pages succeeded; it does
+not establish upstream cache freshness. Craft changes remain provisional until
+a producer supplies complete affected-item coverage with an upstream
+observation time. Contradicted plans retain a structured reconciliation reason
+code with durable state, and the plan response exposes it for French rendering
+at the UI boundary. VERIFY-008 remains open for external cache uncertainty.
+
 No migration in M14 creates a credential, API-key, authorization,
 token, raw-upstream-payload, accounting, market-history, position, or
 recommendation table.

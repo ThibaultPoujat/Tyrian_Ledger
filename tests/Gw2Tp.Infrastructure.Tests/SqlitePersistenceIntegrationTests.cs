@@ -598,19 +598,28 @@ public sealed class SqlitePersistenceIntegrationTests
         await database.Plans.SaveAsync(account.Id, reported);
         var cancelled = orchestration.CancelUnperformedStep(reported with { Revision = 2 });
         await database.Plans.SaveAsync(account.Id, cancelled);
-        var firstAbsence = orchestration.ReconcileWithVerifiedState(cancelled with { Revision = 3 }, new Money(1_000), new Dictionary<string, long>(), FirstObservedAtUtc.AddMinutes(1),
-            [], FirstObservedAtUtc.AddMinutes(1), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        var accountScope = new AccountScope(account.AccountScopeId);
+        var firstFrame = TradingPostFrame(accountScope, FirstObservedAtUtc.AddMinutes(1), "cancel-capture-1", new Money(1_000));
+        var firstAbsence = orchestration.ReconcileWithVerifiedState(cancelled with { Revision = 3 }, accountScope, firstFrame);
         await database.Plans.SaveAsync(account.Id, firstAbsence);
-        var terminal = orchestration.ReconcileWithVerifiedState(firstAbsence with { Revision = 4 }, new Money(1_000), new Dictionary<string, long>(), FirstObservedAtUtc.AddMinutes(16),
-            [], FirstObservedAtUtc.AddMinutes(16), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        var reopenedRepository = new SqlitePlanRepository(new SqliteConnectionFactory(database.Path), new SqliteDatabaseGate());
+        var afterRestart = Assert.Single(await reopenedRepository.GetReconciliationCandidatesAsync(account.Id));
+        var replayed = orchestration.ReconcileWithVerifiedState(afterRestart, accountScope, firstFrame);
+        Assert.True(PlanRecordSemantics.AreEqual(afterRestart, replayed));
+        Assert.Equal(1, afterRestart.Events.Single(value => value.Action == PlanStepAction.CancelBuyOrder).NegativeEvidenceCaptureCount);
+        Assert.Equal(4, afterRestart.Revision);
+
+        var secondFrame = TradingPostFrame(accountScope, FirstObservedAtUtc.AddMinutes(16), "cancel-capture-2", new Money(1_000));
+        var terminal = orchestration.ReconcileWithVerifiedState(afterRestart, accountScope, secondFrame);
         await database.Plans.SaveAsync(account.Id, terminal);
 
         var restarted = orchestration.Start(candidate, SecondObservedAtUtc);
         Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, restarted, new Money(1_000), Money.Zero, new Dictionary<string, long>()));
 
-        var reopened = orchestration.ReconcileWithVerifiedState(terminal with { Revision = 5 }, new Money(900), new Dictionary<string, long> { ["2:42"] = 1 }, FirstObservedAtUtc.AddMinutes(17),
-            [new PlanVerifiedEvidence("CompletedBuy:7", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100), FirstObservedAtUtc.AddSeconds(5), FirstObservedAtUtc.AddMinutes(17), "order-7")],
-            FirstObservedAtUtc.AddMinutes(17), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+        var lateFill = new PlanVerifiedEvidence("CompletedBuy:7", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100),
+            FirstObservedAtUtc.AddSeconds(5), FirstObservedAtUtc.AddMinutes(17), "order-7");
+        var reopened = orchestration.ReconcileWithVerifiedState(terminal with { Revision = 5 }, accountScope,
+            TradingPostFrame(accountScope, FirstObservedAtUtc.AddMinutes(17), "cancel-capture-late-fill", new Money(900), completed: [lateFill]));
         await database.Plans.SaveAsync(account.Id, reopened);
 
         Assert.True(reopened.IsReconciliationOnly);
@@ -1944,6 +1953,24 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     private static IReadOnlySet<PlanEvidenceKind> Complete(params PlanEvidenceKind[] kinds) => new HashSet<PlanEvidenceKind>(kinds);
+
+    private static PlanEvidenceFrame TradingPostFrame(AccountScope scope, DateTimeOffset evaluatedAtUtc, string captureId,
+        Money cash, IReadOnlyList<PlanVerifiedEvidence>? current = null, IReadOnlyList<PlanVerifiedEvidence>? completed = null)
+    {
+        var unknownPhysical = new PlanEvidenceProvenance(null, null, null, PlanEvidenceAvailability.Unavailable,
+            PlanEvidenceCompleteness.Unknown, new HashSet<string>(StringComparer.Ordinal));
+        var currentTp = new PlanEvidenceProvenance(captureId, evaluatedAtUtc, null, PlanEvidenceAvailability.Available,
+            PlanEvidenceCompleteness.Complete, new HashSet<string>(new[] { "buy_orders", "sell_listings" }, StringComparer.Ordinal));
+        var completedTp = new PlanEvidenceProvenance(captureId, evaluatedAtUtc, null, PlanEvidenceAvailability.Available,
+            PlanEvidenceCompleteness.Complete, new HashSet<string>(new[] { "completed_buys", "completed_sells" }, StringComparer.Ordinal));
+        var cashSource = new PlanEvidenceSource<Money>(new PlanEvidenceProvenance($"cash:{captureId}", evaluatedAtUtc, null,
+            PlanEvidenceAvailability.Available, PlanEvidenceCompleteness.Complete,
+            new HashSet<string>(new[] { "coin" }, StringComparer.Ordinal)), cash);
+        return new PlanEvidenceFrame(scope, evaluatedAtUtc,
+            new PlanEvidenceSource<IReadOnlyDictionary<string, long>>(unknownPhysical, null), cashSource,
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(currentTp, current ?? Array.Empty<PlanVerifiedEvidence>()),
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completedTp, completed ?? Array.Empty<PlanVerifiedEvidence>()));
+    }
 
     private static string FindRepositoryRoot()
     {
