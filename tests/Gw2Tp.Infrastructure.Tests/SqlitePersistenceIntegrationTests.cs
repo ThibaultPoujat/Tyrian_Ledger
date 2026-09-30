@@ -394,7 +394,7 @@ public sealed class SqlitePersistenceIntegrationTests
         await using var database = await TestDatabase.CreateAsync();
         var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("account-evidence-allocation", FirstObservedAtUtc);
         var orchestration = new PlanOrchestrationService();
-        foreach (var (planId, quantity) in new[] { ("plan-a", 10), ("plan-b", 4) })
+        foreach (var (planId, quantity) in new[] { ("plan-a", 4), ("plan-b", 10) })
         {
             var plan = TwoStepPlan(planId, quantity);
             Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, plan,
@@ -420,8 +420,12 @@ public sealed class SqlitePersistenceIntegrationTests
         Assert.Equal(["plan-a", "plan-b"], reconciled.Select(plan => plan.Id));
         Assert.All(reconciled, plan => Assert.Equal(PlanShadowEventState.Confirmed,
             plan.Events.Single(value => value.StepId == "step:a").State));
-        Assert.Equal(["CompletedBuy:2"], reconciled[0].Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
-        Assert.Equal(["CompletedBuy:1"], reconciled[1].Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:1"], reconciled[0].Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:2"], reconciled[1].Events.Single(value => value.StepId == "step:a").VerifiedEvidenceIds);
+        var effective = PlanOrchestrationService.ProjectEffectiveResources(new Money(2_000),
+            new Dictionary<string, long> { ["2:42"] = 14 }, reconciled.SelectMany(value => value.Events).ToArray());
+        Assert.Equal(2_000, effective.EffectiveCash.Copper);
+        Assert.Equal(14, effective.Quantities["2:42"]);
 
         var reopened = new SqlitePlanRepository(new SqliteConnectionFactory(database.Path), new SqliteDatabaseGate());
         var beforeReplay = await reopened.GetReconciliationCandidatesAsync(account.Id);

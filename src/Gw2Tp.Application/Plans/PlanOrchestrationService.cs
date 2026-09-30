@@ -715,15 +715,23 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         long supportedQuantity = Math.Max(execution.VerifiedQuantity.GetValueOrDefault(),
             Math.Min((long)execution.Quantity, ownedEvidence.Sum(value => (long)value.Quantity)));
         var newlyClaimedEvidence = new List<PlanVerifiedEvidence>();
-        // Largest quantities first minimize the number of claimed identities;
-        // provenance and identity break ties deterministically.
-        foreach (var candidate in matching.Where(value => !ownedEvidenceIds.Contains(value.Identity))
-            .OrderByDescending(value => value.Quantity)
-            .ThenByDescending(value => value.CreatedAtUtc)
-            .ThenBy(value => value.Identity, StringComparer.Ordinal))
+        var unclaimedEvidence = matching.Where(value => !ownedEvidenceIds.Contains(value.Identity)).ToList();
+        while (supportedQuantity < execution.Quantity && unclaimedEvidence.Count > 0)
         {
-            if (supportedQuantity >= execution.Quantity) break;
+            var remainingQuantity = execution.Quantity - supportedQuantity;
+            // Prefer the smallest identity that completes the residual. If none can,
+            // the largest partial identity preserves the minimum claim count.
+            var candidate = unclaimedEvidence.Where(value => value.Quantity >= remainingQuantity)
+                .OrderBy(value => value.Quantity)
+                .ThenByDescending(value => value.CreatedAtUtc)
+                .ThenBy(value => value.Identity, StringComparer.Ordinal)
+                .FirstOrDefault()
+                ?? unclaimedEvidence.OrderByDescending(value => value.Quantity)
+                    .ThenByDescending(value => value.CreatedAtUtc)
+                    .ThenBy(value => value.Identity, StringComparer.Ordinal)
+                    .First();
             newlyClaimedEvidence.Add(candidate);
+            unclaimedEvidence.Remove(candidate);
             supportedQuantity = Math.Min((long)execution.Quantity, supportedQuantity + candidate.Quantity);
         }
         var priceEvidence = ownedEvidence.FirstOrDefault() ?? newlyClaimedEvidence.FirstOrDefault();
