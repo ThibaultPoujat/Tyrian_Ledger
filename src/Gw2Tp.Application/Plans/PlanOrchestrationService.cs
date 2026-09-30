@@ -276,6 +276,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                     : CompleteTradingPostCapture(evidenceFrame);
                 var canUseNegativeEvidence = negativeCapture is not null && IsNewEventNegativeCapture(execution, negativeCapture) &&
                     (execution.Action == PlanStepAction.Craft ? freshPhysicalCapture : freshCapture);
+                var evidenceSelectionIndeterminate = false;
                 if (!blockedByPending && HasCancellationFillEvidence(plan, execution, availableEvidence))
                 {
                     cancellationEvidenceConflict = true;
@@ -309,7 +310,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                     (!blockedByPending || execution.Action is PlanStepAction.List or PlanStepAction.Relist &&
                         plan.Events.Any(value => value.Sequence < execution.Sequence && value.Action == PlanStepAction.Craft &&
                             value.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed)) &&
-                    TryMatchEvidence(plan, execution, availableEvidence, out var observedQuantity, out var observedPrice, out var verifiedEvidenceIds))
+                    TryMatchEvidence(plan, execution, availableEvidence, out var observedQuantity, out var observedPrice,
+                        out var verifiedEvidenceIds, out evidenceSelectionIndeterminate))
                 {
                     var cumulativeQuantity = Math.Max(execution.VerifiedQuantity.GetValueOrDefault(), observedQuantity);
                     var nextState = cumulativeQuantity >= execution.Quantity ? PlanShadowEventState.Confirmed : PlanShadowEventState.PartiallyConfirmed;
@@ -317,6 +319,10 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                         LastRelevantEvidenceFingerprint = freshCapture ? relevantFingerprint : execution.LastRelevantEvidenceFingerprint,
                         VerifiedEvidenceIds = (execution.VerifiedEvidenceIds ?? []).Concat(verifiedEvidenceIds).Distinct(StringComparer.Ordinal).ToArray() };
                     if (nextState == PlanShadowEventState.PartiallyConfirmed) blockedByPending = true;
+                }
+                else if (evidenceSelectionIndeterminate)
+                {
+                    blockedByPending = true;
                 }
                 else if (!blockedByPending && execution.Action == PlanStepAction.Craft)
                 {
@@ -697,11 +703,13 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     }
 
     private static bool TryMatchEvidence(PlanRecord plan, PlanExecutionEvent execution,
-        IReadOnlyCollection<PlanVerifiedEvidence> evidence, out int quantity, out Money unitPrice, out IReadOnlyList<string> verifiedEvidenceIds)
+        IReadOnlyCollection<PlanVerifiedEvidence> evidence, out int quantity, out Money unitPrice,
+        out IReadOnlyList<string> verifiedEvidenceIds, out bool selectionIndeterminate)
     {
         quantity = 0;
         unitPrice = Money.Zero;
         verifiedEvidenceIds = [];
+        selectionIndeterminate = false;
         if (execution.ExpectedEvidenceKind is not { } expectedKind || execution.Action == PlanStepAction.CancelBuyOrder) return false;
         var step = plan.Steps.FirstOrDefault(value => value.Id == execution.StepId);
         if (step is null) return false;
@@ -719,7 +727,11 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var newlyClaimedEvidence = SelectMinimumSupportingEvidence(
             matching.Where(value => !ownedEvidenceIds.Contains(value.Identity)).ToArray(),
             execution.Quantity - supportedQuantity);
-        if (newlyClaimedEvidence is null) return false;
+        if (newlyClaimedEvidence is null)
+        {
+            selectionIndeterminate = true;
+            return false;
+        }
         supportedQuantity = Math.Min((long)execution.Quantity,
             supportedQuantity + newlyClaimedEvidence.Sum(value => (long)value.Quantity));
         var priceEvidence = ownedEvidence.FirstOrDefault() ?? newlyClaimedEvidence.FirstOrDefault();

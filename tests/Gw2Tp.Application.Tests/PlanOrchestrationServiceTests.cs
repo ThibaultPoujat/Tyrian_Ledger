@@ -588,15 +588,29 @@ public sealed class PlanOrchestrationServiceTests
             .Select(index => new PlanVerifiedEvidence($"CompletedBuy:{index:D4}", PlanEvidenceKind.CompletedBuy, 42,
                 100 + index % 151, new Money(100), Now.AddSeconds(5), Now.AddMinutes(1)))
             .ToArray();
-        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(1), evidence);
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(16), evidence);
+        var changedFrame = CompleteTradingPostFrame(scope, Now.AddMinutes(17),
+        [
+            .. evidence,
+            new PlanVerifiedEvidence("CompletedBuy:changed", PlanEvidenceKind.CompletedBuy, 42, 150,
+                new Money(100), Now.AddSeconds(5), Now.AddMinutes(17)),
+        ]);
 
-        var first = service.ReconcileAccountPlans([reported], scope, frame, Now.AddMinutes(1)).Single();
-        var replayed = service.ReconcileAccountPlans([first], scope, frame, Now.AddMinutes(1)).Single();
+        var first = service.ReconcileAccountPlans([reported], scope, frame, Now.AddMinutes(16)).Single();
+        var changed = service.ReconcileAccountPlans([first], scope, changedFrame, Now.AddMinutes(17)).Single();
+        var replayed = service.ReconcileAccountPlans([changed], scope, changedFrame, Now.AddMinutes(17)).Single();
 
-        Assert.Equal(PlanShadowEventState.PendingConfirmation, first.Events.Single().State);
-        Assert.Null(first.Events.Single().VerifiedQuantity);
-        Assert.Empty(first.Events.Single().VerifiedEvidenceIds ?? []);
-        Assert.Equal(first.Events, replayed.Events);
+        Assert.All([first, changed, replayed], plan =>
+        {
+            Assert.Equal(PlanShadowEventState.PendingConfirmation, plan.Events.Single().State);
+            Assert.Null(plan.Events.Single().VerifiedQuantity);
+            Assert.Empty(plan.Events.Single().VerifiedEvidenceIds ?? []);
+            Assert.Equal(PlanReconciliationState.AwaitingEvidence, plan.ReconciliationState);
+            Assert.Equal(PlanReconciliationReason.None, plan.ReconciliationReason);
+            Assert.Equal(0, plan.ConsecutiveContradictionCount);
+        });
+        Assert.Equal(first.Events, changed.Events);
+        Assert.Equal(changed.Events, replayed.Events);
     }
 
     [Fact]
