@@ -205,13 +205,12 @@ test('the corrective roadmap stops coding at the explicit integration checkpoint
 });
 
 test('P01A checkpoint prepares only P01B before returning to the integration gate', async () => {
-  const [index, guide, fixture, { ticketByIssue, checkpointIssues }] = await Promise.all([
-    readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8'),
-    readFile(new URL('docs/workflow/model-effort-guide.md', repositoryRoot), 'utf8'),
+  const [fixture, { ticketByIssue, checkpointIssues }] = await Promise.all([
     readFile(new URL('../fixtures/live-state-p01a-checkpoint.json', import.meta.url), 'utf8'),
     readTicketContracts(new URL('docs/milestones/', repositoryRoot).pathname),
   ]);
   const operational = JSON.parse(fixture);
+  const { roadmapIndex: index, modelGuide: guide } = operational;
   const current = () => deriveLiveState({ index, issue98: operational.issue98Body, guide, ticketByIssue, checkpointIssues, operational });
   assert.equal(current().completed.number, 152);
   assert.equal(current().preferred, 'TKT-M22-C01 / #153');
@@ -224,6 +223,62 @@ test('P01A checkpoint prepares only P01B before returning to the integration gat
   assert.equal(current().preferred, 'TKT-M22-G01 / #150');
   assert.match(renderGeneratedBlock(current()), /Preferred next implementation ticket: `None — planning checkpoint required`/);
   assert.match(renderGeneratedBlock(current()), /Next required checkpoint: `TKT-M22-G01 \/ #150`/);
+});
+
+async function batchFixture() {
+  const [index, guide, fixture, contracts] = await Promise.all([
+    readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8'),
+    readFile(new URL('docs/workflow/model-effort-guide.md', repositoryRoot), 'utf8'),
+    readFile(new URL('../fixtures/live-state-batch-01.json', import.meta.url), 'utf8'),
+    readTicketContracts(new URL('docs/milestones/', repositoryRoot).pathname),
+  ]);
+  const operational = JSON.parse(fixture);
+  return { index, guide, ...contracts, issue98: operational.issue98Body, operational };
+}
+
+test('the prepared batch advances across four tickets and stops at the integration checkpoint', async () => {
+  const source = await batchFixture();
+  const current = () => deriveLiveState(source);
+  assert.equal(current().completed.number, 156);
+  assert.equal(current().preferred, 'TKT-M22-C02 / #157');
+  assert.deepEqual(current().gates, ['TKT-M22-P01C / #158', 'TKT-M22-02 / #96']);
+  for (const [closed, next] of [
+    [157, 'TKT-M22-P01C / #158'],
+    [158, 'TKT-M22-P01D / #159'],
+    [159, 'TKT-M22-P05A / #160'],
+    [160, 'TKT-M22-P05B / #161'],
+  ]) {
+    source.operational.issues[closed].state = 'CLOSED';
+    assert.equal(current().preferred, next);
+    assert.equal(current().preferredKind, 'implementation');
+    assert.equal(current().alternate, 'None');
+  }
+  // The model guide still lists #158; routine closure removes only its active status.
+  assert.ok(parseSolGates(source.guide).some(gate => gate.number === 158));
+  assert.deepEqual(current().gates, ['TKT-M22-02 / #96']);
+  source.operational.issues[158].state = 'OPEN';
+  assert.deepEqual(current().gates, ['TKT-M22-P01C / #158', 'TKT-M22-02 / #96']);
+  source.operational.issues[158].state = 'CLOSED';
+  source.operational.issues[161].state = 'CLOSED';
+  assert.equal(current().preferred, 'TKT-M22-G01 / #150');
+  assert.equal(current().preferredKind, 'checkpoint');
+  assert.match(renderGeneratedBlock(current()), /Preferred next implementation ticket: `None — planning checkpoint required`/);
+  assert.doesNotMatch(renderGeneratedBlock(current()), /Preferred next implementation ticket: `TKT-M22-02/);
+});
+
+test('batch queue disagreement fails closed rather than selecting another prepared ticket', async () => {
+  const source = await batchFixture();
+  source.issue98 = source.issue98.replace(' -> #159 TKT-M22-P01D', ' -> #161 TKT-M22-P05B');
+  assert.throws(() => deriveLiveState(source), /disagree about the execution order/);
+});
+
+test('a listed review gate cannot disappear because GitHub authority is missing', async () => {
+  const source = await batchFixture();
+  // A valid mapped gate outside the current queue still requires operational state.
+  source.guide = source.guide.replace('## Separate Sol review gate',
+    '## Separate Sol review gate\n\n- #999 / TKT-M22-TEST — explicit additional gate for this failure fixture.');
+  source.ticketByIssue.set(999, 'TKT-M22-TEST');
+  assert.throws(() => deriveLiveState(source), /GitHub state is missing issue #999/);
 });
 
 function begin() { return '<!-- BEGIN GENERATED LIVE STATE -->'; }

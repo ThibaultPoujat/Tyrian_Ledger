@@ -94,6 +94,7 @@ export function deriveLiveState({ index, issue98, guide, ticketByIssue, checkpoi
     : null;
 
   const gates = parseSolGates(guide);
+  requireIssues(operational.issues, gates.map((gate) => gate.number));
   for (const gate of gates) {
     if (ticketByIssue.get(gate.number) !== gate.ticket) {
       throw new Error(`The Sol-gate ticket mapping for #${gate.number} does not match its ticket contract.`);
@@ -112,7 +113,8 @@ export function deriveLiveState({ index, issue98, guide, ticketByIssue, checkpoi
     preferred: ticketReference(preferredNumber, ticketByIssue),
     preferredKind: checkpointIssues.has(preferredNumber) ? 'checkpoint' : 'implementation',
     alternate: alternateNumber === null ? 'None' : ticketReference(alternateNumber, ticketByIssue),
-    gates: gates.map((gate) => ticketReference(gate.number, ticketByIssue)),
+    gates: gates.filter((gate) => operational.issues[gate.number].state === 'OPEN')
+      .map((gate) => ticketReference(gate.number, ticketByIssue)),
   };
 }
 

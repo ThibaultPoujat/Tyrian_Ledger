@@ -65,6 +65,13 @@ Before implementation handoff:
 
 TKT-M21-S01 / #129 provides deterministic post-merge maintenance of the generated block. The workflow can be manually dispatched if a failed/disabled run leaves state stale, but normal merge progression requires no owner editing. Per-field session-start reconciliation remains the fallback when automation is stale or failed.
 
+Within a prepared batch, proceed to the next contract after its predecessor
+merges and its entry evidence is checked. Do not create a planning-only PR after
+every merge. The implementation author records their batch evidence row; the next
+session verifies actual delivery. Astra prepares the next 3–5 contracts only at
+the batch checkpoint or an explicit escalation. Keep one implementation per PR
+and owner merge. See `goal-session.md` and the current batch manifest.
+
 ## Review paths
 
 ### NORMAL

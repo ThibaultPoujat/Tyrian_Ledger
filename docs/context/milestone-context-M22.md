@@ -8,18 +8,17 @@ six approved prototypes, and can be installed by the owner and later friends.
 
 ## Current scope and readiness
 
-The merged loop/calculation work (#95/#145) is a foundation, not proof that the
-audit findings are resolved. P00 / #148 prepares authority and references.
-P01A / #149 merged in #152; the [checkpoint](../milestones/M22/checkpoint-p01a.md)
-records accepted resource-admission evidence. C01 / #153 prepares P01B / #154
-(step-bound durable completion commands), Ready after #153 merges. G01 / #150 tracks
-remaining P01–P06 exits; it is not a coding Goal. #96 remains final hardening,
-then #97 evaluates supported outcomes. INDEX and #98 own exact order.
+P00 / #148, P01A / #149 and P01B / #154 are merged foundations. Accepted #156
+review/CI is in [B1](../milestones/M22/batch-01.md). C02 / #157 prepares four
+contracts: #158 → #159 → #160 → #161, then #150 checkpoint. INDEX and #98 own
+order. Prepared successors need their entry conditions verified, not a new Astra
+planning session after every merge. Keep one ticket/Goal/PR and owner merge.
 
-[Approved delivery plan](../milestones/approved-delivery-plan.md) maps all 19
-findings and package exits. Only Ready child tickets may be implemented. Each
-package needs decomposition at its checkpoint; do not implement a package in
-one session. Preserve existing work and make corrective tickets explicit.
+The [remaining map](../milestones/remaining-delivery-map.md) decomposes all
+P01–P07 work. Later units remain Planned; Astra promotes the next 3–5 at batch
+checkpoints or resolves an earlier genuine contract/owner decision. #150 stays
+open until P01–P06 evidence and owner progression acceptance; #96/#97 follow.
+UI previews are reusable fixture-backed components, not live capability.
 
 ## Shared invariants
 

@@ -1,86 +1,70 @@
-# One-Ticket Goal Handoff
+# Reusable One-Ticket Goal
 
-A Goal is a bounded execution container, not permission to implement a whole
-milestone autonomously. Use the host interface's available model selector; this
-file does not claim to configure model routing, background execution or usage
-limits. Instructions in Git make the handoff independent of chat memory.
+The same prompt works throughout a prepared batch. Model selection happens in the
+host UI; this document does not configure routing, limits or automatic reviewers.
+Use **Luna High** for B1's four implementation tickets. Keep implementation/fixes
+for one ticket together; use a new implementation context for the next ticket.
 
-## Ready definition
-
-A coding Goal starts only when its issue and repository contract have: merged
-dependencies, a concrete outcome, non-goals, exact acceptance examples, test
-commands, relevant file entry points, a risk class, model/review path and no
-unresolved owner decision blocking the work. A tracking gate is not a Ready
-coding ticket. A feature package is not automatically a ticket.
-
-For a UI ticket, also specify screen IDs from the six-image manifest, required
-states and screenshot/interaction acceptance. The agent must open the referenced
-PNGs before implementation. Never ask Luna to infer the latest design from chat.
-
-## Current implementation Goal — P01B (after #153 merges)
-
-P01A / #149 merged in PR #152. Its checkpoint is
-[recorded here](../milestones/M22/checkpoint-p01a.md). Use **Luna High** if
-available for the next bounded ticket, then paste:
+## Copyable implementation prompt
 
 ```text
-Implement only TKT-M22-P01B / GitHub issue #154 in
-ThibaultPoujat/Tyrian_Ledger, based on current develop.
+Implement exactly the next Ready implementation ticket in
+ThibaultPoujat/Tyrian_Ledger on current develop.
 
-Read AGENTS.md and reconcile CURRENT.md with its authorities. Read the M22
-context, docs/milestones/M22/tickets/TKT-M22-P01B.md and model-effort guide.
-Confirm checkpoint preparation #153 and resource fix #149 are merged.
+Read AGENTS.md. Reconcile CURRENT.md with GitHub delivery state, issue #98,
+docs/milestones/INDEX.md and docs/workflow/model-effort-guide.md.
+Use docs/milestones/M22/batch-01.md for the current prepared queue.
+Select only the first open implementation in explicit order; verify its
+predecessor merges, final-head CI/review and ticket entry conditions. Closed
+issues alone are not evidence of delivery. If the next item is #150 or a
+prerequisite/contract is invalid, stop with the exact checkpoint/blocker.
 
-Use an isolated branch/worktree. Reproduce the sequential-completion retry
-failure, then implement the ticket's step/revision-bound command contract,
-atomic durable receipt and state transition, replay/conflict behavior and
-minimal client transport wiring. Follow every acceptance vector and non-goal.
-Do not rebuild the UI or implement later reconciliation/lifecycle packages.
+Read the selected ticket and only relevant specs, source and VERIFY entries.
+Use one isolated branch/worktree and a short in-session plan. Implement its
+acceptance vectors, run required checks and preserve all stated non-goals.
+For UI work, open the ticket's approved original PNGs before coding; provide
+actual 1920×1080 screenshots and a reference comparison.
 
-Use the repository skill $tyrian-pr-review. This ticket is SOL-GATED: open a
-Draft PR, run required tests/CI, then obtain fresh independent Sol XHigh review.
-If that reviewer is unavailable, leave Draft with the exact review handoff.
-Do not impersonate the stronger review or weaken tests/gates for quota reasons.
+Use $tyrian-pr-review with the model/effort assigned by the model guide.
+NORMAL: obtain one independent review within this run when supported.
+SOL-GATED: keep Draft until green CI and fresh independent Sol XHigh approval.
+Missing review capability or visual evidence means Draft with a precise handoff,
+not self-approval or a cheaper substitute. Fix in this ticket and re-review only
+the affected diff/findings unless the authority/scope materially changed.
 
-Commit with [TKT-M22-P01B], target develop, include Closes #154 and actual M22
-milestone. Record evidence, commands/results, VERIFY limitations and next action.
-Stop after this ticket. Do not merge, implement #150 or start another ticket.
+Commit with the selected ticket prefix. Open a PR to develop with Closes #issue
+and actual M22 milestone. Put concise test/review evidence in the PR and update
+only the assigned batch evidence row with links/head/preview instructions.
+Stop after this PR/handoff. Do not merge, implement a second ticket, create a
+new planning ticket, or reinterpret the entire tracking gate as one coding task.
 ```
 
-The client change is transport-only. The six prototypes remain authoritative
-for later visual work; no new screen implementation is part of this ticket.
+After an owner merge, reuse this prompt. No new Astra Goal-writing session is
+needed while the next contract is prepared and its entry conditions hold.
+The current B1 order is #158 → #159 → #160 → #161 → #150 checkpoint.
+Update this batch-manifest pointer only at the next batch preparation.
 
-## Separate review prompt
+## Review handoff when a separate session is required
 
 ```text
-Use $tyrian-pr-review to review the PR for TKT-M22-P01B / #154 in a fresh
-Sol XHigh context. Resolve current PR/base/head, ticket and model guide.
-Confirm required validation/CI are green. Independently inspect receipt/state
-atomicity, sequential/concurrent retries, stale step/revision, payload conflicts,
-restart, cancellation/undo replay, account isolation, committed revisions and
-client logical-request identity. Check that #149 resource invariants remain.
-Do not edit or merge. Return findings, acceptance evidence and
-APPROVE / CHANGES REQUESTED / BLOCKED. Keep Draft for missing required evidence.
+Use $tyrian-pr-review to independently review PR [number] at its current head
+against develop. Read its assigned contract and the model-effort guide.
+Use the required review model/effort; do not silently substitute.
+For SOL-GATED work, confirm required validation/CI are green before the full pass.
+Inspect the diff and acceptance evidence independently. For UI, open the original
+approved references and actual screenshots. No edits or merge.
+Return findings, acceptance evidence and APPROVE / CHANGES REQUESTED / BLOCKED.
 ```
 
-## Future UI ticket addition
+## Batch checkpoint
 
-Append the following, replacing the bracketed screen list in the ready ticket:
+At #150, Astra uses the completed batch's evidence and owner preview feedback to
+assess integrated behavior and promote the next 3–5 units from
+[remaining-delivery-map.md](../milestones/remaining-delivery-map.md).
+Update both order authorities, model assignments and this reusable handoff in
+one preparation. Keep #150 open until all P01–P06 exits and owner progression
+approval. A package, fixture preview or planning document is not completion.
 
-```text
-Open the approved PNGs for [screen IDs] from
- docs/ux/prototypes/2026-09-28/manifest.json.
-Follow docs/ux/tyrian-ledger-visual-reference.md, including semantic overrides.
-Match the approved shell, layout, density, color and hierarchy. Capture actual
-1920×1080 screenshots with deterministic fixtures and compare them to the PNGs.
-The independent reviewer must inspect both sets. Keep Draft for missing evidence
-or material unapproved drift. Do not replace or regenerate approved references.
-```
-
-## Checkpoint after a ticket
-
-The owner merges only after required evidence/review. A later planning session
-checks package exits and creates the next Ready child ticket. Update both #98
-and INDEX before starting it. Keep #150 open until P01–P06 exits are evidenced;
-Neither #149 nor #154 alone completes that gate. Technical record maintenance is the
-AI's responsibility; the owner evaluates behavior and product fit.
+An early checkpoint is justified by an invalid contract/dependency, an unresolved
+owner decision or two failed attempts at the same blocker. Routine fixes,
+renamed symbols, formatting and ordinary review findings do not require Astra.

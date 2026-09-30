@@ -1,6 +1,6 @@
 # Model and Review Policy
 
-Owner direction updated 2026-09-28: Astra prepares bounded contracts, Luna can
+Owner direction updated 2026-09-29: Astra prepares batches of bounded contracts, Luna can
 implement sufficiently specified tickets, and stronger review is reserved for
 consequential changes. Model availability/usage accounting is controlled by the
 host product. This policy promises neither a quota saving nor a quota bypass.
@@ -26,12 +26,21 @@ default implementation model selection.
 | R2: complex cross-layer/stateful | Sol Medium; Luna High only with a fully specified bounded ticket | Sol Medium |
 | R3: money/resources, reconciliation, security or persistence authority | Sol High; Luna High only when explicitly authorized by a bounded contract | Sol High |
 
-Astra is used for architecture/product decisions, ticket decomposition and
-milestone evidence checks, or an explicitly requested difficult audit. It is
+Astra is used for architecture/product decisions, batches of 3–5 ticket contracts,
+batch/milestone evidence checks, or an explicitly requested difficult audit. It is
 not required for routine implementation or every PR. Max is exceptional.
 Risk alone does not imply a *separate Sol XHigh* gate; only the explicit list does.
 
 ## Planning and Goal boundaries
+
+Astra maintains the complete [remaining map](../milestones/remaining-delivery-map.md)
+and details the next batch. Later units remain Planned, not Ready. The current
+[B1 manifest](../milestones/M22/batch-01.md) has four fully specified contracts.
+After a predecessor merges with required evidence, the next Goal validates entry
+conditions and proceeds without another planning-only ticket or Astra session.
+Stop at #150 after the batch, or earlier for a real contract/owner decision.
+One implementation ticket per Goal, per-PR independent review and owner merge
+remain mandatory. Routine symbol movement is not a reason to replan the program.
 
 A short in-session plan (at most five steps) is sufficient for a Ready ticket.
 Use dedicated planning for unresolved product/architecture/financial ambiguity
@@ -56,14 +65,33 @@ TKT-M22-P00 / #148 is a one-time owner-requested Astra planning/documentation
 bootstrap (R1), reviewed independently by Sol Medium for authority/workflow
 consistency. It does not implement runtime financial changes.
 
+TKT-M22-C02 / #157 is the owner-approved R2 rolling-planning preparation,
+implemented by Astra and independently reviewed by Sol Medium.
+
+Explicit B1 implementation/review assignments:
+
+| Ticket | Implementation | Independent review |
+|---|---|---|
+| P01C / #158 | Luna High, bounded evidence contract | Fresh Sol XHigh; listed below |
+| P01D / #159 | Luna High, bounded partial-execution contract | NORMAL Sol High |
+| P05A / #160 | Luna High | NORMAL Luna High + image comparison |
+| P05B / #161 | Luna High, bounded fixture interactions | NORMAL Sol Medium + image comparison |
+
+NORMAL reviewers use a separate independent context within the same run when
+available; owner need not start another session by habit. Missing independent
+review capability still means Draft/handoff. Do not silently downgrade a review.
+
 ## Separate Sol review gate
 
-The following unmerged tickets require fresh independent **Sol XHigh** review:
+The following explicit tickets require fresh independent **Sol XHigh** review.
+GitHub CLOSED state removes a listed gate from generated active status; it does
+not rewrite this authority or prove its acceptance. Verify merged review evidence
+at ticket entry. Completed entries are tidied at batch checkpoints, not every merge.
 
-- #154 / TKT-M22-P01B — durable step-bound completion commands; Luna High implementation explicitly permitted for this bounded fix.
+- #158 / TKT-M22-P01C — source-scoped reconciliation evidence; Luna High explicitly permitted by the bounded contract.
 - #96 / TKT-M22-02 — final security/recovery/release hardening; Sol High implementation default.
 
-Completed gates #133, #93, #94 and #149 are historical, not active review requirements.
+Completed gates #133, #93, #94, #149 and #154 are historical, not active review requirements.
 Add newly ready high-consequence tickets explicitly here when their contracts
 require this gate; do not infer or silently remove gates from labels alone.
 

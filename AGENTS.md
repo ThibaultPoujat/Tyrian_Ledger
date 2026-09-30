@@ -197,11 +197,14 @@ See:
 
 Issue #98 and `docs/milestones/INDEX.md` define explicit order. The approved
 corrective packages are in `docs/milestones/approved-delivery-plan.md`.
-P00 / #148 prepares the repository. P01A / #149 is the first bounded code fix.
-G01 / #150 is a tracking gate, **not an executable coding ticket**. A checkpoint
-must prepare the next ready child ticket; do not implement all packages in one
-Goal or skip directly to #96. Merged old feature tickets are not proof that
-newly identified audit findings have been corrected.
+P00, P01A and P01B are merged foundations. C02 / #157 prepares the rolling
+delivery map and B1's four contracts in `docs/milestones/M22/batch-01.md`.
+After each owner merge, the next prepared contract can start if its entry
+conditions still hold; no Astra planning session is required between those tickets.
+G01 / #150 is a tracking gate, **not an executable coding ticket**. At the batch
+boundary, prepare the next 3–5 ready contracts from
+`docs/milestones/remaining-delivery-map.md`. Do not implement all packages in one
+Goal or skip directly to #96. Old feature merges are not proof of audit closure.
 
 ## Ticket and session discipline
 
@@ -224,6 +227,13 @@ choices already authorized by the ticket.
 Do not begin the next ticket merely because context remains. Durable handoff
 comes from Git, issue/ticket contracts, tests, docs and verified authoritative
 repository/GitHub state rather than chat memory.
+
+Batch planning does not authorize automatic multi-ticket execution. One reusable
+Goal selects the first conditionally Ready contract in the explicit queue, verifies
+its dependencies against merged PRs and their evidence, then stops after that PR.
+Report routine evidence in the PR and the assigned batch row; avoid duplicate
+logs/status narratives. Escalate to Astra only at the batch exit or a real contract
+ambiguity, invalid dependency or repeated blocker defined by the model guide.
 
 A separate focused fix/test session is allowed if the implementation session
 cannot finish safely, but it remains scoped to the same ticket.
