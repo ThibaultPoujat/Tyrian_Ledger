@@ -230,6 +230,7 @@ public sealed class PlanOrchestrationServiceTests
         {
             State = PlanState.ReconciliationRequired,
             ReconciliationState = PlanReconciliationState.Contradicted,
+            ConsecutiveContradictionCount = 2,
             ReconciliationReason = PlanReconciliationReason.CraftInventoryMismatch,
         };
 
@@ -238,11 +239,60 @@ public sealed class PlanOrchestrationServiceTests
         var manuallyReconciled = service.Reconcile(contradicted, [contradicted.Events[0].Id], materiallyContradicted: false);
 
         Assert.Equal(PlanReconciliationState.None, undone.ReconciliationState);
+        Assert.Equal(0, undone.ConsecutiveContradictionCount);
         Assert.Equal(PlanReconciliationReason.None, undone.ReconciliationReason);
         Assert.Equal(PlanReconciliationState.AwaitingEvidence, cancelled.ReconciliationState);
+        Assert.Equal(0, cancelled.ConsecutiveContradictionCount);
         Assert.Equal(PlanReconciliationReason.None, cancelled.ReconciliationReason);
         Assert.Equal(PlanReconciliationState.Compatible, manuallyReconciled.ReconciliationState);
+        Assert.Equal(0, manuallyReconciled.ConsecutiveContradictionCount);
         Assert.Equal(PlanReconciliationReason.None, manuallyReconciled.ReconciliationReason);
+    }
+
+    [Fact]
+    public void Reversed_or_cancelled_contradictions_do_not_reappear_without_new_complete_evidence()
+    {
+        var scope = new AccountScope("reason-reset-account");
+        var singleStep = Candidate("undo-after-contradiction", 100, 50, 1,
+            steps: [Step("undo-step", PlanStepAction.BuyNow)]);
+        var reported = service.ReportStep(service.Start(singleStep, Now), 1, new Money(100), Now);
+        var contradicted = reported with
+        {
+            State = PlanState.ReconciliationRequired,
+            ReconciliationState = PlanReconciliationState.Contradicted,
+            ConsecutiveContradictionCount = 2,
+            ReconciliationReason = PlanReconciliationReason.TradingPostEvidenceMismatch,
+        };
+
+        var undoneAndReported = service.ReportStep(service.UndoLastStep(contradicted, Now.AddMinutes(1)), 1,
+            new Money(100), Now.AddMinutes(2));
+        var undoReconciled = service.ReconcileWithVerifiedState(undoneAndReported, scope,
+            PartialTradingPostFrame(scope, Now.AddMinutes(3)));
+
+        Assert.Equal(0, undoneAndReported.ConsecutiveContradictionCount);
+        Assert.NotEqual(PlanReconciliationState.Contradicted, undoReconciled.ReconciliationState);
+        Assert.NotEqual(PlanState.ReconciliationRequired, undoReconciled.State);
+        Assert.Equal(PlanReconciliationReason.None, undoReconciled.ReconciliationReason);
+
+        var multiStep = Candidate("cancel-after-contradiction", 100, 50, 1,
+            steps: [Step("pending-buy", PlanStepAction.BuyNow), Step("unperformed-list", PlanStepAction.List)]);
+        var earlierReported = service.ReportStep(service.Start(multiStep, Now), 1, new Money(100), Now);
+        var earlierContradicted = earlierReported with
+        {
+            State = PlanState.ReconciliationRequired,
+            ReconciliationState = PlanReconciliationState.Contradicted,
+            ConsecutiveContradictionCount = 2,
+            ReconciliationReason = PlanReconciliationReason.TradingPostEvidenceMismatch,
+        };
+
+        var cancelled = service.CancelUnperformedStep(earlierContradicted);
+        var cancelReconciled = service.ReconcileWithVerifiedState(cancelled, scope,
+            PartialTradingPostFrame(scope, Now.AddMinutes(3)));
+
+        Assert.Equal(0, cancelled.ConsecutiveContradictionCount);
+        Assert.Equal(PlanReconciliationState.AwaitingEvidence, cancelReconciled.ReconciliationState);
+        Assert.NotEqual(PlanReconciliationState.Contradicted, cancelReconciled.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.None, cancelReconciled.ReconciliationReason);
     }
 
     [Fact]
@@ -827,5 +877,18 @@ public sealed class PlanOrchestrationServiceTests
             new PlanEvidenceSource<IReadOnlyDictionary<string, long>>(unavailablePhysical, null), cash,
             new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completeCurrent, []),
             new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completeTransactions, completed));
+    }
+
+    private static PlanEvidenceFrame PartialTradingPostFrame(AccountScope scope, DateTimeOffset evaluatedAtUtc)
+    {
+        var unavailable = new PlanEvidenceProvenance(null, null, null, PlanEvidenceAvailability.Unavailable,
+            PlanEvidenceCompleteness.Unknown, new HashSet<string>(StringComparer.Ordinal));
+        var partial = new PlanEvidenceProvenance("partial-capture", evaluatedAtUtc, null,
+            PlanEvidenceAvailability.Available, PlanEvidenceCompleteness.Partial, new HashSet<string>(StringComparer.Ordinal));
+        return new PlanEvidenceFrame(scope, evaluatedAtUtc,
+            new PlanEvidenceSource<IReadOnlyDictionary<string, long>>(unavailable, null),
+            new PlanEvidenceSource<Money>(unavailable, Money.Zero),
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(partial, []),
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(partial, []));
     }
 }

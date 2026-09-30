@@ -180,6 +180,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             State = hasUnresolvedPriorExecution ? PlanState.ReconciliationRequired : PlanState.Invalid,
             ReconciliationState = hasUnresolvedPriorExecution ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.None,
             IsCancelled = true,
+            ConsecutiveContradictionCount = 0,
             ReconciliationReason = !hasUnresolvedPriorExecution || plan.ReconciliationState == PlanReconciliationState.Contradicted
                 ? PlanReconciliationReason.None : plan.ReconciliationReason,
         };
@@ -198,6 +199,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var steps = plan.Steps.Select((step, index) => index >= ordinal ? step with { State = index == ordinal ? PlanStepState.Current : PlanStepState.Invalidated } : step).ToArray();
         return plan with { Events = events, Steps = steps, CurrentStepOrdinal = ordinal, State = PlanState.InProgress,
             ReconciliationState = PlanReconciliationState.None, IsCancelled = false,
+            ConsecutiveContradictionCount = 0,
             ReconciliationReason = PlanReconciliationReason.None };
     }
 
@@ -534,6 +536,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var nextReconciliation = events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed)
             ? PlanReconciliationState.AwaitingEvidence : PlanReconciliationState.Compatible;
         return plan with { Events = events, Steps = steps, ReconciliationState = nextReconciliation,
+            ConsecutiveContradictionCount = plan.ReconciliationState == PlanReconciliationState.Contradicted
+                ? 0 : plan.ConsecutiveContradictionCount,
             ReconciliationReason = nextReconciliation == PlanReconciliationState.Compatible ||
                 plan.ReconciliationState == PlanReconciliationState.Contradicted
                 ? PlanReconciliationReason.None : plan.ReconciliationReason };
