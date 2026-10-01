@@ -26,6 +26,72 @@ internal sealed class SqlitePlanRepository(
         return plans.Where(plan => plan.State != PlanState.Invalid || PlanOrchestrationService.IsCancellationReconciliationRetained(plan, now)).ToArray();
     }
 
+    public async Task<IReadOnlyList<PlanRecord>> ApplyAccountReconciliationAsync(
+        long accountProfileId,
+        Func<IReadOnlyList<PlanRecord>, IReadOnlyList<PlanRecord>> reconcile,
+        CancellationToken cancellationToken = default)
+    {
+        if (accountProfileId <= 0) throw new ArgumentOutOfRangeException(nameof(accountProfileId));
+        ArgumentNullException.ThrowIfNull(reconcile);
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        var storedPlans = new List<PlanRecord>();
+        await using (var read = connection.CreateCommand())
+        {
+            read.Transaction = transaction;
+            read.CommandText = "SELECT payload_json, revision FROM execution_plans WHERE account_profile_id = $accountProfileId ORDER BY plan_id;";
+            read.Parameters.AddWithValue("$accountProfileId", accountProfileId);
+            await using var reader = await read.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var plan = JsonSerializer.Deserialize<PlanRecord>(reader.GetString(0), SerializerOptions)
+                    ?? throw new InvalidDataException("The stored plan payload is invalid.");
+                storedPlans.Add(plan with { Revision = reader.GetInt64(1) });
+            }
+        }
+
+        var transitioned = reconcile(storedPlans);
+        ArgumentNullException.ThrowIfNull(transitioned);
+        if (transitioned.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count() != transitioned.Count)
+            throw new InvalidOperationException("An account reconciliation cannot return the same plan more than once.");
+        var byId = storedPlans.ToDictionary(value => value.Id, StringComparer.Ordinal);
+        var committed = new List<PlanRecord>(transitioned.Count);
+        foreach (var plan in transitioned)
+        {
+            if (plan is null || !byId.TryGetValue(plan.Id, out var stored) || plan.Revision != stored.Revision)
+                throw new InvalidOperationException("An account reconciliation must preserve each stored plan identity and revision.");
+            if (PlanRecordSemantics.AreEqual(stored, plan))
+            {
+                committed.Add(stored);
+                continue;
+            }
+
+            var updated = plan with { Revision = checked(stored.Revision + 1) };
+            await using var write = connection.CreateCommand();
+            write.Transaction = transaction;
+            write.CommandText = """
+                UPDATE execution_plans
+                SET state = $state, payload_json = $payload, updated_at_utc = $updatedAtUtc, revision = $nextRevision
+                WHERE plan_id = $planId AND account_profile_id = $accountProfileId AND revision = $expectedRevision;
+                """;
+            write.Parameters.AddWithValue("$state", (int)updated.State);
+            write.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(updated, SerializerOptions));
+            write.Parameters.AddWithValue("$updatedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(DateTimeOffset.UtcNow, "updatedAtUtc"));
+            write.Parameters.AddWithValue("$planId", stored.Id);
+            write.Parameters.AddWithValue("$accountProfileId", accountProfileId);
+            write.Parameters.AddWithValue("$expectedRevision", stored.Revision);
+            write.Parameters.AddWithValue("$nextRevision", updated.Revision);
+            if (await write.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+                throw new PlanConcurrencyException();
+            committed.Add(updated);
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return committed;
+    }
+
     private async Task<IReadOnlyList<PlanRecord>> ReadPlansAsync(long accountProfileId, string statePredicate, CancellationToken cancellationToken,
         DateTimeOffset? reconciliationNowUtc = null)
     {

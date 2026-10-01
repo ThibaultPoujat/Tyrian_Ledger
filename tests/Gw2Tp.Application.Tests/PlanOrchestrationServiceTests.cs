@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Plans;
+using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Domain.Finance;
 using Xunit;
 
@@ -220,6 +221,81 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public void Undo_cancel_and_manual_reconcile_clear_a_reason_when_they_leave_contradicted_state()
+    {
+        var candidate = Candidate("reason-reset", 100, 50, 1,
+            steps: [Step("reason-first", PlanStepAction.BuyNow), Step("reason-second", PlanStepAction.List)]);
+        var reported = service.ReportStep(service.Start(candidate, Now), 1, new Money(100), Now);
+        var contradicted = reported with
+        {
+            State = PlanState.ReconciliationRequired,
+            ReconciliationState = PlanReconciliationState.Contradicted,
+            ConsecutiveContradictionCount = 2,
+            ReconciliationReason = PlanReconciliationReason.CraftInventoryMismatch,
+        };
+
+        var undone = service.UndoLastStep(contradicted, Now.AddMinutes(1));
+        var cancelled = service.CancelUnperformedStep(contradicted);
+        var manuallyReconciled = service.Reconcile(contradicted, [contradicted.Events[0].Id], materiallyContradicted: false);
+
+        Assert.Equal(PlanReconciliationState.None, undone.ReconciliationState);
+        Assert.Equal(0, undone.ConsecutiveContradictionCount);
+        Assert.Equal(PlanReconciliationReason.None, undone.ReconciliationReason);
+        Assert.Equal(PlanReconciliationState.AwaitingEvidence, cancelled.ReconciliationState);
+        Assert.Equal(0, cancelled.ConsecutiveContradictionCount);
+        Assert.Equal(PlanReconciliationReason.None, cancelled.ReconciliationReason);
+        Assert.Equal(PlanReconciliationState.Compatible, manuallyReconciled.ReconciliationState);
+        Assert.Equal(0, manuallyReconciled.ConsecutiveContradictionCount);
+        Assert.Equal(PlanReconciliationReason.None, manuallyReconciled.ReconciliationReason);
+    }
+
+    [Fact]
+    public void Reversed_or_cancelled_contradictions_do_not_reappear_without_new_complete_evidence()
+    {
+        var scope = new AccountScope("reason-reset-account");
+        var singleStep = Candidate("undo-after-contradiction", 100, 50, 1,
+            steps: [Step("undo-step", PlanStepAction.BuyNow)]);
+        var reported = service.ReportStep(service.Start(singleStep, Now), 1, new Money(100), Now);
+        var contradicted = reported with
+        {
+            State = PlanState.ReconciliationRequired,
+            ReconciliationState = PlanReconciliationState.Contradicted,
+            ConsecutiveContradictionCount = 2,
+            ReconciliationReason = PlanReconciliationReason.TradingPostEvidenceMismatch,
+        };
+
+        var undoneAndReported = service.ReportStep(service.UndoLastStep(contradicted, Now.AddMinutes(1)), 1,
+            new Money(100), Now.AddMinutes(2));
+        var undoReconciled = service.ReconcileWithVerifiedState(undoneAndReported, scope,
+            PartialTradingPostFrame(scope, Now.AddMinutes(3)));
+
+        Assert.Equal(0, undoneAndReported.ConsecutiveContradictionCount);
+        Assert.NotEqual(PlanReconciliationState.Contradicted, undoReconciled.ReconciliationState);
+        Assert.NotEqual(PlanState.ReconciliationRequired, undoReconciled.State);
+        Assert.Equal(PlanReconciliationReason.None, undoReconciled.ReconciliationReason);
+
+        var multiStep = Candidate("cancel-after-contradiction", 100, 50, 1,
+            steps: [Step("pending-buy", PlanStepAction.BuyNow), Step("unperformed-list", PlanStepAction.List)]);
+        var earlierReported = service.ReportStep(service.Start(multiStep, Now), 1, new Money(100), Now);
+        var earlierContradicted = earlierReported with
+        {
+            State = PlanState.ReconciliationRequired,
+            ReconciliationState = PlanReconciliationState.Contradicted,
+            ConsecutiveContradictionCount = 2,
+            ReconciliationReason = PlanReconciliationReason.TradingPostEvidenceMismatch,
+        };
+
+        var cancelled = service.CancelUnperformedStep(earlierContradicted);
+        var cancelReconciled = service.ReconcileWithVerifiedState(cancelled, scope,
+            PartialTradingPostFrame(scope, Now.AddMinutes(3)));
+
+        Assert.Equal(0, cancelled.ConsecutiveContradictionCount);
+        Assert.Equal(PlanReconciliationState.AwaitingEvidence, cancelReconciled.ReconciliationState);
+        Assert.NotEqual(PlanReconciliationState.Contradicted, cancelReconciled.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.None, cancelReconciled.ReconciliationReason);
+    }
+
+    [Fact]
     public void Listing_shadow_effect_uses_the_canonical_non_refundable_listing_fee()
     {
         var candidate = Candidate("listing", 0, 50, 2,
@@ -355,6 +431,229 @@ public sealed class PlanOrchestrationServiceTests
     }
 
     [Fact]
+    public void Account_reconciliation_claims_one_transaction_identity_in_stable_plan_order()
+    {
+        var scope = new AccountScope("account-scope");
+        var planB = service.ReportStep(service.Start(Candidate("opportunity-b", 0, 10, 1), Now) with { Id = "plan-b" },
+            1, new Money(100), Now.AddSeconds(10));
+        var planA = service.ReportStep(service.Start(Candidate("opportunity-a", 0, 10, 1), Now) with { Id = "plan-a" },
+            1, new Money(100), Now.AddSeconds(10));
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(1),
+            [new PlanVerifiedEvidence("CompletedBuy:123", PlanEvidenceKind.CompletedBuy, 42, 1, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1))]);
+
+        var reconciled = service.ReconcileAccountPlans([planB, planA], scope, frame, Now.AddMinutes(1));
+
+        Assert.Equal(["plan-a", "plan-b"], reconciled.Select(plan => plan.Id));
+        Assert.Equal(PlanShadowEventState.Confirmed, reconciled[0].Events.Single().State);
+        Assert.Equal(["CompletedBuy:123"], reconciled[0].Events.Single().VerifiedEvidenceIds);
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled[1].Events.Single().State);
+        Assert.Empty(reconciled[1].Events.Single().VerifiedEvidenceIds ?? []);
+    }
+
+    [Fact]
+    public void Account_reconciliation_claims_only_the_transactions_needed_by_each_execution()
+    {
+        var scope = new AccountScope("account-scope");
+        var planB = service.ReportStep(service.Start(Candidate("opportunity-b", 0, 10, 10), Now) with { Id = "plan-b" },
+            10, new Money(100), Now.AddSeconds(10));
+        var planA = service.ReportStep(service.Start(Candidate("opportunity-a", 0, 10, 10), Now) with { Id = "plan-a" },
+            10, new Money(100), Now.AddSeconds(10));
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(1),
+        [
+            new PlanVerifiedEvidence("CompletedBuy:1", PlanEvidenceKind.CompletedBuy, 42, 10, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+            new PlanVerifiedEvidence("CompletedBuy:2", PlanEvidenceKind.CompletedBuy, 42, 10, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+        ]);
+
+        var reconciled = service.ReconcileAccountPlans([planB, planA], scope, frame, Now.AddMinutes(1));
+
+        Assert.Equal(["plan-a", "plan-b"], reconciled.Select(plan => plan.Id));
+        Assert.All(reconciled, plan => Assert.Equal(PlanShadowEventState.Confirmed, plan.Events.Single().State));
+        Assert.Equal(["CompletedBuy:1"], reconciled[0].Events.Single().VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:2"], reconciled[1].Events.Single().VerifiedEvidenceIds);
+        Assert.Equal(2, reconciled.SelectMany(plan => plan.Events).SelectMany(value => value.VerifiedEvidenceIds ?? []).Distinct().Count());
+    }
+
+    [Fact]
+    public void Account_reconciliation_uses_one_larger_transaction_instead_of_claiming_an_earlier_smaller_one()
+    {
+        var scope = new AccountScope("account-scope");
+        var planB = service.ReportStep(service.Start(Candidate("opportunity-b", 0, 10, 4), Now) with { Id = "plan-b" },
+            4, new Money(100), Now.AddSeconds(10));
+        var planA = service.ReportStep(service.Start(Candidate("opportunity-a", 0, 10, 10), Now) with { Id = "plan-a" },
+            10, new Money(100), Now.AddSeconds(10));
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(1),
+        [
+            new PlanVerifiedEvidence("CompletedBuy:1", PlanEvidenceKind.CompletedBuy, 42, 4, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+            new PlanVerifiedEvidence("CompletedBuy:2", PlanEvidenceKind.CompletedBuy, 42, 10, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+        ]);
+
+        var reconciled = service.ReconcileAccountPlans([planB, planA], scope, frame, Now.AddMinutes(1));
+
+        Assert.All(reconciled, plan => Assert.Equal(PlanShadowEventState.Confirmed, plan.Events.Single().State));
+        Assert.Equal(["CompletedBuy:2"], reconciled[0].Events.Single().VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:1"], reconciled[1].Events.Single().VerifiedEvidenceIds);
+    }
+
+    [Fact]
+    public void Account_reconciliation_preserves_a_larger_transaction_when_an_exact_smaller_one_is_available()
+    {
+        var scope = new AccountScope("account-scope");
+        var planB = service.ReportStep(service.Start(Candidate("opportunity-b", 0, 10, 10), Now) with { Id = "plan-b" },
+            10, new Money(100), Now.AddSeconds(10));
+        var planA = service.ReportStep(service.Start(Candidate("opportunity-a", 0, 10, 4), Now) with { Id = "plan-a" },
+            4, new Money(100), Now.AddSeconds(10));
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(1),
+        [
+            new PlanVerifiedEvidence("CompletedBuy:1", PlanEvidenceKind.CompletedBuy, 42, 4, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+            new PlanVerifiedEvidence("CompletedBuy:2", PlanEvidenceKind.CompletedBuy, 42, 10, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+        ]);
+
+        var reconciled = service.ReconcileAccountPlans([planB, planA], scope, frame, Now.AddMinutes(1));
+
+        Assert.All(reconciled, plan => Assert.Equal(PlanShadowEventState.Confirmed, plan.Events.Single().State));
+        Assert.Equal(["CompletedBuy:1"], reconciled[0].Events.Single().VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:2"], reconciled[1].Events.Single().VerifiedEvidenceIds);
+    }
+
+    [Fact]
+    public void Account_reconciliation_uses_the_least_overcoverage_among_minimum_identity_sets()
+    {
+        var scope = new AccountScope("account-scope");
+        var planB = service.ReportStep(service.Start(Candidate("opportunity-b", 0, 10, 8), Now) with { Id = "plan-b" },
+            8, new Money(100), Now.AddSeconds(10));
+        var planA = service.ReportStep(service.Start(Candidate("opportunity-a", 0, 10, 10), Now) with { Id = "plan-a" },
+            10, new Money(100), Now.AddSeconds(10));
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(1),
+        [
+            new PlanVerifiedEvidence("CompletedBuy:1", PlanEvidenceKind.CompletedBuy, 42, 7, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+            new PlanVerifiedEvidence("CompletedBuy:2", PlanEvidenceKind.CompletedBuy, 42, 3, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+            new PlanVerifiedEvidence("CompletedBuy:3", PlanEvidenceKind.CompletedBuy, 42, 8, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+        ]);
+
+        var reconciled = service.ReconcileAccountPlans([planB, planA], scope, frame, Now.AddMinutes(1));
+
+        Assert.All(reconciled, plan => Assert.Equal(PlanShadowEventState.Confirmed, plan.Events.Single().State));
+        Assert.Equal(["CompletedBuy:1", "CompletedBuy:2"], reconciled[0].Events.Single().VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:3"], reconciled[1].Events.Single().VerifiedEvidenceIds);
+    }
+
+    [Fact]
+    public void Account_reconciliation_retains_owned_evidence_before_claiming_only_the_remaining_quantity()
+    {
+        var scope = new AccountScope("account-scope");
+        var reportedA = service.ReportStep(service.Start(Candidate("opportunity-a", 0, 10, 10), Now) with { Id = "plan-a" },
+            10, new Money(100), Now.AddSeconds(10));
+        var partialFrame = CompleteTradingPostFrame(scope, Now.AddMinutes(1),
+        [
+            new PlanVerifiedEvidence("CompletedBuy:1", PlanEvidenceKind.CompletedBuy, 42, 4, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(1)),
+        ]);
+        var partialA = service.ReconcileWithVerifiedState(reportedA, scope, partialFrame);
+        var planB = service.ReportStep(service.Start(Candidate("opportunity-b", 0, 10, 10), Now) with { Id = "plan-b" },
+            10, new Money(100), Now.AddSeconds(10));
+        var completeFrame = CompleteTradingPostFrame(scope, Now.AddMinutes(2),
+        [
+            new PlanVerifiedEvidence("CompletedBuy:1", PlanEvidenceKind.CompletedBuy, 42, 4, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(2)),
+            new PlanVerifiedEvidence("CompletedBuy:2", PlanEvidenceKind.CompletedBuy, 42, 6, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(2)),
+            new PlanVerifiedEvidence("CompletedBuy:3", PlanEvidenceKind.CompletedBuy, 42, 10, new Money(100),
+                Now.AddSeconds(5), Now.AddMinutes(2)),
+        ]);
+
+        var reconciled = service.ReconcileAccountPlans([planB, partialA], scope, completeFrame, Now.AddMinutes(2));
+
+        Assert.All(reconciled, plan => Assert.Equal(PlanShadowEventState.Confirmed, plan.Events.Single().State));
+        Assert.Equal(["CompletedBuy:1", "CompletedBuy:2"], reconciled[0].Events.Single().VerifiedEvidenceIds);
+        Assert.Equal(["CompletedBuy:3"], reconciled[1].Events.Single().VerifiedEvidenceIds);
+    }
+
+    [Fact]
+    public void Account_reconciliation_leaves_evidence_unclaimed_when_exact_selection_exceeds_its_safety_budget()
+    {
+        var scope = new AccountScope("account-scope");
+        var reported = service.ReportStep(service.Start(Candidate("bounded-selection", 0, 10, 5_000), Now) with { Id = "plan-a" },
+            5_000, new Money(100), Now.AddSeconds(10));
+        var evidence = Enumerable.Range(0, 1_000)
+            .Select(index => new PlanVerifiedEvidence($"CompletedBuy:{index:D4}", PlanEvidenceKind.CompletedBuy, 42,
+                100 + index % 151, new Money(100), Now.AddSeconds(5), Now.AddMinutes(1)))
+            .ToArray();
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(16), evidence, "capture-16");
+        var changedFrame = CompleteTradingPostFrame(scope, Now.AddMinutes(17),
+        [
+            .. evidence,
+            new PlanVerifiedEvidence("CompletedBuy:changed", PlanEvidenceKind.CompletedBuy, 42, 150,
+                new Money(100), Now.AddSeconds(5), Now.AddMinutes(17)),
+        ], "capture-17");
+
+        var first = service.ReconcileAccountPlans([reported], scope, frame, Now.AddMinutes(16)).Single();
+        var changed = service.ReconcileAccountPlans([first], scope, changedFrame, Now.AddMinutes(17)).Single();
+        var replayed = service.ReconcileAccountPlans([changed], scope, changedFrame, Now.AddMinutes(17)).Single();
+
+        Assert.All([first, changed, replayed], plan =>
+        {
+            Assert.Equal(PlanShadowEventState.PendingConfirmation, plan.Events.Single().State);
+            Assert.Null(plan.Events.Single().VerifiedQuantity);
+            Assert.Empty(plan.Events.Single().VerifiedEvidenceIds ?? []);
+            Assert.Equal(PlanReconciliationState.AwaitingEvidence, plan.ReconciliationState);
+            Assert.Equal(PlanReconciliationReason.None, plan.ReconciliationReason);
+            Assert.Equal(0, plan.ConsecutiveContradictionCount);
+        });
+        Assert.Equal(first.Events, changed.Events);
+        Assert.Equal(changed.Events, replayed.Events);
+    }
+
+    [Fact]
+    public void Indeterminate_evidence_prevents_false_negative_inference_for_later_executions()
+    {
+        var scope = new AccountScope("account-scope");
+        var candidate = Candidate("bounded-sequence", 0, 10, 5_000,
+            steps: [Step("buy", PlanStepAction.BuyNow, 5_000), Step("list", PlanStepAction.List)]);
+        var buyReported = service.ReportStep(service.Start(candidate, Now) with { Id = "plan-a" },
+            5_000, new Money(100), Now.AddSeconds(10));
+        var reported = service.ReportStep(buyReported, 1, new Money(100), Now.AddSeconds(20));
+        var evidence = Enumerable.Range(0, 1_000)
+            .Select(index => new PlanVerifiedEvidence($"CompletedBuy:{index:D4}", PlanEvidenceKind.CompletedBuy, 42,
+                100 + index % 151, new Money(100), Now.AddSeconds(5), Now.AddMinutes(16)))
+            .Append(new PlanVerifiedEvidence("SellListing:1", PlanEvidenceKind.SellListing, 42, 1,
+                new Money(100), Now.AddSeconds(30), Now.AddMinutes(16)))
+            .ToArray();
+        var firstFrame = CompleteTradingPostFrame(scope, Now.AddMinutes(16), evidence, "sequence-16");
+        var changedFrame = CompleteTradingPostFrame(scope, Now.AddMinutes(17),
+        [
+            .. evidence,
+            new PlanVerifiedEvidence("CompletedBuy:changed", PlanEvidenceKind.CompletedBuy, 42, 150,
+                new Money(100), Now.AddSeconds(5), Now.AddMinutes(17)),
+        ], "sequence-17");
+
+        var first = service.ReconcileAccountPlans([reported], scope, firstFrame, Now.AddMinutes(16)).Single();
+        var changed = service.ReconcileAccountPlans([first], scope, changedFrame, Now.AddMinutes(17)).Single();
+
+        Assert.All([first, changed], plan =>
+        {
+            Assert.All(plan.Events, execution =>
+            {
+                Assert.Equal(PlanShadowEventState.PendingConfirmation, execution.State);
+                Assert.Empty(execution.VerifiedEvidenceIds ?? []);
+            });
+            Assert.Equal(PlanReconciliationState.AwaitingEvidence, plan.ReconciliationState);
+            Assert.Equal(PlanReconciliationReason.None, plan.ReconciliationReason);
+            Assert.Equal(0, plan.ConsecutiveContradictionCount);
+        });
+        Assert.Equal(first.Events, changed.Events);
+    }
+
+    [Fact]
     public void Only_complete_relevant_evidence_can_create_a_contradiction()
     {
         var buy = Candidate("contradiction", 200, 50, 2, steps: [Step("step", PlanStepAction.BuyNow, 2)]);
@@ -368,6 +667,7 @@ public sealed class PlanOrchestrationServiceTests
         Assert.Equal(PlanState.RecheckRequired, firstMismatch.State);
         Assert.Equal(PlanState.RecheckRequired, unrelated.State);
         Assert.Equal(PlanState.ReconciliationRequired, secondMismatch.State);
+        Assert.Equal(PlanReconciliationReason.TradingPostEvidenceMismatch, secondMismatch.ReconciliationReason);
     }
 
     [Fact]
@@ -464,6 +764,7 @@ public sealed class PlanOrchestrationServiceTests
         Assert.Equal(PlanShadowEventState.PendingConfirmation, reconciled.Events[0].State);
         Assert.Equal(PlanState.ReconciliationRequired, reconciled.State);
         Assert.Equal(PlanReconciliationState.Contradicted, reconciled.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.CancellationLateFill, reconciled.ReconciliationReason);
     }
 
     [Fact]
@@ -513,11 +814,12 @@ public sealed class PlanOrchestrationServiceTests
         var first = service.ReconcileWithVerifiedState(reported, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(16),
             [current], Now.AddMinutes(16), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
         var second = service.ReconcileWithVerifiedState(first, new Money(1_000), new Dictionary<string, long>(), Now.AddMinutes(17),
-            [current with { ObservedAtUtc = Now.AddMinutes(17) }], Now.AddMinutes(17), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
+            [current with { CapturedAtUtc = Now.AddMinutes(17) }], Now.AddMinutes(17), Complete(PlanEvidenceKind.BuyOrder, PlanEvidenceKind.CompletedBuy));
 
         Assert.Equal(PlanState.RecheckRequired, first.State);
         Assert.Equal(PlanState.ReconciliationRequired, second.State);
         Assert.Equal(PlanReconciliationState.Contradicted, second.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.CancellationStillVisible, second.ReconciliationReason);
     }
 
     [Fact]
@@ -760,4 +1062,37 @@ public sealed class PlanOrchestrationServiceTests
         new(id, action, 42, "Objet", quantity, new Money(100), [], PlanStepState.Pending);
 
     private static IReadOnlySet<PlanEvidenceKind> Complete(params PlanEvidenceKind[] kinds) => new HashSet<PlanEvidenceKind>(kinds);
+
+    private static PlanEvidenceFrame CompleteTradingPostFrame(AccountScope scope, DateTimeOffset evaluatedAtUtc,
+        IReadOnlyList<PlanVerifiedEvidence> evidence, string captureId = "capture")
+    {
+        var unavailablePhysical = new PlanEvidenceProvenance(null, null, null, PlanEvidenceAvailability.Unavailable,
+            PlanEvidenceCompleteness.Unknown, new HashSet<string>(StringComparer.Ordinal));
+        var completeCurrent = new PlanEvidenceProvenance(captureId, evaluatedAtUtc, null, PlanEvidenceAvailability.Available,
+            PlanEvidenceCompleteness.Complete, new HashSet<string>(["buy_orders", "sell_listings"], StringComparer.Ordinal));
+        var completeTransactions = new PlanEvidenceProvenance(captureId, evaluatedAtUtc, null, PlanEvidenceAvailability.Available,
+            PlanEvidenceCompleteness.Complete, new HashSet<string>(["completed_buys", "completed_sells"], StringComparer.Ordinal));
+        var cash = new PlanEvidenceSource<Money>(new($"cash:{captureId}", evaluatedAtUtc, null,
+            PlanEvidenceAvailability.Available, PlanEvidenceCompleteness.Complete,
+            new HashSet<string>(["coin"], StringComparer.Ordinal)), new Money(1_000));
+        return new PlanEvidenceFrame(scope, evaluatedAtUtc,
+            new PlanEvidenceSource<IReadOnlyDictionary<string, long>>(unavailablePhysical, null), cash,
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completeCurrent,
+                evidence.Where(value => value.Kind is PlanEvidenceKind.BuyOrder or PlanEvidenceKind.SellListing).ToArray()),
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completeTransactions,
+                evidence.Where(value => value.Kind is PlanEvidenceKind.CompletedBuy or PlanEvidenceKind.CompletedSell).ToArray()));
+    }
+
+    private static PlanEvidenceFrame PartialTradingPostFrame(AccountScope scope, DateTimeOffset evaluatedAtUtc)
+    {
+        var unavailable = new PlanEvidenceProvenance(null, null, null, PlanEvidenceAvailability.Unavailable,
+            PlanEvidenceCompleteness.Unknown, new HashSet<string>(StringComparer.Ordinal));
+        var partial = new PlanEvidenceProvenance("partial-capture", evaluatedAtUtc, null,
+            PlanEvidenceAvailability.Available, PlanEvidenceCompleteness.Partial, new HashSet<string>(StringComparer.Ordinal));
+        return new PlanEvidenceFrame(scope, evaluatedAtUtc,
+            new PlanEvidenceSource<IReadOnlyDictionary<string, long>>(unavailable, null),
+            new PlanEvidenceSource<Money>(unavailable, Money.Zero),
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(partial, []),
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(partial, []));
+    }
 }

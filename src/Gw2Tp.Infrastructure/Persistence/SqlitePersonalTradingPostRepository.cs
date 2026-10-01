@@ -368,6 +368,109 @@ internal sealed class SqlitePersonalTradingPostRepository(
         return new CurrentPersonalTradingPostOrderSnapshot(observedAtUtc, orders);
     }
 
+    public Task<PersonalTradingPostReconciliationSnapshot> GetReconciliationSnapshotAsync(
+        AccountProfile accountProfile,
+        CancellationToken cancellationToken = default) =>
+        GetReconciliationSnapshotAsync(accountProfile, cancellationToken, null);
+
+    internal async Task<PersonalTradingPostReconciliationSnapshot> GetReconciliationSnapshotAsync(
+        AccountProfile accountProfile,
+        CancellationToken cancellationToken,
+        Func<int, CancellationToken, Task>? afterLogicalRead)
+    {
+        SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
+        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        AccountProfile capturedProfile;
+        await using (var readProfile = connection.CreateCommand())
+        {
+            readProfile.Transaction = transaction;
+            readProfile.CommandText = """
+                SELECT id, account_scope_id, created_at_utc, last_successful_sync_at_utc
+                FROM account_profiles
+                WHERE id = $accountProfileId AND account_scope_id = $accountScopeId;
+                """;
+            readProfile.Parameters.AddWithValue("$accountProfileId", accountProfile.Id);
+            readProfile.Parameters.AddWithValue("$accountScopeId", accountProfile.AccountScopeId);
+            await using var reader = await readProfile.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                throw new InvalidOperationException("The account profile does not belong to this SQLite database.");
+            }
+            capturedProfile = ReadAccountProfile(reader);
+        }
+        if (afterLogicalRead is not null) await afterLogicalRead(1, cancellationToken).ConfigureAwait(false);
+
+        CurrentPersonalTradingPostOrderSnapshot? current;
+        await using (var readCapture = connection.CreateCommand())
+        {
+            readCapture.Transaction = transaction;
+            readCapture.CommandText = """
+                SELECT observed_at_utc
+                FROM current_order_sync_batches
+                WHERE account_profile_id = $accountProfileId
+                ORDER BY id DESC
+                LIMIT 1;
+                """;
+            readCapture.Parameters.AddWithValue("$accountProfileId", accountProfile.Id);
+            var observedAtValue = await readCapture.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            if (observedAtValue is not string observedAtText)
+            {
+                current = null;
+            }
+            else
+            {
+                var observedAtUtc = SqlitePersistenceValues.FromUtcTimestamp(observedAtText,
+                    "current_order_sync_batches.observed_at_utc");
+                await using var readOrders = connection.CreateCommand();
+                readOrders.Transaction = transaction;
+                readOrders.CommandText = """
+                    SELECT external_order_id, side, item_id, unit_price_in_copper, quantity, created_at_utc
+                    FROM current_tp_orders
+                    WHERE account_profile_id = $accountProfileId
+                    ORDER BY external_order_id;
+                    """;
+                readOrders.Parameters.AddWithValue("$accountProfileId", accountProfile.Id);
+                await using var reader = await readOrders.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                var orders = new List<CurrentPersonalTradingPostOrder>();
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) orders.Add(ReadCurrentOrder(reader));
+                current = new CurrentPersonalTradingPostOrderSnapshot(observedAtUtc, orders);
+            }
+        }
+        if (afterLogicalRead is not null) await afterLogicalRead(2, cancellationToken).ConfigureAwait(false);
+
+        var completed = new List<StoredCompletedPersonalTradingPostTransaction>();
+        await using (var readCompleted = connection.CreateCommand())
+        {
+            readCompleted.Transaction = transaction;
+            readCompleted.CommandText = """
+                SELECT external_transaction_id, side, item_id, unit_price_in_copper, quantity,
+                       created_at_utc, completed_at_utc, first_imported_at_utc, last_seen_at_utc
+                FROM completed_tp_transactions
+                WHERE account_profile_id = $accountProfileId
+                ORDER BY completed_at_utc, external_transaction_id;
+                """;
+            readCompleted.Parameters.AddWithValue("$accountProfileId", accountProfile.Id);
+            await using var reader = await readCompleted.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var transactionRecord = new CompletedPersonalTradingPostTransaction(
+                    reader.GetInt64(0), ReadSide(reader.GetInt32(1)), reader.GetInt32(2), reader.GetInt32(3),
+                    reader.GetInt32(4),
+                    SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(5), "completed_tp_transactions.created_at_utc"),
+                    SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(6), "completed_tp_transactions.completed_at_utc"));
+                completed.Add(new StoredCompletedPersonalTradingPostTransaction(transactionRecord,
+                    SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(7), "completed_tp_transactions.first_imported_at_utc"),
+                    SqlitePersistenceValues.FromUtcTimestamp(reader.GetString(8), "completed_tp_transactions.last_seen_at_utc")));
+            }
+        }
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new PersonalTradingPostReconciliationSnapshot(capturedProfile, current, completed);
+    }
+
     public async Task<IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot>> GetCurrentOrderObservationsAsync(
         AccountProfile accountProfile,
         CancellationToken cancellationToken = default)

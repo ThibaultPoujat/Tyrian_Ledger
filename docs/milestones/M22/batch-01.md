@@ -44,7 +44,7 @@ Next session verifies the merge and current review head; no owner doc editing.
 
 | Ticket | Evidence PR / reviewed head / CI / preview |
 |---|---|
-| #158 | To be supplied by implementation |
+| #158 | [PR #163](https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/163); reviewed code head [`cdbd680`](https://github.com/ThibaultPoujat/Tyrian_Ledger/commit/cdbd6807e1818374908a8278df93f46fb9b6bee1); [CI run 36823117174](https://github.com/ThibaultPoujat/Tyrian_Ledger/actions/runs/36823117174) green; [targeted fresh Sol XHigh review APPROVE](https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/163#issuecomment-5925897424). VERIFY-008 remains open. API-only; no visual preview applies. |
 | #159 | To be supplied by implementation |
 | #160 | To be supplied by implementation; include preview command and screenshots |
 | #161 | To be supplied by implementation; include combined owner preview |

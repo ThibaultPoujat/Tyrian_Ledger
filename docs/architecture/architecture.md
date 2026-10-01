@@ -82,6 +82,31 @@ Use cases and orchestration:
 Application defines interfaces for infrastructure concerns and stable result/error
 contracts for the local host.
 
+Plan reconciliation accepts one typed, account-scoped evidence frame with
+independent provenance for physical inventory, coin, current Trading Post orders,
+and completed transactions. Each source keeps its capture identity and local
+fetch time separate from any upstream observation time; unavailable timestamps
+remain unknown. The loopback host maps source facts into this frame, while the
+Application layer owns positive matching, evidence consumption, completeness
+gates, and contradiction progress. A frame for another account is ignored.
+
+Current account producers expose wallet and bank/material snapshots but not all
+character inventories, so the physical-inventory source is partial and cannot
+confirm or contradict craft deltas. A successful atomic Trading Post sync may
+mark its current-order and completed-transaction sources complete under one
+shared local capture identity. This says the required endpoints were read as one
+sync; it makes no guarantee that ArenaNet served newly observed data. Craft
+confirmation requires a complete physical frame covering every affected item
+and an upstream observation at or after the reported action. A listing or a
+Trading Post capture alone cannot prove ingredient consumption. Unknown or
+partial evidence keeps the shadow provisional. Carry VERIFY-008 forward for
+upstream cache freshness uncertainty.
+
+When repeated, source-qualified evidence contradicts a local execution event,
+the plan retains a typed reconciliation reason code with its paused state. The
+API exposes the stable code; French explanation belongs at the presentation
+boundary and never changes reconciliation policy.
+
 ### Infrastructure
 
 External adapters:

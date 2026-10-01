@@ -3,15 +3,126 @@ using Gw2Tp.Application.Plans;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.Crafting;
 using Gw2Tp.Domain.Finance;
 using Gw2Tp.Web.Hosting;
 using Microsoft.AspNetCore.Http;
+using System.Text.Json;
 using Xunit;
 
 namespace Gw2Tp.Web.Tests;
 
 public sealed class PlanEndpointMappingTests
 {
+    [Fact]
+    public async Task Full_unchanged_plan_read_does_not_save_or_increment_its_revision()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var scope = new AccountScope("scope-a");
+        var profile = new AccountProfile(1, scope.AccountId, now, now);
+        var plan = new PlanRecord("unchanged", 1, "opportunity", PlanAttention.Passive,
+            PlanState.Waiting, PlanReconciliationState.Compatible, now, [], Money.Zero, -1, [], [], 0,
+            PlanHysteresisPolicy.Default, BaselineVerifiedCash: new Money(100),
+            BaselineVerifiedQuantities: new Dictionary<string, long>(),
+            LastEvidenceCapturedAtUtc: now, LastEvidenceFingerprint: string.Empty,
+            LastEvidenceCaptureId: $"trading-post-sync:{now.UtcTicks}");
+        var plans = new CountingPlanRepository(plan);
+        var service = new PlanEndpointService(
+            new FixedRecommendations(RecommendationResult(now)),
+            new FixedPortfolio(scope, new Money(100), now),
+            new FixedAccountScopeGateway(scope.AccountId),
+            new EmptyCraftingSnapshots(), new EmptyCraftingOpportunities(),
+            new FixedPersonalTradingPostRepository(profile, now), plans,
+            new PlanOrchestrationService(),
+            new PlanDecisionProjectionStore(new DecisionLoopSchedulerSettings(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15))));
+
+        var response = await service.GetAsync(CancellationToken.None);
+
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(response.Payload));
+        Assert.Equal("None", payload.RootElement.GetProperty("plans")[0].GetProperty("reconciliationReasonCode").GetString());
+
+        Assert.Equal(0, plans.SaveCalls);
+        Assert.Equal(0, plans.Plan.Revision);
+    }
+
+    [Fact]
+    public async Task Undo_response_and_persistence_clear_a_resolved_contradiction_reason()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var scope = new AccountScope("scope-a");
+        var profile = new AccountProfile(1, scope.AccountId, now, now);
+        var candidate = new PlanCandidate("craft-plan", 1, "craft-plan", PlanAttention.Active, [
+            new PlanStep("craft-step", PlanStepAction.Craft, 42, "Objet", 1, null, [], PlanStepState.Current,
+                CraftEffects: [new(PlanResourceKind.Inventory, "42", -1, Money.Zero)]),
+        ], [], Money.Zero, Money.Zero, 8_000, 0, 1, 1, true, []);
+        var orchestration = new PlanOrchestrationService();
+        var reported = orchestration.ReportStep(orchestration.Start(candidate, now) with { Id = "plan-undo-reason" }, 1, null, now);
+        var contradicted = reported with {
+            State = PlanState.ReconciliationRequired,
+            ReconciliationState = PlanReconciliationState.Contradicted,
+            ConsecutiveContradictionCount = 2,
+            ReconciliationReason = PlanReconciliationReason.CraftInventoryMismatch,
+        };
+        var plans = new CountingPlanRepository(contradicted);
+        var service = new PlanEndpointService(
+            new FixedRecommendations(RecommendationResult(now)), new FixedPortfolio(scope, Money.Zero, now),
+            new FixedAccountScopeGateway(scope.AccountId), new EmptyCraftingSnapshots(), new EmptyCraftingOpportunities(),
+            new FixedPersonalTradingPostRepository(profile, now), plans, orchestration,
+            new PlanDecisionProjectionStore(new DecisionLoopSchedulerSettings(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15))));
+
+        var response = await service.UndoAsync(contradicted.Id, CancellationToken.None);
+
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(Assert.IsAssignableFrom<IValueHttpResult>(response).Value));
+        var responsePlan = payload.RootElement.GetProperty("plan");
+        Assert.Equal("InProgress", responsePlan.GetProperty("state").GetString());
+        Assert.Equal("None", responsePlan.GetProperty("reconciliationState").GetString());
+        Assert.Equal("None", responsePlan.GetProperty("reconciliationReasonCode").GetString());
+        Assert.Equal(PlanState.InProgress, plans.Plan.State);
+        Assert.Equal(PlanReconciliationState.None, plans.Plan.ReconciliationState);
+        Assert.Equal(PlanReconciliationReason.None, plans.Plan.ReconciliationReason);
+    }
+
+    [Fact]
+    public async Task Bank_and_material_sources_remain_partial_after_two_new_complete_trading_post_syncs()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var firstCapture = now.AddMinutes(-1);
+        var secondCapture = now;
+        var scope = new AccountScope("scope-a");
+        var profile = new AccountProfile(1, scope.AccountId, firstCapture, firstCapture);
+        var craft = new PlanStep("craft", PlanStepAction.Craft, 100, "Insigne", 1, null, [], PlanStepState.Pending,
+            CraftEffects: [new(PlanResourceKind.Inventory, "10", -2, Money.Zero), new(PlanResourceKind.Inventory, "100", 1, Money.Zero)]);
+        var candidate = new PlanCandidate("craft", 1, "craft", PlanAttention.Active, [craft], [], Money.Zero,
+            Money.Zero, 8_000, 0, 1, 1, true, []);
+        var started = new PlanOrchestrationService().Start(candidate, now.AddMinutes(-5), new Money(10_000),
+            new Dictionary<string, long> { ["2:10"] = 2, ["2:100"] = 0 });
+        var reported = new PlanOrchestrationService().ReportStep(started, 1, null, now.AddMinutes(-4));
+        var plans = new CountingPlanRepository(reported);
+        var tpRepository = new FixedPersonalTradingPostRepository(profile, firstCapture);
+        var crafting = new AccountCraftingSnapshot(scope, now.AddMinutes(-2),
+            CraftingFeatureResult<IReadOnlyList<AccountInventoryEntry>>.Available([new(10, 2, AccountItemBinding.AccountBound)]),
+            CraftingFeatureResult<IReadOnlyList<AccountMaterialEntry>>.Available([new(100, 1, 0, AccountItemBinding.AccountBound)]),
+            CraftingFeatureResult<IReadOnlyList<int>>.Available([]),
+            CraftingFeatureResult<IReadOnlyList<CraftingDisciplineCapability>>.Available([]));
+        var service = new PlanEndpointService(
+            new FixedRecommendations(RecommendationResult(now)),
+            new FixedPortfolio(scope, new Money(10_000), now.AddMinutes(-2)),
+            new FixedAccountScopeGateway(scope.AccountId),
+            new FixedCraftingSnapshots(crafting), new EmptyCraftingOpportunities(),
+            tpRepository, plans, new PlanOrchestrationService(),
+            new PlanDecisionProjectionStore(new DecisionLoopSchedulerSettings(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15))));
+
+        _ = await service.GetAsync(CancellationToken.None);
+        tpRepository.SetCapture(secondCapture);
+        _ = await service.GetAsync(CancellationToken.None);
+
+        var pending = Assert.Single(plans.Plan.Events);
+        Assert.Equal(PlanShadowEventState.PendingConfirmation, pending.State);
+        Assert.Equal(0, pending.NegativeEvidenceCaptureCount);
+        Assert.Equal(PlanReconciliationState.AwaitingEvidence, plans.Plan.ReconciliationState);
+        Assert.Equal(2, plans.SaveCalls);
+    }
+
     [Fact]
     public async Task Completion_scope_guard_rejects_a_switch_before_profile_or_receipt_lookup()
     {
@@ -309,5 +420,101 @@ public sealed class PlanEndpointMappingTests
 
         private static Task<Gw2ApiResult<PersonalTransactionPage>> Failure() =>
             Task.FromResult(Gw2ApiResult<PersonalTransactionPage>.Failure(Gw2ApiErrorCategory.UpstreamUnavailable));
+    }
+
+    private sealed class FixedRecommendations(PrimaryRecommendationResult value) : IPrimaryRecommendationService
+    {
+        public Task<PrimaryRecommendationResult> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult(value);
+    }
+
+    private sealed class FixedPortfolio(AccountScope scope, Money cash, DateTimeOffset capturedAtUtc) : IAccountPortfolioGateway
+    {
+        public Task<Gw2ApiResult<AccountPortfolioSnapshot>> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Gw2ApiResult<AccountPortfolioSnapshot>.Success(new AccountPortfolioSnapshot(scope, cash,
+                new Dictionary<string, long>(), capturedAtUtc)));
+    }
+
+    private sealed class EmptyCraftingSnapshots : IAccountCraftingSnapshotService
+    {
+        public Task<Gw2ApiResult<AccountCraftingSnapshot>> RefreshAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Gw2ApiResult<AccountCraftingSnapshot>.Failure(Gw2ApiErrorCategory.UpstreamUnavailable));
+        public Task<AccountCraftingSnapshot?> GetLatestAsync(AccountScope accountScope, CancellationToken cancellationToken = default) =>
+            Task.FromResult<AccountCraftingSnapshot?>(null);
+    }
+
+    private sealed class FixedCraftingSnapshots(AccountCraftingSnapshot snapshot) : IAccountCraftingSnapshotService
+    {
+        public Task<Gw2ApiResult<AccountCraftingSnapshot>> RefreshAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Gw2ApiResult<AccountCraftingSnapshot>.Success(snapshot));
+        public Task<AccountCraftingSnapshot?> GetLatestAsync(AccountScope accountScope, CancellationToken cancellationToken = default) =>
+            Task.FromResult<AccountCraftingSnapshot?>(snapshot);
+    }
+
+    private sealed class EmptyCraftingOpportunities : ICraftingOpportunityService
+    {
+        public Task<CraftingPlannerResult> GetAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new CraftingPlannerResult(CraftingOpportunityState.Ready, [], [], []));
+    }
+
+    private sealed class FixedPersonalTradingPostRepository : IPersonalTradingPostRepository
+    {
+        private AccountProfile profile;
+        private DateTimeOffset observedAtUtc;
+
+        public FixedPersonalTradingPostRepository(AccountProfile profile, DateTimeOffset observedAtUtc)
+        {
+            this.profile = profile;
+            this.observedAtUtc = observedAtUtc;
+        }
+
+        public void SetCapture(DateTimeOffset capturedAtUtc)
+        {
+            observedAtUtc = capturedAtUtc;
+            profile = profile with { LastSuccessfulSyncAtUtc = capturedAtUtc };
+        }
+
+        public Task<AccountProfile?> FindAccountProfileAsync(string accountScopeId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<AccountProfile?>(accountScopeId == profile.AccountScopeId ? profile : null);
+        public Task<CurrentPersonalTradingPostOrderSnapshot?> GetLatestCurrentOrderSnapshotAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) =>
+            Task.FromResult<CurrentPersonalTradingPostOrderSnapshot?>(new(observedAtUtc, []));
+        public Task<IReadOnlyList<StoredCompletedPersonalTradingPostTransaction>> GetCompletedTransactionsAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<StoredCompletedPersonalTradingPostTransaction>>([]);
+        public Task<PersonalTradingPostReconciliationSnapshot> GetReconciliationSnapshotAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PersonalTradingPostReconciliationSnapshot(profile, new(observedAtUtc, []), []));
+
+        public Task<AccountProfile> GetOrCreateAccountProfileAsync(string accountScopeId, DateTimeOffset observedAtUtc, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task RecordSuccessfulSyncAsync(AccountProfile accountProfile, DateTimeOffset completedAtUtc, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task UpsertCompletedTransactionsAsync(AccountProfile accountProfile, IReadOnlyCollection<CompletedPersonalTradingPostTransaction> transactions, DateTimeOffset observedAtUtc, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<PersonalTradingPostHistoryCoverage> GetHistoryCoverageAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task ReplaceCurrentOrderSnapshotAsync(AccountProfile accountProfile, CurrentPersonalTradingPostOrderSnapshot snapshot, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<IReadOnlyList<CurrentPersonalTradingPostOrder>> GetCurrentOrdersAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot>> GetCurrentOrderObservationsAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class CountingPlanRepository(PlanRecord plan) : IPlanRepository
+    {
+        public int SaveCalls { get; private set; }
+        public PlanRecord Plan { get; private set; } = plan;
+        public Task<IReadOnlyList<PlanRecord>> GetStartedAsync(long accountProfileId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<PlanRecord>>([Plan]);
+        public Task<IReadOnlyList<PlanRecord>> GetReconciliationCandidatesAsync(long accountProfileId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<PlanRecord>>([Plan]);
+        public Task<PlanStartResult> TryStartAsync(long accountProfileId, PlanRecord value, Money verifiedCash, Money hardReserve, IReadOnlyDictionary<string, long> verifiedQuantities, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<IReadOnlyList<PlanRecord>> ApplyAccountReconciliationAsync(long accountProfileId, Func<IReadOnlyList<PlanRecord>, IReadOnlyList<PlanRecord>> reconcile, CancellationToken cancellationToken = default)
+        {
+            var updated = reconcile([Plan]);
+            if (updated.Count == 0) return Task.FromResult<IReadOnlyList<PlanRecord>>([]);
+            if (!PlanRecordSemantics.AreEqual(Plan, updated[0]))
+            {
+                SaveCalls++;
+                Plan = updated[0] with { Revision = updated[0].Revision + 1 };
+            }
+            return Task.FromResult<IReadOnlyList<PlanRecord>>([Plan]);
+        }
+        public Task<PlanCompletionResult> CompleteStepAsync(long accountProfileId, PlanCompletionCommand command, Func<PlanRecord, PlanRecord> transition, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task SaveAsync(long accountProfileId, PlanRecord value, CancellationToken cancellationToken = default)
+        {
+            SaveCalls++;
+            Plan = value with { Revision = value.Revision + 1 };
+            return Task.CompletedTask;
+        }
     }
 }

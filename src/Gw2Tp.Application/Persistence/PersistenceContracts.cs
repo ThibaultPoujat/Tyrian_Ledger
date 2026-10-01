@@ -61,6 +61,12 @@ public sealed record CurrentPersonalTradingPostOrderSnapshot(
     DateTimeOffset ObservedAtUtc,
     IReadOnlyList<CurrentPersonalTradingPostOrder> Orders);
 
+/// <summary>Trading Post evidence read from one consistent local database snapshot.</summary>
+public sealed record PersonalTradingPostReconciliationSnapshot(
+    AccountProfile AccountProfile,
+    CurrentPersonalTradingPostOrderSnapshot? CurrentOrders,
+    IReadOnlyList<StoredCompletedPersonalTradingPostTransaction> CompletedTransactions);
+
 /// <summary>
 /// Normalized public item display metadata. This is reference data, not an ArenaNet
 /// payload and not a product-policy store.
@@ -135,6 +141,10 @@ public interface IPersonalTradingPostRepository
     /// Returns the last complete current-order snapshot, including its observation time.
     /// </summary>
     Task<CurrentPersonalTradingPostOrderSnapshot?> GetLatestCurrentOrderSnapshotAsync(
+        AccountProfile accountProfile,
+        CancellationToken cancellationToken = default);
+
+    Task<PersonalTradingPostReconciliationSnapshot> GetReconciliationSnapshotAsync(
         AccountProfile accountProfile,
         CancellationToken cancellationToken = default);
 

@@ -708,6 +708,8 @@ public sealed class PrimaryRecommendationServiceTests
         { ReadCount++; return Task.FromResult(Profile); }
         public Task<IReadOnlyList<StoredCompletedPersonalTradingPostTransaction>> GetCompletedTransactionsAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default)
         { ReadCount++; return Task.FromResult(Completed); }
+        public Task<PersonalTradingPostReconciliationSnapshot> GetReconciliationSnapshotAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default)
+        { ReadCount++; return Task.FromResult(new PersonalTradingPostReconciliationSnapshot(accountProfile, CurrentOrders, Completed)); }
         public Task<PersonalTradingPostHistoryCoverage> GetHistoryCoverageAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default)
         { ReadCount++; return Task.FromResult(Coverage); }
         public Task<CurrentPersonalTradingPostOrderSnapshot?> GetLatestCurrentOrderSnapshotAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default)
