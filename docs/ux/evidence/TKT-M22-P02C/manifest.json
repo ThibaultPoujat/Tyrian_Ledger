@@ -1,0 +1,90 @@
+{
+  "runtimeHead": "4285d4b1cd87388b552cffc1f6d67717255b5afa",
+  "capturedAtUtc": "2026-10-01T22:03:34.673480+00:00",
+  "browser": "Chromium",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "deviceScaleFactor": 1,
+  "zoom": 1,
+  "route": "http://127.0.0.1:5081/",
+  "environment": "Testing; empty credential; disposable SQLite",
+  "references": [
+    "../../prototypes/2026-09-28/01-signaux.png",
+    "../../prototypes/2026-09-28/02-plan-comparison.png",
+    "../../prototypes/2026-09-28/03-active-plan.png"
+  ],
+  "screens": [
+    {
+      "scenario": "bank",
+      "file": "bank-1920x1080.png",
+      "sha256": "8493206bbcde1fc461bb5ad447dfca4b0b0502f61995d6e954fc38b559b1c2c1",
+      "width": 1920,
+      "height": 1080,
+      "fixture": "fixtures/bank.json",
+      "fixtureSha256": "fa8025ff46e526193da84a6735a7cb74ac77cd3914d56214094c170d5ee39bfd",
+      "section": "Artisanat"
+    },
+    {
+      "scenario": "own-bag",
+      "file": "own-bag-1920x1080.png",
+      "sha256": "d4d6b753eecdc4a629439a46a289a6da32c1b3fb68835268f5a1ee6c9973b554",
+      "width": 1920,
+      "height": 1080,
+      "fixture": "fixtures/own-bag.json",
+      "fixtureSha256": "cc2ccacbfbbfb43e8e5234fd7fa230f7b4f0583b52a9bee1409ca43c076fc36f",
+      "section": "Artisanat"
+    },
+    {
+      "scenario": "partial-bank",
+      "file": "partial-bank-1920x1080.png",
+      "sha256": "f1531e3be4f6e7879c0e4c1f218c725d3314c3f6d37d6addfb7453d4f88b4ae7",
+      "width": 1920,
+      "height": 1080,
+      "fixture": "fixtures/partial-bank.json",
+      "fixtureSha256": "c49effa1468b2f220baf85dc26b64f937f51d98dae081eaeeab36bea13148be6",
+      "section": "Artisanat"
+    },
+    {
+      "scenario": "other-bag",
+      "file": "other-bag-1920x1080.png",
+      "sha256": "90ca0c159a945a4831fce2fd95a8dd55265436b4a3110689e35e12ba7faf55ee",
+      "width": 1920,
+      "height": 1080,
+      "fixture": "fixtures/other-bag.json",
+      "fixtureSha256": "fd1ce5fd11f023959cb76c4028e3a40bf29d70f5760038e443b884d3fb00f212",
+      "section": "Artisanat"
+    },
+    {
+      "scenario": "bound-other",
+      "file": "bound-other-1920x1080.png",
+      "sha256": "90ca0c159a945a4831fce2fd95a8dd55265436b4a3110689e35e12ba7faf55ee",
+      "width": 1920,
+      "height": 1080,
+      "fixture": "fixtures/bound-other.json",
+      "fixtureSha256": "fd1ce5fd11f023959cb76c4028e3a40bf29d70f5760038e443b884d3fb00f212",
+      "section": "Artisanat"
+    },
+    {
+      "scenario": "protected",
+      "file": "protected-1920x1080.png",
+      "sha256": "90ca0c159a945a4831fce2fd95a8dd55265436b4a3110689e35e12ba7faf55ee",
+      "width": 1920,
+      "height": 1080,
+      "fixture": "fixtures/protected.json",
+      "fixtureSha256": "fd1ce5fd11f023959cb76c4028e3a40bf29d70f5760038e443b884d3fb00f212",
+      "section": "Artisanat"
+    },
+    {
+      "scenario": "paused-location",
+      "file": "paused-location-1920x1080.png",
+      "sha256": "2d760860ea70b105195a40cf7dcc5f1d7ab34c3f55d2cab812ad1c38634628b4",
+      "width": 1920,
+      "height": 1080,
+      "fixture": "fixtures/paused-location.json",
+      "fixtureSha256": "fef50de5a01fee2ba31c6dfb99c0af015b555335a338d47b359e3ed24bff4621",
+      "section": "Plans"
+    }
+  ]
+}
