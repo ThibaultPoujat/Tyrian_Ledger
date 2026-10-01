@@ -2,8 +2,8 @@
 
 GitHub issue: #169
 
-Milestone M22. Risk R3. Implementation: Luna High explicitly permitted.
-Review NORMAL: independent Sol High using tyrian-pr-review.
+Milestone M22. Risk R3. Implementation: GPT-6.1 Sol High.
+Review NORMAL: independent GPT-6.1 Sol High using tyrian-pr-review.
 Ready after #168 merges with its typed collector/coverage evidence; validate
 the [B2 checks](../batch-02.md). This is a producer and deterministic policy
 ticket; live admission/persistence is deferred to #171.
@@ -101,4 +101,4 @@ No screenshot requirement for pure producer/policy changes. If existing French
 rendered behavior materially changes, include its required visual evidence.
 
 Commit [TKT-M22-P02B]; PR develop, Closes #169, milestone 11. NORMAL independent
-Sol High; missing evidence means Draft. Stop for owner merge. Next is #170.
+GPT-6.1 Sol High; missing evidence means Draft. Stop for owner merge. Next is #170.

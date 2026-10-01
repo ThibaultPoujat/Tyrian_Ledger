@@ -2,8 +2,8 @@
 
 GitHub issue: #168
 
-Milestone M22. Risk R2. Implementation: Luna High explicitly permitted.
-Review NORMAL: independent Sol Medium using tyrian-pr-review.
+Milestone M22. Risk R2. Implementation: GPT-6.1 Sol Medium.
+Review NORMAL: independent GPT-6.1 Sol Medium using tyrian-pr-review.
 Batch B2, first implementation. Ready only after C03 / #167 merges and the
 [B2 entry checks](../batch-02.md) hold. B1 predecessors are merged.
 

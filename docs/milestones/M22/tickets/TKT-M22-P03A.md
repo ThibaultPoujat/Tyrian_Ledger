@@ -2,8 +2,8 @@
 
 GitHub issue: #170
 
-Milestone M22. Risk R3. Implementation: Luna High explicitly permitted by this
-bounded contract. Review SOL-GATED: fresh independent Sol XHigh after green CI.
+Milestone M22. Risk R3. Implementation: GPT-6.1 Sol High.
+Review SOL-GATED: fresh independent GPT-6.1 Sol XHigh after green CI.
 Ready after #169 and #168 merge with their typed handoffs and B2 evidence.
 
 ## Outcome and inspected gap
@@ -115,4 +115,4 @@ No live holdings integration, native companion, UI redesign, generic caching,
 new public exposure, game writes, fee or retention policy change. Update #170's
 batch row with exact reviewed head/CI/guard coverage. Commit [TKT-M22-P03A];
 Draft PR develop, Closes #170, milestone 11. Green CI precedes fresh independent
-Sol XHigh; Ready only after approval. Stop for owner merge. Next is #171.
+GPT-6.1 Sol XHigh; Ready only after approval. Stop for owner merge. Next is #171.

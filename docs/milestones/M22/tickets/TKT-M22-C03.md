@@ -3,7 +3,7 @@
 GitHub issue: #167
 
 Milestone M22. Risk R2. Owner-authorized Astra planning preparation.
-Review NORMAL: independent Sol Medium using tyrian-pr-review.
+Review NORMAL: independent GPT-6.1 Sol Medium using tyrian-pr-review.
 
 ## Outcome
 
@@ -21,8 +21,9 @@ regressions; it implements no runtime account, financial or UI behavior.
 - Split B2 into #168 collection, #169 protections/actors, #170 epochs and #171
   protected projection, with entry evidence, bounded behavior, non-goals,
   representative failure vectors and required validation.
-- Assign Luna High implementation explicitly; NORMAL Sol Medium for #168,
-  NORMAL Sol High for #169/#171, fresh Sol XHigh gate for #170.
+- Assign GPT-6.1 Sol Medium implementation to #168 and High to #169–#171;
+  independent GPT-6.1 Sol Medium for #168, High for #169/#171, and fresh XHigh
+  after green CI for #170. Preserve review independence and the gate.
 - Align INDEX/#98, active context, model guide, reusable Goal and #150. Preserve
   historical B1 tests and add B2 progression/fail-closed authority regressions.
 - Preserve the complete remaining map. Keep Windows feasibility planned at the

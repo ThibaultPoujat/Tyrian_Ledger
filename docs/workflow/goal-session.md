@@ -2,8 +2,11 @@
 
 The same prompt works throughout a prepared batch. Model selection happens in the
 host UI; this document does not configure routing, limits or automatic reviewers.
-Use **Luna High** for B2's four implementation tickets. Keep implementation/fixes
-for one ticket together; use a new implementation context for the next ticket.
+Use **GPT-6.1 Sol Medium** for #168, then **GPT-6.1 Sol High** for #169–#171.
+Select `gpt-6.1-sol` and the ticket's effort in the host before each Goal.
+Keep implementation/fixes for one ticket together; use a new implementation
+context for the next ticket. Review uses a separate independent context; #170
+requires fresh GPT-6.1 Sol XHigh only after green CI.
 
 ## Copyable implementation prompt
 
@@ -14,6 +17,9 @@ ThibaultPoujat/Tyrian_Ledger on current develop.
 Read AGENTS.md. Reconcile CURRENT.md with GitHub delivery state, issue #98,
 docs/milestones/INDEX.md and docs/workflow/model-effort-guide.md.
 Use docs/milestones/M22/batch-02.md for the current prepared queue.
+Use GPT-6.1 Sol at the selected ticket's effort: Medium for #168, High for
+#169–#171. If the active host model/effort cannot match the assignment, preserve
+a handoff rather than silently substituting or claiming this prompt changes it.
 Select only the first open implementation in explicit order; verify its
 predecessor merges, final-head CI/review and ticket entry conditions. Distinguish reviewed code
 from later evidence-only commits; code changes require affected re-review. Closed

@@ -2,8 +2,8 @@
 
 GitHub issue: #171
 
-Milestone M22. Risk R3. Implementation: Luna High explicitly permitted.
-Review NORMAL: independent Sol High using tyrian-pr-review.
+Milestone M22. Risk R3. Implementation: GPT-6.1 Sol High.
+Review NORMAL: independent GPT-6.1 Sol High using tyrian-pr-review.
 Ready after #170 merges with green final-head CI/fresh Sol approval and #168/#169
 typed handoffs. Validate B2 entry checks. Last implementation before #150.
 
@@ -123,6 +123,6 @@ required original/actual 1920×1080 evidence; otherwise state API/domain-only. D
 correspondence are owned by Planned P02-E in the remaining map; this contract
 never certifies those exits.
 
-Commit [TKT-M22-P02C]; PR develop, Closes #171, actual milestone 11. NORMAL Sol
+Commit [TKT-M22-P02C]; PR develop, Closes #171, actual milestone 11. NORMAL GPT-6.1 Sol
 High independent review; missing evidence means Draft. Stop after owner merge
 at #150 for the next batch preparation. B2 does not close all P01–P06 exits.

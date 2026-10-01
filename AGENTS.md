@@ -259,7 +259,8 @@ Do not substitute the old Sites prototype, earlier concepts or a new redesign.
 ## Model and reasoning guidance
 
 The model-effort guide owns defaults. The owner requests Astra for precise
-planning/checkpoints and Luna for bounded implementation where specified.
+planning/checkpoints and the implementation model explicitly assigned by the
+model-effort guide (GPT-6.1 Sol for B2).
 Use `docs/workflow/goal-session.md` for the one-ticket Goal contract. Do not
 weaken validation for a cheaper model or claim quota behavior the host has not
 established. Stop after the assigned ticket's PR/handoff, never auto-merge.

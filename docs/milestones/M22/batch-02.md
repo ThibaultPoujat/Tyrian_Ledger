@@ -3,16 +3,19 @@
 Prepared 2026-10-01 by owner request after B1. Inspected baseline:
 `develop 020ca25dae4d44a804e060cdda48616b795d51e8`.
 C03 / #167 is this preparation; merge it before starting #168.
+Owner-approved model update 2026-10-01: all four implementations use
+`gpt-6.1-sol`, Medium for #168 and High for #169–#171. Review remains independent,
+including fresh GPT-6.1 Sol XHigh after green CI for #170.
 One ticket/Goal/PR, independent review and owner merge remain mandatory.
 
 ## Prepared queue and entry checks
 
 | Order | Contract | Entry evidence | Implementation / review |
 |---|---|---|---|
-| 1 | [P02A / #168](tickets/TKT-M22-P02A.md) — location/actor-scoped holdings collector | #167 preparation merged; B1 evidence below | Luna High / NORMAL Sol Medium |
-| 2 | [P02B / #169](tickets/TKT-M22-P02B.md) — equipment protection and real crafting actors | #168 merged; typed coverage/location seam and bounded gateway tests | Luna High / NORMAL Sol High |
-| 3 | [P03A / #170](tickets/TKT-M22-P03A.md) — account/store generation fences | #169 merged; collector/protection handoffs; current private-writer inventory | Luna High / SOL-GATED fresh Sol XHigh |
-| 4 | [P02C / #171](tickets/TKT-M22-P02C.md) — persistent protected projection/admission | #170 merged with final-head CI/fresh approval; guarded commit seam | Luna High / NORMAL Sol High |
+| 1 | [P02A / #168](tickets/TKT-M22-P02A.md) — location/actor-scoped holdings collector | #167 preparation merged; B1 evidence below | GPT-6.1 Sol Medium / NORMAL GPT-6.1 Sol Medium |
+| 2 | [P02B / #169](tickets/TKT-M22-P02B.md) — equipment protection and real crafting actors | #168 merged; typed coverage/location seam and bounded gateway tests | GPT-6.1 Sol High / NORMAL GPT-6.1 Sol High |
+| 3 | [P03A / #170](tickets/TKT-M22-P03A.md) — account/store generation fences | #169 merged; collector/protection handoffs; current private-writer inventory | GPT-6.1 Sol High / SOL-GATED fresh GPT-6.1 Sol XHigh |
+| 4 | [P02C / #171](tickets/TKT-M22-P02C.md) — persistent protected projection/admission | #170 merged with final-head CI/fresh approval; guarded commit seam | GPT-6.1 Sol High / NORMAL GPT-6.1 Sol High |
 | Stop | [G01 / #150](tickets/TKT-M22-G01.md) — batch/integration checkpoint | Four deliveries and integrated failure evidence | Astra planning, not an executable coding Goal |
 
 Each new Goal verifies the exact predecessor issue/merged PR, reviewed code head,
@@ -101,7 +104,7 @@ review. Next Goal verifies operational GitHub state and actual entry conditions.
 |---|---|
 | #168 | Pending implementation. Collector shape/coverage, endpoint fixtures and bounded-read evidence required. |
 | #169 | Pending implementation. Actor/protection vectors and typed policy handoff required. |
-| #170 | Pending implementation. Guarded writer/publication table, restore/restart races, fresh Sol XHigh approval and final-head CI required. |
+| #170 | Pending implementation. Guarded writer/publication table, restore/restart races, fresh GPT-6.1 Sol XHigh approval and final-head CI required. |
 | #171 | Pending implementation. Shared projection, physical/source limitations, transfer replay, protection and SQLite integration evidence required. |
 
 ## Exit and escalation
