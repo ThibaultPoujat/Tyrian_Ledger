@@ -45,7 +45,7 @@ Next session verifies the merge and current review head; no owner doc editing.
 | Ticket | Evidence PR / reviewed head / CI / preview |
 |---|---|
 | #158 | [PR #163](https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/163); reviewed code head [`cdbd680`](https://github.com/ThibaultPoujat/Tyrian_Ledger/commit/cdbd6807e1818374908a8278df93f46fb9b6bee1); [CI run 36823117174](https://github.com/ThibaultPoujat/Tyrian_Ledger/actions/runs/36823117174) green; [targeted fresh Sol XHigh review APPROVE](https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/163#issuecomment-5925897424). VERIFY-008 remains open. API-only; no visual preview applies. |
-| #159 | To be supplied by implementation |
+| #159 | [PR #164](https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/164); reviewed code head [`dd2b93e`](https://github.com/ThibaultPoujat/Tyrian_Ledger/commit/dd2b93ef4757a0949958d6c099c69ede01fb8ec6); [CI run 36828063640](https://github.com/ThibaultPoujat/Tyrian_Ledger/actions/runs/36828063640) green; [independent NORMAL Sol High APPROVE](https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/164#issuecomment-5926463915). Partial/Undo, restart/race, competing-plan and transaction rollback vectors pass; VERIFY-008/013 remain open. API/domain-only; existing French paused rendering tested, no production UI change or visual preview applies. |
 | #160 | To be supplied by implementation; include preview command and screenshots |
 | #161 | To be supplied by implementation; include combined owner preview |
 
