@@ -1,6 +1,6 @@
 # Model and Review Policy
 
-Owner direction updated 2026-09-29: Astra prepares batches of bounded contracts, Luna can
+Rolling workflow approved 2026-09-29; B2 model assignments updated 2026-10-01: Astra prepares batches of bounded contracts, Luna can
 implement sufficiently specified tickets, and stronger review is reserved for
 consequential changes. Model availability/usage accounting is controlled by the
 host product. This policy promises neither a quota saving nor a quota bypass.
@@ -35,7 +35,7 @@ Risk alone does not imply a *separate Sol XHigh* gate; only the explicit list do
 
 Astra maintains the complete [remaining map](../milestones/remaining-delivery-map.md)
 and details the next batch. Later units remain Planned, not Ready. The current
-[B1 manifest](../milestones/M22/batch-01.md) has four fully specified contracts.
+[B2 manifest](../milestones/M22/batch-02.md) has four fully specified contracts.
 After a predecessor merges with required evidence, the next Goal validates entry
 conditions and proceeds without another planning-only ticket or Astra session.
 Stop at #150 after the batch, or earlier for a real contract/owner decision.
@@ -68,14 +68,33 @@ consistency. It does not implement runtime financial changes.
 TKT-M22-C02 / #157 is the owner-approved R2 rolling-planning preparation,
 implemented by Astra and independently reviewed by Sol Medium.
 
-Explicit B1 implementation/review assignments:
+Historical B1 implementation/review assignments (all merged):
 
 | Ticket | Implementation | Independent review |
 |---|---|---|
-| P01C / #158 | Luna High, bounded evidence contract | Fresh Sol XHigh; listed below |
+| P01C / #158 | Luna High, bounded evidence contract | Completed Sol XHigh gate; evidence in B2 |
 | P01D / #159 | Luna High, bounded partial-execution contract | NORMAL Sol High |
 | P05A / #160 | Luna High | NORMAL Luna High + image comparison |
 | P05B / #161 | Luna High, bounded fixture interactions | NORMAL Sol Medium + image comparison |
+
+TKT-M22-C03 / #167 is the owner-requested R2 B1 checkpoint/B2 preparation,
+implemented by Astra and independently reviewed by GPT-6.1 Sol Medium.
+
+Explicit B2 implementation/review assignments (owner-approved GPT-6.1 Sol):
+
+Select `gpt-6.1-sol` in the host model picker for B2 implementation and review.
+Effort is Medium for #168 implementation and High for #169–#171. An independent
+reviewer uses a separate context even when author and reviewer use the same model.
+Only #170 requires the fresh XHigh review after green CI; do not apply that effort
+by default to every implementation or NORMAL review. Historical B1 choices above
+remain records of the models used, not retroactive GPT-6.1 assignments.
+
+| Ticket | Implementation | Independent review |
+|---|---|---|
+| P02A / #168 | GPT-6.1 Sol Medium, bounded disconnected collector | NORMAL GPT-6.1 Sol Medium |
+| P02B / #169 | GPT-6.1 Sol High, bounded protection/actor policy | NORMAL GPT-6.1 Sol High |
+| P03A / #170 | GPT-6.1 Sol High, explicit generation transition/guard vectors | Fresh GPT-6.1 Sol XHigh; listed below |
+| P02C / #171 | GPT-6.1 Sol High, conservative projection/integration contract | NORMAL GPT-6.1 Sol High |
 
 NORMAL reviewers use a separate independent context within the same run when
 available; owner need not start another session by habit. Missing independent
@@ -88,10 +107,10 @@ GitHub CLOSED state removes a listed gate from generated active status; it does
 not rewrite this authority or prove its acceptance. Verify merged review evidence
 at ticket entry. Completed entries are tidied at batch checkpoints, not every merge.
 
-- #158 / TKT-M22-P01C — source-scoped reconciliation evidence; Luna High explicitly permitted by the bounded contract.
+- #170 / TKT-M22-P03A — account/store generation, private writes and receipt/recovery fences; GPT-6.1 Sol High implementation and fresh independent GPT-6.1 Sol XHigh review.
 - #96 / TKT-M22-02 — final security/recovery/release hardening; Sol High implementation default.
 
-Completed gates #133, #93, #94, #149 and #154 are historical, not active review requirements.
+Completed gates #133, #93, #94, #149, #154 and #158 are historical, not active review requirements.
 Add newly ready high-consequence tickets explicitly here when their contracts
 require this gate; do not infer or silently remove gates from labels alone.
 

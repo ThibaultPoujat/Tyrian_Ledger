@@ -2,8 +2,11 @@
 
 The same prompt works throughout a prepared batch. Model selection happens in the
 host UI; this document does not configure routing, limits or automatic reviewers.
-Use **Luna High** for B1's four implementation tickets. Keep implementation/fixes
-for one ticket together; use a new implementation context for the next ticket.
+Use **GPT-6.1 Sol Medium** for #168, then **GPT-6.1 Sol High** for #169–#171.
+Select `gpt-6.1-sol` and the ticket's effort in the host before each Goal.
+Keep implementation/fixes for one ticket together; use a new implementation
+context for the next ticket. Review uses a separate independent context; #170
+requires fresh GPT-6.1 Sol XHigh only after green CI.
 
 ## Copyable implementation prompt
 
@@ -13,9 +16,13 @@ ThibaultPoujat/Tyrian_Ledger on current develop.
 
 Read AGENTS.md. Reconcile CURRENT.md with GitHub delivery state, issue #98,
 docs/milestones/INDEX.md and docs/workflow/model-effort-guide.md.
-Use docs/milestones/M22/batch-01.md for the current prepared queue.
+Use docs/milestones/M22/batch-02.md for the current prepared queue.
+Use GPT-6.1 Sol at the selected ticket's effort: Medium for #168, High for
+#169–#171. If the active host model/effort cannot match the assignment, preserve
+a handoff rather than silently substituting or claiming this prompt changes it.
 Select only the first open implementation in explicit order; verify its
-predecessor merges, final-head CI/review and ticket entry conditions. Closed
+predecessor merges, final-head CI/review and ticket entry conditions. Distinguish reviewed code
+from later evidence-only commits; code changes require affected re-review. Closed
 issues alone are not evidence of delivery. If the next item is #150 or a
 prerequisite/contract is invalid, stop with the exact checkpoint/blocker.
 
@@ -41,7 +48,7 @@ new planning ticket, or reinterpret the entire tracking gate as one coding task.
 
 After an owner merge, reuse this prompt. No new Astra Goal-writing session is
 needed while the next contract is prepared and its entry conditions hold.
-The current B1 order is #158 → #159 → #160 → #161 → #150 checkpoint.
+After #167 preparation merges, B2 order is #168 → #169 → #170 → #171 → #150 checkpoint.
 Update this batch-manifest pointer only at the next batch preparation.
 
 ## Review handoff when a separate session is required

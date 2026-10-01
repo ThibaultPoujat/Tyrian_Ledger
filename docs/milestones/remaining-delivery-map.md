@@ -1,7 +1,7 @@
 # Remaining Delivery Map
 
-Owner-approved rolling planning: 2026-09-29. Inspected baseline:
-`develop e9712b4e97b547550ed73f33681af3a81be76d39`, after P01B.
+Owner-approved rolling planning: 2026-09-29; B2 prepared 2026-10-01. Inspected
+baseline: `develop 020ca25dae4d44a804e060cdda48616b795d51e8`, after B1.
 This maps the complete remaining corrective program through release. The
 [approved delivery plan](approved-delivery-plan.md) still owns package exits and
 audit traceability. This document decomposes those packages; it does not claim
@@ -9,12 +9,13 @@ future work is implemented or authorize all work in one Goal.
 
 ## Planning precision and readiness
 
-Only the four [B1 contracts](M22/batch-01.md) below are fully specified now.
+B1 is merged, with implementation evidence recorded in [B2](M22/batch-02.md).
+Only B2's four implementation contracts are newly prepared now.
 A ticket becomes executable when its named preparation/predecessors are merged,
 required evidence exists and its assumptions still hold. Readiness is conditional,
 not inferred from an open issue, a number or a generated preferred-ticket field.
 
-Later work units below are **Planned, not Ready**. IDs such as P02-A are map labels,
+Later work units below are **Planned, not Ready**. IDs such as P02C are map labels,
 not GitHub issues. At each batch checkpoint, Astra validates the delivered
 interfaces and promotes the next 3–5 units to bounded contracts. Split a future
 unit if it cannot produce one coherent, independently reviewable PR. Do not
@@ -33,21 +34,23 @@ review assignment before coding; quota does not waive review.
 | P01D / B1 / #159 | Actual partial quantities; safe bounded residual exit; unsupported chains pause | P01C | Partial 4/10 never produces a 10-unit dependent instruction | Sol High NORMAL |
 | P05A / B1 / #160 | Shared React shell, Signaux and session drawer with fixtures | P01D in queue; six-image baseline | 01/04 screenshot and interaction evidence; no live mutation | Luna High NORMAL |
 | P05B / B1 / #161 | Plan alternatives and grouped execution/recovery preview | P05A | 02/03 comparisons; long/pending/contradicted plan interactions | Sol Medium NORMAL |
-| P02-A / B2 | Complete supported physical holdings: all character inventories, bank, materials, delivery and provenance; transfers do not duplicate | P01C evidence frame; verified endpoint/permission coverage | Per-source coverage; bag↔bank↔delivery move replay, partial-source failure | Strong account/resource review |
-| P02-B / B2 | Equipped/template-instance protection, explicit protected materials and actor-specific crafting capability | P02-A; verified equipment/template and character contracts | Protected instances excluded; chosen character can perform every craft; unavailable coverage fails closed | Strong protection/security review |
-| P03-A / B2 | Durable account/reset/restore generation; obsolete work cannot commit | P02-A source ownership; P01B receipts | Switch/clear/restore while reads run; no old account write or receipt leakage; restart | Explicit Sol gate expected |
-| P06-A / B2 | Early Windows tray/notification feasibility and packaging decision, with minimal executable probe | Existing loopback host; target Windows environment | UI closed, minimized, lock/sleep/resume, permission denied; record supported delivery limits | Sol Medium; security escalation if needed |
-| P01-E / B3 | Settled vs merely reported executions; repeat same strategy with a new execution; idempotent starts | P01C/D; P02-A/B; P03-A | Unconfirmed buy/list/fill cannot settle; settled strategy repeats; late evidence preserves history; start retry never starts twice | Explicit Sol gate expected |
-| P01-F / B3 | Passive procurement becomes repriced feasible craft/sell continuation; collection distinguished from fill | P01-E; complete usable inventory/capabilities | Order→partial/full fill→collect→craft→sell; no duplicate acquisition; capacity/depth deterioration pauses | Strong lifecycle/economics review |
+| P02A / B2 / #168 | Typed all-character holdings collector with per-location/source provenance; disconnected from live persistence/admission | C03; B1 evidence frame; optional endpoint coverage | All actors retained, partial failures honest, fan-out bounded, delivery isolated | NORMAL GPT-6.1 Sol Medium |
+| P02B / B2 / #169 | Equipped/template protection and actor-specific crafting policy; producer seam only | P02A; documented equipment/tab schema | No fabricated actor or protected input; uncertainty fails closed | NORMAL GPT-6.1 Sol High |
+| P03A / B2 / #170 | Durable store incarnation and account/reset/restore generation; obsolete work cannot commit or retrieve receipts | P02A/B; P01B receipts; actual writer/publication inventory | Switch/clear/restore races, no old account write or receipt leakage, restart/rollback | Explicit GPT-6.1 Sol XHigh gate |
+| P02C / B2 / #171 | Guarded persistent location/protection evidence and one conservative holdings projection | P03A; P02A/B seams | No portfolio/location/delivery double credit; protected/actor eligibility; Partial live physical proof | NORMAL GPT-6.1 Sol High |
+| P06-A / next checkpoint priority, Planned | Early Windows tray/notification feasibility and packaging decision, with minimal executable probe | Existing loopback host; actual Windows environment and owner architecture decision if needed | UI closed/minimized, lock/sleep/resume, denied permission; truthful limits | Sol Medium; security escalation if needed |
+| P02-E / B3 preparation priority, Planned | Action-relevant transfer/coherence evidence and supported equipment correspondence; improve multi-location admission only with adequate correlation, retain conservative fallback otherwise | P02C; VERIFY-016/017 research and actual endpoint evidence | Delayed bag↔bank↔delivery replays conserve resources; supported craft confirmation and exact correspondence have adequate proof; unsupported shapes remain explicit, never globally atomic claims | Strong evidence/resource review; assign gate at preparation |
+| P01-E / B3 | Settled vs merely reported executions; repeat same strategy with a new execution; idempotent starts | P01C/D; P02C/P02-E action-relevant evidence; P03A | Unconfirmed buy/list/fill cannot settle; settled strategy repeats; late evidence preserves history; start retry never starts twice | Explicit Sol gate expected |
+| P01-F / B3 | Passive procurement becomes repriced feasible craft/sell continuation; collection distinguished from fill | P01-E; P02C/P02-E supported usable inventory/capabilities | Order→partial/full fill→collect→craft→sell; no duplicate acquisition; capacity/depth deterioration pauses | Strong lifecycle/economics review |
 | P01-G / B3 | General residual replanning and explicit contradiction/undo recovery beyond P01D's one-item case | P01-E/F | Multi-input partial chain conserves inputs/output/basis; acted descendants not rewritten | Explicit Sol gate expected |
-| P02-C / B3 | Transformation/transfer cost provenance and outcome events across trade/craft chains | Complete account evidence; P01 lifecycle | Known/unknown basis preserved; no phantom TP holdings; fees/cash/profit separated | Strong accounting review |
-| P03-B / B4 | Reusable endpoint-aware caches and bounded priority scheduler | P03-A epochs; P02 source contract | Metadata reuse, coalescing, Retry-After handling, bounded request/concurrency policy; no cache proof fabrication | Sol High |
+| P02D / B3 | Transformation/transfer cost provenance and outcome events across trade/craft chains | P02C/P02-E action-relevant account evidence; P01 lifecycle | Known/unknown basis preserved; no phantom TP holdings; fees/cash/profit separated | Strong accounting review |
+| P03-B / B4 | Reusable endpoint-aware caches and bounded priority scheduler | P03A epochs; P02 source contract | Metadata reuse, coalescing, Retry-After handling, bounded request/concurrency policy; no cache proof fabrication | Sol High |
 | P03-C / B4 | Persisted/local decision read models, targeted start preflight and short command commit gates | P03-B; P01 lifecycle | Completion stays local/durable during unrelated API stalls; stale commitment blocked; latency measured | Strong concurrency review |
 | P04-A / B4 | Versioned session preferences and common feasibility/economics for both objectives | P01/P02 integrated slice; P03 read models; approved preference semantics | Allocation/reserve/commitment examples; active time vs liquid cash deadline; unknown basis stays explicit | Strong financial review |
 | P04-B / B4 | Bounded rotating research universe, cold-start path and observation-coverage quality | P03-B; P04-A contract | Candidate beyond old prefix eventually checked; clustered/stale history rejected; work bounded | Sol High |
 | P04-C / B5 | Shared utility/ranking, worthwhile-action and attention gates across supported strategies | P04-A/B | Comparable economics/time; hard failures cannot be outranked; scarce urgent alerts | Strong recommendation review |
 | P05-C / B5 | Connect the first four approved views to live typed services; normal API observation plus exceptional local report | P05A/B; P01–P04 required contracts | Same screenshot hierarchy with live adapters; no fixture fallback; restart/account-switch/retry integration | Sol High + visual |
-| P05-D / B5 | Bilan and Réglages: outcome certainty, time, coverage, protection and local settings | P02-C; P04 preferences; P06 notification status contract | 05/06 screenshots; unknown basis not profit; estimated time not measured; coverage and permissions truthful | Sol Medium/High + visual |
+| P05-D / B5 | Bilan and Réglages: outcome certainty, time, coverage, protection and local settings | P02D; P04 preferences; P06 notification status contract | 05/06 screenshots; unknown basis not profit; estimated time not measured; coverage and permissions truthful | Sol Medium/High + visual |
 | P06-B / B5 | Durable important-alert queue, deduplication and native delivery with app UI closed | P06-A decision; P03 epochs; P04-C actionable reasons | Restart/resume/dismissal; no repeated non-action alerts; permissions diagnostic | Strong persistence/security review |
 | P06-C / B6 | Windows install/update/uninstall, tray lifecycle and recovery integration | P06-B; live UI; all personal-data schemas | Clean owner/friend install; credential handling; stop/start/update/uninstall/restore evidence | Sol High |
 | P07-A / B6 | Integrated scenario/fault replay and accessibility/performance evidence | All P01–P06 exits; shared P01/P02 integration proof | First vertical slice, partial/contradicted/passive cases, offline/rate-limit/sleep, all six screens | Sol High |
@@ -57,8 +60,9 @@ review assignment before coding; quota does not waive review.
 Proposed batch groupings are capacity estimates, not commitments to implement a
 large unit unsplit. At most 3–5 ready child contracts are promoted per planning
 pass. Windows proof requires a Windows runner/device: Linux screenshots do not
-prove native notification delivery. Surface that dependency at B1's checkpoint
-so the feasibility work is not deferred until release.
+prove native notification delivery. No Windows environment evidence was supplied
+at B2 preparation. Keep the probe Planned and prioritize it at B2 exit, before lifecycle work expands; never substitute
+Linux screenshots for native Windows proof or defer discovery until release.
 
 ## Shared architecture contracts
 
@@ -84,12 +88,15 @@ so the feasibility work is not deferred until release.
 
 ## Checkpoints and owner involvement
 
-B1: owner tries four fixture-backed screens; Astra checks #158–#161 evidence and
-the next account/epoch interfaces, then prepares B2. No runtime completion claim.
+B1: implementation and CI/review evidence accepted; owner selected “Changes
+needed” on 2026-10-01. Concrete feedback/usability acceptance remains open. The
+four-screen fixture preview is not live runtime completion.
 
-B2: account coverage/protections and Windows feasibility are evidenced; decide any
-real platform/permission gap before the next contracts. Existing owner decision
-gates remain unchanged.
+B2: inspect collected coverage, protections, generation fences and conservative
+projection together. Do not claim coherent account proof or full P02 closure.
+Prepare P02-E to own deferred coherence/correspondence proof, alongside the early
+Windows probe and its environment/architecture gates;
+retain owner UI feedback before P05C. Existing owner decision gates remain.
 
 B3: run the first repeatable trade/craft lifecycle with conservation and recovery
 proof. Begin controlled owner-account validation only with complete protections
@@ -105,8 +112,8 @@ conversions/salvage/events and investment discovery are not quietly added here.
 ## Audit coverage
 
 P01A covers F01 and P01B supplies command replay safety. Remaining mappings:
-F02/P02-A; F03/P01-F; F04/P01-E; F05/P01D then P01-G; F06/P05-C;
-F07/P04-A/C; F08/P04-B; F09/P03-C; F10/P03-B; F11/P03-A/B/C;
-F12/P04-B; F13/P04-B; F14/P02-C/P04-A; F15/P02-C/P05-D;
-F16/P06-A/B; F17/P02-B; F18/application contracts in each relevant ticket;
+F02/P02C/P02-E; F03/P01-F; F04/P01-E; F05/P01D then P01-G; F06/P05-C;
+F07/P04-A/C; F08/P04-B; F09/P03-C; F10/P03-B; F11/P03A/B/C;
+F12/P04-B; F13/P04-B; F14/P02D/P04-A; F15/P02D/P05-D;
+F16/P06-A/B; F17/P02B/P02-E; F18/application contracts in each relevant ticket;
 F19/all ticket vectors plus P07-A. The approved plan's exit criteria still apply.

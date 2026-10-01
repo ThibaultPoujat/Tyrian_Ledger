@@ -197,8 +197,8 @@ See:
 
 Issue #98 and `docs/milestones/INDEX.md` define explicit order. The approved
 corrective packages are in `docs/milestones/approved-delivery-plan.md`.
-P00, P01A and P01B are merged foundations. C02 / #157 prepares the rolling
-delivery map and B1's four contracts in `docs/milestones/M22/batch-01.md`.
+Foundations and B1 are merged. C03 / #167 prepares B2's four contracts in
+`docs/milestones/M22/batch-02.md`; the remaining map retains later Planned units.
 After each owner merge, the next prepared contract can start if its entry
 conditions still hold; no Astra planning session is required between those tickets.
 G01 / #150 is a tracking gate, **not an executable coding ticket**. At the batch
@@ -259,7 +259,8 @@ Do not substitute the old Sites prototype, earlier concepts or a new redesign.
 ## Model and reasoning guidance
 
 The model-effort guide owns defaults. The owner requests Astra for precise
-planning/checkpoints and Luna for bounded implementation where specified.
+planning/checkpoints and the implementation model explicitly assigned by the
+model-effort guide (GPT-6.1 Sol for B2).
 Use `docs/workflow/goal-session.md` for the one-ticket Goal contract. Do not
 weaken validation for a cheaper model or claim quota behavior the host has not
 established. Stop after the assigned ticket's PR/handoff, never auto-merge.

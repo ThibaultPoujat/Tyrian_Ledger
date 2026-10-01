@@ -1,0 +1,208 @@
+{
+  "capturedAt": "2026-10-01T12:00:00Z",
+  "issue98Body": "# Tyrian Ledger — Canonical Roadmap\n\nC03 / #167 prepares B2. Merge its preparation PR before #168. B1 is merged; owner UI feedback needs changes. #150 remains open.\n\n## Corrective contracts\n\nCompleted foundations and B1: #148–#161's explicitly ordered corrective\ncontracts have merged. [B2](https://github.com/ThibaultPoujat/Tyrian_Ledger/blob/docs/batch-02-preparation/docs/milestones/M22/batch-02.md) records exact merge/review/final-head\nCI evidence. UI owner feedback is “Changes needed”; usability acceptance is open.\n\n| Ticket | Purpose | Conditional readiness |\n|---|---|---|\n| [C03 / #167](https://github.com/ThibaultPoujat/Tyrian_Ledger/blob/docs/batch-02-preparation/docs/milestones/M22/tickets/TKT-M22-C03.md) | B1 checkpoint and four-ticket B2 preparation | Planning/workflow preparation only |\n| [P02A / #168](https://github.com/ThibaultPoujat/Tyrian_Ledger/blob/docs/batch-02-preparation/docs/milestones/M22/tickets/TKT-M22-P02A.md) | All-character location/coverage collector | After #167 merges |\n| [P02B / #169](https://github.com/ThibaultPoujat/Tyrian_Ledger/blob/docs/batch-02-preparation/docs/milestones/M22/tickets/TKT-M22-P02B.md) | Equipment protections and real crafting actors | After #168 merges with typed handoff/evidence |\n| [P03A / #170](https://github.com/ThibaultPoujat/Tyrian_Ledger/blob/docs/batch-02-preparation/docs/milestones/M22/tickets/TKT-M22-P03A.md) | Account/store generation fences | After #169 merges; writer inventory and guard contracts checked |\n| [P02C / #171](https://github.com/ThibaultPoujat/Tyrian_Ledger/blob/docs/batch-02-preparation/docs/milestones/M22/tickets/TKT-M22-P02C.md) | Persistent conservative protected holdings integration | After #170 merges with fresh Sol approval/final-head CI |\n| [G01 / #150](https://github.com/ThibaultPoujat/Tyrian_Ledger/blob/docs/batch-02-preparation/docs/milestones/M22/tickets/TKT-M22-G01.md) | Batch / P01–P06 integration checkpoint | Tracking gate only, not a coding Goal |\n\nSee the [remaining dependency map](https://github.com/ThibaultPoujat/Tyrian_Ledger/blob/docs/batch-02-preparation/docs/milestones/remaining-delivery-map.md),\n[approved package exits](https://github.com/ThibaultPoujat/Tyrian_Ledger/blob/docs/batch-02-preparation/docs/milestones/approved-delivery-plan.md) and\n[reusable Goal](https://github.com/ThibaultPoujat/Tyrian_Ledger/blob/docs/batch-02-preparation/docs/workflow/goal-session.md). B2's four implementation contracts\nare conditionally prepared. Future map units remain Planned, not Ready.\n\n## Current explicit execution order\n\nHistorical predecessors remain listed for deterministic handoff generation.\nThe approved batch precedes the integration gate and release hardening:\n\n```text\n#128 -> #129 -> #130 -> #131 -> #132 -> #133 -> #93 -> #94 -> #95 -> #145\n -> #148 TKT-M22-P00   approved product and visual baseline\n -> #149 TKT-M22-P01A  duplicate resource demand correctness\n -> #153 TKT-M22-C01   P01A checkpoint and P01B preparation\n -> #154 TKT-M22-P01B  step-bound durable completion commands\n -> #157 TKT-M22-C02   rolling delivery map and B1 preparation\n -> #158 TKT-M22-P01C  source-scoped reconciliation evidence\n -> #159 TKT-M22-P01D  partial completion and safe residual instructions\n -> #160 TKT-M22-P05A  approved Signaux and session preview\n -> #161 TKT-M22-P05B  approved comparison and execution preview\n -> #167 TKT-M22-C03   B1 checkpoint and B2 preparation\n -> #168 TKT-M22-P02A  source-scoped all-character holdings collector\n -> #169 TKT-M22-P02B  equipped/template protection and crafting actors\n -> #170 TKT-M22-P03A  account/reset/restore generation fences\n -> #171 TKT-M22-P02C  conservative protected holdings integration\n -> #150 TKT-M22-G01   batch checkpoint; remaining P01–P06 exit evidence\n -> #96  TKT-M22-02    release hardening after package acceptance\n -> #97  TKT-M22-03    outcome evaluation acceptance\n```\n\nNo active non-blocking alternate is authorized. Each new Goal checks actual\npredecessor merges/review and its entry conditions; an open or preferred ticket\nis not automatically Ready. After each B2 merge, use the next prepared contract\nwithout an Astra planning session. After #171, stop coding at #150: assess B2\nand prepare the next 3–5 contracts in both order authorities. Keep #150 open\nuntil P01–P06 exits and owner progression approval. No automatic next-ticket\nexecution, auto-merge or skip to #96/#97.\n\n## Historical non-blocking rule\n\nRetained for the deterministic updater and historical regressions; these issues\nare closed and grant no active alternate route:\n\n**MVP non-blocking exception:** #129 is preferred before #130. After #128 merges,\n#130 may start before #129. #131 depends on #130, not on completion of #129.\n\n## Authority and checkpoints\n\nGitHub owns delivery state; #98 and this file own order; the model guide owns\nreview assignment. CURRENT is derived and is not permission to start an unready\ncontract. Source disagreement fails closed. Corrective work stays in M22; future\nmap identifiers are not issue numbers. #139 external-history research remains\noptional. P01/P02 close together; fixture UI is not live functionality; original\nsix PNGs and actual screenshots remain mandatory. Owner merges/releases.\n",
+  "issues": {
+    "93": {
+      "state": "CLOSED",
+      "title": "[M21/T02] Implement owned-material opportunity cost and crafting economics",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "94": {
+      "state": "CLOSED",
+      "title": "[M21/T03] Add bounded crafting opportunity paths and guided Crafting UI",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "95": {
+      "state": "CLOSED",
+      "title": "[M22/T01] Implement continuous decision loop and actionable local notifications",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "96": {
+      "state": "OPEN",
+      "title": "[M22/T02] Harden security, recovery, E2E coverage, accessibility, and local packaging",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "97": {
+      "state": "OPEN",
+      "title": "[M22/T03] Record and evaluate Signal plan outcomes",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "128": {
+      "state": "CLOSED",
+      "title": "[META] Consolidate Signals product direction, roadmap, and French UI policy",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "129": {
+      "state": "CLOSED",
+      "title": "[M21/S01] Make CURRENT.md live state self-healing from GitHub",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "130": {
+      "state": "CLOSED",
+      "title": "[M21/S02] Prototype and validate Signals second-screen UX",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "131": {
+      "state": "CLOSED",
+      "title": "[M21/S03] Implement Signals MVP and new primary navigation",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "132": {
+      "state": "CLOSED",
+      "title": "[M21/S04] Remove superseded UI, docs, and code after Signals MVP",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "133": {
+      "state": "CLOSED",
+      "title": "[M21/S05] Implement Signal plan orchestration, Active/Passive paths, and shadow reconciliation",
+      "milestoneTitle": "M21 — Signals and Crafting Intelligence"
+    },
+    "145": {
+      "state": "CLOSED",
+      "title": "[M22/S01] Explain calculations with real account inputs and decision provenance",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "148": {
+      "state": "CLOSED",
+      "title": "[TKT-M22-P00] Freeze approved product and visual baseline before corrective implementation",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "149": {
+      "state": "CLOSED",
+      "title": "[TKT-M22-P01A] Aggregate resource demands consistently in selection and atomic plan start",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "150": {
+      "state": "OPEN",
+      "title": "[TKT-M22-G01] Corrective delivery checkpoint — P01–P06 exit evidence",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "153": {
+      "state": "CLOSED",
+      "title": "[TKT-M22-C01] Record P01A evidence and prepare the next bounded command-safety ticket",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "154": {
+      "state": "CLOSED",
+      "title": "[TKT-M22-P01B] Make step-completion commands durable, step-bound and idempotent",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "157": {
+      "state": "CLOSED",
+      "title": "TKT-M22-C02 — Rolling Delivery Preparation",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "158": {
+      "state": "CLOSED",
+      "title": "TKT-M22-P01C — Source-Scoped Reconciliation Evidence",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "159": {
+      "state": "CLOSED",
+      "title": "TKT-M22-P01D — Partial Completion and Safe Residual Instructions",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "160": {
+      "state": "CLOSED",
+      "title": "TKT-M22-P05A — Approved Shell, Signaux and Session Drawer with Fixtures",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "161": {
+      "state": "CLOSED",
+      "title": "TKT-M22-P05B — Approved Plan Comparison and Execution Preview",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "167": {
+      "state": "OPEN",
+      "title": "TKT-M22-C03 — B2 contract",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "168": {
+      "state": "OPEN",
+      "title": "TKT-M22-P02A — B2 contract",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "169": {
+      "state": "OPEN",
+      "title": "TKT-M22-P02B — B2 contract",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "170": {
+      "state": "OPEN",
+      "title": "TKT-M22-P03A — B2 contract",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    },
+    "171": {
+      "state": "OPEN",
+      "title": "TKT-M22-P02C — B2 contract",
+      "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+    }
+  },
+  "pullRequests": [
+    {
+      "number": 156,
+      "mergedAt": "2026-09-29T13:38:21Z",
+      "baseRefName": "develop",
+      "closingIssues": [
+        {
+          "number": 154,
+          "state": "CLOSED",
+          "title": "[TKT-M22-P01B] Make step-completion commands durable, step-bound and idempotent",
+          "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+        }
+      ]
+    },
+    {
+      "number": 163,
+      "mergedAt": "2026-10-01T06:39:18Z",
+      "baseRefName": "develop",
+      "closingIssues": [
+        {
+          "number": 158,
+          "state": "CLOSED",
+          "title": "TKT-M22-P01C — Source-Scoped Reconciliation Evidence",
+          "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+        }
+      ]
+    },
+    {
+      "number": 164,
+      "mergedAt": "2026-10-01T07:20:56Z",
+      "baseRefName": "develop",
+      "closingIssues": [
+        {
+          "number": 159,
+          "state": "CLOSED",
+          "title": "TKT-M22-P01D — Partial Completion and Safe Residual Instructions",
+          "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+        }
+      ]
+    },
+    {
+      "number": 165,
+      "mergedAt": "2026-10-01T08:39:17Z",
+      "baseRefName": "develop",
+      "closingIssues": [
+        {
+          "number": 160,
+          "state": "CLOSED",
+          "title": "TKT-M22-P05A — Approved Shell, Signaux and Session Drawer with Fixtures",
+          "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+        }
+      ]
+    },
+    {
+      "number": 166,
+      "mergedAt": "2026-10-01T09:26:43Z",
+      "baseRefName": "develop",
+      "closingIssues": [
+        {
+          "number": 161,
+          "state": "CLOSED",
+          "title": "TKT-M22-P05B — Approved Plan Comparison and Execution Preview",
+          "milestoneTitle": "M22 — Convenience, Hardening, and Evaluation"
+        }
+      ]
+    }
+  ]
+}
