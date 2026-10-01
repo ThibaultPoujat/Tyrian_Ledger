@@ -1,4 +1,7 @@
 using System.Text.Json;
+using Gw2Tp.Application.AccountEvidence;
+using Gw2Tp.Application.LocalData;
+using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Plans;
 using Gw2Tp.Domain.Finance;
 using Microsoft.Data.Sqlite;
@@ -8,7 +11,8 @@ namespace Gw2Tp.Infrastructure.Persistence;
 /// <summary>Account-scoped durable plan/shadow state. The JSON payload contains only normalized local plan state.</summary>
 internal sealed class SqlitePlanRepository(
     ISqliteConnectionFactory connectionFactory,
-    ISqliteDatabaseGate? databaseGate = null) : IPlanRepository
+    ISqliteDatabaseGate? databaseGate = null,
+    IAccountWorkFence? fence = null) : IPlanRepository
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     private readonly ISqliteDatabaseGate gate = databaseGate ?? new SqliteDatabaseGate();
@@ -54,6 +58,13 @@ internal sealed class SqlitePlanRepository(
         }
 
         var transitioned = reconcile(storedPlans);
+        if (fence is not null || storedPlans.Any(plan => plan.HoldingsAuthority is not null))
+        {
+            var physical = await ReadHoldingsAsync(connection, transaction, accountProfileId, cancellationToken).ConfigureAwait(false);
+            var allEvents = transitioned.SelectMany(plan => plan.Events).ToArray();
+            transitioned = transitioned.Select(plan => PlanHoldingsAdmission.Revalidate(plan, physical, allEvents,
+                transitioned.Where(other => other.Id != plan.Id).SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray())).ToArray();
+        }
         ArgumentNullException.ThrowIfNull(transitioned);
         if (transitioned.Select(value => value.Id).Distinct(StringComparer.Ordinal).Count() != transitioned.Count)
             throw new InvalidOperationException("An account reconciliation cannot return the same plan more than once.");
@@ -152,6 +163,20 @@ internal sealed class SqlitePlanRepository(
             }
         }
 
+        if (fence is not null || plan.HoldingsAuthority is not null)
+        {
+            var physical = await ReadHoldingsAsync(connection, transaction, accountProfileId, cancellationToken).ConfigureAwait(false);
+            var checkedPlan = PlanHoldingsAdmission.Revalidate(plan, physical, active.SelectMany(value => value.Events).ToArray(),
+                active.SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray());
+            if (checkedPlan.HoldingsEligibilityReason is not null || checkedPlan.HoldingsAuthority is null || physical is null)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return PlanStartResult.ResourcesUnavailable;
+            }
+            plan = checkedPlan;
+            verifiedQuantities = physical.Quantities;
+        }
+
         if (verifiedCash.Copper < 0 || hardReserve.Copper < 0 || verifiedQuantities.Any(value => value.Value < 0))
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
@@ -164,7 +189,9 @@ internal sealed class SqlitePlanRepository(
         try
         {
             var events = active.SelectMany(value => value.Events).ToArray();
-            effective = PlanOrchestrationService.ProjectEffectiveResources(verifiedCash, verifiedQuantities, events);
+            effective = plan.HoldingsAuthority is null
+                ? PlanOrchestrationService.ProjectEffectiveResources(verifiedCash, verifiedQuantities, events)
+                : AccountHoldingsProjector.AdmissibleResources(verifiedCash, verifiedQuantities, events);
             reservations = active.SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray();
             candidateReservations = PlanOrchestrationService.OutstandingReservations(plan).ToArray();
         }
@@ -276,6 +303,21 @@ internal sealed class SqlitePlanRepository(
             return new(PlanCompletionStatus.Conflict);
         }
 
+        AccountHoldingsProjection? physical = null;
+        IReadOnlyList<PlanRecord> accountPlans = [];
+        if (fence is not null || storedPlan.HoldingsAuthority is not null)
+        {
+            physical = await ReadHoldingsAsync(connection, transaction, accountProfileId, cancellationToken).ConfigureAwait(false);
+            accountPlans = await ReadAccountPlansAsync(connection, transaction, accountProfileId, cancellationToken).ConfigureAwait(false);
+            if (command.Operation == PlanCompletionOperation.ReportPerformed &&
+                PlanHoldingsAdmission.Revalidate(storedPlan, physical, accountPlans.SelectMany(plan => plan.Events).ToArray(),
+                    accountPlans.Where(plan => plan.Id != storedPlan.Id).SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray()).HoldingsEligibilityReason is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return new(PlanCompletionStatus.Conflict);
+            }
+        }
+
         PlanRecord transitioned;
         try
         {
@@ -303,6 +345,10 @@ internal sealed class SqlitePlanRepository(
             return new(PlanCompletionStatus.Invalid);
         }
 
+        if (fence is not null || storedPlan.HoldingsAuthority is not null)
+            transitioned = PlanHoldingsAdmission.Revalidate(transitioned, physical,
+                accountPlans.Where(plan => plan.Id != storedPlan.Id).SelectMany(plan => plan.Events).Concat(transitioned.Events).ToArray(),
+                accountPlans.Where(plan => plan.Id != storedPlan.Id).SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray());
         var committedRevision = checked(storedPlan.Revision + 1);
         var committedPlan = transitioned with { Revision = committedRevision };
         var updatedAt = SqlitePersistenceValues.ToUtcTimestamp(DateTimeOffset.UtcNow, "updatedAtUtc");
@@ -368,11 +414,19 @@ internal sealed class SqlitePlanRepository(
         if (string.IsNullOrWhiteSpace(plan.Id) || plan.StartedAtUtc.Offset != TimeSpan.Zero) throw new ArgumentException("The plan has invalid durable identity or time.", nameof(plan));
         var nextRevision = checked(plan.Revision + 1);
         var updated = plan with { Revision = nextRevision };
-        var payload = JsonSerializer.Serialize(updated, SerializerOptions);
         await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await gate.ValidateAccountProfileAsync(connection, accountProfileId, cancellationToken).ConfigureAwait(false);
         await using var transaction = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        if (fence is not null || plan.HoldingsAuthority is not null)
+        {
+            var accountPlans = await ReadAccountPlansAsync(connection, transaction, accountProfileId, cancellationToken).ConfigureAwait(false);
+            updated = PlanHoldingsAdmission.Revalidate(updated,
+                await ReadHoldingsAsync(connection, transaction, accountProfileId, cancellationToken).ConfigureAwait(false),
+                accountPlans.Where(other => other.Id != plan.Id).SelectMany(other => other.Events).Concat(updated.Events).ToArray(),
+                accountPlans.Where(other => other.Id != plan.Id).SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray());
+        }
+        var payload = JsonSerializer.Serialize(updated, SerializerOptions);
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
@@ -392,6 +446,35 @@ internal sealed class SqlitePlanRepository(
             throw new PlanConcurrencyException();
         }
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyList<PlanRecord>> ReadAccountPlansAsync(SqliteConnection connection, SqliteTransaction transaction,
+        long profileId, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT payload_json, revision FROM execution_plans WHERE account_profile_id=$profile ORDER BY plan_id";
+        command.Parameters.AddWithValue("$profile", profileId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        var plans = new List<PlanRecord>();
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            plans.Add((JsonSerializer.Deserialize<PlanRecord>(reader.GetString(0), SerializerOptions)
+                ?? throw new InvalidDataException("The stored plan payload is invalid.")) with { Revision = reader.GetInt64(1) });
+        return plans;
+    }
+
+    private async Task<AccountHoldingsProjection?> ReadHoldingsAsync(SqliteConnection connection, SqliteTransaction transaction,
+        long profileId, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT account_scope_id FROM account_profiles WHERE id=$profile";
+        command.Parameters.AddWithValue("$profile", profileId);
+        var scopeId = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+        if (scopeId is null) return null;
+        var snapshot = await SqliteAccountHoldingsSnapshotRepository.ReadAsync(connection, transaction, new AccountScope(scopeId), cancellationToken).ConfigureAwait(false);
+        return snapshot is null ? null : new AccountHoldingsProjector().Project(snapshot, DateTimeOffset.UtcNow,
+            fence?.Current?.Generation ?? snapshot.Generation, fence?.Current?.StoreIncarnation ?? snapshot.StoreIncarnation);
     }
 
     private static async Task<PlanCompletionReceipt?> FindReceiptAsync(SqliteConnection connection,

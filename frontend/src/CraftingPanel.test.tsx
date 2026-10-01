@@ -12,6 +12,7 @@ it('renders a French active craft path and starts it through the shared Plans en
         id: 'craft:1', outputName: 'Insigne', outputIconUrl: null, outputQuantity: 2,
         economics: { netProfit: { copper: '900' }, totalCost: { copper: '1000' }, state: 'Available' }, attention: 'Active', interactionSeconds: 90,
         isActionable: true, exclusions: [], procurementExplanation: ['Le coût complet est inférieur à l’achat direct.'], planId: 'craft:1',
+        holdingsExplanation: ['Personnage requis : Personnage de test.', 'Accès requis : banque.'],
         steps: [{ action: 'BuyNow', itemName: 'Minerai', quantity: 2, unitPrice: { copper: '50' } }, { action: 'Craft', itemName: 'Insigne', quantity: 2, unitPrice: null }],
       }],
     }) });
@@ -20,6 +21,8 @@ it('renders a French active craft path and starts it through the shared Plans en
   render(<CraftingPanel />);
   expect(await screen.findByRole('heading', { name: 'Actions d’artisanat à considérer' })).toBeInTheDocument();
   expect(screen.getByText('Insigne')).toBeInTheDocument();
+  expect(screen.getByText('Personnage requis : Personnage de test.')).toBeInTheDocument();
+  expect(screen.getByText('Accès requis : banque.')).toBeInTheDocument();
   fireEvent.click(screen.getByText('Pourquoi ?'));
   expect(screen.getByText('Approvisionnement et faisabilité')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Démarrer ce plan' }));

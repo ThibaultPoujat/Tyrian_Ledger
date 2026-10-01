@@ -1,0 +1,40 @@
+{
+  "state": "ready",
+  "proposals": [],
+  "plans": [
+    {
+      "id": "7bc4a4bb445f482aacca9ae879dee73b",
+      "attention": "Active",
+      "state": "RecheckRequired",
+      "reconciliationState": "None",
+      "reconciliationReasonCode": "None",
+      "residualReasonCode": "None",
+      "isExecutionPaused": true,
+      "holdingsEligibilityReason": "holdings_source_changed",
+      "holdingsExplanation": [
+        "Personnage requis : Personnage A de test.",
+        "Acc\u00E8s requis : banque. Une seule localisation est retenue par objet ; les autres quantit\u00E9s observ\u00E9es ne sont pas additionn\u00E9es."
+      ],
+      "modeledProfit": {
+        "copper": 0
+      },
+      "currentStepOrdinal": 0,
+      "revision": "0",
+      "steps": [
+        {
+          "id": "craft",
+          "action": "Craft",
+          "itemName": "Insigne de test",
+          "quantity": 1,
+          "originalInstructedQuantity": 1,
+          "reportedQuantity": null,
+          "remainingQuantity": 1,
+          "unitPrice": null,
+          "state": "RecheckRequired"
+        }
+      ],
+      "hasUndoableEvent": false
+    }
+  ],
+  "accountCacheScope": "synthetic-view-scope"
+}

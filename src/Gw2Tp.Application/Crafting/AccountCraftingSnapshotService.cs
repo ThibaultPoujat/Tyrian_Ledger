@@ -11,7 +11,8 @@ namespace Gw2Tp.Application.Crafting;
 public sealed class AccountCraftingSnapshotService(
     IAccountCraftingGateway gateway,
     IAccountCraftingSnapshotRepository repository,
-    IAccountWorkFence? fence = null) : IAccountCraftingSnapshotService
+    IAccountWorkFence? fence = null,
+    AccountEvidence.IAccountHoldingsSnapshotService? holdings = null) : IAccountCraftingSnapshotService
 {
     public async Task<Gw2ApiResult<AccountCraftingSnapshot>> RefreshAsync(
         CancellationToken cancellationToken = default)
@@ -23,6 +24,13 @@ public sealed class AccountCraftingSnapshotService(
 
     private async Task<AccountCraftingRefreshResult> RefreshCoreAsync(CancellationToken cancellationToken)
     {
+        if (holdings is not null)
+        {
+            var captured = await holdings.RefreshAsync(cancellationToken).ConfigureAwait(false);
+            return captured.IsSuccess && captured.Value is not null
+                ? new(Gw2ApiResult<AccountCraftingSnapshot>.Success(AccountEvidence.AccountHoldingsSnapshotService.CraftingStatus(captured.Value)), true)
+                : new(Gw2ApiResult<AccountCraftingSnapshot>.Failure(captured.ErrorCategory ?? Gw2ApiErrorCategory.UnexpectedResponse), null);
+        }
         var result = await gateway.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         if (!result.IsSuccess || result.Value is null)
         {
@@ -46,10 +54,12 @@ public sealed class AccountCraftingSnapshotService(
         }
     }
 
-    public Task<AccountCraftingSnapshot?> GetLatestAsync(
+    public async Task<AccountCraftingSnapshot?> GetLatestAsync(
         PersonalTradingPost.AccountScope accountScope,
         CancellationToken cancellationToken = default) =>
-        repository.GetLatestAsync(accountScope, cancellationToken);
+        holdings is null ? await repository.GetLatestAsync(accountScope, cancellationToken).ConfigureAwait(false)
+            : await holdings.GetLatestAsync(accountScope, cancellationToken).ConfigureAwait(false) is { } snapshot
+                ? AccountEvidence.AccountHoldingsSnapshotService.CraftingStatus(snapshot) : null;
 
     private static bool SameFacts(AccountCraftingSnapshot left, AccountCraftingSnapshot right) =>
         left.AccountScope == right.AccountScope &&

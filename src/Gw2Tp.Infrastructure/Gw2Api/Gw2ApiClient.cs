@@ -385,7 +385,7 @@ internal sealed class Gw2ApiClient : IGw2ApiTransport
             iconUrl = iconUri.AbsoluteUri;
         }
 
-        return new MarketItemMetadata(dto.Id, dto.Name, MarketItemStackPolicy.NormalStackLimit, iconUrl);
+        return new MarketItemMetadata(dto.Id, dto.Name, MarketItemStackPolicy.NormalStackLimit, iconUrl, dto.Type);
     }
 
     private static MarketOrderLevel MapListingLevel(CommerceListingLevelDto dto)

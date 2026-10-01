@@ -4,7 +4,7 @@ using Gw2Tp.Application.PersonalTradingPost;
 
 namespace Gw2Tp.Application.AccountEvidence;
 
-/// <summary>Internal account observations only; no resource admission, persistence or browser contract.</summary>
+/// <summary>Typed internal observations. Admission, persistence and safe presentation are separate downstream boundaries.</summary>
 public interface IAccountHoldingsCollector
 {
     Task<Gw2ApiResult<AccountHoldingsCapture>> CollectAsync(

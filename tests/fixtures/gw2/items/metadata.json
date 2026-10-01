@@ -2,6 +2,7 @@
   {
     "id": 900001,
     "name": "Synthetic Mithril Widget",
+    "type": "CraftingMaterial",
     "icon": "https://render.guildwars2.com/file/synthetic-mithril.png"
   },
   {

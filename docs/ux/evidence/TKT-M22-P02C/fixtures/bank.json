@@ -1,0 +1,55 @@
+{
+  "state": "Ready",
+  "truncationReasons": [],
+  "summaryExclusions": [],
+  "evidenceFailureCode": null,
+  "opportunities": [
+    {
+      "id": "craft:1",
+      "recipeId": 1,
+      "outputItemId": 100,
+      "outputName": "Insigne de test",
+      "outputIconUrl": null,
+      "outputQuantity": 1,
+      "economics": {
+        "netProfit": {
+          "copper": "765"
+        },
+        "totalCost": {
+          "copper": "135"
+        },
+        "state": "Available"
+      },
+      "attention": "Active",
+      "confidenceBasisPoints": 8000,
+      "evidenceExplanation": [
+        "Historique de march\u00E9 et profondeur v\u00E9rifi\u00E9s avant la proposition."
+      ],
+      "interactionSeconds": 90,
+      "isActionable": true,
+      "exclusions": [],
+      "procurementExplanation": [],
+      "holdingsExplanation": [
+        "Personnage requis : Personnage A de test.",
+        "Acc\u00E8s requis : banque. Une seule localisation est retenue par objet ; les autres quantit\u00E9s observ\u00E9es ne sont pas additionn\u00E9es."
+      ],
+      "planId": "craft:1",
+      "steps": [
+        {
+          "action": "Craft",
+          "itemName": "Insigne de test",
+          "quantity": 1,
+          "unitPrice": null
+        },
+        {
+          "action": "List",
+          "itemName": "Insigne de test",
+          "quantity": 1,
+          "unitPrice": {
+            "copper": "1000"
+          }
+        }
+      ]
+    }
+  ]
+}

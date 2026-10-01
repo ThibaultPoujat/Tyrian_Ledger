@@ -3,11 +3,93 @@ using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.PersonalTradingPost;
 using Xunit;
+using Gw2Tp.Application.AccountEvidence;
+using Gw2Tp.Testing;
+using static Gw2Tp.Testing.HoldingsEvidenceFixture;
 
 namespace Gw2Tp.Application.Tests;
 
 public sealed class CraftingOpportunityServiceTests
 {
+    [Theory]
+    [InlineData("bank")]
+    [InlineData("own-bag")]
+    [InlineData("other-bag")]
+    [InlineData("bound-other")]
+    [InlineData("protected")]
+    [InlineData("partial-bank")]
+    public async Task Live_owned_inputs_and_instruction_actor_use_the_same_single_location_projection(string scenario)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var source = scenario.Contains("bag") ? AccountHoldingsSource.CharacterInventory : AccountHoldingsSource.Bank;
+        var owner = scenario == "other-bag" ? B : A;
+        var row = Item(10, 6, source, source == AccountHoldingsSource.CharacterInventory ? owner.ActorId : null,
+            binding: scenario == "bound-other" ? AccountItemBinding.CharacterBound : AccountItemBinding.Unspecified,
+            bound: scenario == "bound-other" ? B : null);
+        var a = Actor(A, now, owner == A && source == AccountHoldingsSource.CharacterInventory ? [row] : []);
+        var b = Actor(B, now, owner == B && source == AccountHoldingsSource.CharacterInventory ? [row] : [],
+            [new("Artificer", 100, true)]);
+        var evidence = HoldingsEvidenceFixture.Snapshot(now, [row], [a, b],
+            floor: scenario == "protected" ? new HashSet<int> { 10 } : null);
+        if (scenario == "partial-bank")
+        {
+            row = Item(10, 6, AccountHoldingsSource.MaterialStorage);
+            evidence = HoldingsEvidenceFixture.Snapshot(now, [row], [a, b]);
+            evidence = evidence with { Capture = evidence.Capture with { Bank = evidence.Capture.Bank with {
+                Availability = EvidenceAvailability.Unavailable, Completeness = EvidenceCompleteness.Unknown, Value = null,
+                ErrorCategory = Gw2ApiErrorCategory.Forbidden } } };
+        }
+        var result = await LiveService(evidence, [HoldingsEvidenceFixture.Recipe()]).GetAsync();
+        var opportunity = Assert.Single(result.Opportunities);
+        if (scenario is "other-bag" or "bound-other" or "protected")
+        {
+            // Owned input is either inaccessible or economically unknown; no consuming instruction is exposed.
+            if (opportunity.Candidate is { } candidate)
+                Assert.DoesNotContain(candidate.Steps, step => step.Action == Gw2Tp.Application.Plans.PlanStepAction.Craft);
+            Assert.True(!opportunity.IsActionable || opportunity.Candidate!.HoldingsAuthority!.CraftingActorId == A.ActorId);
+        }
+        else
+        {
+            Assert.True(opportunity.IsActionable);
+            var candidate = opportunity.Candidate!;
+            Assert.Equal(A.ActorId, candidate.HoldingsAuthority!.CraftingActorId);
+            Assert.Equal(A.DisplayName, candidate.HoldingsAuthority.CraftingActorName);
+            Assert.Equal(scenario == "partial-bank" ? AccountHoldingsSource.MaterialStorage : source,
+                Assert.Single(candidate.HoldingsAuthority.Commitments).Location.Source);
+            Assert.All(candidate.Steps.Where(step => step.Action == Gw2Tp.Application.Plans.PlanStepAction.Craft),
+                step => Assert.Equal(A.ActorId, step.CraftingActorId));
+        }
+        Export(scenario, result);
+    }
+
+    [Fact]
+    public async Task A_recipe_chain_cannot_combine_two_characters_capabilities()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var evidence = HoldingsEvidenceFixture.Snapshot(now, [Item(10, 1)], [
+            Actor(A, now), Actor(B, now, capabilities: [new("Weaponsmith", 500, true)])]);
+        var first = HoldingsEvidenceFixture.Recipe();
+        var second = HoldingsEvidenceFixture.Recipe(2, "Weaponsmith", 100, 200);
+        var result = await LiveService(evidence, [first, second]).GetAsync();
+        Assert.DoesNotContain(result.Opportunities, value => value.IsActionable &&
+            value.Candidate!.Steps.Count(step => step.Action == Gw2Tp.Application.Plans.PlanStepAction.Craft) > 1);
+    }
+
+    private static CraftingOpportunityService LiveService(AccountHoldingsSnapshot evidence, IReadOnlyList<CraftingRecipe> recipes) => new(
+        new FixedPersonalGateway(evidence.Capture.AccountScope), new FixedSnapshotService(AccountHoldingsSnapshotService.CraftingStatus(evidence)),
+        new FixedRecipeGateway(recipes), new CompleteMarketClient(true), new AvailableHistory(),
+        new CraftingOpportunityPlanner(new CraftingEconomicsCalculator()), holdings: new FixedHoldingsSnapshotService(evidence));
+
+    private static void Export(string scenario, CraftingPlannerResult result)
+    {
+        // Web response export happens in its own mapper test; this file asserts the real live application service.
+        var directory = Environment.GetEnvironmentVariable("TYRIAN_LEDGER_P02C_DOMAIN_DIR");
+        if (string.IsNullOrEmpty(directory)) return;
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, scenario + ".json"), System.Text.Json.JsonSerializer.Serialize(result,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)));
+    }
+
     [Fact]
     public async Task Unclassified_listing_response_omission_degrades_the_entire_bounded_crafting_read()
     {
@@ -94,10 +176,10 @@ public sealed class CraftingOpportunityServiceTests
         public void Record(CraftingMarketEvidenceDiagnostic diagnostic) => Events.Add(diagnostic);
     }
 
-    private sealed class FixedPersonalGateway : IPersonalTradingPostGateway
+    private sealed class FixedPersonalGateway(AccountScope? scope = null) : IPersonalTradingPostGateway
     {
         public Task<Gw2ApiResult<AccountScope>> GetAccountScopeAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(Gw2ApiResult<AccountScope>.Success(new AccountScope("test-account")));
+            Task.FromResult(Gw2ApiResult<AccountScope>.Success(scope ?? new AccountScope("test-account")));
         public Task<Gw2ApiResult<PersonalTransactionPage>> GetCurrentBuyOrdersAsync(int page, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Gw2ApiResult<PersonalTransactionPage>> GetCurrentSellListingsAsync(int page, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Gw2ApiResult<PersonalTransactionPage>> GetCompletedBuyHistoryAsync(int page, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -138,14 +220,14 @@ public sealed class CraftingOpportunityServiceTests
             Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Success([]));
     }
 
-    private sealed class CompleteMarketClient : IGw2ApiClient
+    private sealed class CompleteMarketClient(bool profitable = false) : IGw2ApiClient
     {
         public Task<Gw2ApiResult<IReadOnlyList<int>>> GetPriceItemIdsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Gw2ApiResult<IReadOnlyList<MarketPrice>>> GetPricesAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
         public Task<Gw2ApiResult<IReadOnlyList<MarketListing>>> GetListingsAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketListing>>.Success(itemIds.Select(id => Listing(id, 1_000, 1_000)).ToArray()));
+            Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketListing>>.Success(itemIds.Select(id => Listing(id, profitable && id == 10 ? 100 : 1_000, profitable && id == 10 ? 100 : 1_000)).ToArray()));
         public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(IReadOnlyCollection<int> itemIds, CancellationToken cancellationToken = default) =>
-            Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Success(itemIds.Select(id => new MarketItemMetadata(id, $"Item {id}", 250)).ToArray()));
+            Task.FromResult(Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>.Success(itemIds.Select(id => new MarketItemMetadata(id, profitable ? id == 10 ? "Minerai de test" : "Insigne de test" : $"Item {id}", 250)).ToArray()));
     }
 
     private sealed class AvailableHistory : IHistoricalMarketAnalyticsService

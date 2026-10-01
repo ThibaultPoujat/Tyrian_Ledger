@@ -1,4 +1,4 @@
-# Account Holdings Collector — P02A/P02B Handoff
+# Account Holdings Collector and Admission — B2 Handoff
 
 P02A / #168 adds a disconnected producer for B2. It does not persist, poll,
 reserve, value or admit resources, and has no browser endpoint. P02B extends
@@ -18,7 +18,8 @@ nor complete endpoint results certify a coherent account observation.
 The explicit opt-in `AddTyrianLedgerAccountHoldingsCollector` extension requires
 the existing account connection's credential source, clock and scheduler. It
 creates its own named, header-redacted HTTP client with all HTTP loggers removed.
-Production composition does not call this extension. Tests can inject the typed
+P02A/P02B did not enable production composition; P02C now invokes it through
+the guarded snapshot service described below. Tests can inject the typed
 interface; infrastructure tests construct the gateway with synthetic inputs.
 There is no public key parameter or raw-response DTO in Application.
 
@@ -165,7 +166,8 @@ create an eligible actor. Input evidence must belong to a complete source of thi
 capture. Bound-to-other-actor inputs reject; bank/material/shared access and
 unbound cross-character transfers remain explicit prerequisites. Every successful
 selection includes `AdmissionRequired` and produces no consuming instructions.
-The live planner is not wired to this new selector/policy.
+At the P02B boundary the live planner was not wired to this selector/policy;
+P02C supplies the conservative integration described below.
 
 The legacy snapshot cannot persist actors or chain switches. Its gateway now
 retains only active tuples from the first ordinal-name actor with an active
@@ -189,3 +191,58 @@ crafting consumer. [P02B actual 1920×1080 evidence](../ux/evidence/TKT-M22-P02B
 covers rejected mixed/inactive tuples and a retained eligible actor, with the
 original 01/02 comparison, keyboard/axe/zoom checks and explicit inherited shell
 limitations. Frontend source and fixture Signaux/Plans previews remain untouched.
+
+## P02C production integration
+
+The existing crafting account refresh and decision loop now call
+`AccountHoldingsSnapshotService`, under the captured P03A account/store fence.
+There is no second timer or scheduler. A successful identity read publishes all
+typed source results atomically into `account_holdings_snapshots`; individual
+failures keep their availability/error/coverage and previous rows only as stale
+non-admission evidence. Equipment protection floors persist monotonically until
+the authorized account-data clear. Restart/restore evidence remains non-admissible
+until refreshed in the current generation. Integrity and restore validate the
+normalized document, relational owner and capture time.
+
+Public item metadata's documented `type` is mapped through the existing typed
+gateway into explicit commodity/equipment/unknown categories. Unrecognized,
+missing or failed category evidence is unknown, never disposable. This is a local
+conservative classification, not proof of instance identity. The indexed official
+[items contract](https://wiki.guildwars2.com/wiki/API:2/items) was inspected on
+2026-10-01; direct wiki fetch returned 403. No authenticated probe or additional
+key grant is claimed.
+
+One projector exposes observed, protected/unknown, omitted, actor-usable and
+tradeable quantities separately. While VERIFY-017 is OPEN it admits at most the
+largest qualifying independent location per item (source/actor/bag/slot ties),
+then applies keep quantity once. Portfolio lots/history are accounting provenance,
+not another physical quantity; delivery contributes no stock or gold. Positive
+local inventory/cash effects remain provisional accounting and are excluded from
+admission; negative residual effects and global reservations constrain resources.
+Moves create no acquisition, disposal or profit event and assign no cost basis.
+
+Crafting evaluates each actual actor independently with this same Owned cap and
+existing opportunity-cost/unknown economics. The supported slice requires one
+capable active actor for the recipe chain, accessible bank/material/shared/own
+inventory and available unlocks. Required other-character access or multi-actor
+chains return `UnsupportedPrerequisite`. Plan documents retain recipe/actor and
+selected location/binding commitments. Start, resume and consuming completion
+revalidate latest SQLite evidence, account-wide residuals and reservations in the
+same private lease/transaction; changed sources pause instead of rebinding.
+Provisional Buy/Craft output alone cannot advance a consuming instruction.
+
+Live physical frames always remain Partial, carrying independent per-source
+clocks/coverage and a conservative minimum clock, never maximum fetch or guessed
+upstream observation time. TP refresh/replay cannot create negative physical proof.
+French response text exposes the required actor/access and pause; raw captures,
+opaque actor IDs, account scope and store generations stay private. Preview
+providers remain unchanged. [Actual 1920×1080 evidence and reproduction](../ux/evidence/TKT-M22-P02C/README.md)
+cover eligible bank/own-bag/independent partial-source craft, protected/inaccessible
+rejection and moved-input pause in the existing application.
+
+Verification includes the pre-fix public-boundary 10+10 duplication failure,
+conservative 6+4/150-minus-100/delivery vectors, actor/access/resume and provisional
+output tests, real SQLite restart/partial-source/rollback/recovery and atomic
+reservation/completion races. VERIFY-008/013/016/017 remain OPEN. This integration
+does not certify coherent physical reconciliation, transfer/craft basis or the
+later P02-E/P02D lifecycle exits.
