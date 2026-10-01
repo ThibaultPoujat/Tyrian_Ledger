@@ -42,10 +42,10 @@ review assignment before coding; quota does not waive review.
 | P02C / B2 / #171 | Guarded persistent location/protection evidence and one conservative holdings projection | P03A; P02A/B seams | No portfolio/location/delivery double credit; protected/actor eligibility; Partial live physical proof | NORMAL GPT-6.1 Sol High |
 | P06-A / B3 / #182, environment-gated | Early Windows tray/notification feasibility and packaging decision, with minimal executable probe | Existing loopback host; actual Windows environment and owner architecture decision if needed | UI closed/minimized, lock/sleep/resume, denied permission; truthful limits | NORMAL GPT-6.1 Sol High; production architecture remains owner-gated |
 | P02-E / split below; production proof Planned | Action-relevant transfer/coherence evidence and supported equipment correspondence; improve multi-location admission only with adequate correlation, retain conservative fallback otherwise | P02C; VERIFY-016/017 research and actual endpoint evidence | Delayed bag↔bank↔delivery replays conserve resources; supported craft confirmation and exact correspondence have adequate proof; unsupported shapes remain explicit, never globally atomic claims | Strong evidence/resource review; assign gate at preparation |
-| P01-E / after P02E2/basis proof, Planned | Settled vs merely reported executions; repeat same strategy with a new execution; idempotent starts | P01C/D; P02C/P02-E action-relevant evidence; P03A | Unconfirmed buy/list/fill cannot settle; settled strategy repeats; late evidence preserves history; start retry never starts twice | Explicit Sol gate expected |
+| P01-E / after slice-specific action/basis proof, Planned | Settled vs merely reported executions; repeat same strategy with a new execution; idempotent starts | P01C/D; P02C/P02-E action-relevant evidence; P03A | Unconfirmed buy/list/fill cannot settle; settled strategy repeats; late evidence preserves history; start retry never starts twice | Explicit Sol gate expected |
 | P01-F / B3 | Passive procurement becomes repriced feasible craft/sell continuation; collection distinguished from fill | P01-E; P02C/P02-E supported usable inventory/capabilities | Order→partial/full fill→collect→craft→sell; no duplicate acquisition; capacity/depth deterioration pauses | Strong lifecycle/economics review |
 | P01-G / B3 | General residual replanning and explicit contradiction/undo recovery beyond P01D's one-item case | P01-E/F | Multi-input partial chain conserves inputs/output/basis; acted descendants not rewritten | Explicit Sol gate expected |
-| P02D / B3 | Transformation/transfer cost provenance and outcome events across trade/craft chains | P02C/P02-E action-relevant account evidence; P01 lifecycle | Known/unknown basis preserved; no phantom TP holdings; fees/cash/profit separated | Strong accounting review |
+| P02D / Planned | Transformation/transfer cost provenance and outcome events across trade/craft chains | P02C/P02E2 supported action evidence; existing P01C/D report/reconciliation event seams, not P01-E settlement | Known/unknown basis preserved; no phantom TP holdings; fees/cash/profit separated | Strong accounting review |
 | P02E1 / B3 / #181 | Bounded action-evidence investigation/export/replay; no production proof promotion | B2 source clocks; #180 | Actual-vs-synthetic matrix, privacy and failure replay, precise unresolved P02E2 predicates | NORMAL GPT-6.1 Sol High |
 | P02E2 / Planned | Supported production correlation/confirmation and instance correspondence only with adequate evidence | P02E1 actual evidence and owner authority decisions where needed | Source-specific positive proof, uniqueness/replay/correction; conservative fallback otherwise | Assign explicit Sol gate at preparation |
 | P03C1 / B3 / #180 | Local completion/undo using trusted bound context; zero upstream command dependency | P03A/B2; #179 | Scope-before-receipt, local durability under HTTP barriers, atomic consuming guards | Explicit GPT-6.1 Sol XHigh gate |
@@ -72,7 +72,19 @@ It is not Ready until interactive Windows entry evidence exists. The environment
 gate is raised now and blocks lifecycle expansion; never substitute
 Linux screenshots for native Windows proof or defer discovery until release.
 
-## Shared architecture contracts
+## Lifecycle and provenance dependency boundary
++
++There is no settlement↔basis cycle. P02D can extend already reported/reconciled
++P01C/D execution events and supported P02E2 facts; it does not require P01-E
++settlement or repetition. Future P01-E must identify its supported slice and
++required accounting proof. A bounded TP slice may use the existing ledger only
++if its acquisition/disposal provenance and reconciliation are actually adequate;
++this checkpoint does not assert that readiness. Craft/transfer settlement needs
++the relevant P02D proof. Unknown basis stays explicit, never fabricated to call
++an execution settled. Both units remain Planned until bounded entry contracts
++and evidence exist; all P01/P02 integrated exits are retained.
++
++## Shared architecture contracts
 
 - Application owns deterministic integer-copper policy; Web maps transport,
   Infrastructure owns persistence/typed gateways; React renders structured data.

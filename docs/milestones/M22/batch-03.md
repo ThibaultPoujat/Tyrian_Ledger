@@ -67,8 +67,12 @@ P01/P02 integration is OPEN. A captured endpoint/complete roster is not a cohere
 physical frame. Positive provisional gains cannot currently authorize a dependent
 consuming instruction; this safety limit is real and active-work timing must not
 hide it. P02E1 only prepares investigation; P02E2 must establish and review any
-supported production correlation. P01-E must wait for that proof and required
-accounting provenance; no settlement shortcut is authorized by this batch.
+supported production correlation. P01-E must wait for that proof and slice-specific
+accounting provenance; no settlement shortcut is authorized by this batch. P02D
+uses existing P01C/D report/reconciliation seams and does not depend on settlement.
+A future bounded TP settlement slice may use existing ledger proof if adequate;
+craft/transfer settlement requires the relevant P02D proof. See the
+[dependency boundary](../remaining-delivery-map.md#lifecycle-and-provenance-dependency-boundary).
 
 ## Visual, external and owner evidence
 
