@@ -43,7 +43,7 @@ public sealed class AccountCraftingGatewayTests
         Assert.Equal(AccountItemBinding.AccountBound, Assert.Single(snapshot.MaterialStorage.Value!, entry => entry.ItemId == 920202).Binding);
         Assert.Equal([920301, 920302], snapshot.RecipeUnlocks.Value);
         var artificer = Assert.Single(snapshot.CharacterCrafting.Value!, capability => capability.Discipline == "Artificer");
-        Assert.Equal(500, artificer.Rating);
+        Assert.Equal(425, artificer.Rating);
         Assert.True(artificer.IsActive);
         Assert.DoesNotContain("Synthetic Crafter", snapshot.ToString(), StringComparison.Ordinal);
         Assert.All(handler.Requests, request =>
@@ -53,6 +53,27 @@ public sealed class AccountCraftingGatewayTests
             Assert.Equal(AccountCraftingGateway.SchemaVersion, Query(request.RequestUri!)["v"]);
         });
         Assert.DoesNotContain(handler.Requests.Select(request => request.RequestUri!.Query), query => query.Contains("access_token", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Legacy_snapshot_never_mixes_an_inactive_rating_with_another_actors_active_flag()
+    {
+        using var handler = new RecordingHandler(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/v2/account" => JsonFixture("account.json"),
+            "/v2/account/bank" => Json("[]"),
+            "/v2/account/materials" => Json("[]"),
+            "/v2/account/recipes" => Json("[]"),
+            "/v2/characters" => Json("[\"A\",\"B\"]"),
+            "/v2/characters/A/crafting" => Json("{\"crafting\":[{\"discipline\":\"Artificer\",\"rating\":500,\"active\":false}]}"),
+            "/v2/characters/B/crafting" => Json("{\"crafting\":[{\"discipline\":\"Artificer\",\"rating\":100,\"active\":true}]}"),
+            _ => throw new InvalidOperationException(),
+        });
+        using var client = Client(handler);
+        var result = await new AccountCraftingGateway(new FixedKeySource(SyntheticKey), client, new ImmediateScheduler()).GetSnapshotAsync();
+        var capability = Assert.Single(result.Value!.CharacterCrafting.Value!);
+        Assert.True(capability.IsActive);
+        Assert.Equal(100, capability.Rating);
     }
 
     [Fact]

@@ -309,7 +309,7 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
 
     private static bool IsEligible(CraftingRecipe recipe, CraftingPlannerInput input) =>
         input.UnlockedRecipeIds.Contains(recipe.RecipeId) && recipe.OutputItemId > 0 && recipe.OutputItemCount > 0 && recipe.Ingredients.Count > 0 &&
-        recipe.Disciplines.Any(discipline => input.Disciplines.Any(capability => string.Equals(capability.Discipline, discipline, StringComparison.OrdinalIgnoreCase) && capability.Rating >= recipe.MinRating));
+        recipe.Disciplines.Any(discipline => input.Disciplines.Any(capability => capability.IsActive && string.Equals(capability.Discipline, discipline, StringComparison.OrdinalIgnoreCase) && capability.Rating >= recipe.MinRating));
     private static bool CanLiquidate(MarketListing listing, int quantity) => new OrderBookExecutionSimulator().SimulateLiquidation(ToLevels(listing.Buys), quantity).IsFullyFilled;
     private static Money? BestSell(MarketListing? listing) => listing?.Sells.Where(level => level.UnitPriceInCopper > 0).OrderBy(level => level.UnitPriceInCopper).Select(level => new Money(level.UnitPriceInCopper)).FirstOrDefault();
     private static IReadOnlyList<OrderBookLevel> ToLevels(IEnumerable<MarketOrderLevel> levels) => levels.Where(level => level.Quantity > 0 && level.UnitPriceInCopper > 0).Select(level => new OrderBookLevel(level.Quantity, new Money(level.UnitPriceInCopper))).ToArray();

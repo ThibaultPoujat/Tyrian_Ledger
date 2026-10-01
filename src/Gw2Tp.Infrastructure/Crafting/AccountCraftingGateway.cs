@@ -114,15 +114,13 @@ internal sealed class AccountCraftingGateway : IAccountCraftingGateway
                 failure.ErrorCategory ?? Gw2ApiErrorCategory.IncompleteData);
         }
 
-        var capabilities = results
-            .SelectMany(result => result.Value!)
-            .GroupBy(capability => capability.Discipline, StringComparer.Ordinal)
-            .Select(group => new CraftingDisciplineCapability(
-                group.Key,
-                group.Max(capability => capability.Rating),
-                group.Any(capability => capability.IsActive)))
-            .OrderBy(capability => capability.Discipline, StringComparer.Ordinal)
-            .ToArray();
+        // The legacy schema cannot retain actors or switches. Keep one actual actor's
+        // active tuples, so every recipe in a legacy chain shares that actor.
+        // Full per-actor evidence/selection lives in the disconnected account collector.
+        var capabilities = results.Select(result => result.Value!)
+            .FirstOrDefault(values => values.Any(capability => capability.IsActive))?
+            .Where(capability => capability.IsActive)
+            .OrderBy(capability => capability.Discipline, StringComparer.Ordinal).ToArray() ?? [];
         return Gw2ApiResult<IReadOnlyList<CraftingDisciplineCapability>>.Success(capabilities);
     }
 
@@ -309,7 +307,7 @@ internal sealed class AccountCraftingGateway : IAccountCraftingGateway
     {
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         var payload = await JsonSerializer.DeserializeAsync<CharacterCraftingDto>(stream, SerializerOptions, cancellationToken).ConfigureAwait(false);
-        if (payload?.Crafting is null || payload.Crafting.Any(value => value is null || string.IsNullOrWhiteSpace(value.Discipline) || value.Rating is < 0 || value.Active is null) ||
+        if (payload?.Crafting is null || payload.Crafting.Any(value => value is null || string.IsNullOrWhiteSpace(value.Discipline) || value.Rating is not >= 0 || value.Active is null) ||
             payload.Crafting.Select(value => value.Discipline!).Distinct(StringComparer.Ordinal).Count() != payload.Crafting.Length) throw new JsonException();
         return payload.Crafting.Select(value => new CraftingDisciplineCapability(value.Discipline!, value.Rating!.Value, value.Active!.Value)).ToArray();
     }

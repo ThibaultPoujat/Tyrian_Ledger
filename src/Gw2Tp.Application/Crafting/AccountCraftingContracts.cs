@@ -95,8 +95,8 @@ public sealed record AccountInventoryEntry(int ItemId, int Quantity, AccountItem
 public sealed record AccountMaterialEntry(int ItemId, int CategoryId, int Quantity, AccountItemBinding Binding);
 
 /// <summary>
-/// Character names are intentionally discarded. Capability is the strongest
-/// observed rating for each discipline, with active evidence retained.
+/// Character names are intentionally discarded. The legacy gateway retains
+/// only active tuples from one real actor; full actor evidence uses the account collector.
 /// </summary>
 public sealed record CraftingDisciplineCapability(string Discipline, int Rating, bool IsActive);
 
