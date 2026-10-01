@@ -9,7 +9,7 @@ at the B1 checkpoint after merge; screenshots do not constitute that acceptance.
 ## Capture identity
 
 The actual PNGs were captured from implementation commit
-`7df6e16cc1ad38ca51f10a7ceef54afe4e9566c7` by the `p05b-preview` Playwright project.
+`ddbbf66a1e762d29a635fceb81b230696f5cc132` by the `p05b-preview` Playwright project.
 Every capture uses Chromium, **1920×1080 CSS pixels**, `deviceScaleFactor: 1`,
 100% browser zoom, and `fullPage: false`. The route is
 `/preview.html?scenario=<scenario>` as listed below. The originals remain intact.
