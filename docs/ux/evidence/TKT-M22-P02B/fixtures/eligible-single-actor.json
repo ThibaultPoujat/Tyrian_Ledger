@@ -1,0 +1,59 @@
+{
+  "state": "Ready",
+  "truncationReasons": [],
+  "summaryExclusions": [],
+  "evidenceFailureCode": null,
+  "opportunities": [
+    {
+      "id": "craft:1",
+      "recipeId": 1,
+      "outputItemId": 100,
+      "outputName": "Insigne de test",
+      "outputIconUrl": null,
+      "outputQuantity": 1,
+      "economics": {
+        "netProfit": {
+          "copper": "750"
+        },
+        "totalCost": {
+          "copper": "150"
+        },
+        "state": "Available"
+      },
+      "attention": "Active",
+      "confidenceBasisPoints": 8000,
+      "evidenceExplanation": [
+        "Historique de march\u00E9 et profondeur v\u00E9rifi\u00E9s avant la proposition."
+      ],
+      "interactionSeconds": 135,
+      "isActionable": true,
+      "exclusions": [],
+      "procurementExplanation": [],
+      "planId": "craft:1",
+      "steps": [
+        {
+          "action": "BuyNow",
+          "itemName": "Minerai de test",
+          "quantity": 1,
+          "unitPrice": {
+            "copper": "100"
+          }
+        },
+        {
+          "action": "Craft",
+          "itemName": "Insigne de test",
+          "quantity": 1,
+          "unitPrice": null
+        },
+        {
+          "action": "List",
+          "itemName": "Insigne de test",
+          "quantity": 1,
+          "unitPrice": {
+            "copper": "1000"
+          }
+        }
+      ]
+    }
+  ]
+}

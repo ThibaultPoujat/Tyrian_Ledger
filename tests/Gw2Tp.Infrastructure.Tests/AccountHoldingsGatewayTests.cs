@@ -23,7 +23,7 @@ using Xunit;
 
 namespace Gw2Tp.Infrastructure.Tests;
 
-public sealed class AccountHoldingsGatewayTests
+public sealed partial class AccountHoldingsGatewayTests
 {
     private const string SyntheticCredential = "synthetic-holdings-credential";
     private static readonly DateTimeOffset Evaluation = DateTimeOffset.Parse("2026-10-01T10:00:00Z");
@@ -39,7 +39,7 @@ public sealed class AccountHoldingsGatewayTests
         payloads["/v2/commerce/delivery"] = "{\"coins\":250,\"items\":[{\"id\":910006,\"count\":3},{\"id\":910006,\"count\":4}]}";
         var source = new MutableKeySource();
         var scheduler = new RecordingScheduler();
-        using var handler = new Handler((request, _) => Task.FromResult(Json(payloads[request.RequestUri!.AbsolutePath])));
+        using var handler = new Handler((request, _) => Task.FromResult(Json(PayloadFor(payloads, request.RequestUri!))));
         using var client = Client(handler);
         var result = await new AccountHoldingsGateway(source, client, scheduler, new StepClock()).CollectAsync(Evaluation);
 
@@ -82,7 +82,8 @@ public sealed class AccountHoldingsGatewayTests
         {
             Assert.Equal("Bearer", request.Scheme);
             Assert.Equal(SyntheticCredential, request.Credential);
-            Assert.Equal($"?v={AccountHoldingsGateway.SchemaVersion}", request.Query);
+            Assert.Contains($"v={AccountHoldingsGateway.SchemaVersion}", request.Query, StringComparison.Ordinal);
+            if (request.Query.Contains("tabs=", StringComparison.Ordinal)) Assert.Contains("tabs=all", request.Query, StringComparison.Ordinal);
         });
         Assert.All(scheduler.Keys, key =>
         {
@@ -98,7 +99,7 @@ public sealed class AccountHoldingsGatewayTests
     public async Task Actor_permission_failure_retains_success_and_degrades_aggregate_coverage()
     {
         using var handler = new Handler((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath == "/v2/characters/Zed/inventory"
-            ? new HttpResponseMessage(HttpStatusCode.Forbidden) : Json(Payloads()[request.RequestUri.AbsolutePath])));
+            ? new HttpResponseMessage(HttpStatusCode.Forbidden) : Json(PayloadFor(Payloads(), request.RequestUri!))));
         var result = await Gateway(handler).CollectAsync(Evaluation);
         var capture = Capture(result);
         Assert.True(result.IsPartialData);
@@ -137,7 +138,7 @@ public sealed class AccountHoldingsGatewayTests
     public async Task Unavailable_roster_does_not_fabricate_empty_account(HttpStatusCode status, Gw2ApiErrorCategory category)
     {
         using var handler = new Handler((request, _) => Task.FromResult(request.RequestUri!.AbsolutePath == "/v2/characters"
-            ? new HttpResponseMessage(status) : Json(Payloads()[request.RequestUri.AbsolutePath])));
+            ? new HttpResponseMessage(status) : Json(PayloadFor(Payloads(), request.RequestUri!))));
         var capture = Capture(await Gateway(handler).CollectAsync(Evaluation));
         Assert.Equal(category, capture.Roster.ErrorCategory);
         Assert.Equal(EvidenceCompleteness.Unknown, capture.CharacterCoverage.Completeness);
@@ -208,7 +209,7 @@ public sealed class AccountHoldingsGatewayTests
         using var handler = new Handler((request, _) =>
         {
             if (request.RequestUri!.AbsolutePath == "/v2/account") source.Value = "synthetic-next-credential";
-            return Task.FromResult(Json(Payloads()[request.RequestUri.AbsolutePath]));
+            return Task.FromResult(Json(PayloadFor(Payloads(), request.RequestUri!)));
         });
         using var client = Client(handler);
         var capture = Capture(await new AccountHoldingsGateway(source, client, new RecordingScheduler(), new StepClock()).CollectAsync(Evaluation));
@@ -276,7 +277,7 @@ public sealed class AccountHoldingsGatewayTests
         using var handler = new Handler(async (request, token) =>
         {
             var path = request.RequestUri!.AbsolutePath;
-            if (!path.StartsWith("/v2/characters/", StringComparison.Ordinal)) return Json(payloads[path]);
+            if (!path.StartsWith("/v2/characters/", StringComparison.Ordinal)) return Json(PayloadFor(payloads, request.RequestUri!));
             starts.Enqueue(path);
             var count = Interlocked.Increment(ref active);
             Interlocked.Exchange(ref peak, Math.Max(Volatile.Read(ref peak), count));
@@ -307,10 +308,10 @@ public sealed class AccountHoldingsGatewayTests
         using var handler = new Handler(async (request, token) =>
         {
             var path = request.RequestUri!.AbsolutePath;
-            if (!path.StartsWith("/v2/characters/", StringComparison.Ordinal)) return Json(payloads[path]);
+            if (!path.StartsWith("/v2/characters/", StringComparison.Ordinal)) return Json(PayloadFor(payloads, request.RequestUri!));
             if (path == "/v2/characters/Actor%2000/inventory") await releaseFirst.Task.WaitAsync(token);
-            else if (Interlocked.Increment(ref completed) == 29) otherActorsComplete.TrySetResult();
-            return Json("{\"bags\":[]}");
+            else if (path.EndsWith("/inventory", StringComparison.Ordinal) && Interlocked.Increment(ref completed) == 29) otherActorsComplete.TrySetResult();
+            return Json(path.EndsWith("/inventory", StringComparison.Ordinal) ? "{\"bags\":[]}" : PayloadFor(payloads, request.RequestUri!));
         });
         var task = Gateway(handler).CollectAsync(Evaluation);
         await otherActorsComplete.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -340,7 +341,7 @@ public sealed class AccountHoldingsGatewayTests
                 }
                 if (attempt == 2) return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadGateway));
             }
-            return Task.FromResult(Json(Payloads()[request.RequestUri!.AbsolutePath]));
+            return Task.FromResult(Json(PayloadFor(Payloads(), request.RequestUri!)));
         });
         using var client = Client(handler);
         var capture = Capture(await new AccountHoldingsGateway(new MutableKeySource(), client, scheduler, new StepClock()).CollectAsync(Evaluation));
@@ -364,7 +365,7 @@ public sealed class AccountHoldingsGatewayTests
         services.AddSingleton<IGw2RequestScheduler>(new RecordingScheduler());
         var handler = new Handler((request, _) => request.RequestUri!.AbsolutePath.StartsWith("/v2/characters/", StringComparison.Ordinal)
             ? throw new HttpRequestException($"{SyntheticCredential} Aé / One")
-            : Task.FromResult(Json(Payloads()[request.RequestUri.AbsolutePath])));
+            : Task.FromResult(Json(PayloadFor(Payloads(), request.RequestUri!))));
         services.Configure<HttpClientFactoryOptions>(AccountHoldingsGateway.HttpClientName,
             options => options.HttpMessageHandlerBuilderActions.Add(builder => builder.PrimaryHandler = handler));
         using var provider = services.BuildServiceProvider();
@@ -386,7 +387,7 @@ public sealed class AccountHoldingsGatewayTests
         {
             if (request.RequestUri!.AbsolutePath == "/v2/account/bank")
                 await new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task.WaitAsync(token);
-            return Json(Payloads()[request.RequestUri.AbsolutePath]);
+            return Json(PayloadFor(Payloads(), request.RequestUri!));
         });
         using var client = Client(handler);
         var capture = Capture(await new AccountHoldingsGateway(new MutableKeySource(), client, new RecordingScheduler(),
@@ -408,6 +409,17 @@ public sealed class AccountHoldingsGatewayTests
         Assert.Equal(4294967295L, capture.Delivery.Value!.CoinsCopper);
     }
 
+    private static string PayloadFor(Dictionary<string, string> payloads, Uri uri)
+    {
+        if (uri.Query.Contains("tabs=all", StringComparison.Ordinal) && payloads.TryGetValue(uri.AbsolutePath + "?tabs=all", out var allTabs)) return allTabs;
+        if (payloads.TryGetValue(uri.AbsolutePath, out var payload)) return payload;
+        if (uri.AbsolutePath == "/v2/account/recipes") return "[]";
+        if (uri.AbsolutePath.EndsWith("/crafting", StringComparison.Ordinal)) return "{\"crafting\":[]}";
+        if (uri.AbsolutePath.EndsWith("/equipment", StringComparison.Ordinal)) return "{\"equipment\":[]}";
+        if (uri.AbsolutePath.EndsWith("/equipmenttabs", StringComparison.Ordinal)) return uri.Query.Contains("tabs=all", StringComparison.Ordinal)
+            ? "[{\"tab\":1,\"is_active\":true,\"equipment\":[]}]" : "[1]";
+        throw new InvalidOperationException("Unexpected synthetic request.");
+    }
     private static Dictionary<string, string> Payloads() => new()
     {
         ["/v2/account"] = "{\"id\":\"synthetic-holdings-account\"}",
@@ -417,7 +429,7 @@ public sealed class AccountHoldingsGatewayTests
         ["/v2/characters/A%C3%A9%20%2F%20One/inventory"] = CharacterInventory,
         ["/v2/characters/Zed/inventory"] = "{\"bags\":[]}",
     };
-    private static Handler FixtureHandler(Dictionary<string, string> payloads) => new((request, _) => Task.FromResult(Json(payloads[request.RequestUri!.AbsolutePath])));
+    private static Handler FixtureHandler(Dictionary<string, string> payloads) => new((request, _) => Task.FromResult(Json(PayloadFor(payloads, request.RequestUri!))));
     private static AccountHoldingsGateway Gateway(Handler handler) => new(new MutableKeySource(), Client(handler), new RecordingScheduler(), new StepClock());
     private static AccountHoldingsCapture Capture(Gw2ApiResult<AccountHoldingsCapture> result)
     {

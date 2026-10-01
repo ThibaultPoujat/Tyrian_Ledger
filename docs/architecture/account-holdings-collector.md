@@ -1,9 +1,10 @@
-# Account Holdings Collector — P02A Handoff
+# Account Holdings Collector — P02A/P02B Handoff
 
 P02A / #168 adds a disconnected producer for B2. It does not persist, poll,
 reserve, value or admit resources, and has no browser endpoint. P02B extends
 protection/actor evidence; P03A guards account/store publication before P02C
-integrates the collector. The existing crafting snapshot/gateway remains unchanged.
+integrates the collector. P02B also corrects the legacy mixed rating/active summary
+conservatively, without adding an actor or protection admission adapter.
 
 ## Typed seam and composition
 
@@ -103,3 +104,88 @@ gateway-boundary, Application Crafting and workflow tests. There is no UI change
 or screenshot/preview requirement. The next ticket consumes this typed seam after
 #168 merges with reviewed head and green final-head CI; it must not enable live
 admission from these observations alone.
+
+## P02B equipment and crafting handoff
+
+Each `ActorHoldingsEvidence` now includes independently timed crafting tuples,
+`Equipment`, `EquipmentTabRoster` and `EquipmentTabs`. Account recipe unlocks
+have their own source evidence. Five sequential child reads per worker (inventory,
+crafting, equipment, tab list, all tabs) retain the four-read ceiling even with
+optional failures. Requests use the same captured credential and encoded private
+name. `equipmenttabs?tabs=all` is checked against the separately enumerated tab
+IDs and equipment tab references; active-only/missing/duplicate/inconsistent tabs
+cannot establish complete protection coverage. An unavailable expected tab list
+still permits retaining protective references from an all-tabs response as Partial.
+
+The documented [crafting](https://wiki.guildwars2.com/wiki/API%3A2/characters/%3Aid/crafting),
+[equipment](https://wiki.guildwars2.com/wiki/API%3A2/characters/%3Aid/equipment) and
+[equipment-tabs](https://wiki.guildwars2.com/wiki/API%3A2/characters/%3Aid/equipmenttabs)
+shapes were inspected again on 2026-10-01 via indexed official wiki content;
+direct page retrieval returned HTTP 403. No authenticated schema/permission probe
+was performed. The existing pinned version is requested on every read. Equipment
+keeps row/slot/tab provenance, binding/bound actor, optional armory unlock count
+and attached components. Unlock count is a reference fact, not physical stock.
+`Equipped`, `Armory`, `EquippedFromLegendaryArmory` and `LegendaryArmory` are all
+protected. Missing/future locations or bindings retain references as Partial;
+invalid IDs/counts/components fail the source. No extra mandatory grant is added.
+The equipment-tabs infobox/notes permission discrepancy remains VERIFY-016.
+
+`AccountHoldingsProtectionPolicy.Evaluate` is pure and disconnected. Inputs are
+this account's capture, explicit full-item/minimum-retained rules, positively
+known item categories, optional consuming actor, and an optional same-account
+invocation floor from the previous evaluation. A future caller must feed the
+returned floor into later partial reads in the same invocation. The floor unions
+equipment and attached-component IDs; it never carries crafting capabilities.
+It is not persistent state: durable floors/epoch invalidation belong to #171/#170.
+
+Equipment is never added to physical holdings. Without established instance
+correspondence, every matching loose candidate is blocked with
+`EquipmentReferenceAmbiguous`, including spares and loose copies of attached
+components. Missing any expected actor's required equipment/template coverage
+blocks equipment-class candidates account-wide; unknown category fails closed.
+A positively identified commodity with complete own inventory/rule evidence may
+retain a protection allowance even when another actor's equipment source fails.
+An invalid binding or actor, unknown location or incomplete relevant source never
+becomes eligible. Bound quantities retain their actor restriction and have zero
+sale allowance. Explicit full-item rules always protect; a keep quantity is
+subtracted once per item across otherwise usable observations in stable location
+order. The 70 bank + 80 material / retain 100 vector leaves only 50. These are
+**allowances over observations**, not spendable totals, tradeability proof or a
+coherent physical account projection. #171 must impose its independent-source
+physical cap and admission constraints before a plan consumes anything.
+
+`CraftingActorSelector.Select` considers the current complete roster and each
+actor's own complete active discipline/rating tuples. Recipe unlock evidence is
+separate and required. Stable ties use opaque actor ID. The selector requires a
+single real actor capable of the whole chain; a chain possible only across actors
+returns `UnsupportedChain`. This bounded rejection is intentional until switching
+is modeled. Complete successful actors can remain candidates when another actor's
+crafting read fails; missing roster or stale/deleted/renamed actor facts cannot
+create an eligible actor. Input evidence must belong to a complete source of this
+capture. Bound-to-other-actor inputs reject; bank/material/shared access and
+unbound cross-character transfers remain explicit prerequisites. Every successful
+selection includes `AdmissionRequired` and produces no consuming instructions.
+The live planner is not wired to this new selector/policy.
+
+The legacy snapshot cannot persist actors or chain switches. Its gateway now
+retains only active tuples from the first ordinal-name actor with an active
+capability instead of combining maximum rating and any active flag across actors.
+Every legacy chain therefore shares one observed actor; this can underuse another
+character's capabilities. The planner also rejects inactive tuples. Existing
+schema and snapshot signatures remain intact; refresh development snapshots to
+replace historical aggregate summaries. No durable migration/retention or live
+protected-stock integration is introduced. No French presentation/text/layout
+changes are made; the correction removes false capability eligibility.
+
+Independent expected policy vectors live in `AccountEvidencePolicyTests`; gateway
+vectors in `AccountHoldingsProtectionGatewayTests` extend the collector harness.
+They cover armory/inactive/unknown locations, attached components and duplicate
+copies, partial actor coverage, account-wide reserves, scope/binding failures,
+actor rename/deletion, same-input replay, real actor chains/access and a four-read
+cancellation barrier during crafting. The legacy rating/active regression failed
+before the correction; it requires active rating 100 when another actor has
+inactive 500. VERIFY-008/013/016/017 remain OPEN. The legacy eligibility correction changes rendered state through the existing
+crafting consumer. [P02B actual 1920×1080 evidence](../ux/evidence/TKT-M22-P02B/README.md)
+covers rejected mixed/inactive tuples and a retained eligible actor, with the
+original 01/02 comparison, keyboard/axe/zoom checks and explicit inherited shell
+limitations. Frontend source and fixture Signaux/Plans previews remain untouched.

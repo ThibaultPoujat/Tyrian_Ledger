@@ -162,6 +162,17 @@ public sealed class CraftingOpportunityPlannerTests
         Assert.Contains(CraftingOpportunityExclusion.WeakHistory, opportunity.Exclusions);
     }
 
+    [Fact]
+    public void Inactive_legacy_capability_never_qualifies_a_recipe()
+    {
+        var input = Input([Recipe(1, 100, 1, (10, 1))], Markets((10, 100, 0), (100, 1_000, 1_000))) with
+        { Disciplines = [new("Artificer", 500, false)] };
+        var result = planner.Plan(input);
+        Assert.Empty(result.Opportunities);
+        Assert.Equal(CraftingOpportunityState.NoOpportunities, result.State);
+        Assert.True(Assert.Single(planner.Plan(input with { Disciplines = [new("Artificer", 500, true)] }).Opportunities).IsActionable);
+    }
+
     private static CraftingPlannerInput Input(IReadOnlyList<CraftingRecipe> recipes, IReadOnlyDictionary<int, CraftingMarketEvidence> markets, CraftingPlannerLimits? limits = null) =>
         new(recipes, recipes.Select(recipe => recipe.RecipeId).ToHashSet(), [new("Artificer", 500, true)], markets, new Dictionary<int, CraftingOwnedEvidence>(), limits ?? CraftingPlannerLimits.Default);
 

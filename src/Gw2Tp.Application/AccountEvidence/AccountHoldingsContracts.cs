@@ -20,6 +20,11 @@ public enum AccountHoldingsSource
     Bank,
     MaterialStorage,
     TradingPostDelivery,
+    RecipeUnlocks,
+    CharacterCrafting,
+    CharacterEquipment,
+    CharacterEquipmentTabRoster,
+    CharacterEquipmentTabs,
 }
 
 public enum EvidenceAvailability { Available, MissingPermission, Unavailable }
@@ -86,7 +91,11 @@ public sealed record HoldingsDeliveryObservation(
 
 public sealed record ActorHoldingsEvidence(
     AccountActor Actor,
-    AccountSourceEvidence<HoldingsInventoryObservation> Inventory);
+    AccountSourceEvidence<HoldingsInventoryObservation> Inventory,
+    AccountSourceEvidence<IReadOnlyList<CraftingDisciplineCapability>> Crafting,
+    AccountSourceEvidence<IReadOnlyList<EquipmentProtectionObservation>> Equipment,
+    AccountSourceEvidence<IReadOnlyList<int>> EquipmentTabRoster,
+    AccountSourceEvidence<IReadOnlyList<EquipmentTabObservation>> EquipmentTabs);
 
 public sealed record CharacterHoldingsCoverage(
     EvidenceCompleteness Completeness, int? ExpectedActorCount, int SuccessfulActorCount);
@@ -103,4 +112,20 @@ public sealed record AccountHoldingsCapture(
     AccountSourceEvidence<HoldingsInventoryObservation> MaterialStorage,
     AccountSourceEvidence<HoldingsDeliveryObservation> Delivery,
     IReadOnlyList<ActorHoldingsEvidence> Characters,
-    CharacterHoldingsCoverage CharacterCoverage);
+    CharacterHoldingsCoverage CharacterCoverage,
+    AccountSourceEvidence<IReadOnlyList<int>> RecipeUnlocks);
+
+public enum EquipmentObservedLocation
+{
+    Unknown, Equipped, Armory, EquippedFromLegendaryArmory, LegendaryArmory,
+}
+
+/// <summary>A protection reference, never a physical quantity or item-instance identifier.</summary>
+public sealed record EquipmentProtectionObservation(
+    string ActorId, int RowIndex, int ItemId, string? Slot,
+    EquipmentObservedLocation Location, IReadOnlyList<int> TabIds, int? UnlockCount,
+    AccountItemBinding Binding, AccountActor? BoundActor,
+    IReadOnlyList<HoldingsAttachedComponent> AttachedComponents);
+
+public sealed record EquipmentTabObservation(
+    int TabId, bool IsActive, IReadOnlyList<EquipmentProtectionObservation> Equipment);

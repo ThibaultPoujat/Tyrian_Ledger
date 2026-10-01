@@ -1,0 +1,32 @@
+{
+  "runtimeHead": "4f71aa25414a94fd9737e1483bac84019e643691",
+  "viewport": {
+    "width": 1920,
+    "height": 1080
+  },
+  "deviceScaleFactor": 1,
+  "browser": "Chromium via Playwright 1.62.1",
+  "route": "http://127.0.0.1:5081/ -> Artisanat",
+  "fixtureBoundary": "Real CraftingOpportunityPlanner -> production CraftingOpportunityEndpoints.ToResponse, intercepted /api/crafting-opportunities",
+  "captureState": "Uncommitted evidence-only test/fixture files; runtime/frontend unchanged from runtimeHead",
+  "screens": [
+    {
+      "file": "eligible-single-actor-1920x1080.png",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "70df9dc467c76aaaddc62fe6e3026d393a187e9db22225b5c460291bbb19c853"
+    },
+    {
+      "file": "rejected-inactive-1920x1080.png",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "53df13b676ab1052fb6819458a6dc351ca6eb6bbf7aa014b6c930174cecd7ecf"
+    },
+    {
+      "file": "rejected-mixed-1920x1080.png",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "53df13b676ab1052fb6819458a6dc351ca6eb6bbf7aa014b6c930174cecd7ecf"
+    }
+  ]
+}

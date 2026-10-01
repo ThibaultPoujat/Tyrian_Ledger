@@ -73,10 +73,12 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
             MapMaterialsAsync, cancellationToken);
         var deliveryTask = session.ReadAsync(AccountHoldingsSource.TradingPostDelivery, null, "commerce/delivery", "delivery",
             MapDeliveryAsync, cancellationToken);
+        var recipesTask = session.ReadAsync(AccountHoldingsSource.RecipeUnlocks, null, "account/recipes", "recipes",
+            MapIdsAsync, cancellationToken);
         var roster = await rosterTask.ConfigureAwait(false);
         var actors = roster.Value;
         var characterTask = ReadCharactersAsync(session, account, actors, cancellationToken);
-        await Task.WhenAll(bankTask, sharedTask, materialsTask, deliveryTask, characterTask).ConfigureAwait(false);
+        await Task.WhenAll(bankTask, sharedTask, materialsTask, deliveryTask, recipesTask, characterTask).ConfigureAwait(false);
         var characters = await characterTask.ConfigureAwait(false);
         var successful = characters.Count(value => value.Inventory.Completeness == EvidenceCompleteness.Complete);
         var capture = new AccountHoldingsCapture(account, refreshId, evaluatedAtUtc.ToUniversalTime(),
@@ -84,8 +86,12 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
             await materialsTask.ConfigureAwait(false), await deliveryTask.ConfigureAwait(false), characters,
             new(actors is null ? EvidenceCompleteness.Unknown
                 : successful == actors.Count ? EvidenceCompleteness.Complete : EvidenceCompleteness.Partial,
-                actors?.Count, successful));
+                actors?.Count, successful), await recipesTask.ConfigureAwait(false));
         return Gw2ApiResult<AccountHoldingsCapture>.Success(capture, isPartialData:
+            capture.RecipeUnlocks.Completeness != EvidenceCompleteness.Complete ||
+            characters.Any(actor => actor.Crafting.Completeness != EvidenceCompleteness.Complete ||
+                actor.Equipment.Completeness != EvidenceCompleteness.Complete ||
+                actor.EquipmentTabs.Completeness != EvidenceCompleteness.Complete) ||
             capture.Roster.Completeness != EvidenceCompleteness.Complete ||
             capture.Bank.Completeness != EvidenceCompleteness.Complete ||
             capture.SharedInventory.Completeness != EvidenceCompleteness.Complete ||
@@ -114,13 +120,115 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
                     $"character-{index.ToString(CultureInfo.InvariantCulture)}",
                     (response, token) => MapCharacterInventoryAsync(account, actor, response, token),
                     cancellationToken).ConfigureAwait(false);
-                results[index] = new(actor, inventory);
+                // Child reads stay sequential inside each worker: at most four character HTTP reads.
+                var path = $"characters/{Uri.EscapeDataString(actor.DisplayName)}";
+                var operation = $"character-{index.ToString(CultureInfo.InvariantCulture)}";
+                var crafting = await session.ReadAsync(AccountHoldingsSource.CharacterCrafting, actor.ActorId,
+                    $"{path}/crafting", $"{operation}-crafting", MapCraftingAsync, cancellationToken).ConfigureAwait(false);
+                var equipment = await session.ReadAsync(AccountHoldingsSource.CharacterEquipment, actor.ActorId,
+                    $"{path}/equipment", $"{operation}-equipment",
+                    (response, token) => MapEquipmentAsync(account, actor, response, token), cancellationToken).ConfigureAwait(false);
+                var tabs = await session.ReadAsync(AccountHoldingsSource.CharacterEquipmentTabRoster, actor.ActorId,
+                    $"{path}/equipmenttabs", $"{operation}-tab-roster", MapIdsAsync, cancellationToken).ConfigureAwait(false);
+                // Even if the tab list fails, retain any returned protective references; coverage stays Partial.
+                var allTabs = await session.ReadAsync(AccountHoldingsSource.CharacterEquipmentTabs, actor.ActorId,
+                    $"{path}/equipmenttabs?tabs=all", $"{operation}-all-tabs",
+                    (response, token) => MapEquipmentTabsAsync(account, actor, tabs.Value, equipment.Value, response, token),
+                    cancellationToken).ConfigureAwait(false);
+                results[index] = new(actor, inventory, crafting, equipment, tabs, allTabs);
             }
         }
         var workers = Enumerable.Range(0, Math.Min(4, actors.Count)).Select(_ => WorkerAsync()).ToArray();
         await Task.WhenAll(workers).ConfigureAwait(false);
         return results;
     }
+
+    private static async Task<Mapped<IReadOnlyList<int>>> MapIdsAsync(HttpResponseMessage response, CancellationToken token)
+    {
+        var ids = await DeserializeAsync<int[]>(response, token).ConfigureAwait(false);
+        if (ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length) throw new JsonException();
+        return new(ids.Order().ToArray(), ids.Length);
+    }
+
+    private static async Task<Mapped<IReadOnlyList<CraftingDisciplineCapability>>> MapCraftingAsync(
+        HttpResponseMessage response, CancellationToken token)
+    {
+        var dto = await DeserializeAsync<HoldingsCraftingDto>(response, token).ConfigureAwait(false);
+        if (dto.Crafting is null || dto.Crafting.Any(row => row is null || string.IsNullOrWhiteSpace(row.Discipline) ||
+                row.Rating is not >= 0 || row.Active is null) ||
+            dto.Crafting.Select(row => row!.Discipline).Distinct(StringComparer.OrdinalIgnoreCase).Count() != dto.Crafting.Length)
+            throw new JsonException();
+        return new(dto.Crafting.Select(row => new CraftingDisciplineCapability(row!.Discipline!, row.Rating!.Value,
+            row.Active!.Value)).OrderBy(row => row.Discipline, StringComparer.Ordinal).ToArray(), dto.Crafting.Length);
+    }
+
+    private static async Task<Mapped<IReadOnlyList<EquipmentProtectionObservation>>> MapEquipmentAsync(
+        AccountScope account, AccountActor actor, HttpResponseMessage response, CancellationToken token)
+    {
+        var dto = await DeserializeAsync<HoldingsEquipmentDto>(response, token).ConfigureAwait(false);
+        if (dto.Equipment is null) throw new JsonException();
+        var rows = MapEquipmentRows(account, actor, dto.Equipment);
+        return new(rows, rows.Count, HasUnknownEquipment(rows));
+    }
+
+    private static async Task<Mapped<IReadOnlyList<EquipmentTabObservation>>> MapEquipmentTabsAsync(
+        AccountScope account, AccountActor actor, IReadOnlyList<int>? expected,
+        IReadOnlyList<EquipmentProtectionObservation>? equipment, HttpResponseMessage response, CancellationToken token)
+    {
+        var dto = await DeserializeAsync<HoldingsEquipmentTabDto?[]>(response, token).ConfigureAwait(false);
+        if (dto.Any(tab => tab is null || tab.TabId is not > 0 || tab.IsActive is null || tab.Equipment is null) ||
+            dto.Select(tab => tab!.TabId).Distinct().Count() != dto.Length) throw new JsonException();
+        var tabs = dto.Select(tab => new EquipmentTabObservation(tab!.TabId!.Value, tab.IsActive!.Value,
+            MapEquipmentRows(account, actor, tab.Equipment!))).OrderBy(tab => tab.TabId).ToArray();
+        var actual = tabs.Select(tab => tab.TabId).ToHashSet();
+        var partial = expected is null || !actual.SetEquals(expected) || tabs.Count(tab => tab.IsActive) != 1 ||
+            tabs.Any(tab => HasUnknownEquipment(tab.Equipment)) ||
+            (equipment?.SelectMany(row => row.TabIds).Any(id => !actual.Contains(id)) ?? false);
+        return new(tabs, tabs.Length, partial, expected?.Count);
+    }
+
+    private static IReadOnlyList<EquipmentProtectionObservation> MapEquipmentRows(
+        AccountScope account, AccountActor actor, HoldingsEquipmentRowDto?[] rows)
+    {
+        return rows.Select((row, index) =>
+        {
+            if (row is null || row.ItemId is not > 0 || row.UnlockCount is <= 0 ||
+                (row.Tabs is not null && (row.Tabs.Any(id => id <= 0) || row.Tabs.Distinct().Count() != row.Tabs.Length)))
+                throw new JsonException();
+            var location = row.Location switch
+            {
+                "Equipped" => EquipmentObservedLocation.Equipped,
+                "Armory" => EquipmentObservedLocation.Armory,
+                "EquippedFromLegendaryArmory" => EquipmentObservedLocation.EquippedFromLegendaryArmory,
+                "LegendaryArmory" => EquipmentObservedLocation.LegendaryArmory,
+                _ => EquipmentObservedLocation.Unknown,
+            };
+            var binding = row.Binding switch
+            {
+                null => AccountItemBinding.Unspecified,
+                "Account" => AccountItemBinding.AccountBound,
+                "Character" => AccountItemBinding.CharacterBound,
+                _ => AccountItemBinding.OtherBound,
+            };
+            if (binding == AccountItemBinding.CharacterBound ? string.IsNullOrWhiteSpace(row.BoundTo) : row.BoundTo is not null)
+                binding = AccountItemBinding.OtherBound;
+            var components = new List<HoldingsAttachedComponent>();
+            void Attach(int[]? ids, HoldingsComponentKind kind)
+            {
+                if (ids is null) return;
+                if (ids.Any(id => id <= 0)) throw new JsonException();
+                components.AddRange(ids.Select((id, offset) => new HoldingsAttachedComponent(kind, offset, id)));
+            }
+            Attach(row.Upgrades, HoldingsComponentKind.Upgrade);
+            Attach(row.Infusions, HoldingsComponentKind.Infusion);
+            return new EquipmentProtectionObservation(actor.ActorId, index, row.ItemId.Value, row.Slot,
+                location, row.Tabs?.Order().ToArray() ?? [], row.UnlockCount, binding,
+                string.IsNullOrWhiteSpace(row.BoundTo) ? null : Actor(account, row.BoundTo), components.ToArray());
+        }).ToArray();
+    }
+
+    private static bool HasUnknownEquipment(IReadOnlyList<EquipmentProtectionObservation> rows) =>
+        rows.Any(row => row.Location == EquipmentObservedLocation.Unknown || row.Binding == AccountItemBinding.OtherBound);
 
     private static async Task<T> DeserializeAsync<T>(HttpResponseMessage response, CancellationToken token)
     {
@@ -251,7 +359,7 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
         return totals;
     }
 
-    private sealed record Mapped<T>(T Value, int LocationCount);
+    private sealed record Mapped<T>(T Value, int LocationCount, bool IsPartial = false, int? ExpectedLocationCount = null);
 
     private sealed class ReadSession(string credential, Guid refreshId, HttpClient client,
         IGw2RequestScheduler scheduler, IClock clock, TimeSpan requestTimeout)
@@ -273,8 +381,8 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
             }
             var fetch = new EvidenceFetchProvenance(started, clock.UtcNow, null);
             if (result.IsSuccess && result.Value is { } mapped)
-                return new(source, actorId, EvidenceAvailability.Available, EvidenceCompleteness.Complete,
-                    new(mapped.LocationCount, mapped.LocationCount), fetch, mapped.Value, null);
+                return new(source, actorId, EvidenceAvailability.Available, mapped.IsPartial ? EvidenceCompleteness.Partial : EvidenceCompleteness.Complete,
+                    new(mapped.ExpectedLocationCount ?? (mapped.IsPartial ? null : mapped.LocationCount), mapped.LocationCount), fetch, mapped.Value, null);
             var error = result.ErrorCategory ?? Gw2ApiErrorCategory.IncompleteData;
             return new(source, actorId,
                 error is Gw2ApiErrorCategory.Forbidden or Gw2ApiErrorCategory.Unauthorized
@@ -291,7 +399,7 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
                 timeout.CancelAfter(requestTimeout);
-                using var request = new HttpRequestMessage(HttpMethod.Get, $"{path}?v={SchemaVersion}");
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"{path}{(path.Contains('?') ? '&' : '?')}v={SchemaVersion}");
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential);
                 using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
                 if (response.StatusCode == HttpStatusCode.PartialContent)
