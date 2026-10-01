@@ -22,23 +22,28 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: '**/p05a-preview.spec.ts',
+      testIgnore: '**/p05*-preview.spec.ts',
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'firefox',
-      testIgnore: '**/p05a-preview.spec.ts',
+      testIgnore: '**/p05*-preview.spec.ts',
       use: { ...devices['Desktop Firefox'] },
     },
     {
       name: 'webkit',
-      testIgnore: '**/p05a-preview.spec.ts',
+      testIgnore: '**/p05*-preview.spec.ts',
       use: { ...devices['Desktop Safari'] },
     },
     {
       name: 'p05a-preview',
       testMatch: '**/p05a-preview.spec.ts',
       use: { ...devices['Desktop Chrome'], baseURL: previewBaseUrl },
+    },
+    {
+      name: 'p05b-preview',
+      testMatch: '**/p05b-preview.spec.ts',
+      use: { ...devices['Desktop Chrome'], baseURL: previewBaseUrl, viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 },
     },
   ],
   workers: 1,
