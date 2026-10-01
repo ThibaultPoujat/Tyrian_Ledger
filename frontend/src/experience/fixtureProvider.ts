@@ -171,7 +171,8 @@ function analysisFor(scenario: 'normal' | 'urgent' | 'empty' | 'degraded' | 'dea
   return scenario === 'degraded' ? STALE_ANALYSIS : NORMAL_ANALYSIS;
 }
 
-function buildSession(scenario: PreviewScenario, preferences: SessionPreferences): SignalSessionSnapshot {
+function buildSession(inputScenario: PreviewScenario, preferences: SessionPreferences): SignalSessionSnapshot {
+  const scenario = inputScenario === 'urgent' ? 'urgent' : inputScenario === 'degraded' || inputScenario === 'stale' ? 'degraded' : 'normal';
   const allocation = allocationFor(preferences.capitalPercent);
   const accountCoverage = coverageFor(scenario);
   const analysis = analysisFor(scenario);
@@ -247,6 +248,7 @@ export function createFixtureProvider(scenario: PreviewScenario): SignalsPreview
   let defaults = DEFAULT_PREFERENCES;
 
   return {
+    ...createPlansFixture(scenario),
     getDefaultPreferences: () => defaults,
     saveDefaultPreferences: (preferences) => {
       defaults = preferences;
@@ -269,7 +271,8 @@ export function clonePreferences(preferences: SessionPreferences): SessionPrefer
 
 export function scenarioFromSearch(search: string): PreviewScenario {
   const value = new URLSearchParams(search).get('scenario');
-  return value === 'urgent' || value === 'degraded' ? value : 'normal';
+  const scenarios: readonly PreviewScenario[] = ['normal', 'urgent', 'degraded', 'comparison', 'no-plan', 'insufficient-capital', 'stale', 'active', 'provisional', 'wait', 'partial', 'contradiction', 'long', 'lost-ack', 'conflict'];
+  return scenarios.includes(value as PreviewScenario) ? value as PreviewScenario : 'normal';
 }
 
 export function moneyInputFromCopper(copper: string): string {
@@ -291,3 +294,4 @@ export function copperFromMoneyInput(input: string): string | null {
     return null;
   }
 }
+import { createPlansFixture } from './fixturePlans';

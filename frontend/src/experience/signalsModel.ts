@@ -74,11 +74,12 @@ export type SignalSessionSnapshot = Readonly<{
   objectiveExplanation: string;
 }>;
 
-export type PreviewScenario = 'normal' | 'urgent' | 'degraded';
+export type PreviewScenario = 'normal' | 'urgent' | 'degraded' | PlanScenario;
 
-export interface SignalsPreviewProvider {
+export interface SignalsPreviewProvider extends PlansPreviewProvider {
   getDefaultPreferences(): SessionPreferences;
   saveDefaultPreferences(preferences: SessionPreferences): void;
   getAllocation(capitalPercent: number): AllocationSummary;
   getSession(preferences: SessionPreferences): SignalSessionSnapshot;
 }
+import type { PlanScenario, PlansPreviewProvider } from './planModel';

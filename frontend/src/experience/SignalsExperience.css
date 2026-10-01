@@ -68,6 +68,10 @@ button { color: inherit; }
   position: relative;
 }
 .p05a-rail {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  align-self: start;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -118,7 +122,8 @@ button { color: inherit; }
   text-transform: uppercase;
 }
 .p05a-brand-divider { color: var(--p05a-gold); font-size: 10px; }
-.p05a-navigation { display: grid; gap: 8px; padding-top: 21px; }
+.p05a-navigation { display: flex; flex-direction: column; flex: 1; gap: 8px; padding-top: 21px; }
+.p05a-navigation .p05a-nav-item:last-child { margin-top: auto; }
 .p05a-nav-item {
   min-height: 60px;
   display: grid;
@@ -156,11 +161,13 @@ button { color: inherit; }
 }
 .p05a-demo-dot { width: 10px; height: 10px; flex: 0 0 auto; border-radius: 50%; background: var(--p05a-amber); }
 
-.p05a-workspace { min-width: 0; min-height: 100vh; display: flex; flex-direction: column; }
+.p05a-workspace { min-width: 0; height: 100vh; display: flex; flex-direction: column; }
 .p05a-main {
   width: 100%;
   min-width: 0;
-  flex: 1 0 auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 17px;
@@ -471,6 +478,7 @@ button { color: inherit; }
 .p05a-icon-button { width: 38px; padding: 0; color: #c2ced8; border-color: transparent; font-size: 26px; }
 
 .p05a-status-bar {
+  flex-shrink: 0;
   min-height: 62px;
   display: flex;
   align-items: center;
