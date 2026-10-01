@@ -114,13 +114,16 @@ public sealed class PlanPartialCompletionTests
         }
     }
 
-    [Fact]
-    public void More_expensive_actual_purchase_records_facts_but_does_not_bypass_cash_commitment()
+    [Theory]
+    [InlineData(110)]
+    [InlineData(260)]
+    [InlineData(300)]
+    public void More_expensive_actual_purchase_records_facts_but_does_not_bypass_price_or_cash_constraints(long price)
     {
-        var result = service.ReportStep(Start(), 4, new Money(300), Now);
+        var result = service.ReportStep(Start(), 4, new Money(price), Now);
         Assert.Equal(PlanResidualReason.ResourceRecheckRequired, result.ResidualReason);
         Assert.Equal(PlanState.ReconciliationRequired, result.State);
-        Assert.Equal(-1_200, result.Events[0].Effects.Single(value => value.Kind == PlanResourceKind.Cash).Cash.Copper);
+        Assert.Equal(-4 * price, result.Events[0].Effects.Single(value => value.Kind == PlanResourceKind.Cash).Cash.Copper);
         Assert.Equal(10, result.Steps[1].Quantity);
     }
 

@@ -227,6 +227,9 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     {
         if (buy.UnitPrice is not { Copper: >= 0 } price || actualPrice is not { Copper: >= 0 } actual ||
             exit.UnitPrice is not { Copper: >= 0 } exitPrice) return false;
+        // Fewer units do not authorize a higher bid or worse per-unit economics.
+        // Record a differing acquisition price honestly, but pause its continuation.
+        if (actual.Copper > price.Copper) return false;
         // With no new resource kind or dependency, a smaller total cash commitment
         // and smaller inventory need preserve every hard constraint admitted at start.
         var original = checked(price.Copper * buy.Quantity);
