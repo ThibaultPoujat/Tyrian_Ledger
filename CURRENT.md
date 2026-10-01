@@ -62,12 +62,12 @@ remain in VERIFY; neither mocks nor elapsed cache time establish API truth.
 Machine-owned derived values. Do not rewrite durable context for routine progress.
 
 <!-- BEGIN GENERATED LIVE STATE -->
-- Last completed implementation ticket: `TKT-M22-C02 / #157`
-- Last merged implementation PR: `#162`
+- Last completed implementation ticket: `TKT-M22-P01C / #158`
+- Last merged implementation PR: `#163`
 - Active milestone: `M22 — Convenience, Hardening, and Evaluation`
-- Preferred next implementation ticket: `TKT-M22-P01C / #158`
+- Preferred next implementation ticket: `TKT-M22-P01D / #159`
 - Next required checkpoint: `None`
 - Allowed non-blocking alternate: `None`
-- Explicit active Sol gates: `TKT-M22-P01C / #158`, `TKT-M22-02 / #96`
+- Explicit active Sol gates: `TKT-M22-02 / #96`
 - Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`
 <!-- END GENERATED LIVE STATE -->
