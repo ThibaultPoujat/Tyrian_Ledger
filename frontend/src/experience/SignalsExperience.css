@@ -104,7 +104,7 @@ button { color: inherit; }
 }
 .p05a-brand-name {
   color: #f6d99b;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: inherit;
   font-size: 16px;
   letter-spacing: 3px;
   text-transform: uppercase;
@@ -185,7 +185,7 @@ button { color: inherit; }
 .p05a-placeholder h1 {
   margin: 0;
   color: #fbfcff;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: inherit;
   font-size: clamp(42px, 3.5vw, 59px);
   font-weight: 650;
   letter-spacing: -1.2px;
@@ -434,7 +434,7 @@ button { color: inherit; }
 }
 .p05a-empty-icon { width: 55px; height: 55px; display: grid; place-items: center; color: #f4d99e; border: 1px solid rgb(242 198 110 / 40%); border-radius: 50%; }
 .p05a-empty-icon .p05a-icon { width: 31px; height: 31px; }
-.p05a-empty-state h2 { max-width: 35ch; margin: 0; color: #fff; font-family: Georgia, serif; font-size: 26px; }
+.p05a-empty-state h2 { max-width: 35ch; margin: 0; color: #fff; font-size: 26px; }
 .p05a-empty-state > p:not(.p05a-eyebrow) { max-width: 80ch; margin: 0; color: #c3d0da; font-size: 15px; }
 .p05a-empty-state .p05a-empty-objective { color: #aebdc9; }
 .p05a-degraded-message { display: flex; align-items: flex-start; gap: 9px; padding: 11px 14px; color: #ffe0a0 !important; border: 1px solid rgb(242 181 68 / 53%); border-radius: 8px; background: rgb(89 62 24 / 25%); }
@@ -526,7 +526,7 @@ button { color: inherit; }
 }
 .p05a-drawer-header { flex: 0 0 auto; display: flex; justify-content: space-between; gap: 20px; padding-bottom: 17px; border-bottom: 1px solid rgb(153 176 192 / 24%); }
 .p05a-demo-chip--drawer { display: inline-flex; margin-bottom: 9px; }
-.p05a-drawer-header h2 { margin: 0; color: #fbfcff; font-family: Georgia, serif; font-size: 32px; }
+.p05a-drawer-header h2 { margin: 0; color: #fbfcff; font-size: 32px; }
 .p05a-drawer-header p { margin: 5px 0 0; color: #c0ccd6; font-size: 14px; }
 .p05a-drawer-close { width: 43px; height: 43px; flex: 0 0 auto; display: grid; place-items: center; color: #e5edf3; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
 .p05a-drawer-close:hover { background: rgb(255 255 255 / 7%); }
@@ -587,6 +587,7 @@ button { color: inherit; }
 .p05a-allocation-unavailable { margin: 0; padding: 9px 11px; color: #ffdfa0; border: 1px solid rgb(242 181 68 / 48%); border-radius: 7px; font-size: 12px; }
 .p05a-star-icon { color: var(--p05a-gold); font-size: 24px; line-height: 1; }
 .p05a-inline-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #d5dfe7; font-size: 13px; }
+.p05a-inline-field > input[type="number"] { width: 190px; min-height: 38px; padding: 0 9px; color: #f1f5f8; border: 1px solid #536878; border-radius: 7px; background: #091521; }
 .p05a-money-input { width: 190px; min-height: 38px; display: flex; align-items: center; padding: 0 9px; border: 1px solid #536878; border-radius: 7px; background: #091521; }
 .p05a-money-input input { width: 100%; min-width: 0; color: #f4f7fa; border: 0; outline: 0; background: transparent; text-align: right; }
 .p05a-money-input input:focus-visible { outline: 0; }
@@ -658,10 +659,10 @@ button { color: inherit; }
   .p05a-drawer-header h2 { font-size: 26px; }
   .p05a-objective-options { grid-template-columns: 1fr; }
   .p05a-inline-field { align-items: flex-start; flex-direction: column; }
+  .p05a-inline-field > input[type="number"] { width: 100%; }
   .p05a-money-input { width: 100%; }
   .p05a-status-bar { flex-wrap: wrap; padding: 9px 12px; font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
-

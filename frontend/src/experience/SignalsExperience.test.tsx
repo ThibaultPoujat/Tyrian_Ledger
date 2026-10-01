@@ -53,6 +53,21 @@ describe('SignalsExperience fixture preview', () => {
     expect(screen.getByRole('button', { name: '15 min' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('updates allocation from the draft provider value and explains risk settings without promising protection', () => {
+    render(<SignalsExperience provider={createFixtureProvider('normal')} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Adapter ma session' }));
+    expect(document.querySelector('.p05a-allocation-summary')?.textContent).toContain('90 po');
+
+    fireEvent.click(screen.getByRole('button', { name: /50 %/ }));
+    expect(document.querySelector('.p05a-allocation-summary')?.textContent).toContain('150 po');
+    expect(document.querySelector('.p05a-allocation-summary')?.textContent).toContain('125 po');
+
+    fireEvent.change(screen.getByLabelText('Pourcentage personnalisé du capital'), { target: { value: '75' } });
+    expect(screen.getByRole('status')).toHaveTextContent('Aucun plafond fictif n’est préparé pour cette valeur.');
+    expect(screen.getByText(/ne garantit pas une perte maximale/)).toBeVisible();
+    expect(screen.getByText(/ne garantit pas le délai d’une offre ou d’une vente/)).toBeVisible();
+  });
+
   it('validates copper inputs exactly without floating-point conversion', () => {
     expect(copperFromMoneyInput('0,5')).toBe('5000');
     expect(copperFromMoneyInput('2.03')).toBe('20300');
@@ -69,4 +84,3 @@ describe('SignalsExperience fixture preview', () => {
     expect(screen.getByRole('checkbox', { name: /Événements et quotidiennes/ })).toBeDisabled();
   });
 });
-

@@ -251,6 +251,7 @@ export function createFixtureProvider(scenario: PreviewScenario): SignalsPreview
     saveDefaultPreferences: (preferences) => {
       defaults = preferences;
     },
+    getAllocation: allocationFor,
     getSession: (preferences) => buildSession(scenario, preferences),
   };
 }
@@ -290,4 +291,3 @@ export function copperFromMoneyInput(input: string): string | null {
     return null;
   }
 }
-

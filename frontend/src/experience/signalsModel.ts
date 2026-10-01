@@ -79,6 +79,6 @@ export type PreviewScenario = 'normal' | 'urgent' | 'degraded';
 export interface SignalsPreviewProvider {
   getDefaultPreferences(): SessionPreferences;
   saveDefaultPreferences(preferences: SessionPreferences): void;
+  getAllocation(capitalPercent: number): AllocationSummary;
   getSession(preferences: SessionPreferences): SignalSessionSnapshot;
 }
-

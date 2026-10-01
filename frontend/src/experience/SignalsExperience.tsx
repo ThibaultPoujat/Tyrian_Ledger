@@ -162,8 +162,7 @@ export function SignalsExperience({ provider }: SignalsExperienceProps) {
         <SessionPreferencesDrawer
           key={drawerInstance}
           initialPreferences={drawerSeed}
-          allocation={session.allocation}
-          objectiveExplanation={session.objectiveExplanation}
+          getAllocation={provider.getAllocation}
           onApply={applyPreferences}
           onSaveDefault={saveDefault}
           onClose={closeDrawer}
@@ -383,15 +382,13 @@ function PreviewPlaceholder({ destination, onBack }: { destination: Destination;
 
 function SessionPreferencesDrawer({
   initialPreferences,
-  allocation,
-  objectiveExplanation,
+  getAllocation,
   onApply,
   onSaveDefault,
   onClose,
 }: {
   initialPreferences: SessionPreferences;
-  allocation: AllocationSummary;
-  objectiveExplanation: string;
+  getAllocation: (capitalPercent: number) => AllocationSummary;
   onApply: (preferences: SessionPreferences) => void;
   onSaveDefault: (preferences: SessionPreferences) => void;
   onClose: () => void;
@@ -525,7 +522,7 @@ function SessionPreferencesDrawer({
                 <label className={Number(draft.capitalPercent) === 15 || Number(draft.capitalPercent) === 30 || Number(draft.capitalPercent) === 50 ? 'p05a-custom-choice' : 'p05a-custom-choice p05a-custom-choice--selected'} htmlFor="p05a-capital-percent">Autre</label>
               </div>
               <input id="p05a-capital-percent" aria-label="Pourcentage personnalisé du capital" min="0" max="100" step="1" type="number" value={draft.capitalPercent} onChange={(event) => update({ capitalPercent: event.target.value })} />
-              <AllocationView allocation={allocation} />
+              <AllocationView allocation={getAllocation(Number(draft.capitalPercent))} />
               <p className="p05a-field-help">Suggestion de départ, ajustable selon votre session. Aucun montant ne sera réservé par cet aperçu.</p>
             </fieldset>
 
@@ -549,12 +546,24 @@ function SessionPreferencesDrawer({
 
             <fieldset className="p05a-form-section p05a-risk-section">
               <legend><Icon name="warning" />Risque et immobilisation</legend>
-              <MoneyInput id="p05a-untouched-reserve" label="Réserve à ne pas toucher" value={draft.untouchedReserve} onChange={(value) => update({ untouchedReserve: value })} />
-              <MoneyInput id="p05a-downside-tolerance" label="Perte maximale tolérée" value={draft.downsideTolerance} onChange={(value) => update({ downsideTolerance: value })} />
+              <MoneyInput
+                id="p05a-untouched-reserve"
+                label="Réserve à ne pas toucher"
+                value={draft.untouchedReserve}
+                onChange={(value) => update({ untouchedReserve: value })}
+                guidance="Cette somme reste exclue du budget suggéré. Cet aperçu ne réserve ni ne déplace votre or."
+              />
+              <MoneyInput
+                id="p05a-downside-tolerance"
+                label="Perte maximale tolérée"
+                value={draft.downsideTolerance}
+                onChange={(value) => update({ downsideTolerance: value })}
+                guidance="Préférence fictive de risque. Aucun stop-loss n’est exécuté et ce montant ne garantit pas une perte maximale."
+              />
               <label className="p05a-inline-field" htmlFor="p05a-lock-horizon">Immobilisation souhaitée (heures)
-                <input id="p05a-lock-horizon" min="0" step="1" type="number" value={draft.lockHorizonHours} onChange={(event) => update({ lockHorizonHours: event.target.value })} />
+                <input id="p05a-lock-horizon" aria-describedby="p05a-lock-horizon-help" min="0" step="1" type="number" value={draft.lockHorizonHours} onChange={(event) => update({ lockHorizonHours: event.target.value })} />
               </label>
-              <p className="p05a-field-help">{objectiveExplanation}</p>
+              <p className="p05a-field-help" id="p05a-lock-horizon-help">Durée souhaitée pour immobiliser le capital; cet aperçu ne garantit pas le délai d’une offre ou d’une vente.</p>
             </fieldset>
           </div>
 
@@ -588,16 +597,24 @@ function AllocationView({ allocation }: { allocation: AllocationSummary }) {
   );
 }
 
-function MoneyInput({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (value: string) => void }) {
+function MoneyInput({ id, label, value, onChange, guidance }: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  guidance?: string;
+}) {
   return (
-    <label className="p05a-inline-field" htmlFor={id}>
-      {label}
-      <span className="p05a-money-input">
-        <input id={id} inputMode="decimal" autoComplete="off" value={value} onChange={(event) => onChange(event.target.value)} aria-describedby={id + '-help'} />
-        <span aria-hidden="true">po</span>
-      </span>
-      <span className="p05a-sr-only" id={id + '-help'}>Montant fictif positif ou nul, avec deux décimales au maximum.</span>
-    </label>
+    <>
+      <label className="p05a-inline-field" htmlFor={id}>
+        {label}
+        <span className="p05a-money-input">
+          <input id={id} inputMode="decimal" autoComplete="off" value={value} onChange={(event) => onChange(event.target.value)} aria-describedby={guidance === undefined ? id + '-help' : id + '-help ' + id + '-guidance'} />
+          <span aria-hidden="true">po</span>
+        </span>
+        <span className="p05a-sr-only" id={id + '-help'}>Montant fictif positif ou nul, avec deux décimales au maximum.</span>
+      </label>
+      {guidance !== undefined && <p className="p05a-field-help" id={id + '-guidance'}>{guidance}</p>}
+    </>
   );
 }
-

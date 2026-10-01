@@ -79,6 +79,14 @@ test('opens the session drawer over Signaux, applies a deadline objective, and m
   const accessibility = await new AxeBuilder({ page }).analyze();
   expect(accessibility.violations).toEqual([]);
 
+  const scrollArea = dialog.locator('.p05a-drawer-scroll');
+  await scrollArea.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect(dialog.getByLabel('Réserve à ne pas toucher')).toBeInViewport({ ratio: 0.5 });
+  await expect(dialog.getByLabel('Perte maximale tolérée')).toBeInViewport({ ratio: 0.5 });
+  await expect(dialog.getByLabel('Immobilisation souhaitée (heures)')).toBeInViewport({ ratio: 0.5 });
+  await expect(dialog.getByText(/Aucun stop-loss n’est exécuté/)).toBeVisible();
+  await captureActual(page, testInfo, 'session-drawer-risques-1920x1080.png');
+
   await dialog.getByRole('button', { name: /Or disponible avant/ }).click();
   await expect(dialog.getByText(/Une vente future à délai incertain ne devient pas de l’or disponible/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Appliquer à cette session' }).click();
@@ -123,3 +131,23 @@ test('cancels edits on Escape, restores focus, validates inputs, and keeps saved
   await expect(page.locator('.p05a-segment--selected')).toContainText('15 min');
 });
 
+test('keeps drawer controls reachable at a 1280x720 zoom-like viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/preview.html?scenario=normal');
+  await page.getByRole('button', { name: 'Adapter ma session' }).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Adapter ma session' });
+  const close = dialog.getByRole('button', { name: 'Fermer et annuler les changements' });
+  const apply = dialog.getByRole('button', { name: 'Appliquer à cette session' });
+  const cancel = dialog.getByRole('button', { name: 'Annuler', exact: true });
+  await expect(close).toBeInViewport();
+  await expect(apply).toBeInViewport();
+  await expect(cancel).toBeInViewport();
+
+  const reserve = dialog.getByLabel('Réserve à ne pas toucher');
+  await reserve.scrollIntoViewIfNeeded();
+  await expect(reserve).toBeInViewport({ ratio: 0.5 });
+  await expect(apply).toBeInViewport();
+  await expect(cancel).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
