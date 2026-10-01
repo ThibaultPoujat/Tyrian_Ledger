@@ -66,7 +66,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
             if (effect.Kind == PlanResourceKind.Inventory && effect.Quantity > 0)
                 produced[Key(effect)] = checked(produced.GetValueOrDefault(Key(effect)) + effect.Quantity);
         }
-        foreach (var step in plan.Steps.Where(step => step.State is PlanStepState.Pending or PlanStepState.Current))
+        foreach (var step in plan.Steps.Where(step => step.State is PlanStepState.Pending or PlanStepState.Current or PlanStepState.RecheckRequired))
         {
             var quantity = Math.Max(0, step.Quantity);
             if (quantity == 0) continue;
@@ -144,7 +144,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         return new PlanRecord(Guid.NewGuid().ToString("N"), candidate.Version, candidate.SourceOpportunityId, candidate.Attention, state,
             PlanReconciliationState.None, RequireUtc(startedAtUtc), candidate.Requirements, candidate.ModeledProfit, 0, steps, [], candidate.Utility,
             PlanHysteresisPolicy.Default, verifiedCash,
-            verifiedQuantities is null ? null : new Dictionary<string, long>(verifiedQuantities, StringComparer.Ordinal), 0, startedAtUtc);
+            verifiedQuantities is null ? null : new Dictionary<string, long>(verifiedQuantities, StringComparer.Ordinal), 0, startedAtUtc,
+            HoldingsAuthority: candidate.HoldingsAuthority);
     }
 
     public PlanRecord ReportStep(PlanRecord plan, int quantity, Money? unitPrice, DateTimeOffset occurredAtUtc)

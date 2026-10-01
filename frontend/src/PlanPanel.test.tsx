@@ -203,6 +203,18 @@ it('renders a partial execution as paused in French without a dependent completi
   expect(screen.queryByText('Exécution différente')).not.toBeInTheDocument();
 });
 
+it('explains a moved input and required character in French without a consuming action', async () => {
+  const response = plansFor('step-a', '2');
+  Object.assign(response.plans[0], { state: 'RecheckRequired', holdingsEligibilityReason: 'holdings_source_changed',
+    holdingsExplanation: ['Personnage requis : Personnage de test.', 'Accès requis : banque.'] });
+  response.plans[0].steps[0].state = 'RecheckRequired';
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(response)));
+  render(<PlanPanel />);
+  expect(await screen.findByText(/Les ressources, leur localisation ou le personnage requis doivent être vérifiés/)).toBeInTheDocument();
+  expect(screen.getByText('Personnage requis : Personnage de test.')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Terminé' })).not.toBeInTheDocument();
+});
+
 function plansFor(currentStepId: string, revision: string, accountCacheScope = 'scope-a') {
   return {
     state: 'ready',

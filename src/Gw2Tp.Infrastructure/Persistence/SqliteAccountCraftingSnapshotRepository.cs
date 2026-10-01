@@ -135,7 +135,7 @@ internal sealed class SqliteAccountCraftingSnapshotRepository(
             crafting with { Value = crafting.Availability == CraftingFeatureAvailability.Available ? await ReadDisciplinesAsync(connection, profileId, cancellationToken).ConfigureAwait(false) : null });
     }
 
-    private static async Task<long> GetOrCreateProfileIdAsync(SqliteConnection connection, SqliteTransaction transaction, string accountScopeId, DateTimeOffset createdAtUtc, CancellationToken cancellationToken)
+    internal static async Task<long> GetOrCreateProfileIdAsync(SqliteConnection connection, SqliteTransaction transaction, string accountScopeId, DateTimeOffset createdAtUtc, CancellationToken cancellationToken)
     {
         await using (var insert = connection.CreateCommand())
         {

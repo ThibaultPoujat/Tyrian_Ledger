@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace Gw2Tp.Infrastructure.AccountEvidence;
 
-/// <summary>Explicit opt-in seam for later tickets/tests. The production host does not invoke this registration.</summary>
+/// <summary>Typed collector used by the guarded production account refresh; no independent polling timer.</summary>
 public static class AccountHoldingsServiceCollectionExtensions
 {
     public static IServiceCollection AddTyrianLedgerAccountHoldingsCollector(this IServiceCollection services)

@@ -18,7 +18,7 @@ public sealed record CraftingPlannerLimits(int MaximumRecipes, int MaximumDepth,
 
 public enum CraftingOpportunityState { Ready = 1, NoOpportunities, Degraded }
 public enum CraftingSearchTruncationReason { RecipeLimit = 1, DepthLimit, CandidateLimit, WorkLimit, MarketDataLimit }
-public enum CraftingOpportunityExclusion { CapabilityUnavailable = 1, RecipeLocked, InvalidRecipe, CycleDetected, MissingInputEvidence, InsufficientInputDepth, InsufficientOutputDepth, WeakHistory, StaleEvidence, NotProfitable, RawSaleSuperior, ResourceConflict }
+public enum CraftingOpportunityExclusion { CapabilityUnavailable = 1, RecipeLocked, InvalidRecipe, CycleDetected, MissingInputEvidence, InsufficientInputDepth, InsufficientOutputDepth, WeakHistory, StaleEvidence, NotProfitable, RawSaleSuperior, ResourceConflict, UnsupportedPrerequisite }
 
 public sealed record CraftingMarketEvidence(MarketListing Listing, MarketItemMetadata Item, bool IsFresh, bool HasSufficientHistory, int ConfidenceBasisPoints = 8_000);
 public sealed record CraftingOwnedEvidence(IReadOnlyList<CraftingOwnedMaterial> Materials, CraftingExecutionEvidence? Liquidation);
@@ -188,7 +188,7 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
             }
             var craftStepId = $"{craftId}:craft";
             steps.Add(new(craftStepId, PlanStepAction.Craft, recipe.OutputItemId, output.Item.Name, recipe.OutputItemCount, null, steps.Select(step => step.Id).ToArray(), PlanStepState.Pending,
-                CraftEffects: CraftEffects(recipe, result)));
+                CraftEffects: CraftEffects(recipe, result), RecipeId: recipe.RecipeId));
             var listId = $"{craftId}:list";
             steps.Add(new(listId, PlanStepAction.List, recipe.OutputItemId, output.Item.Name, recipe.OutputItemCount, unitPrice, [craftStepId], PlanStepState.Pending));
             requirements.Add(new(PlanResourceKind.Cash, "cash", 0, result.OutputSale!.ListingFee));
@@ -296,7 +296,7 @@ public sealed class CraftingOpportunityPlanner(ICraftingEconomicsCalculator econ
                     {
                         var craftId = $"craft:{recipe.RecipeId}:intermediate:{remainingAfterOwned}";
                         craftSteps.Add(new(craftId, PlanStepAction.Craft, itemId, market?.Item.Name ?? $"Objet {itemId}", remainingAfterOwned, null,
-                            craftSteps.Select(step => step.Id).ToArray(), PlanStepState.Pending, CraftEffects: CraftEffects(scaled, intermediateEconomics)));
+                            craftSteps.Select(step => step.Id).ToArray(), PlanStepState.Pending, CraftEffects: CraftEffects(scaled, intermediateEconomics), RecipeId: recipe.RecipeId));
                         best = new(withIntermediate, craftSteps, craftRequirements, ["Un intermédiaire fabriqué a été retenu car son coût complet est inférieur."], [], chosenCost);
                     }
                 }

@@ -57,6 +57,9 @@ internal sealed class CommerceListingLevelDto
 /// </summary>
 internal sealed class ItemMetadataDto
 {
+    [JsonPropertyName("type")]
+    public string? Type { get; init; }
+
     [JsonPropertyName("id")]
     public required int Id { get; init; }
 

@@ -1,0 +1,41 @@
+{
+  "state": "NoOpportunities",
+  "truncationReasons": [],
+  "summaryExclusions": [
+    "UnsupportedPrerequisite"
+  ],
+  "evidenceFailureCode": null,
+  "opportunities": [
+    {
+      "id": "craft:1",
+      "recipeId": 1,
+      "outputItemId": 100,
+      "outputName": "Insigne de test",
+      "outputIconUrl": null,
+      "outputQuantity": 1,
+      "economics": {
+        "netProfit": {
+          "copper": "750"
+        },
+        "totalCost": {
+          "copper": "150"
+        },
+        "state": "Available"
+      },
+      "attention": null,
+      "confidenceBasisPoints": 8000,
+      "evidenceExplanation": [
+        "Historique de march\u00E9 et profondeur v\u00E9rifi\u00E9s avant la proposition."
+      ],
+      "interactionSeconds": null,
+      "isActionable": false,
+      "exclusions": [
+        "UnsupportedPrerequisite"
+      ],
+      "procurementExplanation": [],
+      "holdingsExplanation": [],
+      "planId": null,
+      "steps": []
+    }
+  ]
+}

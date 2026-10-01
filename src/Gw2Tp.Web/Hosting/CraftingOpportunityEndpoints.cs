@@ -47,6 +47,7 @@ internal static class CraftingOpportunityEndpoints
             isActionable = value.IsActionable,
             exclusions = value.Exclusions.Select(reason => reason.ToString()),
             procurementExplanation = value.ProcurementExplanation,
+            holdingsExplanation = HoldingsResponseText.Explain(value.Candidate?.HoldingsAuthority),
             planId = value.Candidate?.Id,
             steps = value.Candidate?.Steps.Select(step => new { action = step.Action.ToString(), itemName = step.ItemName, quantity = step.Quantity, unitPrice = Optional(step.UnitPrice) }) ?? [],
         }),

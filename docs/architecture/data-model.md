@@ -360,3 +360,27 @@ account data.
 
 No retention job may silently destroy the only copy of personal completed
 transaction history.
+
+
+## 9. Protected holdings evidence (P02C)
+
+`account_holdings_snapshots` stores one account-profile-owned, generation/store-scoped
+normalized document. It contains typed source/actor/location observations, independent
+fetch intervals and coverage, recipe/crafting/equipment facts, positive public item
+categories, account protection rules, a durable protective item-ID floor and explicitly
+stale rows. It contains no raw API payload, secret or immutable-instance claim.
+Relational ownership, monotone capture start and document validation are enforced
+alongside schema/foreign-key/integrity checks during backup restore. Clear includes
+this table; backup includes it automatically. Generation mismatch leaves restored or
+restarted evidence non-admissible until a new guarded refresh.
+
+Portfolio lots and completed TP history keep accounting/cost provenance; they add
+no physical quantity. One application projector selects at most one eligible location
+per item using maximum count and deterministic source/actor/slot ties, then applies
+account retention once. Delivery stays uncollected. Positive inventory/cash shadows remain
+provisional and are excluded from physical/wallet admission. Negative residual effects and
+global item reservations constrain all plans. Plan documents retain selected coordinates,
+binding and real actor/recipe commitments; private SQLite start/completion/reconciliation
+revalidate against the latest stored projection in the same lease/transaction.
+Locations confer no cost basis or transfer proof, and live physical frames remain
+Partial with independent source clocks while VERIFY-017 is open.

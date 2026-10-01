@@ -1,6 +1,7 @@
 using Gw2Tp.Domain.Finance;
 using Gw2Tp.Application.PersonalTradingPost;
 using System.Text.Json;
+using Gw2Tp.Application.AccountEvidence;
 
 namespace Gw2Tp.Application.Plans;
 
@@ -29,7 +30,8 @@ public sealed record PlanStep(
     Money? UnitPrice, IReadOnlyList<string> DependsOnStepIds, PlanStepState State,
     string? ExternalIdentity = null, DateTimeOffset? IssuedAtUtc = null,
     IReadOnlyList<PlanResourceRequirement>? CraftEffects = null,
-    int? OriginalInstructedQuantity = null, int? ReportedQuantity = null);
+    int? OriginalInstructedQuantity = null, int? ReportedQuantity = null,
+    int? RecipeId = null, string? CraftingActorId = null);
 
 /// <summary>The admitted instructions/reservations before a partial local report, for bounded Undo.</summary>
 public sealed record PlanPartialReportSnapshot(IReadOnlyList<PlanStep> Steps,
@@ -39,7 +41,8 @@ public sealed record PlanCandidate(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,
     IReadOnlyList<PlanStep> Steps, IReadOnlyList<PlanResourceRequirement> Requirements,
     Money ModeledProfit, Money CommittedCapital, int ConfidenceBasisPoints, int UrgencyBasisPoints,
-    int ExpectedInteractionSeconds, long Utility, bool IsHardEligible, IReadOnlyList<string> ExclusionReasons);
+    int ExpectedInteractionSeconds, long Utility, bool IsHardEligible, IReadOnlyList<string> ExclusionReasons,
+    PlanHoldingsAuthority? HoldingsAuthority = null);
 
 public sealed record PlanBundleSelection(
     IReadOnlyList<PlanCandidate> Plans, Money ReservedCash, int Utility,
@@ -84,7 +87,8 @@ public sealed record PlanRecord(
     DateTimeOffset? LastPhysicalInventoryObservedAtUtc = null,
     PlanReconciliationReason ReconciliationReason = PlanReconciliationReason.None,
     PlanResidualReason ResidualReason = PlanResidualReason.None,
-    IReadOnlyList<PlanResourceRequirement>? ResidualReservations = null);
+    IReadOnlyList<PlanResourceRequirement>? ResidualReservations = null,
+    PlanHoldingsAuthority? HoldingsAuthority = null, string? HoldingsEligibilityReason = null);
 
 public enum PlanCompletionOperation { ReportPerformed = 1, NotPerformed }
 
@@ -144,7 +148,12 @@ public sealed record PlanEvidenceFrame(
     PlanEvidenceSource<IReadOnlyDictionary<string, long>> PhysicalInventory,
     PlanEvidenceSource<Money> Cash,
     PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>> CurrentOrders,
-    PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>> CompletedTransactions);
+    PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>> CompletedTransactions,
+    IReadOnlyList<PlanPhysicalSourceProvenance>? PhysicalSources = null);
+
+public sealed record PlanPhysicalSourceProvenance(AccountHoldingsSource Source, string? ActorId,
+    EvidenceFetchProvenance Fetch, EvidenceAvailability Availability, EvidenceCompleteness Completeness,
+    EvidenceSourceCoverage Coverage);
 
 /// <summary>Structural comparison for durable plans containing record collections and dictionaries.</summary>
 public static class PlanRecordSemantics

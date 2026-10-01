@@ -10,11 +10,42 @@ using Gw2Tp.Web.Hosting;
 using Microsoft.AspNetCore.Http;
 using System.Text.Json;
 using Xunit;
+using Gw2Tp.Application.AccountEvidence;
+using Gw2Tp.Testing;
 
 namespace Gw2Tp.Web.Tests;
 
 public sealed class PlanEndpointMappingTests
 {
+    [Fact]
+    public async Task Portfolio_and_bank_cannot_admit_the_same_ten_units_twice()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var scope = new AccountScope("scope-a");
+        var profile = new AccountProfile(1, scope.AccountId, now, now);
+        var crafting = new AccountCraftingSnapshot(scope, now,
+            CraftingFeatureResult<IReadOnlyList<AccountInventoryEntry>>.Available([new(42, 10, AccountItemBinding.Unspecified)]),
+            CraftingFeatureResult<IReadOnlyList<AccountMaterialEntry>>.Available([]),
+            CraftingFeatureResult<IReadOnlyList<int>>.Available([]),
+            CraftingFeatureResult<IReadOnlyList<CraftingDisciplineCapability>>.Available([]));
+        var plan = new PlanRecord("terminal", 1, "terminal", PlanAttention.Passive, PlanState.ExecutionComplete,
+            PlanReconciliationState.Compatible, now, [], Money.Zero, -1, [], [], 0, PlanHysteresisPolicy.Default);
+        var holdings = HoldingsEvidenceFixture.Snapshot(now, [HoldingsEvidenceFixture.Item(42, 10)]);
+        holdings = holdings with { Capture = holdings.Capture with { AccountScope = scope },
+            Rules = holdings.Rules with { AccountScope = scope }, ProtectionFloor = holdings.ProtectionFloor with { AccountScope = scope } };
+        var service = new PlanEndpointService(new FixedRecommendations(RecommendationResult(now)),
+            new FixedPortfolio(scope, new Money(100), now, new Dictionary<string, long> { ["2:42"] = 10 }),
+            new FixedAccountScopeGateway(scope.AccountId), new FixedCraftingSnapshots(crafting), new EmptyCraftingOpportunities(),
+            new FixedPersonalTradingPostRepository(profile, now), new CountingPlanRepository(plan), new PlanOrchestrationService(),
+            new PlanDecisionProjectionStore(DecisionLoopSchedulerSettings.Default),
+            holdings: new FixedHoldingsSnapshotService(holdings));
+        var decision = Assert.IsType<PlanDecisionSnapshot>(await service.GetDecisionSnapshotAsync(CancellationToken.None));
+        Assert.InRange(decision.VerifiedQuantities.GetValueOrDefault("2:42"), 0, 10);
+        Assert.Equal(10, decision.VerifiedQuantities["2:42"]);
+        Assert.Equal(PlanEvidenceCompleteness.Partial, decision.EvidenceFrame!.PhysicalInventory.Provenance.Completeness);
+        Assert.Contains(decision.EvidenceFrame.PhysicalSources!, source => source.Source == AccountHoldingsSource.Bank);
+    }
+
     [Fact]
     public async Task Applied_completion_invalidates_projection_even_when_browser_cancels_after_commit()
     {
@@ -514,11 +545,11 @@ public sealed class PlanEndpointMappingTests
         public Task<PrimaryRecommendationResult> GetAsync(CancellationToken cancellationToken = default) => Task.FromResult(value);
     }
 
-    private sealed class FixedPortfolio(AccountScope scope, Money cash, DateTimeOffset capturedAtUtc) : IAccountPortfolioGateway
+    private sealed class FixedPortfolio(AccountScope scope, Money cash, DateTimeOffset capturedAtUtc, IReadOnlyDictionary<string, long>? quantities = null) : IAccountPortfolioGateway
     {
         public Task<Gw2ApiResult<AccountPortfolioSnapshot>> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Gw2ApiResult<AccountPortfolioSnapshot>.Success(new AccountPortfolioSnapshot(scope, cash,
-                new Dictionary<string, long>(), capturedAtUtc)));
+                quantities ?? new Dictionary<string, long>(), capturedAtUtc)));
     }
 
     private sealed class EmptyCraftingSnapshots : IAccountCraftingSnapshotService

@@ -1,4 +1,6 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.AccountEvidence;
+using Gw2Tp.Application.Plans;
 using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Application.PersonalTradingPost;
 using System.Diagnostics;
@@ -18,7 +20,8 @@ public sealed class CraftingOpportunityService(
     IGw2ApiClient market,
     IHistoricalMarketAnalyticsService history,
     ICraftingOpportunityPlanner planner,
-    ICraftingEvidenceDiagnostics? diagnostics = null) : ICraftingOpportunityService
+    ICraftingEvidenceDiagnostics? diagnostics = null,
+    IAccountHoldingsSnapshotService? holdings = null) : ICraftingOpportunityService
 {
     public async Task<CraftingPlannerResult> GetAsync(CancellationToken cancellationToken = default)
     {
@@ -31,10 +34,13 @@ public sealed class CraftingOpportunityService(
         if (snapshot is null || DateTimeOffset.UtcNow - snapshot.CapturedAtUtc > TimeSpan.FromMinutes(15) ||
             snapshot.RecipeUnlocks.Availability != CraftingFeatureAvailability.Available ||
             snapshot.CharacterCrafting.Availability != CraftingFeatureAvailability.Available ||
-            snapshot.BankInventory.Availability != CraftingFeatureAvailability.Available ||
-            snapshot.MaterialStorage.Availability != CraftingFeatureAvailability.Available)
+            holdings is null && (snapshot.BankInventory.Availability != CraftingFeatureAvailability.Available ||
+            snapshot.MaterialStorage.Availability != CraftingFeatureAvailability.Available))
             return Timed(new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.CapabilityUnavailable]), preparationTimer, totalTimer);
 
+        var projection = holdings is null ? null : await holdings.GetProjectionAsync(scope.Value, DateTimeOffset.UtcNow, cancellationToken).ConfigureAwait(false);
+        if (holdings is not null && projection?.IsCurrentGeneration != true)
+            return Timed(new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.StaleEvidence], "holdings_evidence_unavailable"), preparationTimer, totalTimer);
         preparationTimer.Stop();
 
         var limits = CraftingPlannerLimits.Default;
@@ -89,7 +95,9 @@ public sealed class CraftingOpportunityService(
                 historyByItem.TryGetValue(id, out var analytics) && analytics.Windows.Count(window => window.State == HistoricalMarketWindowState.Available) >= 2,
                 historyByItem.TryGetValue(id, out analytics) ? HistoryConfidence(analytics) : 0));
         var planningTimer = Stopwatch.StartNew();
-        var result = planner.Plan(new(definitions.Value, unlocked.ToHashSet(), snapshot.CharacterCrafting.Value ?? [], markets, Owned(snapshot, markets), limits));
+        var result = projection is null
+            ? planner.Plan(new(definitions.Value, unlocked.ToHashSet(), snapshot.CharacterCrafting.Value ?? [], markets, new Dictionary<int, CraftingOwnedEvidence>(), limits))
+            : PlanForActors(projection, definitions.Value, markets, limits);
         planningTimer.Stop();
         var extra = (recipeLimited ? new[] { CraftingSearchTruncationReason.RecipeLimit } : [])
             .Concat(marketLimited ? new[] { CraftingSearchTruncationReason.MarketDataLimit } : []).Distinct().OrderBy(value => value).ToArray();
@@ -137,22 +145,64 @@ public sealed class CraftingOpportunityService(
 
     private static long Milliseconds(TimeSpan elapsed) => Math.Max(0, (long)elapsed.TotalMilliseconds);
 
-    private static IReadOnlyDictionary<int, CraftingOwnedEvidence> Owned(AccountCraftingSnapshot snapshot,
-        IReadOnlyDictionary<int, CraftingMarketEvidence> markets)
+    private CraftingPlannerResult PlanForActors(AccountHoldingsProjection projection, IReadOnlyList<CraftingRecipe> definitions,
+        IReadOnlyDictionary<int, CraftingMarketEvidence> markets, CraftingPlannerLimits limits)
     {
-        var rows = (snapshot.BankInventory.Value ?? []).Select(value => (value.ItemId, value.Quantity, value.Binding))
-            .Concat((snapshot.MaterialStorage.Value ?? []).Select(value => (value.ItemId, value.Quantity, value.Binding)));
-        return rows.Where(value => value.ItemId > 0 && value.Quantity > 0).GroupBy(value => value.ItemId).ToDictionary(group => group.Key,
-            group =>
+        var capture = projection.FreshCapture;
+        if (!AccountEvidencePolicyFacts.Complete(capture.RecipeUnlocks, AccountHoldingsSource.RecipeUnlocks) ||
+            AccountEvidencePolicyFacts.CurrentActors(capture) is null)
+            return new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.CapabilityUnavailable]);
+        var evaluated = new List<(string ActorId, CraftingPlannerResult Result)>();
+        foreach (var actor in capture.Characters.OrderBy(actor => actor.Actor.ActorId, StringComparer.Ordinal))
+        {
+            if (!AccountEvidencePolicyFacts.Complete(actor.Crafting, AccountHoldingsSource.CharacterCrafting, actor.Actor.ActorId)) continue;
+            var owned = projection.Items.Where(item => item.Admission is { AdmissionQuantity: > 0 } && projection.CanAccess(item.Admission, actor.Actor.ActorId))
+                .ToDictionary(item => item.ItemId, item =>
+                {
+                    var admission = item.Admission!;
+                    var tradable = markets.TryGetValue(item.ItemId, out var value) && value.IsFresh && value.Listing.Buys.Any(level => level.Quantity > 0 && level.UnitPriceInCopper > 0);
+                    var state = admission.TradeableQuantity > 0 ? tradable ? CraftingOwnedMaterialState.Tradable : CraftingOwnedMaterialState.Unknown : CraftingOwnedMaterialState.Bound;
+                    return new CraftingOwnedEvidence([new(admission.AdmissionQuantity, state)], null);
+                });
+            var result = planner.Plan(new(definitions, capture.RecipeUnlocks.Value!.ToHashSet(), actor.Crafting.Value!, markets, owned, limits));
+            var opportunities = result.Opportunities.Select(opportunity =>
             {
-                // The planner subsequently simulates the exact consumed subset,
-                // rather than incorrectly valuing the complete owned stack.
-                var tradable = markets.TryGetValue(group.Key, out var market) && market.IsFresh &&
-                    market.Listing.Buys.Any(level => level.Quantity > 0 && level.UnitPriceInCopper > 0);
-                return new CraftingOwnedEvidence(group.Select(value => new CraftingOwnedMaterial(value.Quantity,
-                    value.Binding == AccountItemBinding.Unspecified && tradable ? CraftingOwnedMaterialState.Tradable :
-                    value.Binding == AccountItemBinding.Unspecified ? CraftingOwnedMaterialState.Unknown : CraftingOwnedMaterialState.Bound)).ToArray(), null);
-            });
+                if (opportunity.Candidate is not { } candidate) return opportunity;
+                var recipeIds = candidate.Steps.Where(step => step.Action == PlanStepAction.Craft).Select(step => step.RecipeId ?? opportunity.Recipe.RecipeId).Distinct().ToHashSet();
+                // Passive-only procurement still has a real intended actor and recipe prerequisite.
+                if (recipeIds.Count == 0) recipeIds.Add(opportunity.Recipe.RecipeId);
+                var chain = definitions.Where(recipe => recipeIds.Contains(recipe.RecipeId)).ToArray();
+                var inputs = candidate.Requirements.Where(requirement => requirement.Kind == PlanResourceKind.Inventory && requirement.Quantity > 0)
+                    .Select(requirement => int.TryParse(requirement.ResourceId, out var id) ? projection.Items.SingleOrDefault(item => item.ItemId == id)?.Admission?.Observation : null).ToArray();
+                var restricted = capture with { Roster = capture.Roster with { Value = new[] { actor.Actor } }, Characters = [actor] };
+                // The full roster is retained when testing input access; the chosen actor was already checked independently by its planner input.
+                var feasible = new CraftingActorSelector().Select(capture, chain, inputs.Where(input => input is not null).Cast<HoldingsItemObservation>().ToArray());
+                var capable = new CraftingActorSelector().Select(restricted, chain);
+                var authorized = PlanHoldingsAdmission.Authorize(candidate, projection, actor.Actor.ActorId, chain);
+                var unsupported = inputs.Any(input => input is null) || chain.Length != recipeIds.Count ||
+                    capable.Failure != CraftingActorSelectionFailure.None || feasible.Failure != CraftingActorSelectionFailure.None ||
+                    inputs.Any(input => input is not null && input.Location.Source == AccountHoldingsSource.CharacterInventory && input.Location.ActorId != actor.Actor.ActorId) ||
+                    chain.SelectMany(recipe => recipe.Ingredients).Any(ingredient =>
+                        projection.Items.SingleOrDefault(item => item.ItemId == ingredient.Id)?.Admission is { AdmissionQuantity: > 0 } selected &&
+                        !projection.CanAccess(selected, actor.Actor.ActorId)) ||
+                    chain.SelectMany(recipe => recipe.Ingredients).Any(ingredient => projection.Snapshot.ProtectionFloor.ItemIds.Contains(ingredient.Id));
+                return unsupported || !authorized.IsHardEligible
+                    ? opportunity with { Candidate = null, IsActionable = false,
+                        Exclusions = opportunity.Exclusions.Append(CraftingOpportunityExclusion.UnsupportedPrerequisite).Distinct().ToArray() }
+                    : opportunity with { Candidate = authorized };
+            }).ToArray();
+            evaluated.Add((actor.Actor.ActorId, result with { Opportunities = opportunities }));
+        }
+        if (evaluated.Count == 0) return new(CraftingOpportunityState.Degraded, [], [], [CraftingOpportunityExclusion.CapabilityUnavailable]);
+        // Same recipe ties use the actual opaque actor ID; no aggregate capability or economic ranking change.
+        var combined = evaluated.SelectMany(value => value.Result.Opportunities.Select(opportunity => (value.ActorId, Opportunity: opportunity)))
+            .GroupBy(value => value.Opportunity.Recipe.RecipeId).Select(group => group.OrderByDescending(value => value.Opportunity.IsActionable)
+                .ThenBy(value => value.ActorId, StringComparer.Ordinal).First().Opportunity)
+            .OrderByDescending(value => value.IsActionable).ThenByDescending(value => value.Economics.NetProfit?.Copper ?? long.MinValue)
+            .ThenBy(value => value.Recipe.RecipeId).Take(limits.MaximumCandidates).ToArray();
+        return new(combined.Any(value => value.IsActionable) ? CraftingOpportunityState.Ready : CraftingOpportunityState.NoOpportunities,
+            combined, evaluated.SelectMany(value => value.Result.TruncationReasons).Distinct().Order().ToArray(),
+            combined.SelectMany(value => value.Exclusions).Distinct().Order().ToArray());
     }
 
     private static int HistoryConfidence(HistoricalMarketAnalytics analytics)

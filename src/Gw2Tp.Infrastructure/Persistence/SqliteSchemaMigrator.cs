@@ -5,7 +5,7 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFactory)
 {
-    private const int LatestVersion = 11;
+    private const int LatestVersion = 12;
 
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> LatestSchemaColumns =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
@@ -104,6 +104,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             {
                 "plan_id", "account_profile_id", "state", "payload_json", "updated_at_utc", "revision",
             },
+            ["account_holdings_snapshots"] = new HashSet<string>(StringComparer.Ordinal) { "account_profile_id", "capture_started_at_utc", "payload_json" },
             ["plan_completion_receipts"] = new HashSet<string>(StringComparer.Ordinal)
             {
                 "account_profile_id", "plan_id", "command_id", "step_id", "expected_revision", "operation",
@@ -135,6 +136,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_recipe_unlocks"] = Columns(("account_profile_id", "INTEGER", true, 1), ("recipe_id", "INTEGER", true, 2)),
             ["account_crafting_disciplines"] = Columns(("account_profile_id", "INTEGER", true, 1), ("discipline", "TEXT", true, 2), ("rating", "INTEGER", true, 0), ("is_active", "INTEGER", true, 0)),
             ["execution_plans"] = Columns(("plan_id", "TEXT", true, 1), ("account_profile_id", "INTEGER", true, 0), ("state", "INTEGER", true, 0), ("payload_json", "TEXT", true, 0), ("updated_at_utc", "TEXT", true, 0), ("revision", "INTEGER", true, 0)),
+            ["account_holdings_snapshots"] = Columns(("account_profile_id", "INTEGER", false, 1), ("capture_started_at_utc", "TEXT", true, 0), ("payload_json", "TEXT", true, 0)),
             ["plan_completion_receipts"] = Columns(("account_profile_id", "INTEGER", true, 1), ("plan_id", "TEXT", true, 2), ("command_id", "TEXT", true, 3), ("step_id", "TEXT", true, 0), ("expected_revision", "INTEGER", true, 0), ("operation", "INTEGER", true, 0), ("quantity", "INTEGER", true, 0), ("unit_price_in_copper", "INTEGER", false, 0), ("committed_revision", "INTEGER", true, 0), ("event_id", "TEXT", false, 0), ("created_at_utc", "TEXT", true, 0)),
         };
 
@@ -176,6 +178,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
         new("account_crafting_recipe_unlocks", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
         new("account_crafting_disciplines", "account_profile_id", "account_crafting_snapshots", "account_profile_id"),
         new("execution_plans", "account_profile_id", "account_profiles", "id"),
+        new("account_holdings_snapshots", "account_profile_id", "account_profiles", "id"),
         new("plan_completion_receipts", "account_profile_id", "account_profiles", "id"),
     ];
 
@@ -201,6 +204,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_recipe_unlocks"] = Checks("account_profile_id>0", "recipe_id>0"),
             ["account_crafting_disciplines"] = Checks("account_profile_id>0", "length(discipline)>0", "rating>=0", "is_activein(0,1)"),
             ["execution_plans"] = Checks("length(plan_id)>0", "account_profile_id>0", "statebetween1and7", "length(payload_json)>0", "revision>=0"),
+            ["account_holdings_snapshots"] = Checks("account_profile_id>0", "length(capture_started_at_utc)>0", "length(payload_json)>0"),
             ["plan_completion_receipts"] = Checks("account_profile_id>0", "length(plan_id)>0", "length(command_id)between1and128", "length(step_id)>0", "expected_revision>=0", "operationin(1,2)", "quantity>=0", "unit_price_in_copper>=0", "committed_revision>expected_revision", "(operation=1andquantity>0)or(operation=2andquantity=0andunit_price_in_copperisnull)", "length(created_at_utc)>0"),
         };
 
@@ -590,6 +594,18 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 PRIMARY KEY (account_profile_id, plan_id, command_id)
             );
             """),
+        new(
+            12,
+            "normalized_account_holdings_evidence",
+            """
+            CREATE TABLE account_holdings_snapshots (
+                account_profile_id INTEGER PRIMARY KEY CHECK (account_profile_id > 0),
+                capture_started_at_utc TEXT NOT NULL CHECK (length(capture_started_at_utc) > 0),
+                payload_json TEXT NOT NULL CHECK (length(payload_json) > 0),
+                CONSTRAINT fk_account_holdings_snapshots_account FOREIGN KEY (account_profile_id)
+                    REFERENCES account_profiles(id) ON DELETE RESTRICT
+            );
+            """),
     ];
 
     public Task MigrateAsync(CancellationToken cancellationToken = default) =>
@@ -800,6 +816,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
 
         await ValidatePersistedValuesAsync(connection, cancellationToken).ConfigureAwait(false);
         await ValidatePersistedDomainInvariantsAsync(connection, cancellationToken).ConfigureAwait(false);
+        await ValidateHoldingsDocumentsAsync(connection, cancellationToken).ConfigureAwait(false);
 
         await using var foreignKeyCheck = connection.CreateCommand();
         foreignKeyCheck.CommandText = "PRAGMA foreign_key_check;";
@@ -1015,6 +1032,7 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
             ["account_crafting_disciplines"] = $"account_profile_id <= 0 OR trim(discipline) = '' OR rating < 0 OR rating > {Int32Maximum} OR is_active NOT IN (0, 1)",
             ["execution_plans"] = $"trim(plan_id) = '' OR account_profile_id <= 0 OR state NOT BETWEEN 1 AND 7 OR trim(payload_json) = ''",
             ["plan_completion_receipts"] = "account_profile_id <= 0 OR trim(plan_id) = '' OR length(command_id) NOT BETWEEN 1 AND 128 OR trim(step_id) = '' OR expected_revision < 0 OR operation NOT IN (1, 2) OR quantity < 0 OR (unit_price_in_copper IS NOT NULL AND unit_price_in_copper < 0) OR committed_revision <= expected_revision OR (operation = 1 AND quantity <= 0) OR (operation = 2 AND (quantity <> 0 OR unit_price_in_copper IS NOT NULL))",
+            ["account_holdings_snapshots"] = "account_profile_id <= 0 OR trim(payload_json) = ''",
             ["schema_migrations"] = "version <= 0 OR trim(name) = ''",
             ["user_settings"] = $"singleton_id <> 1 OR settings_version <= 0 OR settings_version > {Int32Maximum} OR (minimum_profit_in_copper IS NOT NULL AND (minimum_profit_in_copper < 0 OR minimum_profit_in_copper > {Int32Maximum})) OR (minimum_roi_basis_points IS NOT NULL AND (minimum_roi_basis_points < 0 OR minimum_roi_basis_points > 10000)) OR (cash_reserve_basis_points IS NOT NULL AND (cash_reserve_basis_points < 0 OR cash_reserve_basis_points > 10000))",
         };
@@ -1028,6 +1046,15 @@ internal sealed class SqliteSchemaMigrator(ISqliteConnectionFactory connectionFa
                 throw new InvalidDataException($"The SQLite database contains domain-invalid values in '{tableName}'.");
             }
         }
+    }
+
+    private static async Task ValidateHoldingsDocumentsAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT s.payload_json, p.account_scope_id, s.capture_started_at_utc FROM account_holdings_snapshots s JOIN account_profiles p ON p.id=s.account_profile_id";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            _ = SqliteAccountHoldingsSnapshotRepository.Deserialize(reader.GetString(0), reader.GetString(1), reader.GetString(2));
     }
 
     private static async Task ValidateNoExecutableSchemaObjectsAsync(SqliteConnection connection, CancellationToken cancellationToken)

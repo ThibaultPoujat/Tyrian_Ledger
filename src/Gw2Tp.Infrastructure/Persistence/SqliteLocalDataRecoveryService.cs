@@ -206,6 +206,7 @@ internal sealed class SqliteLocalDataRecoveryService(
         foreach (var tableName in new[]
                  {
                      "plan_completion_receipts",
+                     "account_holdings_snapshots",
                      "account_crafting_bank_entries",
                      "account_crafting_material_entries",
                      "account_crafting_recipe_unlocks",

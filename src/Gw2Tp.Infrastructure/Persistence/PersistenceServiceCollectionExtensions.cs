@@ -42,6 +42,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<IWatchlistRepository, SqliteWatchlistRepository>();
         services.AddSingleton<IInvestmentPositionRepository, SqliteInvestmentPositionRepository>();
         services.AddSingleton<IAccountCraftingSnapshotRepository, SqliteAccountCraftingSnapshotRepository>();
+        services.AddSingleton<Gw2Tp.Application.AccountEvidence.IAccountHoldingsSnapshotRepository, SqliteAccountHoldingsSnapshotRepository>();
         services.AddSingleton<IPlanRepository, SqlitePlanRepository>();
         services.AddSingleton<IMarketHistoryRepository, SqliteMarketHistoryRepository>();
         services.AddSingleton<IMarketHistoryStatusService, SqliteMarketHistoryStatusService>();

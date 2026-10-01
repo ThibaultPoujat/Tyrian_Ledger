@@ -9,6 +9,8 @@ using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Recommendations;
 using Gw2Tp.Application.Investments;
 using Gw2Tp.Application.Crafting;
+using Gw2Tp.Application.AccountEvidence;
+using Gw2Tp.Infrastructure.AccountEvidence;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Plans;
 using Gw2Tp.Infrastructure.AccountConnection;
@@ -59,6 +61,9 @@ public static class Program
         builder.Services.AddTyrianLedgerAccountConnection(builder.Environment, builder.Configuration);
         builder.Services.AddTyrianLedgerPersistence(builder.Configuration);
         builder.Services.AddTyrianLedgerAccountWorkFence();
+        builder.Services.AddTyrianLedgerAccountHoldingsCollector();
+        builder.Services.AddSingleton<IAccountHoldingsRulesProvider, DefaultAccountHoldingsRulesProvider>();
+        builder.Services.AddSingleton<IAccountHoldingsSnapshotService, AccountHoldingsSnapshotService>();
         builder.Services.AddSingleton<IPersonalDashboardService, PersonalDashboardService>();
         builder.Services.AddSingleton<PublicMarketSnapshotCollector>();
         builder.Services.AddSingleton<ILiveMarketScanner, LiveMarketScanner>();

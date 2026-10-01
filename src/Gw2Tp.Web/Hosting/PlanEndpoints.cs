@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Crafting;
+using Gw2Tp.Application.AccountEvidence;
 using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.MarketData;
@@ -176,7 +177,8 @@ internal sealed class PlanEndpointService(
     PlanDecisionProjectionStore loopDecisions,
     AccountViewScopeTokenService? accountViewScopes = null,
     IPlanCompletionCommandService? completionCommands = null,
-    IAccountWorkFence? fence = null)
+    IAccountWorkFence? fence = null,
+    IAccountHoldingsSnapshotService? holdings = null)
 {
     internal const string AccountViewScopeHeader = "X-Tyrian-Ledger-Account-View-Scope";
     private readonly AccountViewScopeTokenService scopeTokens = accountViewScopes ?? new();
@@ -349,7 +351,8 @@ internal sealed class PlanEndpointService(
         try { await repository.SaveAsync(context.Profile.Id, updated, cancellationToken).ConfigureAwait(false); }
         catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
         await InvalidateLoopDecisionAsync(context.Profile.AccountScopeId).ConfigureAwait(false);
-        return Results.Json(new { state = "undone", plan = ToResponse(updated with { Revision = updated.Revision + 1 }) });
+        var committed = await FindAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
+        return Results.Json(new { state = "undone", plan = ToResponse(committed ?? updated with { Revision = updated.Revision + 1 }) });
     }
 
     internal async Task<PlanDecisionSnapshot?> GetDecisionSnapshotAsync(CancellationToken cancellationToken)
@@ -357,7 +360,7 @@ internal sealed class PlanEndpointService(
         var context = await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
         var decision = context is null
             ? null
-            : new PlanDecisionSnapshot(context.Profile, context.Snapshot, context.VerifiedQuantities, context.Recommendations, context.Plans, context.Candidates, context.AccountEvidenceAvailable, context.Timing, DateTimeOffset.UtcNow, Crafting: context.Crafting, EvidenceFrame: context.EvidenceFrame);
+            : new PlanDecisionSnapshot(context.Profile, context.Snapshot, context.VerifiedQuantities, context.Recommendations, context.Plans, context.Candidates, context.AccountEvidenceAvailable, context.Timing, DateTimeOffset.UtcNow, Crafting: context.Crafting, EvidenceFrame: context.EvidenceFrame, Holdings: context.Holdings);
         return decision;
     }
 
@@ -445,7 +448,7 @@ internal sealed class PlanEndpointService(
         var recommendationsResult = await GetRecommendationsAsync(cancellationToken).ConfigureAwait(false);
         recommendationTimer.Stop();
         var craftingTimer = Stopwatch.StartNew();
-        var candidateBuild = await BuildCandidatesAsync(recommendationsResult, cancellationToken).ConfigureAwait(false);
+        var candidateBuild = await BuildCandidatesAsync(recommendationsResult, context.Holdings, cancellationToken).ConfigureAwait(false);
         craftingTimer.Stop();
         var timing = new PlanDecisionTiming(
             Milliseconds(accountTimer.Elapsed),
@@ -482,7 +485,7 @@ internal sealed class PlanEndpointService(
         var safeWithoutPortfolioSizing = portfolioSizingUnavailable
             ? allCandidates.Where(CanExecuteWithoutPortfolioSizing).ToArray()
             : allCandidates.ToArray();
-        var effective = PlanOrchestrationService.ProjectEffectiveResources(snapshot.AvailableCash, verifiedQuantities, plans.SelectMany(plan => plan.Events).ToArray());
+        var effective = AccountHoldingsProjector.AdmissibleResources(snapshot.AvailableCash, verifiedQuantities, plans.SelectMany(plan => plan.Events).ToArray());
         var reservations = plans.SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray();
         var reservedCash = reservations.Aggregate(Money.Zero, (total, requirement) => total + requirement.Cash);
         var availableCash = effective.EffectiveCash - reservedCash;
@@ -522,7 +525,7 @@ internal sealed class PlanEndpointService(
 
         return new Context(decision.Profile, decision.Snapshot, decision.VerifiedQuantities, decision.Recommendations,
             decision.Candidates, decision.Crafting, decision.AccountEvidenceAvailable, decision.Plans,
-            true, "loop_projection", decision.Timing, decision.EvidenceFrame);
+            true, "loop_projection", decision.Timing, decision.EvidenceFrame, decision.Holdings);
     }
 
     private static object EmptySelection(string reason, string cacheState = "not_requested", bool reusedDecision = false) => new
@@ -540,6 +543,8 @@ internal sealed class PlanEndpointService(
 
     private async Task<Context?> BuildContextAsync(CancellationToken cancellationToken)
     {
+        // Existing isolated constructor callers may still supply this service; it has no inventory authority.
+        _ = craftingSnapshots;
         var account = await accountPortfolio.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         AccountPortfolioSnapshot snapshot;
         var accountEvidenceAvailable = account.IsSuccess && account.Value is not null;
@@ -553,24 +558,19 @@ internal sealed class PlanEndpointService(
         if (fence is not null) await fence.BindAccountAsync(snapshot.AccountScope, cancellationToken).ConfigureAwait(false);
         var profile = await profiles.FindAccountProfileAsync(snapshot.AccountScope.AccountId, cancellationToken).ConfigureAwait(false);
         if (profile is null) return null;
-        AccountCraftingSnapshot? crafting;
-        try
-        {
-            crafting = await craftingSnapshots.GetLatestAsync(snapshot.AccountScope, cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            crafting = null;
-        }
         var evaluatedAt = DateTimeOffset.UtcNow;
-        var quantities = VerifiedQuantities(snapshot, crafting, evaluatedAt);
+        AccountHoldingsProjection? physical = null;
+        if (holdings is not null)
+        {
+            try { physical = await holdings.GetProjectionAsync(snapshot.AccountScope, evaluatedAt, cancellationToken).ConfigureAwait(false); }
+            catch (AccountWorkRejectedException) { throw; }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch { /* Missing physical evidence grants no inventory. */ }
+        }
+        var quantities = physical?.Quantities ?? new Dictionary<string, long>();
         var evidence = accountEvidenceAvailable ? await ReadEvidenceAsync(profile, cancellationToken).ConfigureAwait(false) : EvidenceCapture.Unavailable();
-        var frame = BuildEvidenceFrame(snapshot, crafting, quantities, evidence, accountEvidenceAvailable, evaluatedAt);
-        return new Context(profile, snapshot, quantities, null, [], null, accountEvidenceAvailable, [], false, "not_requested", new PlanDecisionTiming(), frame);
+        var frame = BuildEvidenceFrame(snapshot, physical, evidence, accountEvidenceAvailable, evaluatedAt);
+        return new Context(profile, snapshot, quantities, null, [], null, accountEvidenceAvailable, [], false, "not_requested", new PlanDecisionTiming(), frame, physical);
     }
 
     private async Task<PrimaryRecommendationResult?> GetRecommendationsAsync(CancellationToken cancellationToken)
@@ -591,6 +591,7 @@ internal sealed class PlanEndpointService(
 
     private async Task<CandidateBuild> BuildCandidatesAsync(
         PrimaryRecommendationResult? recommendationsResult,
+        AccountHoldingsProjection? physical,
         CancellationToken cancellationToken)
     {
         var recommendationCandidates = recommendationsResult?.State == PrimaryRecommendationState.Ready
@@ -608,7 +609,10 @@ internal sealed class PlanEndpointService(
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch { /* Crafting remains conservatively unavailable without suppressing trading plans. */ }
-        return new(recommendationCandidates.Concat(craftingCandidates).OrderBy(value => value.Id, StringComparer.Ordinal).ToArray(), craftingTiming, craftingResult);
+        var candidates = recommendationCandidates.Concat(craftingCandidates).Select(candidate =>
+            PlanHoldingsAdmission.Authorize(candidate, physical, candidate.HoldingsAuthority?.CraftingActorId, candidate.HoldingsAuthority?.Recipes))
+            .OrderBy(value => value.Id, StringComparer.Ordinal).ToArray();
+        return new(candidates, craftingTiming, craftingResult);
     }
 
     private async Task<IReadOnlyList<PlanRecord>> ReconcilePlansAsync(Context context, bool applyRefresh, CancellationToken cancellationToken)
@@ -745,19 +749,6 @@ internal sealed class PlanEndpointService(
             requirements.Aggregate(Money.Zero, (sum, value) => sum + value.Cash), confidence, urgency, interaction, utility, true, []);
     }
 
-    private static IReadOnlyDictionary<string, long> VerifiedQuantities(
-        AccountPortfolioSnapshot snapshot, AccountCraftingSnapshot? crafting, DateTimeOffset evaluationTimeUtc)
-    {
-        var quantities = new Dictionary<string, long>(IsFreshAt(snapshot.CapturedAtUtc, evaluationTimeUtc)
-            ? snapshot.VerifiedQuantities ?? new Dictionary<string, long>() : new Dictionary<string, long>(), StringComparer.Ordinal);
-        if (crafting is null || !IsFreshAt(crafting.CapturedAtUtc, evaluationTimeUtc)) return quantities;
-        if (crafting.BankInventory.Availability == CraftingFeatureAvailability.Available)
-            foreach (var entry in crafting.BankInventory.Value ?? []) AddQuantity(quantities, entry.ItemId, entry.Quantity);
-        if (crafting.MaterialStorage.Availability == CraftingFeatureAvailability.Available)
-            foreach (var entry in crafting.MaterialStorage.Value ?? []) AddQuantity(quantities, entry.ItemId, entry.Quantity);
-        return quantities;
-    }
-
     private async Task<EvidenceCapture> ReadEvidenceAsync(AccountProfile profile, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -810,26 +801,10 @@ internal sealed class PlanEndpointService(
         return new EvidenceCapture(currentSource, completedSource);
     }
 
-    private static PlanEvidenceFrame BuildEvidenceFrame(AccountPortfolioSnapshot snapshot, AccountCraftingSnapshot? crafting,
-        IReadOnlyDictionary<string, long> quantities, EvidenceCapture tradingPost, bool accountEvidenceAvailable, DateTimeOffset evaluatedAtUtc)
+    private static PlanEvidenceFrame BuildEvidenceFrame(AccountPortfolioSnapshot snapshot, AccountHoldingsProjection? physical,
+        EvidenceCapture tradingPost, bool accountEvidenceAvailable, DateTimeOffset evaluatedAtUtc)
     {
-        var snapshotFresh = IsFreshAt(snapshot.CapturedAtUtc, evaluatedAtUtc);
-        var craftingFresh = crafting is not null && IsFreshAt(crafting.CapturedAtUtc, evaluatedAtUtc);
-        var physicalTimes = new[]
-            {
-                snapshotFresh ? snapshot.CapturedAtUtc : null,
-                craftingFresh ? crafting!.CapturedAtUtc : null,
-            }
-            .Where(value => value is not null).Select(value => value!.Value).ToArray();
-        DateTimeOffset? physicalFetchedAt = physicalTimes.Length == 0 ? null : physicalTimes.Max();
-        var physicalAvailability = physicalTimes.Length > 0 ? PlanEvidenceAvailability.Available : PlanEvidenceAvailability.Unavailable;
-        var physicalId = physicalFetchedAt is { } at
-            ? $"physical-sources:{string.Join(":", physicalTimes.Order().Select(value => value.UtcTicks))}"
-            : null;
-        var physical = new PlanEvidenceSource<IReadOnlyDictionary<string, long>>(
-            new PlanEvidenceProvenance(physicalId, physicalFetchedAt, UpstreamObservedAtUtc: null,
-                physicalAvailability, physicalTimes.Length > 0 ? PlanEvidenceCompleteness.Partial : PlanEvidenceCompleteness.Unknown,
-                quantities.Keys.ToHashSet(StringComparer.Ordinal)), quantities);
+        var inventory = AccountHoldingsProjector.PhysicalEvidence(physical);
         var cashAt = snapshot.CapturedAtUtc;
         var cash = new PlanEvidenceSource<Money>(new PlanEvidenceProvenance(
             cashAt is { } cashCaptured ? $"cash:{cashCaptured.UtcTicks}" : null,
@@ -837,21 +812,16 @@ internal sealed class PlanEndpointService(
             accountEvidenceAvailable ? PlanEvidenceAvailability.Available : PlanEvidenceAvailability.Unavailable,
             accountEvidenceAvailable && IsFreshAt(cashAt, evaluatedAtUtc) ? PlanEvidenceCompleteness.Complete : PlanEvidenceCompleteness.Unknown,
             new HashSet<string>(["coin"], StringComparer.Ordinal)), snapshot.AvailableCash);
-        return new PlanEvidenceFrame(snapshot.AccountScope, evaluatedAtUtc, physical, cash,
-            tradingPost.CurrentOrders, tradingPost.CompletedTransactions);
+        var capture = physical?.Snapshot.Capture;
+        var sources = capture is null ? [] : new[] { capture.Bank, capture.SharedInventory, capture.MaterialStorage }
+            .Concat(capture.Characters.Select(actor => actor.Inventory)).Select(source => new PlanPhysicalSourceProvenance(
+                source.Source, source.ActorId, source.Fetch, source.Availability, source.Completeness, source.Coverage)).ToArray();
+        return new PlanEvidenceFrame(snapshot.AccountScope, evaluatedAtUtc, inventory, cash,
+            tradingPost.CurrentOrders, tradingPost.CompletedTransactions, sources);
     }
 
     private static bool IsFreshAt(DateTimeOffset? capturedAtUtc, DateTimeOffset evaluationTimeUtc) =>
         capturedAtUtc is { } captured && captured <= evaluationTimeUtc && evaluationTimeUtc - captured <= TimeSpan.FromMinutes(15);
-
-    private static void AddQuantity(IDictionary<string, long> quantities, int itemId, long quantity)
-    {
-        if (itemId > 0 && quantity > 0)
-        {
-            var key = $"{(int)PlanResourceKind.Inventory}:{itemId}";
-            quantities[key] = checked((quantities.TryGetValue(key, out var existing) ? existing : 0) + quantity);
-        }
-    }
 
     private static IReadOnlyDictionary<string, long> AvailableQuantities(IReadOnlyDictionary<string, long> effective, IReadOnlyCollection<PlanResourceRequirement> reservations)
     {
@@ -924,8 +894,8 @@ internal sealed class PlanEndpointService(
             effectiveQuantities, availableQuantities, reservedGenericKeys);
 
     private static string ResourceKey(PlanResourceRequirement requirement) => PlanOrchestrationService.ResourceKey(requirement);
-    private static object ToResponse(PlanCandidate plan) => new { id = plan.Id, attention = plan.Attention.ToString(), modeledProfit = plan.ModeledProfit, committedCapital = plan.CommittedCapital, interactionSeconds = plan.ExpectedInteractionSeconds, steps = plan.Steps.Select(ToResponse) };
-    private static object ToResponse(PlanRecord plan) => new { id = plan.Id, attention = plan.Attention.ToString(), state = plan.State.ToString(), reconciliationState = plan.ReconciliationState.ToString(), reconciliationReasonCode = plan.ReconciliationReason.ToString(), residualReasonCode = plan.ResidualReason.ToString(), isExecutionPaused = plan.State is PlanState.RecheckRequired or PlanState.ReconciliationRequired, modeledProfit = plan.ModeledProfit, currentStepOrdinal = plan.CurrentStepOrdinal, revision = plan.Revision.ToString(CultureInfo.InvariantCulture), steps = plan.Steps.Select(ToResponse), hasUndoableEvent = plan.Events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) };
+    private static object ToResponse(PlanCandidate plan) => new { id = plan.Id, attention = plan.Attention.ToString(), modeledProfit = plan.ModeledProfit, committedCapital = plan.CommittedCapital, interactionSeconds = plan.ExpectedInteractionSeconds, holdingsExplanation = HoldingsResponseText.Explain(plan.HoldingsAuthority), steps = plan.Steps.Select(ToResponse) };
+    internal static object ToResponse(PlanRecord plan) => new { id = plan.Id, attention = plan.Attention.ToString(), state = plan.State.ToString(), reconciliationState = plan.ReconciliationState.ToString(), reconciliationReasonCode = plan.ReconciliationReason.ToString(), residualReasonCode = plan.ResidualReason.ToString(), isExecutionPaused = plan.State is PlanState.RecheckRequired or PlanState.ReconciliationRequired, holdingsEligibilityReason = plan.HoldingsEligibilityReason, holdingsExplanation = HoldingsResponseText.Explain(plan.HoldingsAuthority), modeledProfit = plan.ModeledProfit, currentStepOrdinal = plan.CurrentStepOrdinal, revision = plan.Revision.ToString(CultureInfo.InvariantCulture), steps = plan.Steps.Select(ToResponse), hasUndoableEvent = plan.Events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) };
     private static object ToResponse(PlanStep step) => new { id = step.Id, action = step.Action.ToString(), itemName = step.ItemName, quantity = step.Quantity, originalInstructedQuantity = step.OriginalInstructedQuantity ?? step.Quantity, reportedQuantity = step.ReportedQuantity, remainingQuantity = step.ReportedQuantity is { } reported ? step.Quantity - reported : step.Quantity, unitPrice = step.UnitPrice, state = step.State.ToString() };
 
     private sealed record EvidenceCapture(PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>> CurrentOrders,
@@ -953,7 +923,7 @@ internal sealed class PlanEndpointService(
         return new(payload, timing with { ResourceSelectionMilliseconds = Milliseconds(selectionTimer.Elapsed) });
     }
 
-    private sealed record Context(AccountProfile Profile, AccountPortfolioSnapshot Snapshot, IReadOnlyDictionary<string, long> VerifiedQuantities, PrimaryRecommendationResult? Recommendations, IReadOnlyList<PlanCandidate> Candidates, CraftingPlannerResult? Crafting, bool AccountEvidenceAvailable, IReadOnlyList<PlanRecord> Plans, bool ReusedDecision, string DecisionCacheState, PlanDecisionTiming Timing = null!, PlanEvidenceFrame? EvidenceFrame = null);
+    private sealed record Context(AccountProfile Profile, AccountPortfolioSnapshot Snapshot, IReadOnlyDictionary<string, long> VerifiedQuantities, PrimaryRecommendationResult? Recommendations, IReadOnlyList<PlanCandidate> Candidates, CraftingPlannerResult? Crafting, bool AccountEvidenceAvailable, IReadOnlyList<PlanRecord> Plans, bool ReusedDecision, string DecisionCacheState, PlanDecisionTiming Timing = null!, PlanEvidenceFrame? EvidenceFrame = null, AccountHoldingsProjection? Holdings = null);
 }
 
 internal sealed record PlanDecisionSnapshot(
@@ -968,7 +938,7 @@ internal sealed record PlanDecisionSnapshot(
     DateTimeOffset CachedAtUtc,
     PlanDecisionSelectionTrace? SelectionTrace = null,
     CraftingPlannerResult? Crafting = null,
-    PlanEvidenceFrame? EvidenceFrame = null);
+    PlanEvidenceFrame? EvidenceFrame = null, AccountHoldingsProjection? Holdings = null);
 
 /// <summary>Sanitized selection lineage retained with one decision projection.</summary>
 internal sealed record PlanDecisionSelectionTrace(
