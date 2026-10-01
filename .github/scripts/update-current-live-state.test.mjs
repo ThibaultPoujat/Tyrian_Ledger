@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   deriveLiveState,
+  parseExecutionOrder,
   parseNonBlockingAlternate,
   parseSolGates,
   readTicketContracts,
@@ -281,14 +282,13 @@ test('a listed review gate cannot disappear because GitHub authority is missing'
 });
 
 async function secondBatchFixture() {
-  const [index, guide, fixture, contracts] = await Promise.all([
-    readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8'),
-    readFile(new URL('docs/workflow/model-effort-guide.md', repositoryRoot), 'utf8'),
+  const [fixture, contracts] = await Promise.all([
     readFile(new URL('../fixtures/live-state-batch-02.json', import.meta.url), 'utf8'),
     readTicketContracts(new URL('docs/milestones/', repositoryRoot).pathname),
   ]);
   const operational = JSON.parse(fixture);
-  return { index, guide, ...contracts, issue98: operational.issue98Body, operational };
+  return { index: operational.roadmapIndex, guide: operational.modelGuide,
+    ...contracts, issue98: operational.issue98Body, operational };
 }
 
 test('B2 selects preparation then four bounded contracts and stops before release work', async () => {
@@ -344,3 +344,67 @@ test('B2 source disagreement and missing explicit gate state fail closed', async
 
 function begin() { return '<!-- BEGIN GENERATED LIVE STATE -->'; }
 function end() { return '<!-- END GENERATED LIVE STATE -->'; }
+
+async function thirdBatchFixture() {
+  const [fixture, contracts] = await Promise.all([
+    readFile(new URL('../fixtures/live-state-batch-03.json', import.meta.url), 'utf8'),
+    readTicketContracts(new URL('docs/milestones/', repositoryRoot).pathname),
+  ]);
+  const operational = JSON.parse(fixture);
+  return { index: operational.roadmapIndex, guide: operational.modelGuide,
+    ...contracts, issue98: operational.issue98Body, operational };
+}
+
+test('B3 preserves explicit order, the command Sol gate and the integration stop', async () => {
+  const source = await thirdBatchFixture();
+  const current = () => deriveLiveState(source);
+  assert.equal(current().completed.number, 176);
+  assert.equal(current().preferred, 'TKT-M22-C04 / #177');
+  assert.deepEqual(current().gates, ['TKT-M22-P03C1 / #180', 'TKT-M22-02 / #96']);
+  for (const [closed, next] of [
+    [177, 'TKT-M22-P03B1 / #178'],
+    [178, 'TKT-M22-P03B2 / #179'],
+    [179, 'TKT-M22-P03C1 / #180'],
+    [180, 'TKT-M22-P02E1 / #181'],
+    [181, 'TKT-M22-P06A / #182'],
+  ]) {
+    source.operational.issues[closed].state = 'CLOSED';
+    assert.equal(current().preferred, next);
+    assert.equal(current().alternate, 'None');
+  }
+  // Preferred delivery position is not proof that Windows entry conditions hold.
+  const windows = await readFile(new URL('docs/milestones/M22/tickets/TKT-M22-P06A.md', repositoryRoot), 'utf8');
+  assert.match(windows, /ENVIRONMENT-GATED/);
+  assert.match(windows, /actual interactive Windows/);
+  assert.match(windows, /do not substitute a build-only runner/i);
+  assert.equal(current().completed.number, 176);
+  source.operational.issues[182].state = 'CLOSED';
+  assert.equal(current().preferred, 'TKT-M22-G01 / #150');
+  assert.equal(current().preferredKind, 'checkpoint');
+  assert.deepEqual(current().gates, ['TKT-M22-02 / #96']);
+  assert.match(renderGeneratedBlock(current()), /None — planning checkpoint required/);
+  assert.doesNotMatch(renderGeneratedBlock(current()), /Preferred next implementation ticket: `TKT-M22-02/);
+});
+
+test('B3 authority disagreement and missing gate state cannot produce a handoff', async () => {
+  const disagreement = await thirdBatchFixture();
+  disagreement.issue98 = disagreement.issue98.replace(' -> #179 TKT-M22-P03B2', ' -> #181 TKT-M22-P02E1');
+  assert.throws(() => deriveLiveState(disagreement), /disagree about the execution order/);
+  const missing = await thirdBatchFixture();
+  delete missing.operational.issues[180];
+  assert.throws(() => deriveLiveState(missing), /GitHub state is missing issue #180/);
+});
+
+test('active B3 repository authorities match the prepared fixture and model assignments', async () => {
+  const source = await thirdBatchFixture();
+  const [index, guide, goal] = await Promise.all([
+    readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8'),
+    readFile(new URL('docs/workflow/model-effort-guide.md', repositoryRoot), 'utf8'),
+    readFile(new URL('docs/workflow/goal-session.md', repositoryRoot), 'utf8'),
+  ]);
+  assert.deepEqual(parseSolGates(guide), parseSolGates(source.guide));
+  assert.equal(deriveLiveState({ ...source, index, guide }).preferred, 'TKT-M22-C04 / #177');
+  assert.match(goal, /batch-03\.md/);
+  assert.match(goal, /GPT-6\.1 Sol High for #178–#182/);
+  assert.match(guide, /P03C1 \/ #180.*Sol XHigh/);
+});

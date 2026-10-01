@@ -24,8 +24,11 @@ Assign model/review requirements explicitly. Future units are mapped in
 
 Within a prepared batch, each owner merge allows the next Goal to verify its
 entry conditions and implement that contract without another planning session.
-Current batch: [B2](../batch-02.md), #168 → #169 → #170 → #171 after preparation
-#167. Stop coding here after #171. B1 is merged; owner UI feedback says changes
+Current batch: [B3](../batch-03.md), #178 → #179 → #180 → #181 → #182 after
+preparation #177. #182 is not executable until interactive Windows access is
+evidenced; stop at its exact blocker if unavailable. Stop coding here after #182.
+C04 is the owner-authorized Sol Medium checkpoint instead of Astra; future
+checkpoint routing remains as assigned in the model guide. B1 is merged; owner UI feedback says changes
 are needed and usability acceptance remains open. Never implement the entire tracking issue,
 auto-merge, skip an unmet prerequisite or silently relax a review gate.
 

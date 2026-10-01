@@ -1,6 +1,6 @@
 # Current Project State
 
-Last durable-context update: 2026-10-01 (B2 batch preparation).
+Last durable-context update: 2026-10-02 (B2 checkpoint / B3 preparation).
 
 ## Durable product direction
 
@@ -43,13 +43,17 @@ not maintain handoff state manually.
 
 [Approved packages P00–P07](docs/milestones/approved-delivery-plan.md) retain all
 19 audit findings. The [remaining map](docs/milestones/remaining-delivery-map.md)
-defines dependencies and exits through release; [B2](docs/milestones/M22/batch-02.md)
-contains the current four prepared contracts. Later work remains Planned.
-B1 is merged; owner UI changes are needed and usability acceptance remains open.
+defines dependencies and exits through release; [B3](docs/milestones/M22/batch-03.md)
+contains four conditionally Ready backend contracts and an environment-gated
+Windows probe. B1/B2 are merged; complete lifecycle/coherence/basis and later work
+remain Planned. Owner UI changes are needed and usability acceptance remains open.
 
-Astra prepares 3–5 contracts at a batch checkpoint, not after each merge. Each
+Astra normally prepares 3–5 contracts at a batch checkpoint, not after each merge.
+The owner authorized this C04 checkpoint in GPT-6.1 Sol Medium instead of Astra;
+that exception does not change subsequent host/model assignments. Each
 new Goal verifies its predecessor merge/evidence and entry conditions, implements
-one prepared ticket and stops for owner merge. #150 is the batch/integration
+one prepared ticket and stops for owner merge. #182 additionally requires actual interactive Windows
+access; stop at that gate if unconfirmed. #150 is the batch/integration
 checkpoint, not a coding Goal; it remains open through P01–P06 acceptance.
 No automatic multi-ticket execution or skip to #96/#97. Historical merged
 features are not proof that newly discovered issues were fixed.
@@ -66,9 +70,9 @@ Machine-owned derived values. Do not rewrite durable context for routine progres
 - Last completed implementation ticket: `TKT-M22-P02C / #171`
 - Last merged implementation PR: `#176`
 - Active milestone: `M22 — Convenience, Hardening, and Evaluation`
-- Preferred next implementation ticket: `None — planning checkpoint required`
-- Next required checkpoint: `TKT-M22-G01 / #150`
+- Preferred next implementation ticket: `TKT-M22-C04 / #177`
+- Next required checkpoint: `None`
 - Allowed non-blocking alternate: `None`
-- Explicit active Sol gates: `TKT-M22-02 / #96`
+- Explicit active Sol gates: `TKT-M22-P03C1 / #180`, `TKT-M22-02 / #96`
 - Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`
 <!-- END GENERATED LIVE STATE -->
