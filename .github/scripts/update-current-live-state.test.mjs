@@ -296,6 +296,7 @@ test('B2 selects preparation then four bounded contracts and stops before releas
   const current = () => deriveLiveState(source);
   assert.equal(current().completed.number, 166);
   assert.equal(current().preferred, 'TKT-M22-C03 / #167');
+  assert.match(renderGeneratedBlock(current()), /Next required checkpoint: `None`/);
   assert.deepEqual(current().gates, ['TKT-M22-P03A / #170', 'TKT-M22-02 / #96']);
   const delivered = [
     [167, 'TKT-M22-P02A / #168'],
@@ -314,6 +315,7 @@ test('B2 selects preparation then four bounded contracts and stops before releas
   assert.equal(current().preferred, 'TKT-M22-G01 / #150');
   assert.equal(current().preferredKind, 'checkpoint');
   assert.match(renderGeneratedBlock(current()), /None — planning checkpoint required/);
+  assert.match(renderGeneratedBlock(current()), /Next required checkpoint: `TKT-M22-G01 \/ #150`/);
   assert.doesNotMatch(renderGeneratedBlock(current()), /Preferred next implementation ticket: `TKT-M22-02/);
   // Closing an issue is not proof of a newly merged implementation; the latest
   // implementation field still comes from actual PR evidence, not these states.

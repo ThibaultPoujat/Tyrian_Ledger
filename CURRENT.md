@@ -67,7 +67,7 @@ Machine-owned derived values. Do not rewrite durable context for routine progres
 - Last merged implementation PR: `#166`
 - Active milestone: `M22 — Convenience, Hardening, and Evaluation`
 - Preferred next implementation ticket: `TKT-M22-C03 / #167`
-- Next required checkpoint: `TKT-M22-G01 / #150`
+- Next required checkpoint: `None`
 - Allowed non-blocking alternate: `None`
 - Explicit active Sol gates: `TKT-M22-P03A / #170`, `TKT-M22-02 / #96`
 - Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`
