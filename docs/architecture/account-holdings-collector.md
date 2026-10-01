@@ -184,5 +184,8 @@ copies, partial actor coverage, account-wide reserves, scope/binding failures,
 actor rename/deletion, same-input replay, real actor chains/access and a four-read
 cancellation barrier during crafting. The legacy rating/active regression failed
 before the correction; it requires active rating 100 when another actor has
-inactive 500. VERIFY-008/013/016/017 remain OPEN. No screenshots apply to these
-producer/policy changes; frontend presentation and fixture previews are untouched.
+inactive 500. VERIFY-008/013/016/017 remain OPEN. The legacy eligibility correction changes rendered state through the existing
+crafting consumer. [P02B actual 1920×1080 evidence](../ux/evidence/TKT-M22-P02B/README.md)
+covers rejected mixed/inactive tuples and a retained eligible actor, with the
+original 01/02 comparison, keyboard/axe/zoom checks and explicit inherited shell
+limitations. Frontend source and fixture Signaux/Plans previews remain untouched.
