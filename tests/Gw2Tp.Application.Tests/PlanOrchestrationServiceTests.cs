@@ -588,13 +588,13 @@ public sealed class PlanOrchestrationServiceTests
             .Select(index => new PlanVerifiedEvidence($"CompletedBuy:{index:D4}", PlanEvidenceKind.CompletedBuy, 42,
                 100 + index % 151, new Money(100), Now.AddSeconds(5), Now.AddMinutes(1)))
             .ToArray();
-        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(16), evidence);
+        var frame = CompleteTradingPostFrame(scope, Now.AddMinutes(16), evidence, "capture-16");
         var changedFrame = CompleteTradingPostFrame(scope, Now.AddMinutes(17),
         [
             .. evidence,
             new PlanVerifiedEvidence("CompletedBuy:changed", PlanEvidenceKind.CompletedBuy, 42, 150,
                 new Money(100), Now.AddSeconds(5), Now.AddMinutes(17)),
-        ]);
+        ], "capture-17");
 
         var first = service.ReconcileAccountPlans([reported], scope, frame, Now.AddMinutes(16)).Single();
         var changed = service.ReconcileAccountPlans([first], scope, changedFrame, Now.AddMinutes(17)).Single();
@@ -611,6 +611,46 @@ public sealed class PlanOrchestrationServiceTests
         });
         Assert.Equal(first.Events, changed.Events);
         Assert.Equal(changed.Events, replayed.Events);
+    }
+
+    [Fact]
+    public void Indeterminate_evidence_prevents_false_negative_inference_for_later_executions()
+    {
+        var scope = new AccountScope("account-scope");
+        var candidate = Candidate("bounded-sequence", 0, 10, 5_000,
+            steps: [Step("buy", PlanStepAction.BuyNow, 5_000), Step("list", PlanStepAction.List)]);
+        var buyReported = service.ReportStep(service.Start(candidate, Now) with { Id = "plan-a" },
+            5_000, new Money(100), Now.AddSeconds(10));
+        var reported = service.ReportStep(buyReported, 1, new Money(100), Now.AddSeconds(20));
+        var evidence = Enumerable.Range(0, 1_000)
+            .Select(index => new PlanVerifiedEvidence($"CompletedBuy:{index:D4}", PlanEvidenceKind.CompletedBuy, 42,
+                100 + index % 151, new Money(100), Now.AddSeconds(5), Now.AddMinutes(16)))
+            .Append(new PlanVerifiedEvidence("SellListing:1", PlanEvidenceKind.SellListing, 42, 1,
+                new Money(100), Now.AddSeconds(30), Now.AddMinutes(16)))
+            .ToArray();
+        var firstFrame = CompleteTradingPostFrame(scope, Now.AddMinutes(16), evidence, "sequence-16");
+        var changedFrame = CompleteTradingPostFrame(scope, Now.AddMinutes(17),
+        [
+            .. evidence,
+            new PlanVerifiedEvidence("CompletedBuy:changed", PlanEvidenceKind.CompletedBuy, 42, 150,
+                new Money(100), Now.AddSeconds(5), Now.AddMinutes(17)),
+        ], "sequence-17");
+
+        var first = service.ReconcileAccountPlans([reported], scope, firstFrame, Now.AddMinutes(16)).Single();
+        var changed = service.ReconcileAccountPlans([first], scope, changedFrame, Now.AddMinutes(17)).Single();
+
+        Assert.All([first, changed], plan =>
+        {
+            Assert.All(plan.Events, execution =>
+            {
+                Assert.Equal(PlanShadowEventState.PendingConfirmation, execution.State);
+                Assert.Empty(execution.VerifiedEvidenceIds ?? []);
+            });
+            Assert.Equal(PlanReconciliationState.AwaitingEvidence, plan.ReconciliationState);
+            Assert.Equal(PlanReconciliationReason.None, plan.ReconciliationReason);
+            Assert.Equal(0, plan.ConsecutiveContradictionCount);
+        });
+        Assert.Equal(first.Events, changed.Events);
     }
 
     [Fact]
@@ -1024,21 +1064,23 @@ public sealed class PlanOrchestrationServiceTests
     private static IReadOnlySet<PlanEvidenceKind> Complete(params PlanEvidenceKind[] kinds) => new HashSet<PlanEvidenceKind>(kinds);
 
     private static PlanEvidenceFrame CompleteTradingPostFrame(AccountScope scope, DateTimeOffset evaluatedAtUtc,
-        IReadOnlyList<PlanVerifiedEvidence> completed)
+        IReadOnlyList<PlanVerifiedEvidence> evidence, string captureId = "capture")
     {
         var unavailablePhysical = new PlanEvidenceProvenance(null, null, null, PlanEvidenceAvailability.Unavailable,
             PlanEvidenceCompleteness.Unknown, new HashSet<string>(StringComparer.Ordinal));
-        var completeCurrent = new PlanEvidenceProvenance("capture", evaluatedAtUtc, null, PlanEvidenceAvailability.Available,
+        var completeCurrent = new PlanEvidenceProvenance(captureId, evaluatedAtUtc, null, PlanEvidenceAvailability.Available,
             PlanEvidenceCompleteness.Complete, new HashSet<string>(["buy_orders", "sell_listings"], StringComparer.Ordinal));
-        var completeTransactions = new PlanEvidenceProvenance("capture", evaluatedAtUtc, null, PlanEvidenceAvailability.Available,
+        var completeTransactions = new PlanEvidenceProvenance(captureId, evaluatedAtUtc, null, PlanEvidenceAvailability.Available,
             PlanEvidenceCompleteness.Complete, new HashSet<string>(["completed_buys", "completed_sells"], StringComparer.Ordinal));
-        var cash = new PlanEvidenceSource<Money>(new("cash:capture", evaluatedAtUtc, null,
+        var cash = new PlanEvidenceSource<Money>(new($"cash:{captureId}", evaluatedAtUtc, null,
             PlanEvidenceAvailability.Available, PlanEvidenceCompleteness.Complete,
             new HashSet<string>(["coin"], StringComparer.Ordinal)), new Money(1_000));
         return new PlanEvidenceFrame(scope, evaluatedAtUtc,
             new PlanEvidenceSource<IReadOnlyDictionary<string, long>>(unavailablePhysical, null), cash,
-            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completeCurrent, []),
-            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completeTransactions, completed));
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completeCurrent,
+                evidence.Where(value => value.Kind is PlanEvidenceKind.BuyOrder or PlanEvidenceKind.SellListing).ToArray()),
+            new PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>>(completeTransactions,
+                evidence.Where(value => value.Kind is PlanEvidenceKind.CompletedBuy or PlanEvidenceKind.CompletedSell).ToArray()));
     }
 
     private static PlanEvidenceFrame PartialTradingPostFrame(AccountScope scope, DateTimeOffset evaluatedAtUtc)

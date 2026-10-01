@@ -251,6 +251,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         var contradictions = 0;
         var observedReason = PlanReconciliationReason.None;
         var blockedByPending = false;
+        var blockedByIndeterminateEvidence = false;
         var cancellationEvidenceConflict = false;
         foreach (var execution in plan.Events.OrderBy(value => value.Sequence))
         {
@@ -306,7 +307,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                     };
                     events[index] = nextEvent;
                 }
-                else if (!cancellationEvidenceConflict &&
+                else if (!cancellationEvidenceConflict && !blockedByIndeterminateEvidence &&
                     (!blockedByPending || execution.Action is PlanStepAction.List or PlanStepAction.Relist &&
                         plan.Events.Any(value => value.Sequence < execution.Sequence && value.Action == PlanStepAction.Craft &&
                             value.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed)) &&
@@ -321,6 +322,11 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                     if (nextState == PlanShadowEventState.PartiallyConfirmed) blockedByPending = true;
                 }
                 else if (evidenceSelectionIndeterminate)
+                {
+                    blockedByPending = true;
+                    blockedByIndeterminateEvidence = true;
+                }
+                else if (blockedByIndeterminateEvidence)
                 {
                     blockedByPending = true;
                 }
