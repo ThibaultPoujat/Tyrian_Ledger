@@ -102,7 +102,7 @@ review. Next Goal verifies operational GitHub state and actual entry conditions.
 
 | Ticket | Evidence PR / reviewed head / CI / handoff |
 |---|---|
-| #168 | Pending implementation. Collector shape/coverage, endpoint fixtures and bounded-read evidence required. |
+| #168 | [PR #173](https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/173), reviewed implementation `b3adca9bd2be1bb4c55f1b4af8e0fb83ea344c3e`; [NORMAL GPT-6.1 Sol Medium APPROVE](https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/173#issuecomment-5933277063), no findings. Collector/crafting/boundary 47, Application Crafting 33 and workflow 24 tests passed independently; [implementation-head CI 36874254541](https://github.com/ThibaultPoujat/Tyrian_Ledger/actions/runs/36874254541) has all five jobs green. [Typed source/actor/coverage handoff and endpoint fixtures](../../architecture/account-holdings-collector.md); four-read/30-actor cancellation evidence, captured credential, checked separate delivery and no coherence claim. API/domain-only, no UI preview. Later evidence-only head and [final-head checks](https://github.com/ThibaultPoujat/Tyrian_Ledger/pull/173/checks) are recorded in the PR; verify them before successor entry. |
 | #169 | Pending implementation. Actor/protection vectors and typed policy handoff required. |
 | #170 | Pending implementation. Guarded writer/publication table, restore/restart races, fresh GPT-6.1 Sol XHigh approval and final-head CI required. |
 | #171 | Pending implementation. Shared projection, physical/source limitations, transfer replay, protection and SQLite integration evidence required. |
