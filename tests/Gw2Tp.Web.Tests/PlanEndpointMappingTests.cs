@@ -15,6 +15,36 @@ namespace Gw2Tp.Web.Tests;
 public sealed class PlanEndpointMappingTests
 {
     [Fact]
+    public async Task Partial_report_response_preserves_instruction_remaining_quantity_and_paused_eligibility()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var scope = new AccountScope("scope-a");
+        var profile = new AccountProfile(1, scope.AccountId, now, now);
+        var orchestration = new PlanOrchestrationService();
+        var candidate = new PlanCandidate("partial", 1, "partial", PlanAttention.Active,
+            [new("sell", PlanStepAction.List, 42, "Objet", 10, new Money(200), [], PlanStepState.Pending)],
+            [new(PlanResourceKind.Inventory, "42", 10, Money.Zero)], Money.Zero, Money.Zero, 0, 0, 1, 1, true, []);
+        var reported = orchestration.ReportStep(orchestration.Start(candidate, now), 4, null, now);
+        var plans = new CountingPlanRepository(reported);
+        var service = new PlanEndpointService(new FixedRecommendations(RecommendationResult(now)),
+            new FixedPortfolio(scope, new Money(5_000), now), new FixedAccountScopeGateway(scope.AccountId),
+            new EmptyCraftingSnapshots(), new EmptyCraftingOpportunities(), new FixedPersonalTradingPostRepository(profile, now),
+            plans, orchestration, new PlanDecisionProjectionStore(new DecisionLoopSchedulerSettings(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15))));
+        var response = await service.GetAsync(CancellationToken.None);
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(response.Payload));
+        var plan = payload.RootElement.GetProperty("plans")[0];
+        Assert.Equal("ReconciliationRequired", plan.GetProperty("state").GetString());
+        Assert.True(plan.GetProperty("isExecutionPaused").GetBoolean());
+        Assert.Equal("UnsupportedPartialCompletion", plan.GetProperty("residualReasonCode").GetString());
+        Assert.Equal(-1, plan.GetProperty("currentStepOrdinal").GetInt32());
+        var step = plan.GetProperty("steps")[0];
+        Assert.Equal(10, step.GetProperty("quantity").GetInt32());
+        Assert.Equal(10, step.GetProperty("originalInstructedQuantity").GetInt32());
+        Assert.Equal(4, step.GetProperty("reportedQuantity").GetInt32());
+        Assert.Equal(6, step.GetProperty("remainingQuantity").GetInt32());
+    }
+
+    [Fact]
     public async Task Full_unchanged_plan_read_does_not_save_or_increment_its_revision()
     {
         var now = DateTimeOffset.UtcNow;

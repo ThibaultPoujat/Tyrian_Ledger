@@ -242,7 +242,8 @@ internal sealed class SqlitePlanRepository(
         if (!IsValidCommand(command))
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            return new(PlanCompletionStatus.Invalid);
+            return new(PlanCompletionStatus.Invalid, Reason: command.Operation == PlanCompletionOperation.ReportPerformed && command.Quantity <= 0
+                ? PlanCompletionReason.InvalidQuantity : PlanCompletionReason.None);
         }
 
         PlanRecord? storedPlan;
@@ -275,6 +276,16 @@ internal sealed class SqlitePlanRepository(
         try
         {
             transitioned = transition(storedPlan);
+        }
+        catch (PlanCompletionValidationException exception)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new(PlanCompletionStatus.Invalid, Reason: exception.Reason);
+        }
+        catch (OverflowException)
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            return new(PlanCompletionStatus.Invalid, Reason: PlanCompletionReason.ResourceOverflow);
         }
         catch (InvalidOperationException)
         {

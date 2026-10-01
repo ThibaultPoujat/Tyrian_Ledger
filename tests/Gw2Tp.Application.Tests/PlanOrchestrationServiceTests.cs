@@ -203,7 +203,7 @@ public sealed class PlanOrchestrationServiceTests
     [Fact]
     public void Report_and_undo_restore_the_current_step_without_erasing_event_history()
     {
-        var plan = service.Start(Candidate("undo", 100, 50, 10), Now);
+        var plan = service.Start(Candidate("undo", 1_000, 50, 10), Now);
         var reported = service.ReportStep(plan, 1, new Money(100), Now);
         var projected = PlanOrchestrationService.ProjectEffectiveResources(new Money(1_000), new Dictionary<string, long>(), reported.Events);
 
@@ -213,11 +213,13 @@ public sealed class PlanOrchestrationServiceTests
         Assert.Single(undone.Events);
         Assert.Equal(PlanShadowEventState.Reversed, undone.Events[0].State);
         Assert.Equal(900, projected.EffectiveCash.Copper);
-        Assert.Empty(PlanOrchestrationService.OutstandingReservations(reported));
+        Assert.Equal(PlanState.ReconciliationRequired, reported.State);
+        Assert.Equal(900, PlanOrchestrationService.OutstandingReservations(reported).Single(value => value.Kind == PlanResourceKind.Cash).Cash.Copper);
         Assert.Equal(1_000, restored.EffectiveCash.Copper);
         Assert.Equal(0, undone.CurrentStepOrdinal);
         Assert.Equal(PlanStepState.Current, undone.Steps[0].State);
-        Assert.Equal(100, PlanOrchestrationService.OutstandingReservations(undone).Single(value => value.Kind == PlanResourceKind.Cash).Cash.Copper);
+        Assert.Equal(10, undone.Steps[0].Quantity);
+        Assert.Equal(1_000, PlanOrchestrationService.OutstandingReservations(undone).Single(value => value.Kind == PlanResourceKind.Cash).Cash.Copper);
     }
 
     [Fact]

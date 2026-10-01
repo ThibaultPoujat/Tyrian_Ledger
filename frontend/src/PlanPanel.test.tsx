@@ -187,6 +187,22 @@ it('explains when cached Signals cannot become executable Plans because sizing i
   expect(screen.getByText(/17 candidats ne peuvent pas être exposés/i)).toBeInTheDocument();
 });
 
+it('renders a partial execution as paused in French without a dependent completion action', async () => {
+  const response = plansFor('step-a', '2');
+  response.plans[0].state = 'ReconciliationRequired';
+  response.plans[0].currentStepOrdinal = -1;
+  response.plans[0].steps[0].state = 'AwaitingConfirmation';
+  response.plans[0].steps[1].state = 'RecheckRequired';
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(response)));
+
+  render(<PlanPanel />);
+
+  expect(await screen.findByText('Le plan doit être réconcilié avant toute autre action.')).toBeInTheDocument();
+  expect(screen.getByText(/Recalcul requis/)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Terminé' })).not.toBeInTheDocument();
+  expect(screen.queryByText('Exécution différente')).not.toBeInTheDocument();
+});
+
 function plansFor(currentStepId: string, revision: string, accountCacheScope = 'scope-a') {
   return {
     state: 'ready',

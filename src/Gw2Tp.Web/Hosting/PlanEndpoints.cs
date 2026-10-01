@@ -331,7 +331,7 @@ internal sealed class PlanEndpointService(
         {
             PlanCompletionStatus.NotFound => Results.NotFound(new { error = "plan_not_found" }),
             PlanCompletionStatus.Conflict => Results.Conflict(new { error = "plan_command_conflict" }),
-            _ => Results.BadRequest(new { error = "invalid_completion_command" }),
+            _ => Results.BadRequest(new { error = "invalid_completion_command", recoveryReasonCode = result.Reason.ToString() }),
         };
     }
 
@@ -908,8 +908,8 @@ internal sealed class PlanEndpointService(
 
     private static string ResourceKey(PlanResourceRequirement requirement) => PlanOrchestrationService.ResourceKey(requirement);
     private static object ToResponse(PlanCandidate plan) => new { id = plan.Id, attention = plan.Attention.ToString(), modeledProfit = plan.ModeledProfit, committedCapital = plan.CommittedCapital, interactionSeconds = plan.ExpectedInteractionSeconds, steps = plan.Steps.Select(ToResponse) };
-    private static object ToResponse(PlanRecord plan) => new { id = plan.Id, attention = plan.Attention.ToString(), state = plan.State.ToString(), reconciliationState = plan.ReconciliationState.ToString(), reconciliationReasonCode = plan.ReconciliationReason.ToString(), modeledProfit = plan.ModeledProfit, currentStepOrdinal = plan.CurrentStepOrdinal, revision = plan.Revision.ToString(CultureInfo.InvariantCulture), steps = plan.Steps.Select(ToResponse), hasUndoableEvent = plan.Events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) };
-    private static object ToResponse(PlanStep step) => new { id = step.Id, action = step.Action.ToString(), itemName = step.ItemName, quantity = step.Quantity, unitPrice = step.UnitPrice, state = step.State.ToString() };
+    private static object ToResponse(PlanRecord plan) => new { id = plan.Id, attention = plan.Attention.ToString(), state = plan.State.ToString(), reconciliationState = plan.ReconciliationState.ToString(), reconciliationReasonCode = plan.ReconciliationReason.ToString(), residualReasonCode = plan.ResidualReason.ToString(), isExecutionPaused = plan.State is PlanState.RecheckRequired or PlanState.ReconciliationRequired, modeledProfit = plan.ModeledProfit, currentStepOrdinal = plan.CurrentStepOrdinal, revision = plan.Revision.ToString(CultureInfo.InvariantCulture), steps = plan.Steps.Select(ToResponse), hasUndoableEvent = plan.Events.Any(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed) };
+    private static object ToResponse(PlanStep step) => new { id = step.Id, action = step.Action.ToString(), itemName = step.ItemName, quantity = step.Quantity, originalInstructedQuantity = step.OriginalInstructedQuantity ?? step.Quantity, reportedQuantity = step.ReportedQuantity, remainingQuantity = step.ReportedQuantity is { } reported ? step.Quantity - reported : step.Quantity, unitPrice = step.UnitPrice, state = step.State.ToString() };
 
     private sealed record EvidenceCapture(PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>> CurrentOrders,
         PlanEvidenceSource<IReadOnlyList<PlanVerifiedEvidence>> CompletedTransactions)
