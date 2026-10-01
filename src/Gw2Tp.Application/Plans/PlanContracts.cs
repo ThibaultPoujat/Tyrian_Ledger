@@ -15,6 +15,8 @@ public enum PlanResourceKind { Cash = 1, Inventory, OpenOrderExposure, Position,
 public enum PlanEvidenceKind { BuyOrder = 1, SellListing, CompletedBuy, CompletedSell }
 public enum PlanEvidenceAvailability { Unknown = 0, Available, Unavailable }
 public enum PlanEvidenceCompleteness { Unknown = 0, Partial, Complete }
+public enum PlanResidualReason { None = 0, UnsupportedPartialCompletion, ResourceRecheckRequired, DependentWorkAlreadyRecorded }
+public enum PlanCompletionReason { None = 0, InvalidQuantity, CraftQuantityMismatch, ResourceOverflow }
 
 /// <summary>Versioned, typed resource demand. Money is always exact copper.</summary>
 public sealed record PlanResourceRequirement(PlanResourceKind Kind, string ResourceId, long Quantity, Money Cash);
@@ -26,7 +28,12 @@ public sealed record PlanStep(
     string Id, PlanStepAction Action, int ItemId, string ItemName, int Quantity,
     Money? UnitPrice, IReadOnlyList<string> DependsOnStepIds, PlanStepState State,
     string? ExternalIdentity = null, DateTimeOffset? IssuedAtUtc = null,
-    IReadOnlyList<PlanResourceRequirement>? CraftEffects = null);
+    IReadOnlyList<PlanResourceRequirement>? CraftEffects = null,
+    int? OriginalInstructedQuantity = null, int? ReportedQuantity = null);
+
+/// <summary>The admitted instructions/reservations before a partial local report, for bounded Undo.</summary>
+public sealed record PlanPartialReportSnapshot(IReadOnlyList<PlanStep> Steps,
+    IReadOnlyList<PlanResourceRequirement> Reservations);
 
 public sealed record PlanCandidate(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,
@@ -52,7 +59,8 @@ public sealed record PlanExecutionEvent(
     DateTimeOffset? IssuedAtUtc = null, string? LastRelevantEvidenceFingerprint = null,
     IReadOnlyList<string>? VerifiedEvidenceIds = null, PlanStepAction? Action = null,
     DateTimeOffset? FirstNegativeEvidenceCapturedAtUtc = null, int NegativeEvidenceCaptureCount = 0,
-    string? LastNegativeEvidenceCaptureId = null, DateTimeOffset? LastNegativeEvidenceCapturedAtUtc = null);
+    string? LastNegativeEvidenceCaptureId = null, DateTimeOffset? LastNegativeEvidenceCapturedAtUtc = null,
+    PlanPartialReportSnapshot? PartialReportSnapshot = null);
 
 public sealed record PlanRecord(
     string Id, int Version, string SourceOpportunityId, PlanAttention Attention,
@@ -74,7 +82,9 @@ public sealed record PlanRecord(
     string? LastPhysicalInventoryCaptureId = null,
     DateTimeOffset? LastPhysicalInventoryFetchedAtUtc = null,
     DateTimeOffset? LastPhysicalInventoryObservedAtUtc = null,
-    PlanReconciliationReason ReconciliationReason = PlanReconciliationReason.None);
+    PlanReconciliationReason ReconciliationReason = PlanReconciliationReason.None,
+    PlanResidualReason ResidualReason = PlanResidualReason.None,
+    IReadOnlyList<PlanResourceRequirement>? ResidualReservations = null);
 
 public enum PlanCompletionOperation { ReportPerformed = 1, NotPerformed }
 
@@ -103,7 +113,13 @@ public sealed record PlanCompletionReceipt(
 
 public enum PlanCompletionStatus { Applied = 1, AlreadyApplied, Conflict, NotFound, Invalid }
 
-public sealed record PlanCompletionResult(PlanCompletionStatus Status, PlanCompletionReceipt? Receipt = null);
+public sealed record PlanCompletionResult(PlanCompletionStatus Status, PlanCompletionReceipt? Receipt = null,
+    PlanCompletionReason Reason = PlanCompletionReason.None);
+
+public sealed class PlanCompletionValidationException(PlanCompletionReason reason) : InvalidOperationException
+{
+    public PlanCompletionReason Reason { get; } = reason;
+}
 
 public sealed record PlanVerifiedEvidence(
     string Identity, PlanEvidenceKind Kind, int ItemId, int Quantity, Money UnitPrice,

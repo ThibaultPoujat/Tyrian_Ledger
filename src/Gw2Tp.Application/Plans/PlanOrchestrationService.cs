@@ -47,6 +47,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     public static IReadOnlyList<PlanResourceRequirement> OutstandingReservations(PlanRecord plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
+        if (plan.ResidualReservations is { } residual) return residual;
         if (plan.State is PlanState.ExecutionComplete or PlanState.Invalid) return [];
         var requirements = new List<PlanResourceRequirement>();
         // Dependent resources are produced by earlier outstanding steps. Only
@@ -137,7 +138,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
     {
         if (!IsExecutable(candidate)) throw new ArgumentException("The candidate is not executable.", nameof(candidate));
         var steps = candidate.Steps.Select((step, index) => step with { State = index == 0 ? PlanStepState.Current : PlanStepState.Pending,
-            IssuedAtUtc = index == 0 ? RequireUtc(startedAtUtc) : null }).ToArray();
+            IssuedAtUtc = index == 0 ? RequireUtc(startedAtUtc) : null,
+            OriginalInstructedQuantity = step.Quantity, ReportedQuantity = null }).ToArray();
         var state = candidate.Attention == PlanAttention.Passive && steps.Length == 0 ? PlanState.Waiting : PlanState.InProgress;
         return new PlanRecord(Guid.NewGuid().ToString("N"), candidate.Version, candidate.SourceOpportunityId, candidate.Attention, state,
             PlanReconciliationState.None, RequireUtc(startedAtUtc), candidate.Requirements, candidate.ModeledProfit, 0, steps, [], candidate.Utility,
@@ -151,21 +153,95 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         if (plan.State is PlanState.ReconciliationRequired or PlanState.RecheckRequired or PlanState.Invalid) throw new InvalidOperationException("The plan cannot accept execution while paused.");
         if (plan.CurrentStepOrdinal < 0 || plan.CurrentStepOrdinal >= plan.Steps.Count) throw new InvalidOperationException("The plan has no executable current step.");
         var step = plan.Steps[plan.CurrentStepOrdinal];
-        if (step.State != PlanStepState.Current || quantity <= 0 || step.Action == PlanStepAction.Craft && quantity != step.Quantity) throw new InvalidOperationException("Only the exact current manual craft can be reported with a positive quantity.");
+        if (step.State != PlanStepState.Current) throw new InvalidOperationException("Only the current step can be reported.");
+        if (quantity <= 0 || quantity > step.Quantity) throw new PlanCompletionValidationException(PlanCompletionReason.InvalidQuantity);
+        if (step.Action == PlanStepAction.Craft && quantity != step.Quantity)
+            throw new PlanCompletionValidationException(PlanCompletionReason.CraftQuantityMismatch);
         var occurred = RequireUtc(occurredAtUtc);
         var effectiveUnitPrice = unitPrice ?? step.UnitPrice;
+        if (effectiveUnitPrice is { Copper: < 0 }) throw new InvalidOperationException("The reported price is invalid.");
+        var partial = quantity < step.Quantity;
         var execution = new PlanExecutionEvent(Guid.NewGuid().ToString("N"), plan.Id, step.Id, plan.Events.Count + 1, occurred, quantity,
             effectiveUnitPrice, EffectsFor(step, quantity, effectiveUnitPrice), PlanShadowEventState.PendingConfirmation, null,
             plan.Events.Where(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed or PlanShadowEventState.Confirmed).Select(e => e.Id).ToArray(),
-            occurred.Add(DefaultObservationWindow), null, null, ExpectedEvidenceFor(step), step.IssuedAtUtc ?? plan.StartedAtUtc, Action: step.Action);
+            occurred.Add(DefaultObservationWindow), null, null, ExpectedEvidenceFor(step), step.IssuedAtUtc ?? plan.StartedAtUtc, Action: step.Action,
+            PartialReportSnapshot: partial ? new(plan.Steps, plan.Reservations) : null);
         var steps = plan.Steps.ToArray();
-        steps[plan.CurrentStepOrdinal] = step with { Quantity = quantity, UnitPrice = effectiveUnitPrice,
+        steps[plan.CurrentStepOrdinal] = step with { ReportedQuantity = quantity,
+            OriginalInstructedQuantity = step.OriginalInstructedQuantity ?? step.Quantity,
             State = ExpectedEvidenceFor(step) is null ? PlanStepState.LocallyReported : PlanStepState.AwaitingConfirmation };
         var next = plan.CurrentStepOrdinal + 1;
-        if (next < steps.Length) steps[next] = steps[next] with { State = PlanStepState.Current, IssuedAtUtc = occurred };
-        return plan with { Steps = steps, Events = plan.Events.Append(execution).ToArray(), CurrentStepOrdinal = next,
+        var result = plan with { Steps = steps, Events = plan.Events.Append(execution).ToArray(), CurrentStepOrdinal = next,
             State = next < steps.Length ? PlanState.InProgress : step.Action == PlanStepAction.PlaceBuyOrder ? PlanState.Waiting : PlanState.ExecutionComplete,
             ReconciliationState = PlanReconciliationState.AwaitingEvidence };
+        if (partial)
+        {
+            var actedDownstream = plan.Events.Any(value => plan.Steps.Skip(next).Any(dependent => dependent.Id == value.StepId));
+            var supported = IsSingleAcquisitionExit(plan, step) && !actedDownstream;
+            if (supported && FitsOriginalCommitment(plan, step, steps[next], quantity, effectiveUnitPrice))
+            {
+                steps[next] = steps[next] with { Quantity = quantity,
+                    OriginalInstructedQuantity = steps[next].OriginalInstructedQuantity ?? steps[next].Quantity };
+            }
+            else
+            {
+                // Reserve the unperformed part conservatively as well as actual outputs
+                // needed by future work. This does not issue a second acquisition.
+                var remainderSteps = steps.Select((value, index) => index == plan.CurrentStepOrdinal
+                    ? step with { Quantity = step.Quantity - quantity, State = PlanStepState.Pending }
+                    : value).ToArray();
+                var held = OutstandingReservations(plan with { Steps = remainderSteps });
+                for (var index = next; index < steps.Length; index++)
+                    if (!plan.Events.Any(value => value.StepId == steps[index].Id))
+                        steps[index] = steps[index] with { State = PlanStepState.RecheckRequired };
+                return result with { State = PlanState.ReconciliationRequired,
+                    CurrentStepOrdinal = -1, ResidualReservations = held, Reservations = held,
+                    ResidualReason = actedDownstream ? PlanResidualReason.DependentWorkAlreadyRecorded
+                        : supported ? PlanResidualReason.ResourceRecheckRequired : PlanResidualReason.UnsupportedPartialCompletion };
+            }
+        }
+        if (next < steps.Length)
+        {
+            var dependent = steps[next];
+            if (!dependent.DependsOnStepIds.All(id => result.Events.Any(value => value.StepId == id &&
+                value.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed or PlanShadowEventState.Confirmed)))
+                return result with { State = PlanState.ReconciliationRequired, CurrentStepOrdinal = -1,
+                    ResidualReason = PlanResidualReason.ResourceRecheckRequired,
+                    ResidualReservations = OutstandingReservations(result) };
+            steps[next] = dependent with { State = PlanStepState.Current, IssuedAtUtc = occurred };
+        }
+        return partial ? result with { Reservations = OutstandingReservations(result) } : result;
+    }
+
+    private static bool IsSingleAcquisitionExit(PlanRecord plan, PlanStep acquisition) =>
+        plan.Attention == PlanAttention.Active && plan.CurrentStepOrdinal == 0 && plan.Steps.Count == 2 &&
+        acquisition.Action == PlanStepAction.BuyNow && acquisition.DependsOnStepIds.Count == 0 &&
+        acquisition.ExternalIdentity is null && acquisition.CraftEffects is null &&
+        plan.Reservations.All(value => value.Kind == PlanResourceKind.Cash) &&
+        plan.Steps[1] is { Action: PlanStepAction.List or PlanStepAction.SellNow, State: PlanStepState.Pending,
+            ExternalIdentity: null, CraftEffects: null } exit &&
+        exit.ItemId == acquisition.ItemId && exit.Quantity == acquisition.Quantity &&
+        exit.DependsOnStepIds.SequenceEqual(new[] { acquisition.Id }, StringComparer.Ordinal);
+
+    private static bool FitsOriginalCommitment(PlanRecord plan, PlanStep buy, PlanStep exit, int quantity, Money? actualPrice)
+    {
+        if (buy.UnitPrice is not { Copper: >= 0 } price || actualPrice is not { Copper: >= 0 } actual ||
+            exit.UnitPrice is not { Copper: >= 0 } exitPrice) return false;
+        // Fewer units do not authorize a higher bid or worse per-unit economics.
+        // Record a differing acquisition price honestly, but pause its continuation.
+        if (actual.Copper > price.Copper) return false;
+        // With no new resource kind or dependency, a smaller total cash commitment
+        // and smaller inventory need preserve every hard constraint admitted at start.
+        var original = checked(price.Copper * buy.Quantity);
+        var reduced = checked(actual.Copper * quantity);
+        if (exit.Action == PlanStepAction.List)
+        {
+            var policy = Gw2TradingPostFeePolicy.Create();
+            original = checked(original + policy.CalculateFees(new Money(checked(exitPrice.Copper * exit.Quantity))).ListingFee.Copper);
+            reduced = checked(reduced + policy.CalculateFees(new Money(checked(exitPrice.Copper * quantity))).ListingFee.Copper);
+        }
+        return TryAggregateResourceDemands(plan.Reservations, out var admitted) &&
+            reduced <= Math.Min(original, CashDemand(admitted).Copper);
     }
 
     public PlanRecord CancelUnperformedStep(PlanRecord plan)
@@ -193,16 +269,27 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         ArgumentNullException.ThrowIfNull(plan);
         var last = plan.Events.LastOrDefault(e => e.State is PlanShadowEventState.PendingConfirmation or PlanShadowEventState.PartiallyConfirmed);
         if (last is null) throw new InvalidOperationException("There is no unconfirmed execution to undo.");
+        if (last.PartialReportSnapshot is not null && (last.VerifiedQuantity.GetValueOrDefault() > 0 ||
+            plan.Events.Any(value => value.Sequence > last.Sequence && value.State is not (PlanShadowEventState.Reversed or PlanShadowEventState.Invalidated))))
+            return plan with { State = PlanState.ReconciliationRequired,
+                Steps = plan.Steps.Select(step => step.State == PlanStepState.Current
+                    ? step with { State = PlanStepState.RecheckRequired } : step).ToArray(), CurrentStepOrdinal = -1,
+                ResidualReservations = OutstandingReservations(plan),
+                ResidualReason = PlanResidualReason.DependentWorkAlreadyRecorded };
         if (plan.Events.Any(e => e.DependsOnEventIds.Contains(last.Id, StringComparer.Ordinal) && e.State is PlanShadowEventState.Confirmed or PlanShadowEventState.PartiallyConfirmed))
             return plan with { State = PlanState.ReconciliationRequired, ReconciliationState = PlanReconciliationState.Contradicted };
         var invalidated = plan.Events.Where(e => e.DependsOnEventIds.Contains(last.Id, StringComparer.Ordinal) && e.State == PlanShadowEventState.PendingConfirmation).Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
         var events = plan.Events.Select(e => e.Id == last.Id ? e with { State = PlanShadowEventState.Reversed } : invalidated.Contains(e.Id) ? e with { State = PlanShadowEventState.Invalidated } : e).ToArray();
         var ordinal = plan.Steps.Select((step, index) => (step, index)).Single(pair => pair.step.Id == last.StepId).index;
-        var steps = plan.Steps.Select((step, index) => index >= ordinal ? step with { State = index == ordinal ? PlanStepState.Current : PlanStepState.Invalidated } : step).ToArray();
+        var steps = last.PartialReportSnapshot?.Steps.ToArray() ?? plan.Steps.Select((step, index) => index >= ordinal
+            ? step with { State = index == ordinal ? PlanStepState.Current : PlanStepState.Invalidated,
+                ReportedQuantity = index == ordinal ? null : step.ReportedQuantity } : step).ToArray();
         return plan with { Events = events, Steps = steps, CurrentStepOrdinal = ordinal, State = PlanState.InProgress,
             ReconciliationState = PlanReconciliationState.None, IsCancelled = false,
             ConsecutiveContradictionCount = 0,
-            ReconciliationReason = PlanReconciliationReason.None };
+            ReconciliationReason = PlanReconciliationReason.None,
+            Reservations = last.PartialReportSnapshot?.Reservations ?? plan.Reservations,
+            ResidualReason = PlanResidualReason.None, ResidualReservations = null };
     }
 
     /// <summary>Applies account-scoped evidence without inferring completeness across source boundaries.</summary>
@@ -411,7 +498,7 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         else if (contradictions > 0) state = PlanState.RecheckRequired;
         var updatedSteps = plan.Steps.Select(step =>
         {
-            var eventForStep = events.FirstOrDefault(e => e.StepId == step.Id);
+            var eventForStep = events.LastOrDefault(e => e.StepId == step.Id && e.State is not (PlanShadowEventState.Reversed or PlanShadowEventState.Invalidated));
             return eventForStep?.State switch
             {
                 PlanShadowEventState.Confirmed => step with { State = PlanStepState.Confirmed },
@@ -419,7 +506,8 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
                 _ => step,
             };
         }).ToArray();
-        if (!stillAwaitingEvidence && state == PlanState.RecheckRequired) state = CompatibleLifecycleState(plan, updatedSteps);
+        if (!stillAwaitingEvidence && state == PlanState.RecheckRequired && plan.ResidualReason == PlanResidualReason.None)
+            state = CompatibleLifecycleState(plan, updatedSteps);
         var reconciliationReason = cancellationEvidenceConflict
             ? PlanReconciliationReason.CancellationLateFill
             : observedReason != PlanReconciliationReason.None
@@ -528,7 +616,10 @@ public sealed class PlanOrchestrationService : IPlanOrchestrationService
         if (!evidenceReady || plan.State is PlanState.ReconciliationRequired or PlanState.Invalid or PlanState.ExecutionComplete) return plan;
         var current = plan.Steps.FirstOrDefault(step => step.State == PlanStepState.Current);
         var replacement = currentCandidate?.Steps.FirstOrDefault(step => string.Equals(step.Id, current?.Id, StringComparison.Ordinal));
-        var materiallyChanged = current is not null && (replacement is null || replacement.Action != current.Action || replacement.ItemId != current.ItemId || MateriallyDifferent(replacement.Quantity, current.Quantity) || MateriallyDifferent(replacement.UnitPrice?.Copper, current.UnitPrice?.Copper));
+        var comparisonQuantity = current is not null && plan.Events.Any(value => value.PartialReportSnapshot is not null &&
+            value.State is not (PlanShadowEventState.Reversed or PlanShadowEventState.Invalidated))
+            ? current.OriginalInstructedQuantity ?? current.Quantity : current?.Quantity;
+        var materiallyChanged = current is not null && (replacement is null || replacement.Action != current.Action || replacement.ItemId != current.ItemId || MateriallyDifferent(replacement.Quantity, comparisonQuantity) || MateriallyDifferent(replacement.UnitPrice?.Copper, current.UnitPrice?.Copper));
         var improvementThreshold = Math.Max(1, Math.Abs(plan.BaselineUtility) * plan.HysteresisPolicy.MaterialImprovementBasisPoints / 10_000);
         var materiallyImproved = currentCandidate is not null && currentCandidate.Utility >= plan.BaselineUtility + improvementThreshold;
         return materiallyChanged || materiallyImproved

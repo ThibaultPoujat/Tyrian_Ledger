@@ -218,6 +218,125 @@ public sealed class SqlitePersistenceIntegrationTests
     }
 
     [Fact]
+    public async Task Partial_completion_race_restart_competition_and_undo_preserve_one_historical_receipt()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("partial-account", FirstObservedAtUtc);
+        var orchestration = new PlanOrchestrationService();
+        var plan = PartialCompletionPlan("partial-plan");
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, plan, new Money(5_000), Money.Zero, new Dictionary<string, long>()));
+        var command = new PlanCompletionCommand(plan.Id, "buy", 1, "partial-command", PlanCompletionOperation.ReportPerformed, 4, new Money(100));
+        var service = new PlanCompletionCommandService(database.Plans, orchestration);
+        var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => service.CompleteAsync(account.Id, command)));
+        Assert.Single(results, value => value.Status == PlanCompletionStatus.Applied);
+        Assert.Equal(7, results.Count(value => value.Status == PlanCompletionStatus.AlreadyApplied));
+        var receipt = results[0].Receipt;
+        var reopened = new SqlitePlanRepository(database.Factory);
+        var reopenedService = new PlanCompletionCommandService(reopened, orchestration);
+        Assert.Equal(receipt, (await reopenedService.CompleteAsync(account.Id, command)).Receipt);
+        var stored = Assert.Single(await reopened.GetStartedAsync(account.Id));
+        Assert.Equal(2, stored.Revision);
+        Assert.Single(stored.Events);
+        Assert.Equal(10, stored.Steps[0].Quantity);
+        Assert.Equal(4, stored.Steps[0].ReportedQuantity);
+        Assert.Equal(4, stored.Steps[1].Quantity);
+        Assert.Equal(40, PlanOrchestrationService.OutstandingReservations(stored).Sum(value => value.Cash.Copper));
+        Assert.Equal(1, await database.GetTableCountAsync("plan_completion_receipts"));
+        Assert.Equal(PlanCompletionStatus.Conflict, (await reopenedService.CompleteAsync(account.Id,
+            command with { CommandId = "stale-exit", StepId = "exit" })).Status);
+        var competitor = plan with { Id = "competing", SourceOpportunityId = "competing", Reservations = [new(PlanResourceKind.Inventory, "42", 1, Money.Zero)],
+            Steps = [new("sell", PlanStepAction.SellNow, 42, "Objet", 1, new Money(200), [], PlanStepState.Current)] };
+        Assert.Equal(PlanStartResult.ResourcesUnavailable, await reopened.TryStartAsync(account.Id, competitor,
+            new Money(5_000), Money.Zero, new Dictionary<string, long>()));
+        var undone = orchestration.UndoLastStep(stored, FirstObservedAtUtc.AddSeconds(1));
+        await reopened.SaveAsync(account.Id, undone);
+        var restored = Assert.Single(await reopened.GetStartedAsync(account.Id));
+        Assert.Equal(3, restored.Revision);
+        Assert.Equal(10, restored.Steps[0].Quantity);
+        Assert.Equal(10, restored.Steps[1].Quantity);
+        Assert.Equal(1_100, PlanOrchestrationService.OutstandingReservations(restored).Sum(value => value.Cash.Copper));
+        Assert.Equal(PlanShadowEventState.Reversed, restored.Events[0].State);
+        Assert.Equal(receipt, (await reopenedService.CompleteAsync(account.Id, command)).Receipt);
+        Assert.Equal(3, Assert.Single(await reopened.GetStartedAsync(account.Id)).Revision);
+    }
+
+    [Fact]
+    public async Task Partial_completion_receipt_failure_rolls_back_resize_effects_and_reservations()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("partial-rollback", FirstObservedAtUtc);
+        var plan = PartialCompletionPlan("partial-rollback");
+        Assert.Equal(PlanStartResult.Started, await database.Plans.TryStartAsync(account.Id, plan, new Money(5_000), Money.Zero, new Dictionary<string, long>()));
+        var original = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        var service = new PlanCompletionCommandService(database.Plans, new PlanOrchestrationService());
+        var command = new PlanCompletionCommand(plan.Id, "buy", 1, "rollback-command", PlanCompletionOperation.ReportPerformed, 4, new Money(100));
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var trigger = connection.CreateCommand())
+        {
+            trigger.CommandText = "CREATE TRIGGER fail_partial_receipt BEFORE INSERT ON plan_completion_receipts BEGIN SELECT RAISE(ABORT, 'partial receipt failure'); END;";
+            await trigger.ExecuteNonQueryAsync();
+        }
+        await Assert.ThrowsAsync<SqliteException>(() => service.CompleteAsync(account.Id, command));
+        Assert.True(PlanRecordSemantics.AreEqual(original, Assert.Single(await database.Plans.GetStartedAsync(account.Id))));
+        Assert.Equal(0, await database.GetTableCountAsync("plan_completion_receipts"));
+        await using (var connection = await database.Factory.OpenConnectionAsync())
+        await using (var trigger = connection.CreateCommand())
+        {
+            trigger.CommandText = "DROP TRIGGER fail_partial_receipt;";
+            await trigger.ExecuteNonQueryAsync();
+        }
+        Assert.Equal(PlanCompletionStatus.Applied, (await service.CompleteAsync(account.Id, command)).Status);
+        Assert.Equal(4, Assert.Single(await database.Plans.GetStartedAsync(account.Id)).Steps[1].Quantity);
+        Assert.Equal(1, await database.GetTableCountAsync("plan_completion_receipts"));
+    }
+
+    [Theory]
+    [InlineData(0, PlanCompletionReason.InvalidQuantity)]
+    [InlineData(-1, PlanCompletionReason.InvalidQuantity)]
+    [InlineData(11, PlanCompletionReason.InvalidQuantity)]
+    public async Task Partial_invalid_quantities_write_no_receipt_or_mutation(int quantity, PlanCompletionReason reason)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("partial-invalid", FirstObservedAtUtc);
+        var plan = PartialCompletionPlan("partial-invalid");
+        await database.Plans.TryStartAsync(account.Id, plan, new Money(5_000), Money.Zero, new Dictionary<string, long>());
+        var original = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        var result = await new PlanCompletionCommandService(database.Plans, new PlanOrchestrationService()).CompleteAsync(account.Id,
+            new(plan.Id, "buy", 1, "invalid", PlanCompletionOperation.ReportPerformed, quantity, new Money(100)));
+        Assert.Equal(PlanCompletionStatus.Invalid, result.Status);
+        Assert.Equal(reason, result.Reason);
+        Assert.True(PlanRecordSemantics.AreEqual(original, Assert.Single(await database.Plans.GetStartedAsync(account.Id))));
+        Assert.Equal(0, await database.GetTableCountAsync("plan_completion_receipts"));
+    }
+
+    [Fact]
+    public async Task Partial_craft_and_overflow_fail_atomically_with_structured_recovery()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var account = await database.PersonalTradingPost.GetOrCreateAccountProfileAsync("partial-overflow", FirstObservedAtUtc);
+        var service = new PlanCompletionCommandService(database.Plans, new PlanOrchestrationService());
+        var plan = PartialCompletionPlan("overflow-plan");
+        await database.Plans.TryStartAsync(account.Id, plan, new Money(5_000), Money.Zero, new Dictionary<string, long>());
+        var original = Assert.Single(await database.Plans.GetStartedAsync(account.Id));
+        var overflow = await service.CompleteAsync(account.Id, new(plan.Id, "buy", 1, "overflow-command", PlanCompletionOperation.ReportPerformed, 4, new Money(long.MaxValue)));
+        Assert.Equal(PlanCompletionReason.ResourceOverflow, overflow.Reason);
+        Assert.Equal(PlanCompletionStatus.Invalid, overflow.Status);
+        Assert.True(PlanRecordSemantics.AreEqual(original, Assert.Single(await database.Plans.GetStartedAsync(account.Id))));
+        var craft = original with { Steps = [new("buy", PlanStepAction.Craft, 42, "Objet", 10, null, [], PlanStepState.Current)] };
+        await database.Plans.SaveAsync(account.Id, craft);
+        var result = await service.CompleteAsync(account.Id, new(plan.Id, "buy", 2, "craft-command", PlanCompletionOperation.ReportPerformed, 4, null));
+        Assert.Equal(PlanCompletionReason.CraftQuantityMismatch, result.Reason);
+        Assert.Equal(2, Assert.Single(await database.Plans.GetStartedAsync(account.Id)).Revision);
+        Assert.Equal(0, await database.GetTableCountAsync("plan_completion_receipts"));
+    }
+
+    private static PlanRecord PartialCompletionPlan(string id) => new PlanOrchestrationService().Start(new("partial", 1, id,
+        PlanAttention.Active, [new("buy", PlanStepAction.BuyNow, 42, "Objet", 10, new Money(100), [], PlanStepState.Pending),
+        new("exit", PlanStepAction.List, 42, "Objet", 10, new Money(200), ["buy"], PlanStepState.Pending)],
+        [new(PlanResourceKind.Cash, "cash", 0, new Money(1_100))], Money.Zero, new Money(1_100), 0, 0, 1, 1, true, []),
+        FirstObservedAtUtc, new Money(5_000), new Dictionary<string, long>()) with { Id = id };
+
+    [Fact]
     public async Task Sequential_retry_of_a_completed_step_acknowledges_its_sqlite_receipt_without_advancing_the_next_step()
     {
         await using var database = await TestDatabase.CreateAsync();
