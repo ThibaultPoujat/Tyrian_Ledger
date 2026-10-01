@@ -245,21 +245,16 @@ public static class Program
             async (
                 HttpContext context,
                 IAccountCraftingSnapshotService accountCraftingSnapshotService,
-                IPersonalTradingPostGateway personalTradingPost,
                 PlanEndpointService plans,
                 CancellationToken cancellationToken) =>
             {
                 var refresh = await accountCraftingSnapshotService.RefreshWithOutcomeAsync(cancellationToken).ConfigureAwait(false);
                 var result = refresh.Result;
-                if (result.IsSuccess)
+                if (result.IsSuccess && result.Value is not null)
                 {
-                    var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
-                    if (scope.IsSuccess && scope.Value is not null)
-                    {
-                        // The old decision could have used earlier verified materials.
-                        // Clear it before any explanation read can reuse that authority.
-                        await plans.InvalidateLoopDecisionAsync(scope.Value.AccountId, cancellationToken).ConfigureAwait(false);
-                    }
+                    // Use the committed snapshot's verified scope directly;
+                    // cancellation after persistence must not skip invalidation.
+                    await plans.InvalidateLoopDecisionAsync(result.Value.AccountScope.AccountId).ConfigureAwait(false);
                 }
                 if (!result.IsSuccess && result.ErrorCategory is
                     Gw2ApiErrorCategory.CredentialUnavailable or

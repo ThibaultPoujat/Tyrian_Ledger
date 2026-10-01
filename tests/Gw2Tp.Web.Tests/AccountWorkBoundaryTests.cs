@@ -58,7 +58,7 @@ public sealed class AccountWorkBoundaryTests
         {
             // The prior SQL mutation has ended; its continuation is delayed.
             entered.SetResult(); await release.Task;
-            await plans.InvalidateLoopDecisionAsync("A", token);
+            await plans.InvalidateLoopDecisionAsync("A");
             return true;
         });
         await entered.Task;
@@ -71,7 +71,7 @@ public sealed class AccountWorkBoundaryTests
         Assert.True(projections.TryGetActive(out var retained));
         Assert.Same(current, retained);
         Assert.False(current!.IsCompleted);
-        await fence.RunAsync(async token => { await plans.InvalidateLoopDecisionAsync("A", token); return true; });
+        await fence.RunAsync(async token => { await plans.InvalidateLoopDecisionAsync("A"); return true; });
         Assert.Equal(1, invalidations);
         Assert.False(projections.TryGetActive(out _));
         plans.CompleteLoopDecision(currentLoop);

@@ -68,7 +68,7 @@ and incarnation publication. Failed recovery cannot fall back to an unguarded ga
 | Completion effects, reservations and receipts/replay | Browser view scope checked before profile/receipt lookup; same private repository guard/profile check precedes receipt SQL and atomic command transaction |
 | Investment position/target/exit writes and reads | Private request bundle; `SqliteInvestmentPositionRepository.AcquirePrivateAsync` and account check |
 | Decision loop admission/running/ready/degraded/failure status, plans projection and notification observation | Loop bundle; short admission/publication leases; asynchronous bundle starts only after admission lease disposal; projection generation also guards local plan mutations |
-| Post-command and crafting-refresh decision invalidation | Captured request's explicit publication lease before clearing projections/notifications; the transition callback already owns the generation lease |
+| Post-command and crafting-refresh decision invalidation | Captured request's explicit publication lease before clearing projections/notifications, uncancellable after durable effects; start invalidates before follow-up reads and crafting uses the committed snapshot scope; the transition callback already owns the generation lease |
 | Connection validation cache reads/publication | Captured context generation plus current-generation match; explicit leases reject obsolete queued or completed validation before reuse/publication |
 | Notification preferences/acknowledgements | Request bundle; explicit publication lease around ledger mutation |
 | Private API read models and acknowledgement bodies | Middleware buffers the private body and validates a publication lease before copying it to the response; rejected work returns only safe `account_scope_changed` with French copy |
@@ -112,6 +112,9 @@ original receipt under a newly admitted same-account context without inventing
 current-plan authority.
 Delayed plan invalidation and loop admission preserve the new generation's active
 projection; obsolete callers cannot clear it or set current readiness to Running.
+The public completion boundary also verifies that browser cancellation after an
+applied command cannot skip current-generation invalidation. This does not permit
+old-generation invalidation; its publication lease still rejects obsolete context.
 
 #171 must use this existing fence/private database seam for persistent protected
 holdings. This ticket adds no live holdings integration, scheduler/cache redesign,

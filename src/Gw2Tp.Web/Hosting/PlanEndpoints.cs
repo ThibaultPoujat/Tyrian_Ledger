@@ -271,9 +271,9 @@ internal sealed class PlanEndpointService(
             var existing = await FindByCandidateAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
             return existing is null ? Results.Conflict(new { error = "plan_already_started" }) : Results.Json(new { state = "already_started", plan = ToResponse(existing) });
         }
+        await InvalidateLoopDecisionAsync(context.Profile.AccountScopeId).ConfigureAwait(false);
         var committed = await FindAsync(context.Profile.Id, plan.Id, cancellationToken).ConfigureAwait(false);
         if (committed is null) return Results.Conflict(new { error = "plan_start_not_visible" });
-        await InvalidateLoopDecisionAsync(context.Profile.AccountScopeId, cancellationToken).ConfigureAwait(false);
         return Results.Json(new { state = "started", plan = ToResponse(committed) });
     }
 
@@ -313,7 +313,7 @@ internal sealed class PlanEndpointService(
         if (result.Status is PlanCompletionStatus.Applied or PlanCompletionStatus.AlreadyApplied)
         {
             if (result.Status == PlanCompletionStatus.Applied)
-                await InvalidateLoopDecisionAsync(scope.Value.AccountId, cancellationToken).ConfigureAwait(false);
+                await InvalidateLoopDecisionAsync(scope.Value.AccountId).ConfigureAwait(false);
             var receipt = result.Receipt!;
             var state = operation == PlanCompletionOperation.NotPerformed ? "cancelled" : "reported";
             return Results.Json(new
@@ -348,7 +348,7 @@ internal sealed class PlanEndpointService(
         var updated = orchestration.UndoLastStep(plan, DateTimeOffset.UtcNow);
         try { await repository.SaveAsync(context.Profile.Id, updated, cancellationToken).ConfigureAwait(false); }
         catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
-        await InvalidateLoopDecisionAsync(context.Profile.AccountScopeId, cancellationToken).ConfigureAwait(false);
+        await InvalidateLoopDecisionAsync(context.Profile.AccountScopeId).ConfigureAwait(false);
         return Results.Json(new { state = "undone", plan = ToResponse(updated with { Revision = updated.Revision + 1 }) });
     }
 
@@ -408,9 +408,11 @@ internal sealed class PlanEndpointService(
         return loopDecisions.TryPublishAndObserve(decision, loopGeneration, observe);
     }
 
-    internal async Task InvalidateLoopDecisionAsync(string accountScopeId, CancellationToken cancellationToken)
+    internal async Task InvalidateLoopDecisionAsync(string accountScopeId)
     {
-        await using var publication = fence is null ? null : await fence.AcquireCommitAsync(cancellationToken).ConfigureAwait(false);
+        // Durable effects already won. A disconnected browser cannot cancel
+        // their invalidation; the captured generation must still be current.
+        await using var publication = fence is null ? null : await fence.AcquireCommitAsync(CancellationToken.None).ConfigureAwait(false);
         InvalidateLoopDecisionForTransition(accountScopeId);
     }
 
