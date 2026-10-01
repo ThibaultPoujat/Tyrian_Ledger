@@ -19,6 +19,65 @@ namespace Gw2Tp.Web.Tests;
 public sealed class AccountWorkBoundaryTests
 {
     [Fact]
+    public async Task Stale_loop_admission_cannot_begin_or_clear_a_new_generation_projection()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fence = new BoundaryFence { BeforeWork = async () => { entered.SetResult(); await release.Task; } };
+        var projections = new PlanDecisionProjectionStore(DecisionLoopSchedulerSettings.Default);
+        var plans = new PlanEndpointService(null!, null!, null!, null!, null!, null!, null!,
+            new PlanOrchestrationService(), projections, fence: fence);
+        var loop = new ContinuousDecisionLoopService(new BlockedSynchronization(), new NoCrafting(), plans,
+            new FixedClock(), new Lifetime(), fence);
+        var stale = loop.RunNowAsync();
+        await entered.Task;
+        fence.Rotate();
+        var currentGeneration = plans.BeginLoopDecision();
+        Assert.True(projections.TryGetActive(out var current));
+        release.SetResult();
+        await Assert.ThrowsAsync<AccountWorkRejectedException>(() => stale);
+        Assert.Equal(DecisionLoopRunState.NeverRun, loop.GetStatus().State);
+        Assert.True(projections.TryGetActive(out var retained));
+        Assert.Same(current, retained);
+        Assert.False(current!.IsCompleted);
+        plans.CompleteLoopDecision(currentGeneration);
+    }
+
+    [Fact]
+    public async Task Late_plan_mutation_invalidation_cannot_cancel_a_new_generation_loop()
+    {
+        var fence = new BoundaryFence();
+        var projections = new PlanDecisionProjectionStore(DecisionLoopSchedulerSettings.Default);
+        var plans = new PlanEndpointService(null!, null!, null!, null!, null!, null!, null!,
+            new PlanOrchestrationService(), projections, fence: fence);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var invalidations = 0;
+        plans.LoopDecisionInvalidated += _ => invalidations++;
+        var old = fence.RunAsync(async token =>
+        {
+            // The prior SQL mutation has ended; its continuation is delayed.
+            entered.SetResult(); await release.Task;
+            await plans.InvalidateLoopDecisionAsync("A", token);
+            return true;
+        });
+        await entered.Task;
+        fence.Rotate();
+        var currentLoop = plans.BeginLoopDecision();
+        Assert.True(projections.TryGetActive(out var current));
+        release.SetResult();
+        await Assert.ThrowsAsync<AccountWorkRejectedException>(() => old);
+        Assert.Equal(0, invalidations);
+        Assert.True(projections.TryGetActive(out var retained));
+        Assert.Same(current, retained);
+        Assert.False(current!.IsCompleted);
+        await fence.RunAsync(async token => { await plans.InvalidateLoopDecisionAsync("A", token); return true; });
+        Assert.Equal(1, invalidations);
+        Assert.False(projections.TryGetActive(out _));
+        plans.CompleteLoopDecision(currentLoop);
+    }
+
+    [Fact]
     public async Task Real_clear_restore_and_restart_rotate_browser_scope_before_command_lookup()
     {
         var directory = Path.Combine(Path.GetTempPath(), "TyrianLedger.Scope.Tests", Guid.NewGuid().ToString("N"));
@@ -153,6 +212,7 @@ public sealed class AccountWorkBoundaryTests
 
     private sealed class BoundaryFence : IAccountWorkFence
     {
+        internal Func<Task>? BeforeWork { get; init; }
         private readonly AsyncLocal<AccountWorkContext?> current = new();
         public AccountWorkContext? Current => current.Value;
         public string Generation { get; private set; } = Guid.NewGuid().ToString("N");
@@ -163,7 +223,12 @@ public sealed class AccountWorkBoundaryTests
         {
             if (Current is not null) return await work(cancellationToken);
             current.Value = new(new("A"), "synthetic-session", "synthetic-incarnation", Generation);
-            try { return await work(cancellationToken); } finally { current.Value = null; }
+            try
+            {
+                if (BeforeWork is not null) await BeforeWork();
+                return await work(cancellationToken);
+            }
+            finally { current.Value = null; }
         }
         public Task BindAccountAsync(AccountScope account, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public ValueTask<IAsyncDisposable> AcquireCommitAsync(CancellationToken cancellationToken = default)

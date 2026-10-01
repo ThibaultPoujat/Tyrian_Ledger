@@ -1,5 +1,7 @@
 using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Persistence;
+using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Infrastructure.AccountConnection;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Plans;
@@ -22,6 +24,77 @@ namespace Gw2Tp.Infrastructure.Tests;
 public sealed class AccountWorkGenerationIntegrationTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+
+    [Theory]
+    [InlineData("clear")]
+    [InlineData("managed-restore")]
+    [InlineData("uploaded-restore")]
+    public async Task Recovery_does_not_wait_on_an_old_read_groups_operation_lease(string operation)
+    {
+        await using var db = await Database.CreateAsync();
+        await db.Run("A", () => db.Profiles.GetOrCreateAccountProfileAsync("A", Now));
+        var backup = await db.Recovery.CreateBackupAsync();
+        var entered = Barrier(); var release = Barrier();
+        var oldRead = db.Fence.RunAsync(async token =>
+        {
+            await db.Fence.BindAccountAsync(new("A"), token);
+            await using var group = await db.OperationGate.AcquireAsync(token);
+            entered.SetResult(); await release.Task;
+            return await db.Profiles.FindAccountProfileAsync("A", token);
+        });
+        await entered.Task;
+        using var recoveryDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            if (operation == "clear") await db.Recovery.ClearPersonalDataAsync(recoveryDeadline.Token);
+            else if (operation == "managed-restore")
+                Assert.Equal(LocalDataRestoreOutcome.Restored,
+                    (await db.Recovery.RestoreManagedBackupAsync(backup.FileName, recoveryDeadline.Token)).Outcome);
+            else
+            {
+                await using var contents = File.OpenRead(Path.Combine(db.Recovery.GetLocation().BackupDirectoryPath, backup.FileName));
+                Assert.Equal(LocalDataRestoreOutcome.Restored,
+                    (await db.Recovery.RestoreAsync(contents, recoveryDeadline.Token)).Outcome);
+            }
+        }
+        finally { release.SetResult(); }
+        await Assert.ThrowsAsync<AccountWorkRejectedException>(() => oldRead);
+        Assert.NotNull(await db.Run("A", () => db.Profiles.GetOrCreateAccountProfileAsync("A", Now)));
+    }
+
+    [Fact]
+    public async Task Holdings_identity_conflict_rejects_before_any_child_read()
+    {
+        await using var db = await Database.CreateAsync();
+        using var transport = new BlockedIdentityTransport("B");
+        transport.Release.SetResult();
+        using var client = new HttpClient(transport) { BaseAddress = new Uri("https://fixture.invalid/v2/") };
+        var gateway = new AccountHoldingsGateway(new CapturedGw2ApiKeySource(db.Fence), client,
+            new ImmediateScheduler(), new FrozenClock(Now), fence: db.Fence);
+        await Assert.ThrowsAsync<AccountWorkRejectedException>(() => db.Run("A", () => gateway.CollectAsync(Now)));
+        Assert.Equal(1, transport.Requests);
+    }
+
+    [Fact]
+    public async Task Queued_old_validation_cannot_be_retagged_or_cached_after_credential_switch()
+    {
+        await using var db = await Database.CreateAsync();
+        var inner = new BlockedValidation(new CapturedGw2ApiKeySource(db.Fence));
+        var cache = new CachedAccountConnectionStatusService(inner, fence: db.Fence);
+        var first = cache.GetStatusAsync();
+        await inner.Entered.Task;
+        var queued = cache.GetStatusAsync();
+        db.Credential.Value = "synthetic-B";
+        await db.Run("B", () => db.Profiles.GetOrCreateAccountProfileAsync("B", Now));
+        inner.Release.SetResult();
+        await Assert.ThrowsAsync<AccountWorkRejectedException>(() => first);
+        await Assert.ThrowsAsync<AccountWorkRejectedException>(() => queued);
+        Assert.Equal(1, inner.Calls);
+        var current = await cache.GetStatusAsync();
+        Assert.Equal(AccountConnectionState.InsufficientPermissions, current.State);
+        Assert.Equal(current, await cache.GetStatusAsync());
+        Assert.Equal(2, inner.Calls);
+    }
 
     [Fact]
     public async Task Coalesced_account_reads_bind_each_callers_context_before_private_access()
@@ -368,11 +441,29 @@ public sealed class AccountWorkGenerationIntegrationTests
     }
 
     private static TaskCompletionSource Barrier() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private sealed class BlockedValidation(IGw2ApiKeySource source) : IAccountConnectionStatusService
+    {
+        internal TaskCompletionSource Entered { get; } = Barrier();
+        internal TaskCompletionSource Release { get; } = Barrier();
+        internal int Calls;
+        public async Task<AccountConnectionStatus> GetStatusAsync(CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref Calls);
+            var credential = await source.ReadAsync(cancellationToken);
+            if (credential.Value == "synthetic-A")
+            {
+                Entered.TrySetResult();
+                await Release.Task.WaitAsync(cancellationToken);
+                return new(AccountConnectionState.Valid, ["account", "tradingpost", "wallet"], []);
+            }
+            return new(AccountConnectionState.InsufficientPermissions, ["account"], ["tradingpost", "wallet"]);
+        }
+    }
     private sealed class NoDelay : IGw2RequestDelay
     {
         public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken) => Task.CompletedTask;
     }
-    private sealed class BlockedIdentityTransport : HttpMessageHandler
+    private sealed class BlockedIdentityTransport(string account = "A") : HttpMessageHandler
     {
         internal TaskCompletionSource Entered { get; } = Barrier();
         internal TaskCompletionSource Release { get; } = Barrier();
@@ -382,7 +473,7 @@ public sealed class AccountWorkGenerationIntegrationTests
             Interlocked.Increment(ref Requests);
             Entered.SetResult();
             await Release.Task.WaitAsync(cancellationToken);
-            return new(HttpStatusCode.OK) { Content = new StringContent("{\"id\":\"A\"}", Encoding.UTF8, "application/json") };
+            return new(HttpStatusCode.OK) { Content = new StringContent($"{{\"id\":\"{account}\"}}", Encoding.UTF8, "application/json") };
         }
     }
     private sealed class BlockedTransport(bool fail) : HttpMessageHandler
@@ -449,13 +540,14 @@ public sealed class AccountWorkGenerationIntegrationTests
         internal SqliteConnectionFactory Factory { get; }
         internal AccountWorkFence Fence { get; }
         internal SqliteDatabaseGate Gate { get; }
+        internal PersonalDataOperationGate OperationGate { get; } = new();
         internal SqlitePersonalTradingPostRepository Profiles { get; }
         internal SqliteLocalDataRecoveryService Recovery { get; }
         private Database(string path)
         {
             Factory = new(path);
             Fence = new(new(Credential), new FileStoreIncarnationStore(Factory));
-            Gate = new(Fence); Profiles = new(Factory, Gate); Recovery = new(Factory, Gate, fence: Fence);
+            Gate = new(Fence); Profiles = new(Factory, Gate); Recovery = new(Factory, Gate, OperationGate, fence: Fence);
         }
         internal static async Task<Database> CreateAsync()
         {

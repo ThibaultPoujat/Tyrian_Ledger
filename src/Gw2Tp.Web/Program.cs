@@ -258,7 +258,7 @@ public static class Program
                     {
                         // The old decision could have used earlier verified materials.
                         // Clear it before any explanation read can reuse that authority.
-                        plans.InvalidateLoopDecision(scope.Value.AccountId);
+                        await plans.InvalidateLoopDecisionAsync(scope.Value.AccountId, cancellationToken).ConfigureAwait(false);
                     }
                 }
                 if (!result.IsSuccess && result.ErrorCategory is

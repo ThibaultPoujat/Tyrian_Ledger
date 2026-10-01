@@ -41,8 +41,9 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
 
     private async Task<PersonalTradingPostSynchronizationResult> SynchronizeCoreAsync(CancellationToken cancellationToken)
     {
-        // Legacy isolated tests can retain their operation gate. Production holds no lease during HTTP.
-        await using var operationLease = fence is null ? await operationGate.AcquireAsync(cancellationToken).ConfigureAwait(false) : null;
+        // Preserve same-generation synchronization/read-group serialization.
+        // This operation lease is not a generation lease; HTTP never holds generation.
+        await using var operationLease = await operationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         var attemptedAtUtc = RequireUtc(clock.UtcNow, "clock.UtcNow");
         var accountResult = await personalTradingPostGateway.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
         if (!accountResult.IsSuccess || accountResult.Value is null || string.IsNullOrWhiteSpace(accountResult.Value.AccountId))

@@ -273,7 +273,7 @@ internal sealed class PlanEndpointService(
         }
         var committed = await FindAsync(context.Profile.Id, plan.Id, cancellationToken).ConfigureAwait(false);
         if (committed is null) return Results.Conflict(new { error = "plan_start_not_visible" });
-        InvalidateLoopDecision(context.Profile.AccountScopeId);
+        await InvalidateLoopDecisionAsync(context.Profile.AccountScopeId, cancellationToken).ConfigureAwait(false);
         return Results.Json(new { state = "started", plan = ToResponse(committed) });
     }
 
@@ -312,7 +312,8 @@ internal sealed class PlanEndpointService(
         var result = await commandService.CompleteAsync(profile.Id, command, cancellationToken).ConfigureAwait(false);
         if (result.Status is PlanCompletionStatus.Applied or PlanCompletionStatus.AlreadyApplied)
         {
-            if (result.Status == PlanCompletionStatus.Applied) InvalidateLoopDecision(scope.Value.AccountId);
+            if (result.Status == PlanCompletionStatus.Applied)
+                await InvalidateLoopDecisionAsync(scope.Value.AccountId, cancellationToken).ConfigureAwait(false);
             var receipt = result.Receipt!;
             var state = operation == PlanCompletionOperation.NotPerformed ? "cancelled" : "reported";
             return Results.Json(new
@@ -347,7 +348,7 @@ internal sealed class PlanEndpointService(
         var updated = orchestration.UndoLastStep(plan, DateTimeOffset.UtcNow);
         try { await repository.SaveAsync(context.Profile.Id, updated, cancellationToken).ConfigureAwait(false); }
         catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
-        InvalidateLoopDecision(context.Profile.AccountScopeId);
+        await InvalidateLoopDecisionAsync(context.Profile.AccountScopeId, cancellationToken).ConfigureAwait(false);
         return Results.Json(new { state = "undone", plan = ToResponse(updated with { Revision = updated.Revision + 1 }) });
     }
 
@@ -407,7 +408,15 @@ internal sealed class PlanEndpointService(
         return loopDecisions.TryPublishAndObserve(decision, loopGeneration, observe);
     }
 
-    internal void InvalidateLoopDecision(string accountScopeId)
+    internal async Task InvalidateLoopDecisionAsync(string accountScopeId, CancellationToken cancellationToken)
+    {
+        await using var publication = fence is null ? null : await fence.AcquireCommitAsync(cancellationToken).ConfigureAwait(false);
+        InvalidateLoopDecisionForTransition(accountScopeId);
+    }
+
+    // Only the host's Invalidated callback may use this synchronous path: it
+    // already owns the generation transition lease, so must not reacquire it.
+    internal void InvalidateLoopDecisionForTransition(string accountScopeId)
     {
         loopDecisions.Invalidate();
         LoopDecisionInvalidated?.Invoke(accountScopeId);

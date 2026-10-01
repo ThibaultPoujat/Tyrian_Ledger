@@ -49,9 +49,12 @@ recreation must follow the pre-0.1 policy; this change never deletes credentials
 
 Capture/observe, asynchronous fetch and commit are separate phases. No generation
 lease is held during ArenaNet HTTP or native credential reads. Private persistence
-uses **generation → database**; recovery uses **generation → operation → database**.
-Backup/cleanup use operation → database without acquiring generation. A private
-write never obtains operation before generation. SQL ownership checks and mutation
+uses **generation → database**. TP synchronization and coherent dashboard/
+recommendation read groups retain the existing operation lease, giving
+**operation → generation → database**. Fenced recovery uses **generation → database**
+and never waits on operation: quiescence rejects old read groups instead.
+Backup/cleanup use operation → database without acquiring generation.
+SQL ownership checks and mutation
 or receipt lookup share the database/generation lease; existing transactions and
 CAS remain authoritative. Recovery holds quiescence through validation/replacement
 and incarnation publication. Failed recovery cannot fall back to an unguarded gate.
@@ -64,12 +67,14 @@ and incarnation publication. Failed recovery cannot fall back to an unguarded ga
 | Plan start, refresh, reconciliation, undo | Private request bundle; `SqlitePlanRepository.AcquirePrivateAsync`, profile ownership SQL before mutation/CAS |
 | Completion effects, reservations and receipts/replay | Browser view scope checked before profile/receipt lookup; same private repository guard/profile check precedes receipt SQL and atomic command transaction |
 | Investment position/target/exit writes and reads | Private request bundle; `SqliteInvestmentPositionRepository.AcquirePrivateAsync` and account check |
-| Decision loop ready/degraded/failure status, plans projection and notification observation | Loop bundle; explicit publication lease; projection generation also guards local plan mutations |
+| Decision loop admission/running/ready/degraded/failure status, plans projection and notification observation | Loop bundle; short admission/publication leases; asynchronous bundle starts only after admission lease disposal; projection generation also guards local plan mutations |
+| Post-command and crafting-refresh decision invalidation | Captured request's explicit publication lease before clearing projections/notifications; the transition callback already owns the generation lease |
+| Connection validation cache reads/publication | Captured context generation plus current-generation match; explicit leases reject obsolete queued or completed validation before reuse/publication |
 | Notification preferences/acknowledgements | Request bundle; explicit publication lease around ledger mutation |
 | Private API read models and acknowledgement bodies | Middleware buffers the private body and validates a publication lease before copying it to the response; rejected work returns only safe `account_scope_changed` with French copy |
 | Market sampling from private orders/investments | Collector bundle; private repository reads guarded; membership health tagged by captured generation; public price evidence remains reusable |
 | P02A/B opt-in holdings collector | Bundle, trusted account binding and final publication lease; no new polling, persistent projection or resource admission |
-| Clear/restore | Quiescing generation lease before operation/database leases; fresh incarnation before Ready |
+| Clear/restore | Quiescing generation lease before database lease; never wait on an operation-held old reader; fresh incarnation before Ready |
 
 All five private repository families use the shared production database gate.
 Absent captured context rejects production private access. Optional constructor
@@ -92,6 +97,10 @@ publication, restart, mixed targets, private admission, atomic completion and
 receipt replay. Real typed HTTP gateways exercise two TP pages and crafting/holdings
 bundles with a credential replacement while fetches are blocked; every request
 keeps the captured credential, while old success/failure writes are rejected.
+Mixed holdings identity rejects before child reads. Queued connection validation
+cannot retag an old credential's result with a newer generation.
+Clear and both restore entry points complete while an old reader owns the shared
+operation gate; that reader subsequently rejects and new-context private work succeeds.
 
 `AccountWorkBoundaryTests` checks A→B→A scope-before-known-command lookup, private
 response suppression and obsolete loop failure. Its TestServer case uses the actual
@@ -101,6 +110,8 @@ token behavior, which reaches the forbidden profile lookup; the generation-aware
 token implementation passes. Infrastructure restart replay still acknowledges the
 original receipt under a newly admitted same-account context without inventing
 current-plan authority.
+Delayed plan invalidation and loop admission preserve the new generation's active
+projection; obsolete callers cannot clear it or set current readiness to Running.
 
 #171 must use this existing fence/private database seam for persistent protected
 holdings. This ticket adds no live holdings integration, scheduler/cache redesign,

@@ -41,7 +41,10 @@ internal sealed class SqliteLocalDataRecoveryService(
     {
         ArgumentNullException.ThrowIfNull(backupContents);
         await using var transition = fence is null ? null : await fence.QuiesceAsync(cancellationToken).ConfigureAwait(false);
-        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        // Quiescence excludes private commits and rejects old read groups. Do
+        // not wait on their operation gate while holding generation: they may
+        // already own operation and be waiting to acquire generation.
+        await using var operationLease = fence is null ? await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false) : null;
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         CleanupStaleRestoreArtifactsCore();
 
@@ -59,7 +62,7 @@ internal sealed class SqliteLocalDataRecoveryService(
         }
 
         await using var transition = fence is null ? null : await fence.QuiesceAsync(cancellationToken).ConfigureAwait(false);
-        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var operationLease = fence is null ? await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false) : null;
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         CleanupStaleRestoreArtifactsCore();
 
@@ -195,7 +198,7 @@ internal sealed class SqliteLocalDataRecoveryService(
     public async Task ClearPersonalDataAsync(CancellationToken cancellationToken = default)
     {
         await using var transition = fence is null ? null : await fence.QuiesceAsync(cancellationToken).ConfigureAwait(false);
-        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var operationLease = fence is null ? await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false) : null;
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         CleanupStaleRestoreArtifactsCore();
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);

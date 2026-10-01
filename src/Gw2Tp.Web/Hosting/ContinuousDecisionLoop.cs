@@ -159,24 +159,37 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
     public Task<DecisionLoopRunResult> RunNowAsync(CancellationToken cancellationToken = default) =>
         fence is null ? RunNowCoreAsync(cancellationToken) : fence.RunAsync(RunNowCoreAsync, cancellationToken);
 
-    private Task<DecisionLoopRunResult> RunNowCoreAsync(CancellationToken cancellationToken)
+    private async Task<DecisionLoopRunResult> RunNowCoreAsync(CancellationToken cancellationToken)
     {
         Task<DecisionLoopRunResult> run;
-        lock (stateGate)
+        TaskCompletionSource? start = null;
+        await using (var admission = fence is null ? null : await fence.AcquireCommitAsync(cancellationToken).ConfigureAwait(false))
         {
-            if (activeRun is null)
+            lock (stateGate)
             {
-                var loopGeneration = plans.BeginLoopDecision();
-                SetStatus(status with { State = DecisionLoopRunState.Running });
-                activeRun = RunCoreAsync(applicationLifetime.ApplicationStopping, loopGeneration);
-                // Capture before the completion observer, which can finish synchronously.
-                run = activeRun;
-                _ = ClearActiveRunAsync(run);
+                if (activeRun is null)
+                {
+                    var loopGeneration = plans.BeginLoopDecision();
+                    SetStatus(status with { State = DecisionLoopRunState.Running });
+                    start = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    activeRun = RunAfterAdmissionAsync(start.Task, applicationLifetime.ApplicationStopping, loopGeneration);
+                    run = activeRun;
+                    _ = ClearActiveRunAsync(run);
+                }
+                else run = activeRun;
             }
-            else run = activeRun;
         }
 
-        return run.WaitAsync(cancellationToken);
+        // Starting the asynchronous bundle inside the lease could issue HTTP
+        // synchronously. Release the generation lease before allowing it to run.
+        start?.SetResult();
+        return await run.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<DecisionLoopRunResult> RunAfterAdmissionAsync(Task admission, CancellationToken cancellationToken, long loopGeneration)
+    {
+        await admission.ConfigureAwait(false);
+        return await RunCoreAsync(cancellationToken, loopGeneration).ConfigureAwait(false);
     }
 
     public DecisionLoopStatus GetStatus()
@@ -462,7 +475,7 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
 
     private void OnAccountWorkInvalidated()
     {
-        plans.InvalidateLoopDecision(status.AccountScopeId ?? "unavailable");
+        plans.InvalidateLoopDecisionForTransition(status.AccountScopeId ?? "unavailable");
         notificationLedger.Clear();
         lock (stateGate)
         {

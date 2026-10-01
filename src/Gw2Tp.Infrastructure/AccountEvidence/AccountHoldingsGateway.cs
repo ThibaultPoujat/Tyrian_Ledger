@@ -69,6 +69,7 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
             }, cancellationToken).ConfigureAwait(false);
         if (identity.Value is not { } account)
             return Gw2ApiResult<AccountHoldingsCapture>.Failure(identity.ErrorCategory ?? Gw2ApiErrorCategory.IncompleteData);
+        if (fence is not null) await fence.BindAccountAsync(account, cancellationToken).ConfigureAwait(false);
 
         var rosterTask = session.ReadAsync(AccountHoldingsSource.CharacterRoster, null, "characters", "roster",
             (response, token) => MapRosterAsync(account, response, token), cancellationToken);
