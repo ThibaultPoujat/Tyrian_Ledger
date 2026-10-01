@@ -17,25 +17,32 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
     private readonly IPersonalTradingPostSynchronizationStore synchronizationStore;
     private readonly IClock clock;
     private readonly IPersonalDataOperationGate operationGate;
+    private readonly IAccountWorkFence? fence;
 
     public PersonalTradingPostSynchronizationService(
         IPersonalTradingPostGateway personalTradingPostGateway,
         IGw2ApiClient marketDataClient,
         IPersonalTradingPostSynchronizationStore synchronizationStore,
         IClock clock,
-        IPersonalDataOperationGate? operationGate = null)
+        IPersonalDataOperationGate? operationGate = null,
+        IAccountWorkFence? fence = null)
     {
         this.personalTradingPostGateway = personalTradingPostGateway ?? throw new ArgumentNullException(nameof(personalTradingPostGateway));
         this.marketDataClient = marketDataClient ?? throw new ArgumentNullException(nameof(marketDataClient));
         this.synchronizationStore = synchronizationStore ?? throw new ArgumentNullException(nameof(synchronizationStore));
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
         this.operationGate = operationGate ?? NoopPersonalDataOperationGate.Instance;
+        this.fence = fence;
     }
 
-    public async Task<PersonalTradingPostSynchronizationResult> SynchronizeAsync(
+    public Task<PersonalTradingPostSynchronizationResult> SynchronizeAsync(
         CancellationToken cancellationToken = default)
+        => fence is null ? SynchronizeCoreAsync(cancellationToken) : fence.RunAsync(SynchronizeCoreAsync, cancellationToken);
+
+    private async Task<PersonalTradingPostSynchronizationResult> SynchronizeCoreAsync(CancellationToken cancellationToken)
     {
-        await using var operationLease = await operationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        // Legacy isolated tests can retain their operation gate. Production holds no lease during HTTP.
+        await using var operationLease = fence is null ? await operationGate.AcquireAsync(cancellationToken).ConfigureAwait(false) : null;
         var attemptedAtUtc = RequireUtc(clock.UtcNow, "clock.UtcNow");
         var accountResult = await personalTradingPostGateway.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
         if (!accountResult.IsSuccess || accountResult.Value is null || string.IsNullOrWhiteSpace(accountResult.Value.AccountId))
@@ -46,6 +53,7 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
         }
 
         var accountScopeId = accountResult.Value.AccountId;
+        if (fence is not null) await fence.BindAccountAsync(accountResult.Value, cancellationToken).ConfigureAwait(false);
         try
         {
             var currentBuys = await ReadAllPagesAsync(personalTradingPostGateway.GetCurrentBuyOrdersAsync, cancellationToken).ConfigureAwait(false);

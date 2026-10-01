@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Time;
 
 namespace Gw2Tp.Application.MarketHistory;
@@ -56,10 +57,12 @@ public sealed class MarketHistoryCollector(
     IAdaptiveMarketSamplingPolicy samplingPolicy,
     IMarketHistoryRepository marketHistoryRepository,
     IGw2ApiClient marketDataClient,
-    IClock clock) : IMarketHistoryCollector
+    IClock clock,
+    IAccountWorkFence? fence = null) : IMarketHistoryCollector
 {
     private readonly SemaphoreSlim collectionGate = new(1, 1);
     private readonly object healthGate = new();
+    private string? healthGeneration;
     private MarketHistoryCollectorHealth health = new(
         MarketHistoryCollectorState.Idle, null, null, 0, 0, null);
 
@@ -73,7 +76,8 @@ public sealed class MarketHistoryCollector(
     {
         lock (healthGate)
         {
-            return health;
+            return fence is not null && healthGeneration != fence.Generation
+                ? new(MarketHistoryCollectorState.Idle, null, null, 0, 0, null) : health;
         }
     }
 
@@ -90,11 +94,16 @@ public sealed class MarketHistoryCollector(
         }
     }
 
-    private async Task<MarketHistoryCollectionRun> CollectAsync(bool forceAllTargets, CancellationToken cancellationToken)
+    private Task<MarketHistoryCollectionRun> CollectAsync(bool forceAllTargets, CancellationToken cancellationToken) =>
+        fence is null ? CollectCoreAsync(forceAllTargets, cancellationToken)
+            : fence.RunAsync(token => CollectCoreAsync(forceAllTargets, token), cancellationToken);
+
+    private async Task<MarketHistoryCollectionRun> CollectCoreAsync(bool forceAllTargets, CancellationToken cancellationToken)
     {
         await collectionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            lock (healthGate) healthGeneration = fence?.Current?.Generation;
             SetCollecting(true);
             var plan = await samplingPolicy.BuildPlanAsync(cancellationToken).ConfigureAwait(false);
             var requestedAtUtc = RequireUtc(clock.UtcNow);

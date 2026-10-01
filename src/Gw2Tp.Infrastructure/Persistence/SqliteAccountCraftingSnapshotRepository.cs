@@ -20,7 +20,8 @@ internal sealed class SqliteAccountCraftingSnapshotRepository(
     public async Task ReplaceAsync(AccountCraftingSnapshot snapshot, CancellationToken cancellationToken = default)
     {
         ValidateSnapshot(snapshot);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(snapshot.AccountScope.AccountId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         var profileId = await GetOrCreateProfileIdAsync(connection, transaction, snapshot.AccountScope.AccountId, snapshot.CapturedAtUtc, cancellationToken).ConfigureAwait(false);
@@ -100,7 +101,8 @@ internal sealed class SqliteAccountCraftingSnapshotRepository(
     public async Task<AccountCraftingSnapshot?> GetLatestAsync(AccountScope accountScope, CancellationToken cancellationToken = default)
     {
         if (accountScope is null || string.IsNullOrWhiteSpace(accountScope.AccountId)) throw new ArgumentException("An opaque account scope is required.", nameof(accountScope));
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountScope.AccountId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """

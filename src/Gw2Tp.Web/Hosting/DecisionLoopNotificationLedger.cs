@@ -14,6 +14,8 @@ internal sealed class DecisionLoopNotificationLedger
     private readonly Dictionary<string, AccountState> accounts = new(StringComparer.Ordinal);
     private readonly object gate = new();
 
+    internal void Clear() { lock (gate) accounts.Clear(); }
+
     internal DecisionLoopPreferences GetPreferences(string accountScopeId)
     {
         lock (gate) return new DecisionLoopPreferences(GetAccount(accountScopeId).Enabled);

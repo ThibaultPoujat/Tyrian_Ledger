@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Crafting;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Finance;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.Persistence;
@@ -174,7 +175,8 @@ internal sealed class PlanEndpointService(
     IPlanOrchestrationService orchestration,
     PlanDecisionProjectionStore loopDecisions,
     AccountViewScopeTokenService? accountViewScopes = null,
-    IPlanCompletionCommandService? completionCommands = null)
+    IPlanCompletionCommandService? completionCommands = null,
+    IAccountWorkFence? fence = null)
 {
     internal const string AccountViewScopeHeader = "X-Tyrian-Ledger-Account-View-Scope";
     private readonly AccountViewScopeTokenService scopeTokens = accountViewScopes ?? new();
@@ -246,6 +248,7 @@ internal sealed class PlanEndpointService(
         var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
         if (!scope.IsSuccess || scope.Value is null)
             return Results.Json(new { state = "unavailable", accountCacheScope = (string?)null }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        if (fence is not null) await fence.BindAccountAsync(scope.Value, cancellationToken).ConfigureAwait(false);
         return Results.Json(new { state = "ready", accountCacheScope = scopeTokens.GetToken(scope.Value.AccountId) });
     }
 
@@ -297,6 +300,7 @@ internal sealed class PlanEndpointService(
 
         var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
         if (!scope.IsSuccess || scope.Value is null) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        if (fence is not null) await fence.BindAccountAsync(scope.Value, cancellationToken).ConfigureAwait(false);
         var currentAccountViewScope = scopeTokens.GetToken(scope.Value.AccountId);
         if (!string.Equals(accountViewScope, currentAccountViewScope, StringComparison.Ordinal))
             return Results.Conflict(new { error = "account_scope_changed" });
@@ -497,6 +501,7 @@ internal sealed class PlanEndpointService(
         // another account's in-memory decision projection.
         var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
         if (!scope.IsSuccess || scope.Value is null) return null;
+        if (fence is not null) await fence.BindAccountAsync(scope.Value, cancellationToken).ConfigureAwait(false);
         if (!loopDecisions.TryGet(scope.Value.AccountId, out var decision) || decision is null)
         {
             if (!loopDecisions.TryGetActive(out var active) || active is null) return null;
@@ -534,6 +539,7 @@ internal sealed class PlanEndpointService(
             if (!scope.IsSuccess || scope.Value is null) return null;
             snapshot = new AccountPortfolioSnapshot(scope.Value, Money.Zero);
         }
+        if (fence is not null) await fence.BindAccountAsync(snapshot.AccountScope, cancellationToken).ConfigureAwait(false);
         var profile = await profiles.FindAccountProfileAsync(snapshot.AccountScope.AccountId, cancellationToken).ConfigureAwait(false);
         if (profile is null) return null;
         AccountCraftingSnapshot? crafting;

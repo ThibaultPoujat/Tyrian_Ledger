@@ -1,4 +1,5 @@
 using Gw2Tp.Application.AccountEvidence;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Time;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.Secrets;
@@ -26,7 +27,8 @@ public static class AccountHoldingsServiceCollectionExtensions
             provider.GetRequiredService<IGw2ApiKeySource>(),
             provider.GetRequiredService<IHttpClientFactory>().CreateClient(AccountHoldingsGateway.HttpClientName),
             provider.GetRequiredService<IGw2RequestScheduler>(), provider.GetRequiredService<IClock>(),
-            TimeSpan.FromMilliseconds(provider.GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>().Value.RequestTimeoutMs)));
+            TimeSpan.FromMilliseconds(provider.GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>().Value.RequestTimeoutMs),
+            provider.GetService<IAccountWorkFence>()));
         return services;
     }
 }

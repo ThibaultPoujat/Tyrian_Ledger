@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Diagnostics;
 using Gw2Tp.Application.Crafting;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Plans;
@@ -131,6 +132,7 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
     private readonly PlanEndpointService plans;
     private readonly IClock clock;
     private readonly IHostApplicationLifetime applicationLifetime;
+    private readonly IAccountWorkFence? fence;
     private readonly object stateGate = new();
     private readonly DecisionLoopNotificationLedger notificationLedger = new();
     private Task<DecisionLoopRunResult>? activeRun;
@@ -141,17 +143,23 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
         IAccountCraftingSnapshotService craftingSnapshots,
         PlanEndpointService plans,
         IClock clock,
-        IHostApplicationLifetime applicationLifetime)
+        IHostApplicationLifetime applicationLifetime,
+        IAccountWorkFence? fence = null)
     {
         this.synchronization = synchronization ?? throw new ArgumentNullException(nameof(synchronization));
         this.craftingSnapshots = craftingSnapshots ?? throw new ArgumentNullException(nameof(craftingSnapshots));
         this.plans = plans ?? throw new ArgumentNullException(nameof(plans));
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        this.fence = fence;
+        if (fence is not null) fence.Invalidated += OnAccountWorkInvalidated;
         this.applicationLifetime = applicationLifetime ?? throw new ArgumentNullException(nameof(applicationLifetime));
         this.plans.LoopDecisionInvalidated += OnLoopDecisionInvalidated;
     }
 
-    public Task<DecisionLoopRunResult> RunNowAsync(CancellationToken cancellationToken = default)
+    public Task<DecisionLoopRunResult> RunNowAsync(CancellationToken cancellationToken = default) =>
+        fence is null ? RunNowCoreAsync(cancellationToken) : fence.RunAsync(RunNowCoreAsync, cancellationToken);
+
+    private Task<DecisionLoopRunResult> RunNowCoreAsync(CancellationToken cancellationToken)
     {
         Task<DecisionLoopRunResult> run;
         lock (stateGate)
@@ -161,10 +169,11 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
                 var loopGeneration = plans.BeginLoopDecision();
                 SetStatus(status with { State = DecisionLoopRunState.Running });
                 activeRun = RunCoreAsync(applicationLifetime.ApplicationStopping, loopGeneration);
-                _ = ClearActiveRunAsync(activeRun);
+                // Capture before the completion observer, which can finish synchronously.
+                run = activeRun;
+                _ = ClearActiveRunAsync(run);
             }
-
-            run = activeRun;
+            else run = activeRun;
         }
 
         return run.WaitAsync(cancellationToken);
@@ -227,6 +236,16 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
     {
         try
         {
+            return fence is null ? await RunFencedCoreAsync(cancellationToken, loopGeneration).ConfigureAwait(false)
+                : await fence.RunAsync(token => RunFencedCoreAsync(token, loopGeneration), cancellationToken).ConfigureAwait(false);
+        }
+        catch (AccountWorkRejectedException) { return new(false, null, null, GetStatus()); }
+    }
+
+    private async Task<DecisionLoopRunResult> RunFencedCoreAsync(CancellationToken cancellationToken, long loopGeneration)
+    {
+        try
+        {
             return await RunCoreBodyAsync(cancellationToken, loopGeneration).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -237,6 +256,7 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
         {
             var attemptedAtUtc = RequireUtc(clock.UtcNow);
             var error = exception.GetType().Name;
+            await using var failureLease = fence is null ? null : await fence.AcquireCommitAsync(cancellationToken).ConfigureAwait(false);
             SetFailedStatus(attemptedAtUtc, error);
             return new(false, null,
                 PrimaryRecommendationResult.Unavailable(PrimaryRecommendationState.EvidenceUnavailable, error, Program.DefaultRecommendationPolicies()),
@@ -263,6 +283,7 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
                 PrimaryRecommendationState.AccountUnavailable,
                 error,
                 Program.DefaultRecommendationPolicies());
+            await using var failureLease = fence is null ? null : await fence.AcquireCommitAsync(cancellationToken).ConfigureAwait(false);
             SetFailedStatus(synchronizationResult.AttemptedAtUtc, error, Timing(total, synchronizationTimer, TimeSpan.Zero, TimeSpan.Zero));
             return new(false, synchronizationResult, unavailable, GetStatus());
         }
@@ -293,6 +314,7 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
         var timing = Timing(total, synchronizationTimer, craftingTimer.Elapsed, decisionTimer.Elapsed);
         if (decision?.Recommendations is null)
         {
+            await using var failureLease = fence is null ? null : await fence.AcquireCommitAsync(cancellationToken).ConfigureAwait(false);
             SetFailedStatus(synchronizationResult.AttemptedAtUtc, "DecisionGenerationFailed", timing);
             return new(false, synchronizationResult, null, GetStatus());
         }
@@ -309,6 +331,7 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
             .FirstOrDefault();
         NotificationLedgerObservation? notificationObservation = null;
         DecisionLoopStatus? completedStatus = null;
+        await using var publicationLease = fence is null ? null : await fence.AcquireCommitAsync(cancellationToken).ConfigureAwait(false);
         var published = plans.TryPublishLoopDecisionAndObserve(decision, loopGeneration, () =>
         {
             notificationObservation = notificationLedger.Observe(
@@ -434,6 +457,17 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
                         ? DecisionLoopRunState.Ready
                         : DecisionLoopRunState.Degraded,
             };
+        }
+    }
+
+    private void OnAccountWorkInvalidated()
+    {
+        plans.InvalidateLoopDecision(status.AccountScopeId ?? "unavailable");
+        notificationLedger.Clear();
+        lock (stateGate)
+        {
+            status = InitialStatus();
+            activeRun = null;
         }
     }
 

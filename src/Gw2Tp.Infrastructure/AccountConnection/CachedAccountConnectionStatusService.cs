@@ -1,4 +1,5 @@
 using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Application.LocalData;
 
 namespace Gw2Tp.Infrastructure.AccountConnection;
 
@@ -14,12 +15,16 @@ internal sealed class CachedAccountConnectionStatusService : IAccountConnectionS
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AccountConnectionStatus? _cachedStatus;
+    private readonly IAccountWorkFence? fence;
+    private string? cachedGeneration;
     private DateTimeOffset _expiresAt;
 
     public CachedAccountConnectionStatusService(
         IAccountConnectionStatusService inner,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        IAccountWorkFence? fence = null)
     {
+        this.fence = fence;
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
@@ -39,7 +44,9 @@ internal sealed class CachedAccountConnectionStatusService : IAccountConnectionS
                 return status;
             }
 
+            var generation = fence?.Generation;
             status = await _inner.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+            cachedGeneration = generation;
             _cachedStatus = status;
             _expiresAt = _timeProvider.GetUtcNow() + StatusCacheDuration;
             return status;
@@ -52,7 +59,7 @@ internal sealed class CachedAccountConnectionStatusService : IAccountConnectionS
 
     private bool TryGetCachedStatus(out AccountConnectionStatus status)
     {
-        if (_cachedStatus is not null && _timeProvider.GetUtcNow() < _expiresAt)
+        if (cachedGeneration == fence?.Generation && _cachedStatus is not null && _timeProvider.GetUtcNow() < _expiresAt)
         {
             status = _cachedStatus;
             return true;
