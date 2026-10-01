@@ -87,7 +87,9 @@ VERIFY-016 owns permission/schema/instance correspondence uncertainty (especiall
 equipment tabs). VERIFY-017 owns cross-endpoint/cache transfer coherence. Never
 infer immutable instance identity from item ID/slot, or coherent physical proof
 from two fetches separated by five minutes. P02C's conservative cap deliberately
-may underuse holdings; a future contract can improve it with real evidence.
+may underuse holdings. Planned P02-E owns deferred action-relevant coherence,
+transfer and supported instance-correspondence proof before dependent lifecycle
+acceptance; it is not Ready and cannot promise a globally atomic API snapshot.
 
 ## Evidence handoff
 
@@ -107,8 +109,8 @@ review. Next Goal verifies operational GitHub state and actual entry conditions.
 After #171 merge, stop coding at #150. Inspect integrated account/protection/
 epoch behavior, retain UI feedback status, prepare 3–5 next contracts and prioritize
 the early Windows feasibility probe with actual target-environment evidence.
-Do not close P02 or #150 merely because a collector/projection exists: coherent
-reconciliation, transfer/craft basis, lifecycle settlement and all package exits
+Do not close P02 or #150 merely because a collector/projection exists: P02-E action-relevant
+reconciliation/correspondence proof, transfer/craft basis, lifecycle settlement and all package exits
 still need evidence. #96/#97 remain after package acceptance.
 
 Escalate sooner only for invalid dependencies, a genuine owner/architecture/

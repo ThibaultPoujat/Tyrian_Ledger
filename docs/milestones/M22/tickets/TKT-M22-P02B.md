@@ -20,7 +20,7 @@ an inactive level-500 actor plus active level-100 actor can fabricate active 500
 P02A's typed evidence collector/DTOs; AccountCraftingContracts.cs;
 AccountCraftingGateway.cs; CraftingOpportunityPlanner.cs and
 CraftingOpportunityService.cs (inspect consumer seams, defer live integration);
-gateway/planner tests; VERIFY-016/015; relevant protection/crafting sections of
+gateway/planner tests; VERIFY-016/017; relevant protection/crafting sections of
 docs/specs/approved-product-direction.md and project-spec.md.
 
 ## Contract
@@ -92,7 +92,7 @@ active mixing. Verify the protected-copy case at the policy's public boundary.
 
 Focused new actor/protection tests plus all Crafting Application tests and
 AccountCraftingGateway Infrastructure tests; node --test .github/scripts/*.test.mjs;
-required CI. Extend VERIFY-016 only with evidence, preserve VERIFY-008/013/015.
+required CI. Extend VERIFY-016 only with evidence, preserve VERIFY-008/013/017.
 Update #169's batch row and the concise policy/collector handoff documentation.
 
 No UI redesign/forms, durable new account storage, live plan adapter, crafting

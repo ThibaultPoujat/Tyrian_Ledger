@@ -119,7 +119,9 @@ ownership/provenance section and #171 batch row. Preserve VERIFY-008/013/016/017
 No general transfer-cost engine, settlement/repetition, passive continuation,
 general residual replanner, native alerts, preferences/economics redesign, runtime
 LLM or approved-screen redesign. If rendered production UI changes, provide the
-required original/actual 1920×1080 evidence; otherwise state API/domain-only.
+required original/actual 1920×1080 evidence; otherwise state API/domain-only. Deferred action-relevant transfer/coherence and supported instance
+correspondence are owned by Planned P02-E in the remaining map; this contract
+never certifies those exits.
 
 Commit [TKT-M22-P02C]; PR develop, Closes #171, actual milestone 11. NORMAL Sol
 High independent review; missing evidence means Draft. Stop after owner merge
