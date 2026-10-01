@@ -33,8 +33,9 @@ internal sealed class SqlitePlanRepository(
     {
         if (accountProfileId <= 0) throw new ArgumentOutOfRangeException(nameof(accountProfileId));
         ArgumentNullException.ThrowIfNull(reconcile);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await gate.ValidateAccountProfileAsync(connection, accountProfileId, cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         var storedPlans = new List<PlanRecord>();
@@ -96,8 +97,9 @@ internal sealed class SqlitePlanRepository(
         DateTimeOffset? reconciliationNowUtc = null)
     {
         if (accountProfileId <= 0) throw new ArgumentOutOfRangeException(nameof(accountProfileId));
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await gate.ValidateAccountProfileAsync(connection, accountProfileId, cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = $"SELECT payload_json, revision FROM execution_plans WHERE account_profile_id = $accountProfileId AND {statePredicate} ORDER BY updated_at_utc, plan_id;";
         command.Parameters.AddWithValue("$accountProfileId", accountProfileId);
@@ -125,8 +127,9 @@ internal sealed class SqlitePlanRepository(
         if (accountProfileId <= 0) throw new ArgumentOutOfRangeException(nameof(accountProfileId));
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(verifiedQuantities);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await gate.ValidateAccountProfileAsync(connection, accountProfileId, cancellationToken).ConfigureAwait(false);
         await using var transaction = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         var active = new List<PlanRecord>();
@@ -227,8 +230,9 @@ internal sealed class SqlitePlanRepository(
             string.IsNullOrWhiteSpace(command.CommandId) || command.CommandId.Length > 128)
             return new(PlanCompletionStatus.Invalid);
 
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await gate.ValidateAccountProfileAsync(connection, accountProfileId, cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         var existingReceipt = await FindReceiptAsync(connection, transaction, accountProfileId, command, cancellationToken).ConfigureAwait(false);
@@ -365,8 +369,9 @@ internal sealed class SqlitePlanRepository(
         var nextRevision = checked(plan.Revision + 1);
         var updated = plan with { Revision = nextRevision };
         var payload = JsonSerializer.Serialize(updated, SerializerOptions);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await gate.ValidateAccountProfileAsync(connection, accountProfileId, cancellationToken).ConfigureAwait(false);
         await using var transaction = (Microsoft.Data.Sqlite.SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;

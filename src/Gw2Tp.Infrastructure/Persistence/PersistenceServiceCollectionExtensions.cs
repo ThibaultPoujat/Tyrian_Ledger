@@ -11,6 +11,12 @@ namespace Gw2Tp.Infrastructure.Persistence;
 
 public static class PersistenceServiceCollectionExtensions
 {
+    public static IServiceCollection AddTyrianLedgerAccountWorkFence(this IServiceCollection services)
+    {
+        services.AddSingleton<Gw2Tp.Infrastructure.Secrets.AccountWorkFence>();
+        services.AddSingleton<IAccountWorkFence>(sp => sp.GetRequiredService<Gw2Tp.Infrastructure.Secrets.AccountWorkFence>());
+        return services;
+    }
     public static IServiceCollection AddTyrianLedgerPersistence(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -24,6 +30,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<SqliteConnectionFactory>(serviceProvider => (SqliteConnectionFactory)serviceProvider
             .GetRequiredService<ISqliteConnectionFactory>());
         services.AddSingleton<ISqliteDatabaseGate, SqliteDatabaseGate>();
+        services.AddSingleton<Gw2Tp.Infrastructure.Secrets.IStoreIncarnationStore, FileStoreIncarnationStore>();
         services.AddSingleton<IPersonalDataOperationGate, PersonalDataOperationGate>();
         services.AddSingleton<SqliteSchemaMigrator>();
         services.AddSingleton<SqlitePersonalTradingPostRepository>();
@@ -48,7 +55,8 @@ public static class PersistenceServiceCollectionExtensions
 internal sealed class SqliteDatabaseInitializationService(
     SqliteSchemaMigrator schemaMigrator,
     ISqliteDatabaseGate databaseGate,
-    ILocalDataRecoveryService recoveryService) : IHostedService
+    ILocalDataRecoveryService recoveryService,
+    IAccountWorkFence? fence = null) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -58,6 +66,7 @@ internal sealed class SqliteDatabaseInitializationService(
         }
 
         await recoveryService.CleanupStaleRestoreArtifactsAsync(cancellationToken).ConfigureAwait(false);
+        if (fence is not null) await fence.InitializeAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

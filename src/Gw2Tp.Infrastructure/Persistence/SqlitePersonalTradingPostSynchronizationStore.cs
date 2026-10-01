@@ -24,7 +24,8 @@ internal sealed class SqlitePersonalTradingPostSynchronizationStore(
         CancellationToken cancellationToken = default)
     {
         ValidateSuccessfulSync(sync);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(sync.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         var accountProfileId = await GetOrCreateAccountProfileIdAsync(
@@ -139,7 +140,8 @@ internal sealed class SqlitePersonalTradingPostSynchronizationStore(
             throw new ArgumentOutOfRangeException(nameof(errorCategory));
         }
 
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         var accountProfileId = await GetOrCreateAccountProfileIdAsync(

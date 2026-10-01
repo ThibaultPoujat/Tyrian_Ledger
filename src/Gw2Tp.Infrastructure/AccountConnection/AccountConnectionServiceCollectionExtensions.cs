@@ -1,4 +1,5 @@
 using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Secrets;
 using Gw2Tp.Infrastructure.Gw2Api;
@@ -33,19 +34,21 @@ public static class AccountConnectionServiceCollectionExtensions
             serviceProvider.GetRequiredService<SafeTransportDiagnosticBuffer>());
         services.AddSingleton<OperatingSystemGw2ApiKeySource>();
         services.AddSingleton<EnvironmentGw2ApiKeySource>();
-        services.AddSingleton<IGw2ApiKeySource>(serviceProvider =>
+        services.AddSingleton<HostCredentialSource>(serviceProvider =>
         {
             var environmentSource = serviceProvider.GetRequiredService<EnvironmentGw2ApiKeySource>();
             if (environment.IsEnvironment("Testing"))
             {
-                return environmentSource;
+                return new HostCredentialSource(environmentSource);
             }
 
             var operatingSystemSource = serviceProvider.GetRequiredService<OperatingSystemGw2ApiKeySource>();
-            return environment.IsDevelopment()
+            return new HostCredentialSource(environment.IsDevelopment()
                 ? new DevelopmentGw2ApiKeySource(environmentSource, operatingSystemSource)
-                : operatingSystemSource;
+                : operatingSystemSource);
         });
+        services.AddSingleton<IGw2ApiKeySource>(sp => sp.GetService<AccountWorkFence>() is { } fence
+            ? new CapturedGw2ApiKeySource(fence) : sp.GetRequiredService<HostCredentialSource>().Source);
         services.AddHttpClient(AccountConnectionStatusService.HttpClientName, (serviceProvider, httpClient) =>
         {
             httpClient.BaseAddress = Gw2ApiBaseAddress;
@@ -64,10 +67,11 @@ public static class AccountConnectionServiceCollectionExtensions
             TimeSpan.FromMilliseconds(serviceProvider
                 .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
                 .Value
-                .RequestTimeoutMs)));
+                .RequestTimeoutMs),
+            serviceProvider.GetService<IAccountWorkFence>()));
         services.AddSingleton<IAccountConnectionStatusService>(serviceProvider =>
             new CachedAccountConnectionStatusService(
-                serviceProvider.GetRequiredService<AccountConnectionStatusService>()));
+                serviceProvider.GetRequiredService<AccountConnectionStatusService>(), fence: serviceProvider.GetService<IAccountWorkFence>()));
         services.AddHttpClient(PersonalTradingPostGateway.HttpClientName, (serviceProvider, httpClient) =>
         {
             httpClient.BaseAddress = Gw2ApiBaseAddress;
@@ -87,7 +91,8 @@ public static class AccountConnectionServiceCollectionExtensions
                 .GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>()
                 .Value
                 .RequestTimeoutMs),
-            serviceProvider.GetRequiredService<SafeTransportDiagnosticBuffer>()));
+            serviceProvider.GetRequiredService<SafeTransportDiagnosticBuffer>(),
+            serviceProvider.GetService<IAccountWorkFence>()));
         services.AddSingleton<IPersonalTradingPostGateway>(serviceProvider =>
             serviceProvider.GetRequiredService<PersonalTradingPostGateway>());
         services.AddSingleton<IAccountPortfolioGateway>(serviceProvider =>
@@ -104,7 +109,8 @@ public static class AccountConnectionServiceCollectionExtensions
             serviceProvider.GetRequiredService<IGw2ApiKeySource>(),
             serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient(AccountCraftingGateway.HttpClientName),
             serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
-            TimeSpan.FromMilliseconds(serviceProvider.GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>().Value.RequestTimeoutMs)));
+            TimeSpan.FromMilliseconds(serviceProvider.GetRequiredService<IOptions<Gw2ApiSchedulerOptions>>().Value.RequestTimeoutMs),
+            serviceProvider.GetService<IAccountWorkFence>()));
         services.AddHttpClient(CraftingReferenceGateway.HttpClientName, (serviceProvider, httpClient) =>
         {
             httpClient.BaseAddress = Gw2ApiBaseAddress;

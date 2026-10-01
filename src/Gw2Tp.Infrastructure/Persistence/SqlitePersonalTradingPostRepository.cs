@@ -18,7 +18,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
             throw new ArgumentException("An opaque account scope is required.", nameof(accountScopeId));
         }
 
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -44,7 +45,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
         }
 
         var observedAt = SqlitePersistenceValues.ToUtcTimestamp(observedAtUtc, nameof(observedAtUtc));
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await using (var insert = connection.CreateCommand())
@@ -90,7 +92,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
     {
         SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
         var completedAt = SqlitePersistenceValues.ToUtcTimestamp(completedAtUtc, nameof(completedAtUtc));
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -125,7 +128,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
             SqlitePersistenceValues.ValidateCompletedTransaction(transaction);
         }
 
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var databaseTransaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await EnsureAccountExistsAsync(connection, databaseTransaction, accountProfile, cancellationToken).ConfigureAwait(false);
@@ -172,7 +176,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
         CancellationToken cancellationToken = default)
     {
         SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -209,7 +214,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
         CancellationToken cancellationToken = default)
     {
         SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -254,7 +260,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
             }
         }
 
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await EnsureAccountExistsAsync(connection, transaction, accountProfile, cancellationToken).ConfigureAwait(false);
@@ -305,7 +312,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
         CancellationToken cancellationToken = default)
     {
         SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -330,7 +338,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
         CancellationToken cancellationToken = default)
     {
         SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
@@ -379,7 +388,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
         Func<int, CancellationToken, Task>? afterLogicalRead)
     {
         SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
@@ -476,7 +486,8 @@ internal sealed class SqlitePersonalTradingPostRepository(
         CancellationToken cancellationToken = default)
     {
         SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """

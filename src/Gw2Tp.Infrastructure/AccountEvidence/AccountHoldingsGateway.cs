@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Gw2Tp.Application.AccountEvidence;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.MarketData;
 using Gw2Tp.Application.PersonalTradingPost;
@@ -21,6 +22,7 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
     internal const string HttpClientName = "TyrianLedger.AccountHoldings";
     internal const string SchemaVersion = PersonalTradingPostGateway.SchemaVersion;
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private readonly IAccountWorkFence? fence;
     private readonly IGw2ApiKeySource keySource;
     private readonly HttpClient client;
     private readonly IGw2RequestScheduler scheduler;
@@ -28,8 +30,9 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
     private readonly TimeSpan requestTimeout;
 
     public AccountHoldingsGateway(IGw2ApiKeySource keySource, HttpClient client,
-        IGw2RequestScheduler scheduler, IClock clock, TimeSpan? requestTimeout = null)
+        IGw2RequestScheduler scheduler, IClock clock, TimeSpan? requestTimeout = null, IAccountWorkFence? fence = null)
     {
+        this.fence = fence;
         this.keySource = keySource ?? throw new ArgumentNullException(nameof(keySource));
         this.client = client ?? throw new ArgumentNullException(nameof(client));
         this.scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
@@ -38,8 +41,12 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
         if (this.requestTimeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(requestTimeout));
     }
 
-    public async Task<Gw2ApiResult<AccountHoldingsCapture>> CollectAsync(
-        DateTimeOffset evaluatedAtUtc, CancellationToken cancellationToken = default)
+    public Task<Gw2ApiResult<AccountHoldingsCapture>> CollectAsync(
+        DateTimeOffset evaluatedAtUtc, CancellationToken cancellationToken = default) =>
+        fence is null ? CollectCoreAsync(evaluatedAtUtc, cancellationToken)
+            : fence.RunAsync(token => CollectCoreAsync(evaluatedAtUtc, token), cancellationToken);
+
+    private async Task<Gw2ApiResult<AccountHoldingsCapture>> CollectCoreAsync(DateTimeOffset evaluatedAtUtc, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Gw2ApiKeyReadResult credential;
@@ -62,6 +69,7 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
             }, cancellationToken).ConfigureAwait(false);
         if (identity.Value is not { } account)
             return Gw2ApiResult<AccountHoldingsCapture>.Failure(identity.ErrorCategory ?? Gw2ApiErrorCategory.IncompleteData);
+        if (fence is not null) await fence.BindAccountAsync(account, cancellationToken).ConfigureAwait(false);
 
         var rosterTask = session.ReadAsync(AccountHoldingsSource.CharacterRoster, null, "characters", "roster",
             (response, token) => MapRosterAsync(account, response, token), cancellationToken);
@@ -87,6 +95,7 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
             new(actors is null ? EvidenceCompleteness.Unknown
                 : successful == actors.Count ? EvidenceCompleteness.Complete : EvidenceCompleteness.Partial,
                 actors?.Count, successful), await recipesTask.ConfigureAwait(false));
+        await using var publication = fence is null ? null : await fence.AcquireCommitAsync(cancellationToken).ConfigureAwait(false);
         return Gw2ApiResult<AccountHoldingsCapture>.Success(capture, isPartialData:
             capture.RecipeUnlocks.Completeness != EvidenceCompleteness.Complete ||
             characters.Any(actor => actor.Crafting.Completeness != EvidenceCompleteness.Complete ||

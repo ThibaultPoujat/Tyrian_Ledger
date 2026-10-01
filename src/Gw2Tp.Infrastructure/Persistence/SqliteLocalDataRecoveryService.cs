@@ -13,7 +13,8 @@ internal sealed class SqliteLocalDataRecoveryService(
     SqliteConnectionFactory connectionFactory,
     ISqliteDatabaseGate databaseGate,
     IPersonalDataOperationGate? operationGate = null,
-    ILocalDataFileOperations? fileOperations = null) : ILocalDataRecoveryService
+    ILocalDataFileOperations? fileOperations = null,
+    IAccountWorkFence? fence = null) : ILocalDataRecoveryService
 {
     private const string BackupDirectoryName = "backups";
     private const string RestoreArtifactPrefix = ".tyrian-ledger-restore-";
@@ -39,11 +40,16 @@ internal sealed class SqliteLocalDataRecoveryService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(backupContents);
-        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var transition = fence is null ? null : await fence.QuiesceAsync(cancellationToken).ConfigureAwait(false);
+        // Quiescence excludes private commits and rejects old read groups. Do
+        // not wait on their operation gate while holding generation: they may
+        // already own operation and be waiting to acquire generation.
+        await using var operationLease = fence is null ? await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false) : null;
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         CleanupStaleRestoreArtifactsCore();
 
-        return await RestoreCoreAsync(backupContents, cancellationToken).ConfigureAwait(false);
+        var result = await RestoreCoreAsync(backupContents, cancellationToken).ConfigureAwait(false);
+        return await PublishRestoreAsync(result, transition, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<LocalDataRestoreResult> RestoreManagedBackupAsync(
@@ -55,13 +61,14 @@ internal sealed class SqliteLocalDataRecoveryService(
             return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
         }
 
-        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var transition = fence is null ? null : await fence.QuiesceAsync(cancellationToken).ConfigureAwait(false);
+        await using var operationLease = fence is null ? await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false) : null;
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         CleanupStaleRestoreArtifactsCore();
 
         if (!IsRegularManagedBackupFile(backupPath))
         {
-            return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
+            return await PublishRestoreAsync(new(LocalDataRestoreOutcome.InvalidBackup), transition, cancellationToken).ConfigureAwait(false);
         }
 
         try
@@ -73,7 +80,8 @@ internal sealed class SqliteLocalDataRecoveryService(
                 FileShare.Read,
                 bufferSize: 81920,
                 useAsync: true);
-            return await RestoreCoreAsync(backupContents, cancellationToken).ConfigureAwait(false);
+            var result = await RestoreCoreAsync(backupContents, cancellationToken).ConfigureAwait(false);
+            return await PublishRestoreAsync(result, transition, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -87,6 +95,19 @@ internal sealed class SqliteLocalDataRecoveryService(
         {
             return new LocalDataRestoreResult(LocalDataRestoreOutcome.InvalidBackup);
         }
+    }
+
+    private static async Task<LocalDataRestoreResult> PublishRestoreAsync(LocalDataRestoreResult result,
+        IAccountWorkTransition? transition, CancellationToken cancellationToken)
+    {
+        if (transition is null || result.Outcome == LocalDataRestoreOutcome.RestoreFailed) return result;
+        try
+        {
+            await transition.PublishAsync(cancellationToken).ConfigureAwait(false);
+            return result;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch { return new(LocalDataRestoreOutcome.RestoreFailed, result.PreRestoreBackupFileName); }
     }
 
     private async Task<LocalDataRestoreResult> RestoreCoreAsync(
@@ -176,7 +197,8 @@ internal sealed class SqliteLocalDataRecoveryService(
 
     public async Task ClearPersonalDataAsync(CancellationToken cancellationToken = default)
     {
-        await using var operationLease = await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var transition = fence is null ? null : await fence.QuiesceAsync(cancellationToken).ConfigureAwait(false);
+        await using var operationLease = fence is null ? await recoveryOperationGate.AcquireAsync(cancellationToken).ConfigureAwait(false) : null;
         await using var lease = await databaseGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
         CleanupStaleRestoreArtifactsCore();
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
@@ -207,6 +229,7 @@ internal sealed class SqliteLocalDataRecoveryService(
         }
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        if (transition is not null) await transition.PublishAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task CleanupStaleRestoreArtifactsAsync(CancellationToken cancellationToken = default)

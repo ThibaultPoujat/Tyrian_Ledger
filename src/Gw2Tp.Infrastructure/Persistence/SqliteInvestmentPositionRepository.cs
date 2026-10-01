@@ -12,7 +12,8 @@ internal sealed class SqliteInvestmentPositionRepository(
     public async Task<IReadOnlyList<InvestmentPosition>> GetAllAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default)
     {
         SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         return await ReadPositionsAsync(connection, null, accountProfile.Id, null, cancellationToken).ConfigureAwait(false);
     }
@@ -21,7 +22,8 @@ internal sealed class SqliteInvestmentPositionRepository(
     {
         SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
         if (positionId <= 0) throw new ArgumentOutOfRangeException(nameof(positionId));
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         return (await ReadPositionsAsync(connection, null, accountProfile.Id, positionId, cancellationToken).ConfigureAwait(false)).SingleOrDefault();
     }
@@ -31,7 +33,8 @@ internal sealed class SqliteInvestmentPositionRepository(
         SqlitePersistenceValues.ValidateAccountProfile(accountProfile);
         ValidateCreate(position);
         var createdAt = SqlitePersistenceValues.ToUtcTimestamp(createdAtUtc, nameof(createdAtUtc));
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         long id;
@@ -57,7 +60,8 @@ internal sealed class SqliteInvestmentPositionRepository(
         if (positionId <= 0) throw new ArgumentOutOfRangeException(nameof(positionId));
         ValidateUpdate(position);
         var updatedAt = SqlitePersistenceValues.ToUtcTimestamp(updatedAtUtc, nameof(updatedAtUtc));
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         var existing = (await ReadPositionsAsync(connection, transaction, accountProfile.Id, positionId, cancellationToken).ConfigureAwait(false)).SingleOrDefault();
@@ -93,7 +97,8 @@ internal sealed class SqliteInvestmentPositionRepository(
         if (positionId <= 0 || quantity <= 0) throw new ArgumentOutOfRangeException(nameof(positionId));
         if (notes is { Length: > 4000 }) throw new ArgumentOutOfRangeException(nameof(notes));
         var exitedAt = SqlitePersistenceValues.ToUtcTimestamp(exitedAtUtc, nameof(exitedAtUtc));
-        await using var lease = await gate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        gate.ValidateAccountScope(accountProfile.AccountScopeId);
         await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         var existing = (await ReadPositionsAsync(connection, transaction, accountProfile.Id, positionId, cancellationToken).ConfigureAwait(false)).SingleOrDefault();

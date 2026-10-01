@@ -1,4 +1,5 @@
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.LocalData;
 
 namespace Gw2Tp.Application.Crafting;
 
@@ -9,14 +10,18 @@ namespace Gw2Tp.Application.Crafting;
 /// </summary>
 public sealed class AccountCraftingSnapshotService(
     IAccountCraftingGateway gateway,
-    IAccountCraftingSnapshotRepository repository) : IAccountCraftingSnapshotService
+    IAccountCraftingSnapshotRepository repository,
+    IAccountWorkFence? fence = null) : IAccountCraftingSnapshotService
 {
     public async Task<Gw2ApiResult<AccountCraftingSnapshot>> RefreshAsync(
         CancellationToken cancellationToken = default)
         => (await RefreshWithOutcomeAsync(cancellationToken).ConfigureAwait(false)).Result;
 
-    public async Task<AccountCraftingRefreshResult> RefreshWithOutcomeAsync(
+    public Task<AccountCraftingRefreshResult> RefreshWithOutcomeAsync(
         CancellationToken cancellationToken = default)
+        => fence is null ? RefreshCoreAsync(cancellationToken) : fence.RunAsync(RefreshCoreAsync, cancellationToken);
+
+    private async Task<AccountCraftingRefreshResult> RefreshCoreAsync(CancellationToken cancellationToken)
     {
         var result = await gateway.GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
         if (!result.IsSuccess || result.Value is null)
@@ -26,6 +31,7 @@ public sealed class AccountCraftingSnapshotService(
 
         try
         {
+            if (fence is not null) await fence.BindAccountAsync(result.Value.AccountScope, cancellationToken).ConfigureAwait(false);
             var previous = await repository.GetLatestAsync(result.Value.AccountScope, cancellationToken).ConfigureAwait(false);
             await repository.ReplaceAsync(result.Value, cancellationToken).ConfigureAwait(false);
             return new(result, previous is null || !SameFacts(previous, result.Value));

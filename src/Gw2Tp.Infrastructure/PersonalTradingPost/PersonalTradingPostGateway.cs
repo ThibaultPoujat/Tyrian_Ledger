@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.Diagnostics;
@@ -29,6 +30,7 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
     private readonly TimeSpan _requestTimeout;
     private readonly SafeTransportDiagnosticBuffer? _diagnostics;
     private readonly object _credentialScopeGate = new();
+    private readonly IAccountWorkFence? _fence;
     private string? _lastCredential;
     private long _credentialScope;
 
@@ -37,26 +39,34 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
         HttpClient httpClient,
         IGw2RequestScheduler requestScheduler,
         TimeSpan? requestTimeout = null,
-        SafeTransportDiagnosticBuffer? diagnostics = null)
+        SafeTransportDiagnosticBuffer? diagnostics = null,
+        IAccountWorkFence? fence = null)
     {
         _apiKeySource = apiKeySource ?? throw new ArgumentNullException(nameof(apiKeySource));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _requestScheduler = requestScheduler ?? throw new ArgumentNullException(nameof(requestScheduler));
         _requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(10);
         _diagnostics = diagnostics;
+        _fence = fence;
         if (_requestTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(requestTimeout));
         }
     }
 
-    public Task<Gw2ApiResult<AccountScope>> GetAccountScopeAsync(
-        CancellationToken cancellationToken = default) =>
-        ReadAsync(
+    public async Task<Gw2ApiResult<AccountScope>> GetAccountScopeAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await ReadAsync(
             "personal/account",
             $"account?v={SchemaVersion}",
             MapAccountScopeAsync,
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
+        // Bind in every caller's context, including callers joining a scheduled read.
+        if (result.IsSuccess && result.Value is not null && _fence?.Current is not null)
+            await _fence.BindAccountAsync(result.Value, cancellationToken).ConfigureAwait(false);
+        return result;
+    }
 
     public async Task<Gw2ApiResult<AccountPortfolioSnapshot>> GetSnapshotAsync(
         CancellationToken cancellationToken = default)
@@ -95,6 +105,7 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
                     account.ErrorCategory ?? wallet.ErrorCategory ?? Gw2ApiErrorCategory.IncompleteData);
             }
 
+            if (_fence?.Current is not null) await _fence.BindAccountAsync(account.Value, cancellationToken).ConfigureAwait(false);
             return Gw2ApiResult<AccountPortfolioSnapshot>.Success(
                 new AccountPortfolioSnapshot(account.Value, wallet.Value, null, DateTimeOffset.UtcNow));
         }
@@ -216,7 +227,8 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
         _requestScheduler.ScheduleAsync(
             // A rotating generation prevents a replacement key from joining
             // an in-flight read made for the previous account.
-            new Gw2RequestKey($"{schedulerKey}/credential-scope-{credentialScope.ToString(CultureInfo.InvariantCulture)}"),
+            new Gw2RequestKey($"{schedulerKey}/credential-scope-{credentialScope.ToString(CultureInfo.InvariantCulture)}" +
+                (_fence?.Current is { } work ? "/" + work.Generation : "")),
             requestCancellationToken => SendAsync(apiKey, requestPath, mapAsync, requestCancellationToken),
             cancellationToken);
 

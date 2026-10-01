@@ -1,4 +1,5 @@
 using Gw2Tp.Application.Recommendations;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Plans;
 using Gw2Tp.Application.Persistence;
 using Gw2Tp.Application.PersonalTradingPost;
@@ -14,6 +15,32 @@ namespace Gw2Tp.Web.Tests;
 
 public sealed class PlanEndpointMappingTests
 {
+    [Fact]
+    public async Task Applied_completion_invalidates_projection_even_when_browser_cancels_after_commit()
+    {
+        using var browser = new CancellationTokenSource();
+        var now = DateTimeOffset.UtcNow;
+        var profile = new AccountProfile(1, "A", now, now);
+        var projections = new PlanDecisionProjectionStore(DecisionLoopSchedulerSettings.Default);
+        var scopes = new AccountViewScopeTokenService();
+        var fence = new CancellationCheckingFence();
+        var completion = new AppliedThenCancelledCompletion(browser);
+        var service = new PlanEndpointService(null!, null!, new FixedAccountScopeGateway("A"), null!, null!,
+            new FixedPersonalTradingPostRepository(profile, now), null!, new PlanOrchestrationService(),
+            projections, scopes, completion, fence);
+        var generation = service.BeginLoopDecision();
+        Assert.True(projections.TryGetActive(out var pending));
+        var result = await service.CompleteAsync("plan", new("step", "1", "command", "ReportPerformed", 1, "100"),
+            scopes.GetToken("A"), browser.Token);
+        Assert.True(browser.IsCancellationRequested);
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(((IValueHttpResult)result).Value));
+        Assert.Equal("applied", payload.RootElement.GetProperty("acknowledgement").GetProperty("status").GetString());
+        Assert.False(projections.TryGetActive(out _));
+        Assert.True(pending!.IsCompleted);
+        Assert.Equal(1, fence.Commits);
+        service.CompleteLoopDecision(generation);
+    }
+
     [Fact]
     public async Task Partial_report_response_preserves_instruction_remaining_quantity_and_paused_eligibility()
     {
@@ -436,6 +463,36 @@ public sealed class PlanEndpointMappingTests
             Calls++;
             return Task.FromResult(new PlanCompletionResult(PlanCompletionStatus.Invalid));
         }
+    }
+
+    private sealed class AppliedThenCancelledCompletion(CancellationTokenSource browser) : IPlanCompletionCommandService
+    {
+        public Task<PlanCompletionResult> CompleteAsync(long accountProfileId, PlanCompletionCommand command, CancellationToken cancellationToken = default)
+        {
+            var receipt = new PlanCompletionReceipt(command.PlanId, command.CommandId, command.StepId,
+                command.ExpectedRevision, command.Operation, command.Quantity, command.UnitPrice, 2, "event", DateTimeOffset.UtcNow);
+            browser.Cancel();
+            return Task.FromResult(new PlanCompletionResult(PlanCompletionStatus.Applied, receipt));
+        }
+    }
+
+    private sealed class CancellationCheckingFence : IAccountWorkFence
+    {
+        public AccountWorkContext? Current { get; } = new(new("A"), "session", "incarnation", "generation");
+        public string Generation => "generation";
+        public event Action? Invalidated { add { } remove { } }
+        internal int Commits;
+        public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<T> RunAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken = default) => work(cancellationToken);
+        public Task BindAccountAsync(AccountScope account, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public ValueTask<IAsyncDisposable> AcquireCommitAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Commits++;
+            return ValueTask.FromResult<IAsyncDisposable>(new Lease());
+        }
+        public ValueTask<IAccountWorkTransition> QuiesceAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        private sealed class Lease : IAsyncDisposable { public ValueTask DisposeAsync() => ValueTask.CompletedTask; }
     }
 
     private sealed class FixedAccountScopeGateway(string accountId) : IPersonalTradingPostGateway

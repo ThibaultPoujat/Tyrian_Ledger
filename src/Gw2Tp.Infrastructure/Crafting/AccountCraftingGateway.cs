@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using Gw2Tp.Application.Crafting;
 using Gw2Tp.Application.MarketData;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.PersonalTradingPost;
@@ -21,6 +22,7 @@ internal sealed class AccountCraftingGateway : IAccountCraftingGateway
     internal const string HttpClientName = "TyrianLedger.AccountCrafting";
     internal const string SchemaVersion = PersonalTradingPostGateway.SchemaVersion;
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private readonly IAccountWorkFence? fence;
     private readonly IGw2ApiKeySource apiKeySource;
     private readonly HttpClient httpClient;
     private readonly IGw2RequestScheduler requestScheduler;
@@ -33,8 +35,10 @@ internal sealed class AccountCraftingGateway : IAccountCraftingGateway
         IGw2ApiKeySource apiKeySource,
         HttpClient httpClient,
         IGw2RequestScheduler requestScheduler,
-        TimeSpan? requestTimeout = null)
+        TimeSpan? requestTimeout = null,
+        IAccountWorkFence? fence = null)
     {
+        this.fence = fence;
         this.apiKeySource = apiKeySource ?? throw new ArgumentNullException(nameof(apiKeySource));
         this.httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         this.requestScheduler = requestScheduler ?? throw new ArgumentNullException(nameof(requestScheduler));
@@ -64,6 +68,7 @@ internal sealed class AccountCraftingGateway : IAccountCraftingGateway
                 return Gw2ApiResult<AccountCraftingSnapshot>.Failure(account.ErrorCategory ?? Gw2ApiErrorCategory.IncompleteData);
             }
 
+            if (fence?.Current is not null) await fence.BindAccountAsync(account.Value, cancellationToken).ConfigureAwait(false);
             var bankTask = ReadAsync(credential.ApiKey, scope, "crafting/bank", "account/bank", MapBankAsync, cancellationToken);
             var materialsTask = ReadAsync(credential.ApiKey, scope, "crafting/materials", "account/materials", MapMaterialsAsync, cancellationToken);
             var recipesTask = ReadAsync(credential.ApiKey, scope, "crafting/recipes", "account/recipes", MapRecipeUnlocksAsync, cancellationToken);
@@ -140,7 +145,8 @@ internal sealed class AccountCraftingGateway : IAccountCraftingGateway
         try
         {
             return await requestScheduler.ScheduleAsync(
-                new Gw2RequestKey($"{schedulerKey}/credential-scope-{scope.ToString(CultureInfo.InvariantCulture)}"),
+                new Gw2RequestKey($"{schedulerKey}/credential-scope-{scope.ToString(CultureInfo.InvariantCulture)}" +
+                    (fence?.Current is { } work ? "/" + work.Generation : "")),
                 requestCancellationToken => SendAsync(apiKey, resourcePath, mapAsync, requestCancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }

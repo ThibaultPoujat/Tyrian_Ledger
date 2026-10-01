@@ -58,6 +58,7 @@ public static class Program
         builder.Services.AddSingleton<AccountViewScopeTokenService>();
         builder.Services.AddTyrianLedgerAccountConnection(builder.Environment, builder.Configuration);
         builder.Services.AddTyrianLedgerPersistence(builder.Configuration);
+        builder.Services.AddTyrianLedgerAccountWorkFence();
         builder.Services.AddSingleton<IPersonalDashboardService, PersonalDashboardService>();
         builder.Services.AddSingleton<PublicMarketSnapshotCollector>();
         builder.Services.AddSingleton<ILiveMarketScanner, LiveMarketScanner>();
@@ -78,7 +79,12 @@ public static class Program
         builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
         builder.Services.AddSingleton<IPlanCompletionCommandService, PlanCompletionCommandService>();
         builder.Services.AddSingleton(CreateDecisionLoopSchedulerSettings(builder.Configuration));
-        builder.Services.AddSingleton<PlanDecisionProjectionStore>();
+        builder.Services.AddSingleton<PlanDecisionProjectionStore>(sp =>
+        {
+            var store = new PlanDecisionProjectionStore(sp.GetRequiredService<DecisionLoopSchedulerSettings>());
+            sp.GetRequiredService<Gw2Tp.Application.LocalData.IAccountWorkFence>().Invalidated += store.Invalidate;
+            return store;
+        });
         builder.Services.AddSingleton<PlanEndpointService>();
         builder.Services.AddSingleton<IInvestmentPortfolioService, InvestmentPortfolioService>();
         builder.Services.AddSingleton<IAccountCraftingSnapshotService, AccountCraftingSnapshotService>();
@@ -141,6 +147,7 @@ public static class Program
         }
 
         app.UseMiddleware<LocalRequestOriginProtectionMiddleware>();
+        app.UseMiddleware<AccountWorkMiddleware>();
 
         app.MapHealthChecks(
                 "/api/health",
@@ -238,21 +245,16 @@ public static class Program
             async (
                 HttpContext context,
                 IAccountCraftingSnapshotService accountCraftingSnapshotService,
-                IPersonalTradingPostGateway personalTradingPost,
                 PlanEndpointService plans,
                 CancellationToken cancellationToken) =>
             {
                 var refresh = await accountCraftingSnapshotService.RefreshWithOutcomeAsync(cancellationToken).ConfigureAwait(false);
                 var result = refresh.Result;
-                if (result.IsSuccess)
+                if (result.IsSuccess && result.Value is not null)
                 {
-                    var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
-                    if (scope.IsSuccess && scope.Value is not null)
-                    {
-                        // The old decision could have used earlier verified materials.
-                        // Clear it before any explanation read can reuse that authority.
-                        plans.InvalidateLoopDecision(scope.Value.AccountId);
-                    }
+                    // Use the committed snapshot's verified scope directly;
+                    // cancellation after persistence must not skip invalidation.
+                    await plans.InvalidateLoopDecisionAsync(result.Value.AccountScope.AccountId).ConfigureAwait(false);
                 }
                 if (!result.IsSuccess && result.ErrorCategory is
                     Gw2ApiErrorCategory.CredentialUnavailable or
@@ -403,6 +405,8 @@ public static class Program
                 var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
                 if (!scope.IsSuccess || scope.Value is null)
                     return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                await using var publication = await context.RequestServices.GetRequiredService<Gw2Tp.Application.LocalData.IAccountWorkFence>()
+                    .AcquireCommitAsync(cancellationToken).ConfigureAwait(false);
                 decisionLoop.SetNotificationsEnabled(scope.Value.AccountId, request.Enabled);
                 return Results.Json(new { enabled = request.Enabled });
             });
@@ -419,6 +423,8 @@ public static class Program
                 var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
                 if (!scope.IsSuccess || scope.Value is null)
                     return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+                await using var publication = await context.RequestServices.GetRequiredService<Gw2Tp.Application.LocalData.IAccountWorkFence>()
+                    .AcquireCommitAsync(cancellationToken).ConfigureAwait(false);
                 return decisionLoop.Acknowledge(scope.Value.AccountId, notificationId)
                     ? Results.Json(new { state = "acknowledged" })
                     : Results.NotFound(new { error = "notification_not_found" });

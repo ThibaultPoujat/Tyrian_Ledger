@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Gw2Tp.Application.AccountConnection;
+using Gw2Tp.Application.LocalData;
 using Gw2Tp.Infrastructure.Gw2Api;
 using Gw2Tp.Infrastructure.Secrets;
 
@@ -15,6 +16,7 @@ internal sealed class AccountConnectionStatusService : IAccountConnectionStatusS
     internal const string SchemaVersion = "2025-08-29T01:00:00.000Z";
 
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private readonly IAccountWorkFence? fence;
     private readonly IGw2ApiKeySource _apiKeySource;
     private readonly HttpClient _httpClient;
     private readonly IGw2RequestScheduler _requestScheduler;
@@ -24,8 +26,10 @@ internal sealed class AccountConnectionStatusService : IAccountConnectionStatusS
         IGw2ApiKeySource apiKeySource,
         HttpClient httpClient,
         IGw2RequestScheduler requestScheduler,
-        TimeSpan? requestTimeout = null)
+        TimeSpan? requestTimeout = null,
+        IAccountWorkFence? fence = null)
     {
+        this.fence = fence;
         _apiKeySource = apiKeySource ?? throw new ArgumentNullException(nameof(apiKeySource));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _requestScheduler = requestScheduler ?? throw new ArgumentNullException(nameof(requestScheduler));
@@ -70,7 +74,7 @@ internal sealed class AccountConnectionStatusService : IAccountConnectionStatusS
                 // The scheduler identity must never include a credential. One
                 // local user has one configured key, so the typed endpoint is
                 // the complete non-secret request identity here.
-                new Gw2RequestKey("account-connection/tokeninfo"),
+                new Gw2RequestKey("account-connection/tokeninfo" + (fence?.Current is { } work ? "/" + work.Generation : "")),
                 requestCancellationToken => SendTokenInfoAsync(apiKey, requestCancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
