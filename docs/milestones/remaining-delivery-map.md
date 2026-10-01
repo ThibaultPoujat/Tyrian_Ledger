@@ -73,18 +73,18 @@ gate is raised now and blocks lifecycle expansion; never substitute
 Linux screenshots for native Windows proof or defer discovery until release.
 
 ## Lifecycle and provenance dependency boundary
-+
-+There is no settlement↔basis cycle. P02D can extend already reported/reconciled
-+P01C/D execution events and supported P02E2 facts; it does not require P01-E
-+settlement or repetition. Future P01-E must identify its supported slice and
-+required accounting proof. A bounded TP slice may use the existing ledger only
-+if its acquisition/disposal provenance and reconciliation are actually adequate;
-+this checkpoint does not assert that readiness. Craft/transfer settlement needs
-+the relevant P02D proof. Unknown basis stays explicit, never fabricated to call
-+an execution settled. Both units remain Planned until bounded entry contracts
-+and evidence exist; all P01/P02 integrated exits are retained.
-+
-+## Shared architecture contracts
+
+There is no settlement↔basis cycle. P02D can extend already reported/reconciled
+P01C/D execution events and supported P02E2 facts; it does not require P01-E
+settlement or repetition. Future P01-E must identify its supported slice and
+required accounting proof. A bounded TP slice may use the existing ledger only
+if its acquisition/disposal provenance and reconciliation are actually adequate;
+this checkpoint does not assert that readiness. Craft/transfer settlement needs
+the relevant P02D proof. Unknown basis stays explicit, never fabricated to call
+an execution settled. Both units remain Planned until bounded entry contracts
+and evidence exist; all P01/P02 integrated exits are retained.
+
+## Shared architecture contracts
 
 - Application owns deterministic integer-copper policy; Web maps transport,
   Infrastructure owns persistence/typed gateways; React renders structured data.
