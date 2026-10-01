@@ -50,6 +50,36 @@ describe('comparison and execution through the fixture provider', () => {
     expect(createFixtureProvider('stale').getComparison(preferences).unavailable?.code).toBe('stale');
   });
 
+  it('respects each plan’s active duration at 5/6/7 minutes and the liquid-cash collection deadline', () => {
+    const provider = createFixtureProvider('comparison');
+    const preferences = provider.getDefaultPreferences();
+    for (const minutes of [5, 6]) {
+      expect(provider.getComparison({ ...preferences, timeLimitMinutes: minutes }).plans.map(plan => plan.id)).toEqual(['sell-surplus', 'buy-and-resell']);
+    }
+    expect(provider.getComparison({ ...preferences, timeLimitMinutes: 7 }).plans.map(plan => plan.id)).toEqual(['craft-short-batch', 'sell-surplus', 'buy-and-resell']);
+    expect(provider.getComparison({ ...preferences, timeLimitMinutes: 2, objective: 'liquid_gold_deadline' }).plans).toEqual([]);
+    expect(provider.getComparison({ ...preferences, timeLimitMinutes: 3, objective: 'liquid_gold_deadline' }).plans.map(plan => plan.id)).toEqual(['sell-surplus']);
+    expect(preferences.timeLimitMinutes).toBe(15);
+  });
+
+  it.each(['partial', 'contradiction'] as const)('keeps %s quantities, coverage and dependent guidance blocked after recheck and refresh', async scenario => {
+    const provider = createFixtureProvider(scenario);
+    const before = provider.getExecution()!;
+    render(<SignalsExperience provider={provider} initialDestination="plans" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Recontrôler l’instruction' }));
+    await screen.findByText(/Recontrôle demandé/);
+    fireEvent.click(screen.getByRole('button', { name: 'Actualiser l’observation' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Actualiser l’observation' })).toBeEnabled());
+    const after = provider.getExecution()!;
+    expect(after.currentIndex).toBe(before.currentIndex);
+    expect(after.state).toBe(before.state);
+    expect(after.completedIds).toEqual(before.completedIds);
+    expect(after.reportedIds).toEqual(before.reportedIds);
+    expect(after.reportedQuantity).toBe(before.reportedQuantity);
+    expect(after.coverageComplete).toBe(false);
+    expect(reportButton()).toBeDisabled();
+  });
+
   it('retries a lost acknowledgement only on explicit refresh, with the identical original intent across navigation', async () => {
     const provider = createFixtureProvider('lost-ack');
     const report = vi.spyOn(provider, 'reportPerformed');

@@ -80,6 +80,15 @@ for (const scenario of ['active', 'provisional', 'wait', 'partial', 'contradicti
       await last.scrollIntoViewIfNeeded(); await expect(last).toBeInViewport();
       await expect(title).toBeInViewport();
     }
+    if (scenario === 'partial' || scenario === 'contradiction') {
+      await page.getByRole('button', { name: 'Recontrôler l’instruction' }).click();
+      await expect(page.getByText(/Recontrôle demandé/)).toBeVisible();
+      await page.getByRole('button', { name: 'Actualiser l’observation' }).click();
+      await expect(report).toBeDisabled();
+      await expect(title).toHaveText('Lingot de mithril');
+      await expect(page.locator('.p05b-coverage--complete')).toHaveCount(0);
+      if (scenario === 'partial') await expect(page.getByText('Quantité observée : 20 / 50 · reliquat 30')).toBeVisible();
+    }
   });
 }
 

@@ -113,10 +113,13 @@ export function createPlansFixture(scenario: PreviewScenario): PlansPreviewProvi
     const unavailable = (code: 'preferences' | 'capital' | 'stale', explanation: string) => ({ plans: [], unavailable: { code, explanation } });
     if (scenario === 'stale' || scenario === 'degraded') return unavailable('stale', 'Les preuves fictives sont anciennes ou incomplètes. Actualisez leur couverture avant de lancer un plan.');
     if (scenario === 'insufficient-capital' || ![15, 30, 50].includes(preferences.capitalPercent)) return unavailable('capital', 'Le capital disponible ne couvre aucun plan préparé pour cette allocation. Les engagements existants restent protégés.');
-    if (scenario === 'no-plan' || preferences.timeLimitMinutes <= 5 || BigInt(preferences.minimumProfitPerPlan.copper) > 20000n || BigInt(preferences.minimumProfitPerActiveMinute.copper) > 5000n)
+    if (scenario === 'no-plan' || BigInt(preferences.minimumProfitPerPlan.copper) > 20000n || BigInt(preferences.minimumProfitPerActiveMinute.copper) > 5000n)
       return unavailable('preferences', 'Aucun plan fictif ne répond à cette durée et à ces seuils. Vous pouvez modifier vos préférences, sans relaxation automatique.');
-    const plans = [craft, surplus, flip].filter(plan => preferences.activities[plan.strategy] && (preferences.objective !== 'liquid_gold_deadline' || plan.deadlineQualified));
-    return plans.length ? { plans, unavailable: null } : unavailable('preferences', 'Aucun parcours avec or liquide ne correspond aux activités sélectionnées. Une vente future incertaine reste exclue.');
+    const plans = [craft, surplus, flip].filter(plan => preferences.activities[plan.strategy]
+      && plan.activeMinutes <= preferences.timeLimitMinutes
+      && (preferences.objective !== 'liquid_gold_deadline' || plan.deadlineQualified))
+      .map(plan => plan.id === craft.id ? { ...plan, reason: `Ce plan fictif laisse une marge dans vos ${preferences.timeLimitMinutes} minutes et mobilise peu d’or.` } : plan);
+    return plans.length ? { plans, unavailable: null } : unavailable('preferences', 'Aucun parcours ne correspond à la durée, à l’objectif et aux activités sélectionnés. Une vente future incertaine reste exclue de l’objectif d’or liquide.');
   };
   return {
     getComparison, getAccountScope: async () => scope, getExecution: () => execution,
@@ -165,7 +168,11 @@ export function createPlansFixture(scenario: PreviewScenario): PlansPreviewProvi
       if (action === 'resume' && resumeTarget !== null) { execution = { ...resumeTarget, revision: String(Number(execution.revision) + 1) }; resumeTarget = null; }
       if (action === 'undo' && undoTarget !== null) { execution = withState({ ...undoTarget, revision: execution.revision }, 'undone'); undoTarget = null; }
       if (action === 'help') execution = { ...execution, message: 'Si l’action diffère, suspendez le guidage et attendez une preuve pertinente. Une annulation locale ne modifie jamais le jeu.' };
-      if (action === 'recheck') execution = withState(execution, 'required-wait', { reportedStepId: null, reportedQuantity: null });
+      if (action === 'recheck') {
+        // A request is not evidence. These canned unresolved fixtures supply no
+        // new complete observation, so retain their quantities and blocked suffix.
+        execution = { ...withState(execution, execution.state), message: 'Recontrôle demandé · la preuve reste partielle ou contradictoire. Aucune instruction dépendante n’est autorisée.' };
+      }
     },
     switchFixtureAccount: () => { scope = scope === 'fixture-account-1' ? 'fixture-account-2' : 'fixture-account-1'; execution = null; undoTarget = null; resumeTarget = null; receipts.clear(); },
   };
