@@ -226,14 +226,13 @@ test('P01A checkpoint prepares only P01B before returning to the integration gat
 });
 
 async function batchFixture() {
-  const [index, guide, fixture, contracts] = await Promise.all([
-    readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8'),
-    readFile(new URL('docs/workflow/model-effort-guide.md', repositoryRoot), 'utf8'),
+  const [fixture, contracts] = await Promise.all([
     readFile(new URL('../fixtures/live-state-batch-01.json', import.meta.url), 'utf8'),
     readTicketContracts(new URL('docs/milestones/', repositoryRoot).pathname),
   ]);
   const operational = JSON.parse(fixture);
-  return { index, guide, ...contracts, issue98: operational.issue98Body, operational };
+  return { index: operational.roadmapIndex, guide: operational.modelGuide,
+    ...contracts, issue98: operational.issue98Body, operational };
 }
 
 test('the prepared batch advances across four tickets and stops at the integration checkpoint', async () => {
@@ -279,6 +278,66 @@ test('a listed review gate cannot disappear because GitHub authority is missing'
     '## Separate Sol review gate\n\n- #999 / TKT-M22-TEST — explicit additional gate for this failure fixture.');
   source.ticketByIssue.set(999, 'TKT-M22-TEST');
   assert.throws(() => deriveLiveState(source), /GitHub state is missing issue #999/);
+});
+
+async function secondBatchFixture() {
+  const [index, guide, fixture, contracts] = await Promise.all([
+    readFile(new URL('docs/milestones/INDEX.md', repositoryRoot), 'utf8'),
+    readFile(new URL('docs/workflow/model-effort-guide.md', repositoryRoot), 'utf8'),
+    readFile(new URL('../fixtures/live-state-batch-02.json', import.meta.url), 'utf8'),
+    readTicketContracts(new URL('docs/milestones/', repositoryRoot).pathname),
+  ]);
+  const operational = JSON.parse(fixture);
+  return { index, guide, ...contracts, issue98: operational.issue98Body, operational };
+}
+
+test('B2 selects preparation then four bounded contracts and stops before release work', async () => {
+  const source = await secondBatchFixture();
+  const current = () => deriveLiveState(source);
+  assert.equal(current().completed.number, 166);
+  assert.equal(current().preferred, 'TKT-M22-C03 / #167');
+  assert.deepEqual(current().gates, ['TKT-M22-P03A / #170', 'TKT-M22-02 / #96']);
+  const delivered = [
+    [167, 'TKT-M22-P02A / #168'],
+    [168, 'TKT-M22-P02B / #169'],
+    [169, 'TKT-M22-P03A / #170'],
+    [170, 'TKT-M22-P02C / #171'],
+  ];
+  for (const [closed, next] of delivered) {
+    source.operational.issues[closed].state = 'CLOSED';
+    assert.equal(current().preferred, next);
+    assert.equal(current().preferredKind, 'implementation');
+    assert.equal(current().alternate, 'None');
+  }
+  assert.deepEqual(current().gates, ['TKT-M22-02 / #96']);
+  source.operational.issues[171].state = 'CLOSED';
+  assert.equal(current().preferred, 'TKT-M22-G01 / #150');
+  assert.equal(current().preferredKind, 'checkpoint');
+  assert.match(renderGeneratedBlock(current()), /None — planning checkpoint required/);
+  assert.doesNotMatch(renderGeneratedBlock(current()), /Preferred next implementation ticket: `TKT-M22-02/);
+  // Closing an issue is not proof of a newly merged implementation; the latest
+  // implementation field still comes from actual PR evidence, not these states.
+  assert.equal(current().completed.number, 166);
+});
+
+test('B2 only advances completed delivery from an actual merged issue-closing PR', async () => {
+  const source = await secondBatchFixture();
+  source.operational.issues[167].state = 'CLOSED';
+  const issue = source.operational.issues[167];
+  source.operational.pullRequests.push({ number: 999, mergedAt: '2026-10-02T12:00:00Z',
+    baseRefName: 'develop', closingIssues: [{ number: 167, ...issue }] });
+  const state = deriveLiveState(source);
+  assert.equal(state.completed.number, 999);
+  assert.equal(state.preferred, 'TKT-M22-P02A / #168');
+});
+
+test('B2 source disagreement and missing explicit gate state fail closed', async () => {
+  const disagreement = await secondBatchFixture();
+  disagreement.issue98 = disagreement.issue98.replace(' -> #170 TKT-M22-P03A', ' -> #171 TKT-M22-P02C');
+  assert.throws(() => deriveLiveState(disagreement), /disagree about the execution order/);
+  const missing = await secondBatchFixture();
+  delete missing.operational.issues[170];
+  assert.throws(() => deriveLiveState(missing), /GitHub state is missing issue #170/);
 });
 
 function begin() { return '<!-- BEGIN GENERATED LIVE STATE -->'; }

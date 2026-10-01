@@ -41,23 +41,23 @@ Historical ticket files remain useful evidence but are not active backlog contra
 
 ## Corrective contracts
 
-Completed foundations: P00 / #148 in #151, P01A / #149 in #152,
-C01 / #153 in #155, P01B / #154 in #156. Accepted evidence is linked in
-[batch B1](M22/batch-01.md); old feature merges do not close new audit findings.
+Completed foundations and B1: #148–#161's explicitly ordered corrective
+contracts have merged. [B2](M22/batch-02.md) records exact merge/review/final-head
+CI evidence. UI owner feedback is “Changes needed”; usability acceptance is open.
 
 | Ticket | Purpose | Conditional readiness |
 |---|---|---|
-| [C02 / #157](M22/tickets/TKT-M22-C02.md) | Remaining delivery map and four-ticket preparation | Current planning/workflow preparation |
-| [P01C / #158](M22/tickets/TKT-M22-P01C.md) | Source-scoped reconciliation evidence | After #157 merges |
-| [P01D / #159](M22/tickets/TKT-M22-P01D.md) | Safe partial completion and bounded residual instructions | After #158 merges with required evidence |
-| [P05A / #160](M22/tickets/TKT-M22-P05A.md) | Approved Signaux, shell and session preview | After #159 merges |
-| [P05B / #161](M22/tickets/TKT-M22-P05B.md) | Approved comparison and execution preview | After #160 merges |
+| [C03 / #167](M22/tickets/TKT-M22-C03.md) | B1 checkpoint and four-ticket B2 preparation | Planning/workflow preparation only |
+| [P02A / #168](M22/tickets/TKT-M22-P02A.md) | All-character location/coverage collector | After #167 merges |
+| [P02B / #169](M22/tickets/TKT-M22-P02B.md) | Equipment protections and real crafting actors | After #168 merges with typed handoff/evidence |
+| [P03A / #170](M22/tickets/TKT-M22-P03A.md) | Account/store generation fences | After #169 merges; writer inventory and guard contracts checked |
+| [P02C / #171](M22/tickets/TKT-M22-P02C.md) | Persistent conservative protected holdings integration | After #170 merges with fresh Sol approval/final-head CI |
 | [G01 / #150](M22/tickets/TKT-M22-G01.md) | Batch / P01–P06 integration checkpoint | Tracking gate only, not a coding Goal |
 
 See the [remaining dependency map](remaining-delivery-map.md),
 [approved package exits](approved-delivery-plan.md) and
-[reusable Goal](../workflow/goal-session.md). Only B1's four implementation
-contracts are prepared. Future map units are Planned, not Ready.
+[reusable Goal](../workflow/goal-session.md). B2's four implementation contracts
+are conditionally prepared. Future map units remain Planned, not Ready.
 
 ## Current explicit execution order
 
@@ -75,6 +75,11 @@ The approved batch precedes the integration gate and release hardening:
  -> #159 TKT-M22-P01D  partial completion and safe residual instructions
  -> #160 TKT-M22-P05A  approved Signaux and session preview
  -> #161 TKT-M22-P05B  approved comparison and execution preview
+ -> #167 TKT-M22-C03   B1 checkpoint and B2 preparation
+ -> #168 TKT-M22-P02A  source-scoped all-character holdings collector
+ -> #169 TKT-M22-P02B  equipped/template protection and crafting actors
+ -> #170 TKT-M22-P03A  account/reset/restore generation fences
+ -> #171 TKT-M22-P02C  conservative protected holdings integration
  -> #150 TKT-M22-G01   batch checkpoint; remaining P01–P06 exit evidence
  -> #96  TKT-M22-02    release hardening after package acceptance
  -> #97  TKT-M22-03    outcome evaluation acceptance
@@ -82,8 +87,8 @@ The approved batch precedes the integration gate and release hardening:
 
 No active non-blocking alternate is authorized. Each new Goal checks actual
 predecessor merges/review and its entry conditions; an open or preferred ticket
-is not automatically Ready. After each B1 merge, use the next prepared contract
-without an Astra planning session. After #161, stop coding at #150: assess B1
+is not automatically Ready. After each B2 merge, use the next prepared contract
+without an Astra planning session. After #171, stop coding at #150: assess B2
 and prepare the next 3–5 contracts in both order authorities. Keep #150 open
 until P01–P06 exits and owner progression approval. No automatic next-ticket
 execution, auto-merge or skip to #96/#97.

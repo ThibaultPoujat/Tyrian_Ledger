@@ -1,6 +1,6 @@
 # Current Project State
 
-Last durable-context update: 2026-09-29 (owner-approved rolling planning).
+Last durable-context update: 2026-10-01 (B2 batch preparation).
 
 ## Durable product direction
 
@@ -43,8 +43,9 @@ not maintain handoff state manually.
 
 [Approved packages P00–P07](docs/milestones/approved-delivery-plan.md) retain all
 19 audit findings. The [remaining map](docs/milestones/remaining-delivery-map.md)
-defines dependencies and exits through release; [B1](docs/milestones/M22/batch-01.md)
+defines dependencies and exits through release; [B2](docs/milestones/M22/batch-02.md)
 contains the current four prepared contracts. Later work remains Planned.
+B1 is merged; owner UI changes are needed and usability acceptance remains open.
 
 Astra prepares 3–5 contracts at a batch checkpoint, not after each merge. Each
 new Goal verifies its predecessor merge/evidence and entry conditions, implements
@@ -65,9 +66,9 @@ Machine-owned derived values. Do not rewrite durable context for routine progres
 - Last completed implementation ticket: `TKT-M22-P05B / #161`
 - Last merged implementation PR: `#166`
 - Active milestone: `M22 — Convenience, Hardening, and Evaluation`
-- Preferred next implementation ticket: `None — planning checkpoint required`
+- Preferred next implementation ticket: `TKT-M22-C03 / #167`
 - Next required checkpoint: `TKT-M22-G01 / #150`
 - Allowed non-blocking alternate: `None`
-- Explicit active Sol gates: `TKT-M22-02 / #96`
+- Explicit active Sol gates: `TKT-M22-P03A / #170`, `TKT-M22-02 / #96`
 - Authorities: operational state = `GitHub`; execution order = `issue #98 + docs/milestones/INDEX.md`; review gates = `docs/workflow/model-effort-guide.md`
 <!-- END GENERATED LIVE STATE -->

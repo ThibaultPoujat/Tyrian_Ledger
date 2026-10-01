@@ -197,8 +197,8 @@ See:
 
 Issue #98 and `docs/milestones/INDEX.md` define explicit order. The approved
 corrective packages are in `docs/milestones/approved-delivery-plan.md`.
-P00, P01A and P01B are merged foundations. C02 / #157 prepares the rolling
-delivery map and B1's four contracts in `docs/milestones/M22/batch-01.md`.
+Foundations and B1 are merged. C03 / #167 prepares B2's four contracts in
+`docs/milestones/M22/batch-02.md`; the remaining map retains later Planned units.
 After each owner merge, the next prepared contract can start if its entry
 conditions still hold; no Astra planning session is required between those tickets.
 G01 / #150 is a tracking gate, **not an executable coding ticket**. At the batch
