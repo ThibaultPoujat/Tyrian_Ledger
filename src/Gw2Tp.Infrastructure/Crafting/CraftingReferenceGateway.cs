@@ -19,16 +19,22 @@ internal sealed class CraftingReferenceGateway : ICraftingReferenceGateway
     // Recipes retain the matrix's provisional recipe-specific schema pin.
     internal const string SchemaVersion = "2022-03-09T02:00:00.000Z";
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private readonly PublicReferenceCache references;
     private readonly HttpClient httpClient;
     private readonly IGw2RequestScheduler requestScheduler;
 
-    public CraftingReferenceGateway(HttpClient httpClient, IGw2RequestScheduler requestScheduler)
+    public CraftingReferenceGateway(HttpClient httpClient, IGw2RequestScheduler requestScheduler, PublicReferenceCache? references = null)
     {
+        this.references = references ?? new(new PublicReferenceCacheOptions(), new SystemClock());
         this.httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         this.requestScheduler = requestScheduler ?? throw new ArgumentNullException(nameof(requestScheduler));
     }
 
-    public async Task<Gw2ApiResult<IReadOnlyList<CraftingRecipe>>> GetRecipesAsync(
+    public Task<Gw2ApiResult<IReadOnlyList<CraftingRecipe>>> GetRecipesAsync(
+        IReadOnlyCollection<int> recipeIds, CancellationToken cancellationToken = default) =>
+        references.GetRecipesAsync(SchemaVersion, recipeIds, GetUncachedRecipesAsync, cancellationToken);
+
+    private async Task<Gw2ApiResult<IReadOnlyList<CraftingRecipe>>> GetUncachedRecipesAsync(
         IReadOnlyCollection<int> recipeIds,
         CancellationToken cancellationToken = default)
     {

@@ -5,6 +5,8 @@ using Gw2Tp.Application.LocalData;
 using Gw2Tp.Application.Plans;
 using Gw2Tp.Domain.Finance;
 using Gw2Tp.Infrastructure.Persistence;
+using Gw2Tp.Infrastructure.Crafting;
+using Gw2Tp.Application.MarketHistory;
 using Gw2Tp.Infrastructure.Secrets;
 using Microsoft.Data.Sqlite;
 using Gw2Tp.Application.MarketData;
@@ -16,6 +18,74 @@ namespace Gw2Tp.Infrastructure.Tests;
 
 public sealed class AccountHoldingsPersistenceTests
 {
+    [Fact]
+    public async Task Real_holdings_and_crafting_consumers_share_public_references_across_refresh_and_recovery()
+    {
+        await using var db = await Database.Create();
+        var now = DateTimeOffset.UtcNow;
+        var collector = new Collector(Snapshot(now, [Item(10, 6)]).Capture);
+        var clock = new PublicReferenceCacheTests.Clock { Now = now };
+        var cache = PublicReferenceCacheTests.Cache(clock);
+        using var handler = new PublicReferenceCacheTests.ReferenceHandler();
+        using var http = PublicReferenceCacheTests.Client(handler);
+        using var scheduler = PublicReferenceCacheTests.Scheduler();
+        var market = PublicReferenceCacheTests.Market(http, scheduler, cache);
+        var holdings = new AccountHoldingsSnapshotService(collector, db.Holdings, market,
+            new DefaultAccountHoldingsRulesProvider(), clock, db.Fence);
+        var snapshots = new AccountCraftingSnapshotService(null!, null!, db.Fence, holdings);
+        var planner = new CraftingOpportunityService(new PublicReferenceConsumerScope(), snapshots,
+            new CraftingReferenceGateway(http, scheduler, cache), market, new PublicReferenceConsumerHistory(now),
+            new CraftingOpportunityPlanner(new CraftingEconomicsCalculator()), holdings: holdings);
+        Assert.True((await holdings.RefreshAsync()).IsSuccess);
+        var first = await db.Run(() => planner.GetAsync());
+        Assert.Equal(new[] { 1, 2 }, first.Opportunities.Select(value => value.Recipe.RecipeId));
+        Assert.All(first.Opportunities, value => Assert.False(value.IsActionable));
+        Assert.True((await holdings.RefreshAsync()).IsSuccess);
+        var second = await db.Run(() => planner.GetAsync());
+        Assert.Equal(JsonSerializer.Serialize(first.Opportunities), JsonSerializer.Serialize(second.Opportunities));
+        Assert.Equal(first.State, second.State);
+        Assert.Equal(first.SummaryExclusions, second.SummaryExclusions);
+        Assert.Equal(2, collector.Calls); // Private captures still happen on every refresh.
+        Assert.Equal(new[] { "/v2/items:10", "/v2/items:100" }, handler.Reads.Where(read => read.StartsWith("/v2/items:", StringComparison.Ordinal)));
+        Assert.Single(handler.Reads, read => read.StartsWith("/v2/recipes:", StringComparison.Ordinal));
+        Assert.Equal(2, handler.Reads.Count(read => read.StartsWith("/v2/commerce/listings:", StringComparison.Ordinal)));
+        var backup = await db.Recovery.CreateBackupAsync();
+        await db.Recovery.ClearPersonalDataAsync();
+        Assert.Null(await db.Run(() => holdings.GetProjectionAsync(Scope, now)));
+        Assert.Equal(LocalDataRestoreOutcome.Restored, (await db.Recovery.RestoreManagedBackupAsync(backup.FileName)).Outcome);
+        var restored = await db.Run(() => holdings.GetProjectionAsync(Scope, now));
+        Assert.Empty(restored!.Quantities); // Public hits do not grant restored private-generation eligibility.
+        Assert.True((await holdings.RefreshAsync()).IsSuccess);
+        Assert.Equal(2, handler.Reads.Count(read => read.StartsWith("/v2/items:", StringComparison.Ordinal)));
+        Assert.Equal(3, collector.Calls);
+        db.Credential.Value = "synthetic-other-account-key";
+        await db.Fence.RunAsync(async token => {
+            var other = new Gw2Tp.Application.PersonalTradingPost.AccountScope("synthetic-other-account");
+            await db.Fence.BindAccountAsync(other, token);
+            Assert.Null(await db.Holdings.GetLatestAsync(other, token));
+            Assert.True((await market.GetItemMetadataAsync([10], token)).IsSuccess);
+            return true;
+        });
+        Assert.Equal(2, handler.Reads.Count(read => read.StartsWith("/v2/items:", StringComparison.Ordinal)));
+        await db.Migrator.ValidatePersistedDataAsync();
+    }
+
+    private sealed class PublicReferenceConsumerScope : Gw2Tp.Application.PersonalTradingPost.IPersonalTradingPostGateway
+    {
+        public Task<Gw2ApiResult<Gw2Tp.Application.PersonalTradingPost.AccountScope>> GetAccountScopeAsync(CancellationToken token = default) =>
+            Task.FromResult(Gw2ApiResult<Gw2Tp.Application.PersonalTradingPost.AccountScope>.Success(Scope));
+        public Task<Gw2ApiResult<Gw2Tp.Application.PersonalTradingPost.PersonalTransactionPage>> GetCurrentBuyOrdersAsync(int page, CancellationToken token = default) => throw new NotSupportedException();
+        public Task<Gw2ApiResult<Gw2Tp.Application.PersonalTradingPost.PersonalTransactionPage>> GetCurrentSellListingsAsync(int page, CancellationToken token = default) => throw new NotSupportedException();
+        public Task<Gw2ApiResult<Gw2Tp.Application.PersonalTradingPost.PersonalTransactionPage>> GetCompletedBuyHistoryAsync(int page, CancellationToken token = default) => throw new NotSupportedException();
+        public Task<Gw2ApiResult<Gw2Tp.Application.PersonalTradingPost.PersonalTransactionPage>> GetCompletedSellHistoryAsync(int page, CancellationToken token = default) => throw new NotSupportedException();
+    }
+    private sealed class PublicReferenceConsumerHistory(DateTimeOffset now) : IHistoricalMarketAnalyticsService
+    {
+        public Task<HistoricalMarketAnalytics> GetAsync(int id, CancellationToken token = default) => GetAtAsync(id, now, token);
+        public Task<HistoricalMarketAnalytics> GetAtAsync(int id, DateTimeOffset at, CancellationToken token = default) =>
+            Task.FromResult(new HistoricalMarketAnalytics(id, at, false, HistoricalMarketAnalyticsSettings.Default, null, []));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -273,8 +343,9 @@ public sealed class AccountHoldingsPersistenceTests
 
     private sealed class Credential : IGw2ApiKeySource
     {
+        public string Value { get; set; } = "synthetic-holdings-test-key";
         public ValueTask<Gw2ApiKeyReadResult> ReadAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(Gw2ApiKeyReadResult.FromValue("synthetic-holdings-test-key"));
+            ValueTask.FromResult(Gw2ApiKeyReadResult.FromValue(Value));
     }
     private sealed class Clock(DateTimeOffset now) : IClock { public DateTimeOffset UtcNow => now; }
     private sealed class Collector(AccountHoldingsCapture capture) : IAccountHoldingsCollector

@@ -25,6 +25,10 @@ public static class Gw2ApiServiceCollectionExtensions
             .Bind(configuration.GetSection(Gw2ApiSchedulerOptions.ConfigurationSectionName))
             .ValidateOnStart();
         services.AddSingleton<IGw2RequestScheduler, Gw2RequestScheduler>();
+        services.AddSingleton<IValidateOptions<PublicReferenceCacheOptions>, PublicReferenceCacheOptionsValidator>();
+        services.AddOptions<PublicReferenceCacheOptions>()
+            .Bind(configuration.GetSection(PublicReferenceCacheOptions.ConfigurationSectionName)).ValidateOnStart();
+        services.AddSingleton<PublicReferenceCache>();
         services.AddSingleton<IClock, SystemClock>();
         services.AddHttpClient(Gw2ApiClient.HttpClientName, (serviceProvider, httpClient) =>
         {
@@ -40,7 +44,10 @@ public static class Gw2ApiServiceCollectionExtensions
             serviceProvider.GetRequiredService<IHttpClientFactory>(),
             serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
             serviceProvider.GetService<SafeTransportDiagnosticBuffer>()));
-        services.AddSingleton<IGw2ApiClient, BatchingGw2ApiClient>();
+        services.AddSingleton<IGw2ApiClient>(serviceProvider => new BatchingGw2ApiClient(
+            serviceProvider.GetRequiredService<IGw2ApiTransport>(),
+            serviceProvider.GetService<SafeTransportDiagnosticBuffer>(),
+            serviceProvider.GetRequiredService<PublicReferenceCache>()));
         return services;
     }
 }
