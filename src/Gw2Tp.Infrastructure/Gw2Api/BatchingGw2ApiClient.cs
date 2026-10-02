@@ -28,7 +28,7 @@ internal interface IGw2ApiTransport
 
 /// <summary>
 /// Application-facing public-market gateway. It batches large reads while
-/// retaining no completed response; request de-duplication remains in the
+/// reusing validated item references; market request de-duplication remains in the
 /// transport scheduler for the lifetime of an active outbound request only.
 /// </summary>
 internal sealed class BatchingGw2ApiClient : IGw2ApiClient
@@ -36,15 +36,18 @@ internal sealed class BatchingGw2ApiClient : IGw2ApiClient
     internal const int MaximumBatchSize = 200;
 
     private readonly IGw2ApiTransport _transport;
+    private readonly PublicReferenceCache _references;
     private readonly SafeTransportDiagnosticBuffer? _diagnostics;
 
     public BatchingGw2ApiClient(
         IGw2ApiTransport transport,
-        SafeTransportDiagnosticBuffer? diagnostics = null)
+        SafeTransportDiagnosticBuffer? diagnostics = null,
+        PublicReferenceCache? references = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         _transport = transport;
         _diagnostics = diagnostics;
+        _references = references ?? new(new PublicReferenceCacheOptions(), new SystemClock());
     }
 
     public Task<Gw2ApiResult<IReadOnlyList<int>>> GetPriceItemIdsAsync(
@@ -64,7 +67,11 @@ internal sealed class BatchingGw2ApiClient : IGw2ApiClient
     public Task<Gw2ApiResult<IReadOnlyList<MarketItemMetadata>>> GetItemMetadataAsync(
         IReadOnlyCollection<int> itemIds,
         CancellationToken cancellationToken = default) =>
-        GetBatchedAsync("items", itemIds, _transport.GetItemMetadataAsync, static item => item.ItemId, cancellationToken);
+        (itemIds ?? throw new ArgumentNullException(nameof(itemIds))).Count == 0
+            ? throw new ArgumentException("At least one item ID is required.", nameof(itemIds))
+            : _references.GetItemsAsync(Gw2ApiClient.SchemaVersion, "en", itemIds,
+                (missing, token) => GetBatchedAsync("items", missing, _transport.GetItemMetadataAsync, static item => item.ItemId, token),
+                cancellationToken);
 
     private async Task<Gw2ApiResult<IReadOnlyList<T>>> GetBatchedAsync<T>(
         string operation,

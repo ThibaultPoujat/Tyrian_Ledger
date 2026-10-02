@@ -343,3 +343,43 @@ During M12:
 - preserve old ADRs/docs as explicitly superseded history where useful.
 
 Do not perform a broad rewrite just to match a new directory diagram.
+
+
+## 13. Public reference reuse (P03B1)
+
+Infrastructure owns one process-memory `PublicReferenceCache`, shared by the
+batching `IGw2ApiClient` item-metadata method and `ICraftingReferenceGateway` recipe
+definitions. Real holdings category refresh and crafting discovery use these
+same seams. The current recipe gateway has no public recipe-ID universe method;
+this ticket does not add one or cache private account recipe unlocks.
+
+Keys include endpoint, pinned schema, language (`en` for items; language-neutral
+recipes) and each normalized positive ID. Reordered/duplicate reference IDs share
+data; overlapping calls fetch only missing IDs in existing sequential 200-ID
+batches. Only complete validated successful fills enter the cache. Partial,
+missing, duplicate, unexpected, malformed, failed and cancelled fills cannot
+create complete cached evidence; existing valid hits survive a failed fill.
+
+`Gw2Api:PublicReferences:TimeToLiveSeconds` (default 3600) and `MaximumEntries`
+(default 10000) are positive, startup-validated local reuse settings, not ArenaNet
+update/cache guarantees. Capacity counts references across both endpoints;
+eviction is deterministic FIFO, without hit-based age extension. TTL starts
+before the fill, expires at the exact boundary, and is checked again before
+returning mixed hit/miss results. Backward clock movement clears entries and
+invalidates earlier in-flight fills. No stale-while-revalidate admission exists.
+The cache does not claim physical/account freshness or resolve VERIFY-008/017.
+
+The scheduler still owns bounded requests, retries, in-flight coalescing and
+per-waiter cancellation. Hits require no outbound permit. Recipes' nested lists
+and result collections are detached so callers cannot corrupt later reads.
+No credential, account scope/roster/unlock, wallet, holdings, TP or commerce market
+response is retained here; account/store generation fences remain independent.
+Clear/restore/account changes do not turn public references into private rights.
+There is no persistence, new timer, permission or retention change.
+
+Local aggregate counters under meter `TyrianLedger.PublicReferences` expose
+`gw2.references.hits`, `gw2.references.misses` and `gw2.references.evictions` without
+tags, IDs, URLs or secrets. A bounded scalar snapshot also reports retained entry
+count; it adds no browser payload. Reproduce request-count and policy vectors with
+`dotnet test tests/Gw2Tp.Infrastructure.Tests/Gw2Tp.Infrastructure.Tests.csproj -c Release --filter 'FullyQualifiedName~PublicReferenceCacheTests|FullyQualifiedName~Real_holdings_and_crafting_consumers'`.
+VERIFY-008/013/016/017 remain OPEN; synthetic tests are local policy evidence.

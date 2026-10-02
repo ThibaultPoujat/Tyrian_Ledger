@@ -119,7 +119,8 @@ public static class AccountConnectionServiceCollectionExtensions
         }).RemoveAllLoggers();
         services.AddSingleton<ICraftingReferenceGateway>(serviceProvider => new CraftingReferenceGateway(
             serviceProvider.GetRequiredService<IHttpClientFactory>().CreateClient(CraftingReferenceGateway.HttpClientName),
-            serviceProvider.GetRequiredService<IGw2RequestScheduler>()));
+            serviceProvider.GetRequiredService<IGw2RequestScheduler>(),
+            serviceProvider.GetRequiredService<PublicReferenceCache>()));
         services.AddSingleton<IPersonalTradingPostSynchronizationService, PersonalTradingPostSynchronizationService>();
 
         return services;
