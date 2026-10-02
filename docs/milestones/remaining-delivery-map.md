@@ -1,7 +1,7 @@
 # Remaining Delivery Map
 
-Owner-approved rolling planning: 2026-09-29; B2 prepared 2026-10-01. Inspected
-baseline: `develop 020ca25dae4d44a804e060cdda48616b795d51e8`, after B1.
+Owner-approved rolling planning: 2026-09-29; B3 prepared 2026-10-02. Inspected
+baseline: `develop ea4cc72e0240a9294074e1a6f77fa345daa0e416`, after B2.
 This maps the complete remaining corrective program through release. The
 [approved delivery plan](approved-delivery-plan.md) still owns package exits and
 audit traceability. This document decomposes those packages; it does not claim
@@ -9,14 +9,16 @@ future work is implemented or authorize all work in one Goal.
 
 ## Planning precision and readiness
 
-B1 is merged, with implementation evidence recorded in [B2](M22/batch-02.md).
-Only B2's four implementation contracts are newly prepared now.
+B1/B2 are merged, with exact review/final-head evidence in [B3](M22/batch-03.md).
+B3 prepares four conditionally Ready backend contracts and one environment-gated
+Windows probe. C04 is the owner-authorized Sol Medium checkpoint instead of Astra.
 A ticket becomes executable when its named preparation/predecessors are merged,
 required evidence exists and its assumptions still hold. Readiness is conditional,
 not inferred from an open issue, a number or a generated preferred-ticket field.
 
-Later work units below are **Planned, not Ready**. IDs such as P02C are map labels,
-not GitHub issues. At each batch checkpoint, Astra validates the delivered
+Units explicitly promoted to B3 below have that manifest's conditional entry
+checks. All other future work units are **Planned, not Ready**. Unnumbered future IDs are map labels; only explicit #issue contracts are
+executable after their entry checks. At each batch checkpoint, Astra validates the delivered
 interfaces and promotes the next 3–5 units to bounded contracts. Split a future
 unit if it cannot produce one coherent, independently reviewable PR. Do not
 prewrite file-by-file recipes for code that does not yet exist.
@@ -38,14 +40,18 @@ review assignment before coding; quota does not waive review.
 | P02B / B2 / #169 | Equipped/template protection and actor-specific crafting policy; producer seam only | P02A; documented equipment/tab schema | No fabricated actor or protected input; uncertainty fails closed | NORMAL GPT-6.1 Sol High |
 | P03A / B2 / #170 | Durable store incarnation and account/reset/restore generation; obsolete work cannot commit or retrieve receipts | P02A/B; P01B receipts; actual writer/publication inventory | Switch/clear/restore races, no old account write or receipt leakage, restart/rollback | Explicit GPT-6.1 Sol XHigh gate |
 | P02C / B2 / #171 | Guarded persistent location/protection evidence and one conservative holdings projection | P03A; P02A/B seams | No portfolio/location/delivery double credit; protected/actor eligibility; Partial live physical proof | NORMAL GPT-6.1 Sol High |
-| P06-A / next checkpoint priority, Planned | Early Windows tray/notification feasibility and packaging decision, with minimal executable probe | Existing loopback host; actual Windows environment and owner architecture decision if needed | UI closed/minimized, lock/sleep/resume, denied permission; truthful limits | Sol Medium; security escalation if needed |
-| P02-E / B3 preparation priority, Planned | Action-relevant transfer/coherence evidence and supported equipment correspondence; improve multi-location admission only with adequate correlation, retain conservative fallback otherwise | P02C; VERIFY-016/017 research and actual endpoint evidence | Delayed bag↔bank↔delivery replays conserve resources; supported craft confirmation and exact correspondence have adequate proof; unsupported shapes remain explicit, never globally atomic claims | Strong evidence/resource review; assign gate at preparation |
-| P01-E / B3 | Settled vs merely reported executions; repeat same strategy with a new execution; idempotent starts | P01C/D; P02C/P02-E action-relevant evidence; P03A | Unconfirmed buy/list/fill cannot settle; settled strategy repeats; late evidence preserves history; start retry never starts twice | Explicit Sol gate expected |
+| P06-A / B3 / #182, environment-gated | Early Windows tray/notification feasibility and packaging decision, with minimal executable probe | Existing loopback host; actual Windows environment and owner architecture decision if needed | UI closed/minimized, lock/sleep/resume, denied permission; truthful limits | NORMAL GPT-6.1 Sol High; production architecture remains owner-gated |
+| P02-E / split below; production proof Planned | Action-relevant transfer/coherence evidence and supported equipment correspondence; improve multi-location admission only with adequate correlation, retain conservative fallback otherwise | P02C; VERIFY-016/017 research and actual endpoint evidence | Delayed bag↔bank↔delivery replays conserve resources; supported craft confirmation and exact correspondence have adequate proof; unsupported shapes remain explicit, never globally atomic claims | Strong evidence/resource review; assign gate at preparation |
+| P01-E / after slice-specific action/basis proof, Planned | Settled vs merely reported executions; repeat same strategy with a new execution; idempotent starts | P01C/D; P02C/P02-E action-relevant evidence; P03A | Unconfirmed buy/list/fill cannot settle; settled strategy repeats; late evidence preserves history; start retry never starts twice | Explicit Sol gate expected |
 | P01-F / B3 | Passive procurement becomes repriced feasible craft/sell continuation; collection distinguished from fill | P01-E; P02C/P02-E supported usable inventory/capabilities | Order→partial/full fill→collect→craft→sell; no duplicate acquisition; capacity/depth deterioration pauses | Strong lifecycle/economics review |
 | P01-G / B3 | General residual replanning and explicit contradiction/undo recovery beyond P01D's one-item case | P01-E/F | Multi-input partial chain conserves inputs/output/basis; acted descendants not rewritten | Explicit Sol gate expected |
-| P02D / B3 | Transformation/transfer cost provenance and outcome events across trade/craft chains | P02C/P02-E action-relevant account evidence; P01 lifecycle | Known/unknown basis preserved; no phantom TP holdings; fees/cash/profit separated | Strong accounting review |
-| P03-B / B4 | Reusable endpoint-aware caches and bounded priority scheduler | P03A epochs; P02 source contract | Metadata reuse, coalescing, Retry-After handling, bounded request/concurrency policy; no cache proof fabrication | Sol High |
-| P03-C / B4 | Persisted/local decision read models, targeted start preflight and short command commit gates | P03-B; P01 lifecycle | Completion stays local/durable during unrelated API stalls; stale commitment blocked; latency measured | Strong concurrency review |
+| P02D / Planned | Transformation/transfer cost provenance and outcome events across trade/craft chains | P02C/P02E2 supported action evidence; existing P01C/D report/reconciliation event seams, not P01-E settlement | Known/unknown basis preserved; no phantom TP holdings; fees/cash/profit separated | Strong accounting review |
+| P02E1 / B3 / #181 | Bounded action-evidence investigation/export/replay; no production proof promotion | B2 source clocks; #180 | Actual-vs-synthetic matrix, privacy and failure replay, precise unresolved P02E2 predicates | NORMAL GPT-6.1 Sol High |
+| P02E2 / Planned | Supported production correlation/confirmation and instance correspondence only with adequate evidence | P02E1 actual evidence and owner authority decisions where needed | Source-specific positive proof, uniqueness/replay/correction; conservative fallback otherwise | Assign explicit Sol gate at preparation |
+| P03C1 / B3 / #180 | Local completion/undo using trusted bound context; zero upstream command dependency | P03A/B2; #179 | Scope-before-receipt, local durability under HTTP barriers, atomic consuming guards | Explicit GPT-6.1 Sol XHigh gate |
+| P03C2 / Planned | Persisted decision read models and targeted fresh start/preflight | P03C1; P01 lifecycle | Stale commitments cannot start; coherent invalidation/restart and measured latency | Assign strong concurrency review at readiness |
+| P03-B / B3 #178/#179 | Reusable endpoint-aware caches and bounded priority scheduler | P03A epochs; P02 source contract | Metadata reuse, coalescing, Retry-After handling, bounded request/concurrency policy; no cache proof fabrication | Sol High |
+| P03-C / command slice #180; remainder Planned | Persisted/local decision read models, targeted start preflight and short command commit gates | P03-B; P01 lifecycle | Completion stays local/durable during unrelated API stalls; stale commitment blocked; latency measured | Strong concurrency review |
 | P04-A / B4 | Versioned session preferences and common feasibility/economics for both objectives | P01/P02 integrated slice; P03 read models; approved preference semantics | Allocation/reserve/commitment examples; active time vs liquid cash deadline; unknown basis stays explicit | Strong financial review |
 | P04-B / B4 | Bounded rotating research universe, cold-start path and observation-coverage quality | P03-B; P04-A contract | Candidate beyond old prefix eventually checked; clustered/stale history rejected; work bounded | Sol High |
 | P04-C / B5 | Shared utility/ranking, worthwhile-action and attention gates across supported strategies | P04-A/B | Comparable economics/time; hard failures cannot be outranked; scarce urgent alerts | Strong recommendation review |
@@ -61,8 +67,22 @@ Proposed batch groupings are capacity estimates, not commitments to implement a
 large unit unsplit. At most 3–5 ready child contracts are promoted per planning
 pass. Windows proof requires a Windows runner/device: Linux screenshots do not
 prove native notification delivery. No Windows environment evidence was supplied
-at B2 preparation. Keep the probe Planned and prioritize it at B2 exit, before lifecycle work expands; never substitute
+at B2 preparation. B3 provides the bounded probe contract #182 but access remains UNCONFIRMED.
+It is not Ready until interactive Windows entry evidence exists. The environment
+gate is raised now and blocks lifecycle expansion; never substitute
 Linux screenshots for native Windows proof or defer discovery until release.
+
+## Lifecycle and provenance dependency boundary
+
+There is no settlement↔basis cycle. P02D can extend already reported/reconciled
+P01C/D execution events and supported P02E2 facts; it does not require P01-E
+settlement or repetition. Future P01-E must identify its supported slice and
+required accounting proof. A bounded TP slice may use the existing ledger only
+if its acquisition/disposal provenance and reconciliation are actually adequate;
+this checkpoint does not assert that readiness. Craft/transfer settlement needs
+the relevant P02D proof. Unknown basis stays explicit, never fabricated to call
+an execution settled. Both units remain Planned until bounded entry contracts
+and evidence exist; all P01/P02 integrated exits are retained.
 
 ## Shared architecture contracts
 
@@ -98,9 +118,13 @@ Prepare P02-E to own deferred coherence/correspondence proof, alongside the earl
 Windows probe and its environment/architecture gates;
 retain owner UI feedback before P05C. Existing owner decision gates remain.
 
-B3: run the first repeatable trade/craft lifecycle with conservation and recovery
-proof. Begin controlled owner-account validation only with complete protections
-and authorized read-only access; no exposed credentials in prompts/fixtures.
+B3: reuse references, bound dispatch priorities, remove local command upstream
+dependencies and investigate action evidence; run the Windows probe only with
+actual environment access. P01-E/F/G and P02D remain Planned, dependent on P02E2
+and required provenance. The first repeatable trade/craft lifecycle remains a
+later integrated exit, not an assertion made by this batch. Controlled account
+experiments require authorized read-only access and private local evidence; no
+credentials/raw private payload in prompts/fixtures.
 
 B4/B5: verify both session objectives and live screen behavior, then quiet normal
 play sessions. Track whether advice earned its interruption and where UI confused.

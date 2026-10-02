@@ -2,10 +2,10 @@
 
 The same prompt works throughout a prepared batch. Model selection happens in the
 host UI; this document does not configure routing, limits or automatic reviewers.
-Use **GPT-6.1 Sol Medium** for #168, then **GPT-6.1 Sol High** for #169–#171.
+Use **GPT-6.1 Sol High** for B3 #178–#182.
 Select `gpt-6.1-sol` and the ticket's effort in the host before each Goal.
 Keep implementation/fixes for one ticket together; use a new implementation
-context for the next ticket. Review uses a separate independent context; #170
+context for the next ticket. Review uses a separate independent context; #180
 requires fresh GPT-6.1 Sol XHigh only after green CI.
 
 ## Copyable implementation prompt
@@ -16,9 +16,10 @@ ThibaultPoujat/Tyrian_Ledger on current develop.
 
 Read AGENTS.md. Reconcile CURRENT.md with GitHub delivery state, issue #98,
 docs/milestones/INDEX.md and docs/workflow/model-effort-guide.md.
-Use docs/milestones/M22/batch-02.md for the current prepared queue.
-Use GPT-6.1 Sol at the selected ticket's effort: Medium for #168, High for
-#169–#171. If the active host model/effort cannot match the assignment, preserve
+Use docs/milestones/M22/batch-03.md for the current prepared queue.
+Use GPT-6.1 Sol High for #178–#182. #182 additionally requires actual interactive
+Windows access; stop with its exact entry blocker if unavailable.
+If the active host model/effort cannot match the assignment, preserve
 a handoff rather than silently substituting or claiming this prompt changes it.
 Select only the first open implementation in explicit order; verify its
 predecessor merges, final-head CI/review and ticket entry conditions. Distinguish reviewed code
@@ -48,7 +49,8 @@ new planning ticket, or reinterpret the entire tracking gate as one coding task.
 
 After an owner merge, reuse this prompt. No new Astra Goal-writing session is
 needed while the next contract is prepared and its entry conditions hold.
-After #167 preparation merges, B2 order is #168 → #169 → #170 → #171 → #150 checkpoint.
+After #177 preparation merges, B3 order is #178 → #179 → #180 → #181 → #182
+(environment-gated) → #150 checkpoint.
 Update this batch-manifest pointer only at the next batch preparation.
 
 ## Review handoff when a separate session is required
@@ -65,11 +67,12 @@ Return findings, acceptance evidence and APPROVE / CHANGES REQUESTED / BLOCKED.
 
 ## Batch checkpoint
 
-At #150, Astra uses the completed batch's evidence and owner preview feedback to
+At #150, the assigned checkpoint model uses the completed batch's evidence and owner preview feedback to
 assess integrated behavior and promote the next 3–5 units from
 [remaining-delivery-map.md](../milestones/remaining-delivery-map.md).
 Update both order authorities, model assignments and this reusable handoff in
-one preparation. Keep #150 open until all P01–P06 exits and owner progression
+one preparation. C04 is the owner-authorized Sol Medium exception to the usual
+Astra checkpoint, not a host-model change. Keep #150 open until all P01–P06 exits and owner progression
 approval. A package, fixture preview or planning document is not completion.
 
 An early checkpoint is justified by an invalid contract/dependency, an unresolved

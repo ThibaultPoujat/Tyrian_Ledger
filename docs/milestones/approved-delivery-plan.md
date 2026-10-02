@@ -88,7 +88,17 @@ Repeat the slice with an acquisition that waits for a fill and with a partial/co
 All financial, persistence, resource, security and reconciliation changes require meaningful tests. Keep the existing review rules, and resolve the previously observed frontend runner exit issue in a clean supported environment. UI screenshot checks supplement accessibility and functional tests; they do not validate economics.
 
 
-## Ready queue and checkpoints
+## Current B3 preparation
+
+B2 is merged; [B3](M22/batch-03.md) assesses package exits and prepares four
+backend contracts plus an environment-gated Windows probe. The decomposition
+pulls reusable collection/local command work before lifecycle expansion and
+splits P02-E into investigation P02E1 and later production proof P02E2. It does
+not weaken any package exit above. C04 is the owner-authorized Sol Medium
+checkpoint exception instead of Astra. P01/P02/#150 remain open; INDEX/#98 own
+exact order and the model guide owns review gates.
+
+## Ready queue and checkpoints (historical B1 foundation)
 
 P00, P01A and P01B are merged foundations; see [B1 evidence](M22/batch-01.md).
 Owner direction on 2026-09-29 replaces planning after every child with rolling

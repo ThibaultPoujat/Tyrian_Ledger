@@ -146,8 +146,10 @@ behavior and merges. Local-first permits future distribution to friends/public
 while account/private data and computation remain local.
 
 The corrective sequence is P00–P07 in `docs/milestones/approved-delivery-plan.md`.
-Merged feature tickets are not proof that new audit findings are fixed. First
-coding ticket #149 is limited to duplicate resource aggregation. Tracking gate
+Merged feature tickets are not proof that new audit findings are fixed.
+Current prepared queue is B3 in `docs/milestones/M22/batch-03.md`; C04 prepares
+four backend contracts and an interactive-Windows-gated probe. Historical #149
+was limited to duplicate resource aggregation. Tracking gate
 #150 prevents skipping the remaining packages; it is not an executable Goal.
 Issue #98 and the milestone index own order; GitHub owns delivery state.
 

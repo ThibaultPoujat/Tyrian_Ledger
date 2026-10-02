@@ -39,7 +39,7 @@ Historical ticket files remain useful evidence but are not active backlog contra
 | M21 | Signals and Crafting Intelligence | [TKT-M21-01](M21/tickets/TKT-M21-01.md), [TKT-M21-S01](M21/tickets/TKT-M21-S01.md), [TKT-M21-S02](M21/tickets/TKT-M21-S02.md), [TKT-M21-S03](M21/tickets/TKT-M21-S03.md), [TKT-M21-S04](M21/tickets/TKT-M21-S04.md), [TKT-M21-S05](M21/tickets/TKT-M21-S05.md), [TKT-M21-02](M21/tickets/TKT-M21-02.md), [TKT-M21-03](M21/tickets/TKT-M21-03.md) |
 | M22 | Continuous Operation, Hardening, and Evaluation | [TKT-M22-01](M22/tickets/TKT-M22-01.md), [TKT-M22-S01](M22/tickets/TKT-M22-S01.md), [TKT-M22-02](M22/tickets/TKT-M22-02.md), [TKT-M22-03](M22/tickets/TKT-M22-03.md) |
 
-## Corrective contracts
+## Corrective contracts (delivered B2 history)
 
 Completed foundations and B1: #148–#161's explicitly ordered corrective
 contracts have merged. [B2](M22/batch-02.md) records exact merge/review/final-head
@@ -57,7 +57,18 @@ CI evidence. UI owner feedback is “Changes needed”; usability acceptance is 
 See the [remaining dependency map](remaining-delivery-map.md),
 [approved package exits](approved-delivery-plan.md) and
 [reusable Goal](../workflow/goal-session.md). B2's four implementation contracts
-are conditionally prepared. Future map units remain Planned, not Ready.
+are merged; B3 below owns current conditional readiness. Future unprepared map
+units remain Planned, not Ready.
+
+## B3 checkpoint and prepared contracts
+
+[C04 / #177](M22/tickets/TKT-M22-C04.md) records B2 delivery and prepares
+[B3](M22/batch-03.md): #178 public references → #179 bounded priorities →
+#180 local completion/undo → #181 evidence investigation → #182 Windows probe.
+The first four are conditionally Ready after preparation/predecessor review and
+final-head CI; #182 is environment-gated until interactive Windows access exists.
+Stop at its exact entry blocker if unmet. No active alternate is authorized.
+P02E2 correlation, P03C2 read models and lifecycle/basis units remain Planned.
 
 ## Current explicit execution order
 
@@ -80,6 +91,12 @@ The approved batch precedes the integration gate and release hardening:
  -> #169 TKT-M22-P02B  equipped/template protection and crafting actors
  -> #170 TKT-M22-P03A  account/reset/restore generation fences
  -> #171 TKT-M22-P02C  conservative protected holdings integration
+ -> #177 TKT-M22-C04   B2 checkpoint and B3 preparation
+ -> #178 TKT-M22-P03B1 public reference cache
+ -> #179 TKT-M22-P03B2 bounded request priority and fairness
+ -> #180 TKT-M22-P03C1 local completion and undo admission
+ -> #181 TKT-M22-P02E1 action-evidence investigation and replay
+ -> #182 TKT-M22-P06A  Windows probe; interactive environment gate
  -> #150 TKT-M22-G01   batch checkpoint; remaining P01–P06 exit evidence
  -> #96  TKT-M22-02    release hardening after package acceptance
  -> #97  TKT-M22-03    outcome evaluation acceptance
@@ -88,8 +105,8 @@ The approved batch precedes the integration gate and release hardening:
 No active non-blocking alternate is authorized. Each new Goal checks actual
 predecessor merges/review and its entry conditions; an open or preferred ticket
 is not automatically Ready. After each B2 merge, use the next prepared contract
-without an Astra planning session. After #171, stop coding at #150: assess B2
-and prepare the next 3–5 contracts in both order authorities. Keep #150 open
+without an Astra planning session. C04 performs that B2 checkpoint and prepares B3. After #181, stop if #182
+lacks Windows access; after #182 delivery stop at #150. Keep #150 open
 until P01–P06 exits and owner progression approval. No automatic next-ticket
 execution, auto-merge or skip to #96/#97.
 

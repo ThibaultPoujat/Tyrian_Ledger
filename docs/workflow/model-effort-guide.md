@@ -35,7 +35,8 @@ Risk alone does not imply a *separate Sol XHigh* gate; only the explicit list do
 
 Astra maintains the complete [remaining map](../milestones/remaining-delivery-map.md)
 and details the next batch. Later units remain Planned, not Ready. The current
-[B2 manifest](../milestones/M22/batch-02.md) has four fully specified contracts.
+[B3 manifest](../milestones/M22/batch-03.md) has four conditionally Ready backend
+contracts and an environment-gated Windows probe. B2 is merged history.
 After a predecessor merges with required evidence, the next Goal validates entry
 conditions and proceeds without another planning-only ticket or Astra session.
 Stop at #150 after the batch, or earlier for a real contract/owner decision.
@@ -100,6 +101,25 @@ NORMAL reviewers use a separate independent context within the same run when
 available; owner need not start another session by habit. Missing independent
 review capability still means Draft/handoff. Do not silently downgrade a review.
 
+## Explicit B3 assignments
+
+C04 / #177 is R2 checkpoint/preparation, owner-authorized on 2026-10-02 in the
+current GPT-6.1 Sol Medium session instead of Astra. Its NORMAL independent review
+uses GPT-6.1 Sol High. This is a one-session exception; future checkpoints retain
+Astra unless the owner directs otherwise. It implements no runtime behavior.
+
+| Ticket | Implementation | Independent review |
+|---|---|---|
+| P03B1 / #178 | GPT-6.1 Sol High | NORMAL GPT-6.1 Sol High |
+| P03B2 / #179 | GPT-6.1 Sol High | NORMAL GPT-6.1 Sol High |
+| P03C1 / #180 | GPT-6.1 Sol High | Fresh GPT-6.1 Sol XHigh after green CI |
+| P02E1 / #181 | GPT-6.1 Sol High | NORMAL GPT-6.1 Sol High |
+| P06A / #182 | GPT-6.1 Sol High; Windows environment-gated | NORMAL GPT-6.1 Sol High |
+
+Select the ticket-assigned host model/effort. A preferred/open issue never removes
+an environment, predecessor or evidence gate. Missing capability means handoff/
+Draft, not substitution; code changes after review need affected independent review.
+
 ## Separate Sol review gate
 
 The following explicit tickets require fresh independent **Sol XHigh** review.
@@ -107,10 +127,10 @@ GitHub CLOSED state removes a listed gate from generated active status; it does
 not rewrite this authority or prove its acceptance. Verify merged review evidence
 at ticket entry. Completed entries are tidied at batch checkpoints, not every merge.
 
-- #170 / TKT-M22-P03A — account/store generation, private writes and receipt/recovery fences; GPT-6.1 Sol High implementation and fresh independent GPT-6.1 Sol XHigh review.
+- #180 / TKT-M22-P03C1 — local command account authority, scope-before-receipt and short commit/undo boundaries; GPT-6.1 Sol High implementation and fresh independent GPT-6.1 Sol XHigh review.
 - #96 / TKT-M22-02 — final security/recovery/release hardening; Sol High implementation default.
 
-Completed gates #133, #93, #94, #149, #154 and #158 are historical, not active review requirements.
+Completed gates #133, #93, #94, #149, #154, #158 and #170 are historical, not active review requirements.
 Add newly ready high-consequence tickets explicitly here when their contracts
 require this gate; do not infer or silently remove gates from labels alone.
 
