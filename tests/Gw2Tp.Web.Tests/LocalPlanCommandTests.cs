@@ -283,7 +283,8 @@ public sealed class LocalPlanCommandTests
         Directory.CreateDirectory(directory);
         var plan = await host.ReadPlan();
         await File.WriteAllTextAsync(Path.Combine(directory, state + ".json"), JsonSerializer.Serialize(new
-        { state = "ready", proposals = Array.Empty<object>(), plans = new[] { PlanEndpointService.ToResponse(plan) }, accountCacheScope = scope }));
+        { state = "ready", proposals = Array.Empty<object>(), plans = new[] { PlanEndpointService.ToResponse(plan) }, accountCacheScope = scope },
+            host.App.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>>().Value.SerializerOptions));
     }
 
     private static object Completion(PlanRecord plan, string id) => new { stepId = plan.Steps[0].Id,

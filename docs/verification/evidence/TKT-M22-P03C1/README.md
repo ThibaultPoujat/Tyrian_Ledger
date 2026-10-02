@@ -1,7 +1,7 @@
 # P03C1 — Local Command Evidence
 
-Runtime/test head: `ac73f75d898c03998e34e440e16ababda3886942`. Delivery documentation/images follow separately;
-final-head CI and fresh independent Sol XHigh review belong in the PR and #180's B3 row.
+Runtime head: `ac73f75d898c03998e34e440e16ababda3886942`. Delivery documentation/images follow separately;
+final exporter/test-head CI and fresh independent Sol XHigh review belong in the PR and #180's B3 row.
 
 Complete and Undo admit only an already-bound host account/credential session,
 generation and store incarnation. Native credential observation precedes matching

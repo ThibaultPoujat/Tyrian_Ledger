@@ -3,7 +3,7 @@
 Screen IDs: `active-plan` and shared `signaux` shell. Opened originals
 [01](../../prototypes/2026-09-28/01-signaux.png) and
 [03](../../prototypes/2026-09-28/03-active-plan.png).
-Captured runtime/test head `ac73f75d898c03998e34e440e16ababda3886942`, `http://127.0.0.1:5081/`, Plans selected,
+Captured runtime head `ac73f75d898c03998e34e440e16ababda3886942`, `http://127.0.0.1:5081/`, Plans selected,
 Chromium, 1920×1080 CSS pixels, device scale 1, 100% zoom, macOS ARM64.
 
 | Actual image | Fixture/state |
@@ -12,7 +12,7 @@ Chromium, 1920×1080 CSS pixels, device scale 1, 100% zoom, macOS ARM64.
 | [Undone](undone-1920x1080.png) | Real atomic undo/revalidated holdings response; reversed local event, current instruction restored. |
 
 Fixtures are exported by the actual-host barrier test using
-`PlanEndpointService.ToResponse` on real SQLite records; all actors/items/account
+`PlanEndpointService.ToResponse` on real SQLite records with the actual host JSON options; all actors/items/account
 values are synthetic. The browser intercepts only safe local Plans JSON and undo
 response, asserts the outgoing view header/revision and invokes no game/API action.
 Backend acceptance is established separately by actual-host/SQLite tests.
