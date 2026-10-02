@@ -39,13 +39,15 @@ namespace Gw2Tp.Web.Tests;
 public sealed class LocalHostIntegrationTests
 {
     [Fact]
-    public async Task Actual_completion_HTTP_route_selects_action_purpose_without_browser_priority_input()
+    public async Task Actual_completion_HTTP_route_rejects_unbound_scope_without_gateway_reads()
     {
         var gateway = new PurposeScopeGateway();
         await using var app = await StartApplicationAsync("Production", configureServices: services =>
         {
             services.RemoveAll<IPersonalTradingPostGateway>();
             services.AddSingleton<IPersonalTradingPostGateway>(gateway);
+            foreach (var worker in services.Where(value => value.ServiceType == typeof(IHostedService) &&
+                value.ImplementationType is { } type && (type == typeof(ContinuousDecisionLoopHostedService) || type == typeof(MarketHistoryCollectorHostedService))).ToArray()) services.Remove(worker);
         });
         using var client = app.GetTestClient();
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/plans/plan/complete")
@@ -59,7 +61,7 @@ public sealed class LocalHostIntegrationTests
         request.Headers.Add("X-Gw2-Request-Purpose", "BackgroundResearch");
         using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
-        Assert.Equal(Gw2RequestPurpose.ActionValidation, gateway.Observed);
+        Assert.Null(gateway.Observed);
     }
 
     private sealed class PurposeScopeGateway : IPersonalTradingPostGateway

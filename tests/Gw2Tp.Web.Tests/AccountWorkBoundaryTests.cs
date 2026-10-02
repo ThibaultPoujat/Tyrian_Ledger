@@ -175,9 +175,9 @@ public sealed class AccountWorkBoundaryTests
         var commands = new CompletionSpy();
         // Null repositories deliberately prove rejection precedes even the profile lookup.
         var service = new PlanEndpointService(null!, null!, new ScopeGateway(), null!, null!, null!, null!,
-            new PlanOrchestrationService(), null!, scopes, commands);
-        var result = await service.CompleteAsync("plan", new("step", "1", "known-command", "ReportPerformed", 1, "100"),
-            oldA, CancellationToken.None);
+            new PlanOrchestrationService(), null!, scopes, commands, fence);
+        var result = await fence.RunAsync(token => service.CompleteAsync("plan", new("step", "1", "known-command", "ReportPerformed", 1, "100"),
+            oldA, token));
         Assert.Equal(StatusCodes.Status409Conflict, ((IStatusCodeHttpResult)result).StatusCode);
         Assert.Equal(0, commands.Calls);
         Assert.NotEqual(oldA, scopes.GetToken("A"));

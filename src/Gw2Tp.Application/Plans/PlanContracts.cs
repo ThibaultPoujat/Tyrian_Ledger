@@ -223,6 +223,10 @@ public interface IPlanRepository
     Task<PlanCompletionResult> CompleteStepAsync(long accountProfileId, PlanCompletionCommand command,
         Func<PlanRecord, PlanRecord> transition, CancellationToken cancellationToken = default);
     Task SaveAsync(long accountProfileId, PlanRecord plan, CancellationToken cancellationToken = default);
+    /// <summary>Checks the displayed revision and applies local undo in one guarded transaction.</summary>
+    Task<PlanUndoResult> UndoStepAsync(long accountProfileId, string planId, long expectedRevision,
+        Func<PlanRecord, PlanRecord> transition, CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
 }
 
 public interface IPlanCompletionCommandService
@@ -247,4 +251,13 @@ public interface IPlanOrchestrationService
         Func<PlanRecord, PlanRecord>? afterReconcile = null);
     PlanRecord ApplyRefresh(PlanRecord plan, PlanCandidate? currentCandidate, bool evidenceReady);
     PlanRecord Reconcile(PlanRecord plan, IReadOnlyCollection<string> confirmedEventIds, bool materiallyContradicted);
+}
+
+public enum PlanUndoStatus { Applied = 1, NotFound, Conflict, Invalid }
+public sealed record PlanUndoResult(PlanUndoStatus Status, PlanRecord? Plan = null);
+
+public interface IPlanUndoCommandService
+{
+    Task<PlanUndoResult> UndoAsync(long accountProfileId, string planId, long expectedRevision,
+        CancellationToken cancellationToken = default);
 }

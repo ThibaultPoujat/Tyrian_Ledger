@@ -153,6 +153,7 @@ internal sealed class AccountWorkFence(HostCredentialSource credentialSource,
         try
         {
             ready = false;
+            account = null;
             Invalidate();
             return new Transition(this);
         }

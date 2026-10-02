@@ -83,6 +83,7 @@ public static class Program
         builder.Services.AddSingleton<ICraftingOpportunityService, CraftingOpportunityService>();
         builder.Services.AddSingleton<IPlanOrchestrationService, PlanOrchestrationService>();
         builder.Services.AddSingleton<IPlanCompletionCommandService, PlanCompletionCommandService>();
+        builder.Services.AddSingleton<IPlanUndoCommandService, PlanUndoCommandService>();
         builder.Services.AddSingleton(CreateDecisionLoopSchedulerSettings(builder.Configuration));
         builder.Services.AddSingleton<PlanDecisionProjectionStore>(sp =>
         {

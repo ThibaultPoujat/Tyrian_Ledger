@@ -17,23 +17,16 @@ namespace Gw2Tp.Web.Tests;
 
 public sealed class PlanEndpointMappingTests
 {
-    [Theory]
-    [InlineData("start")]
-    [InlineData("complete")]
-    [InlineData("undo")]
-    public async Task Foreground_commands_route_actual_gateway_reads_as_action_validation(string operation)
+    [Fact]
+    public async Task Start_still_routes_actual_gateway_reads_as_action_validation()
     {
         var now = DateTimeOffset.UtcNow;
-        var gateway = new FixedAccountScopeGateway("A");
         var portfolio = new FixedPortfolio(new AccountScope("A"), Money.Zero, now);
-        var service = new PlanEndpointService(null!, portfolio, gateway, null!, null!,
+        var service = new PlanEndpointService(null!, portfolio, new FixedAccountScopeGateway("A"), null!, null!,
             new FixedPersonalTradingPostRepository(new AccountProfile(1, "other", now, now), now), null!, new PlanOrchestrationService(),
             new PlanDecisionProjectionStore(DecisionLoopSchedulerSettings.Default));
-        if (operation == "start") await service.StartAsync("plan", CancellationToken.None);
-        else if (operation == "complete") await service.CompleteAsync("plan",
-            new("step", "1", "command", "ReportPerformed", 1, "100"), "view", CancellationToken.None);
-        else await Assert.ThrowsAsync<InvalidOperationException>(() => service.UndoAsync("plan", CancellationToken.None));
-        Assert.Equal(Gw2RequestPurpose.ActionValidation, operation == "complete" ? gateway.LastPurpose : portfolio.LastPurpose);
+        await service.StartAsync("plan", CancellationToken.None);
+        Assert.Equal(Gw2RequestPurpose.ActionValidation, portfolio.LastPurpose);
         Assert.Equal(Gw2RequestPurpose.AccountRefresh, Gw2RequestPurposeScope.Current);
     }
 
@@ -88,7 +81,7 @@ public sealed class PlanEndpointMappingTests
         Assert.Equal("applied", payload.RootElement.GetProperty("acknowledgement").GetProperty("status").GetString());
         Assert.False(projections.TryGetActive(out _));
         Assert.True(pending!.IsCompleted);
-        Assert.Equal(1, fence.Commits);
+        Assert.Equal(2, fence.Commits);
         service.CompleteLoopDecision(generation);
     }
 
@@ -172,13 +165,16 @@ public sealed class PlanEndpointMappingTests
             ReconciliationReason = PlanReconciliationReason.CraftInventoryMismatch,
         };
         var plans = new CountingPlanRepository(contradicted);
+        var undoScopes = new AccountViewScopeTokenService();
         var service = new PlanEndpointService(
             new FixedRecommendations(RecommendationResult(now)), new FixedPortfolio(scope, Money.Zero, now),
             new FixedAccountScopeGateway(scope.AccountId), new EmptyCraftingSnapshots(), new EmptyCraftingOpportunities(),
             new FixedPersonalTradingPostRepository(profile, now), plans, orchestration,
-            new PlanDecisionProjectionStore(new DecisionLoopSchedulerSettings(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15))));
+            new PlanDecisionProjectionStore(new DecisionLoopSchedulerSettings(TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(15))),
+            accountViewScopes: undoScopes, fence: new CancellationCheckingFence(scope.AccountId),
+            undoCommands: new PlanUndoCommandService(plans, orchestration, new UndoClock(now)));
 
-        var response = await service.UndoAsync(contradicted.Id, CancellationToken.None);
+        var response = await service.UndoAsync(contradicted.Id, new("0"), undoScopes.GetToken(scope.AccountId), CancellationToken.None);
 
         using var payload = JsonDocument.Parse(JsonSerializer.Serialize(Assert.IsAssignableFrom<IValueHttpResult>(response).Value));
         var responsePlan = payload.RootElement.GetProperty("plan");
@@ -239,7 +235,7 @@ public sealed class PlanEndpointMappingTests
         var completion = new CompletionServiceSpy();
         var service = new PlanEndpointService(
             null!, null!, new FixedAccountScopeGateway("account-b"), null!, null!, null!, null!,
-            new PlanOrchestrationService(), null!, scopeTokens, completion);
+            new PlanOrchestrationService(), null!, scopeTokens, completion, new CancellationCheckingFence("account-b"));
 
         var result = await service.CompleteAsync("plan-1",
             new PlanStepCompletion("step-a", "1", "command-a", "ReportPerformed", 1, "100"),
@@ -527,9 +523,9 @@ public sealed class PlanEndpointMappingTests
         }
     }
 
-    private sealed class CancellationCheckingFence : IAccountWorkFence
+    private sealed class CancellationCheckingFence(string accountId = "A") : IAccountWorkFence
     {
-        public AccountWorkContext? Current { get; } = new(new("A"), "session", "incarnation", "generation");
+        public AccountWorkContext? Current { get; } = new(new(accountId), "session", "incarnation", "generation");
         public string Generation => "generation";
         public event Action? Invalidated { add { } remove { } }
         internal int Commits;
@@ -637,6 +633,8 @@ public sealed class PlanEndpointMappingTests
         public Task<IReadOnlyList<CurrentPersonalTradingPostOrderSnapshot>> GetCurrentOrderObservationsAsync(AccountProfile accountProfile, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 
+    private sealed class UndoClock(DateTimeOffset now) : Gw2Tp.Application.Time.IClock { public DateTimeOffset UtcNow => now; }
+
     private sealed class CountingPlanRepository(PlanRecord plan) : IPlanRepository
     {
         public int SaveCalls { get; private set; }
@@ -656,6 +654,13 @@ public sealed class PlanEndpointMappingTests
             return Task.FromResult<IReadOnlyList<PlanRecord>>([Plan]);
         }
         public Task<PlanCompletionResult> CompleteStepAsync(long accountProfileId, PlanCompletionCommand command, Func<PlanRecord, PlanRecord> transition, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public async Task<PlanUndoResult> UndoStepAsync(long accountProfileId, string planId, long expectedRevision,
+            Func<PlanRecord, PlanRecord> transition, CancellationToken cancellationToken = default)
+        {
+            if (Plan.Revision != expectedRevision) return new(PlanUndoStatus.Conflict);
+            await SaveAsync(accountProfileId, transition(Plan), cancellationToken);
+            return new(PlanUndoStatus.Applied, Plan);
+        }
         public Task SaveAsync(long accountProfileId, PlanRecord value, CancellationToken cancellationToken = default)
         {
             SaveCalls++;
