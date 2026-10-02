@@ -86,7 +86,8 @@ internal sealed class CraftingReferenceGateway : ICraftingReferenceGateway
             using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             if (response.StatusCode != HttpStatusCode.OK)
             {
-                return new(Gw2ApiResult<IReadOnlyList<CraftingRecipe>>.Failure(MapErrorCategory(response.StatusCode)), GetRetryKind(response.StatusCode));
+                return new(Gw2ApiResult<IReadOnlyList<CraftingRecipe>>.Failure(MapErrorCategory(response.StatusCode)),
+                    GetRetryKind(response.StatusCode), Gw2RetryAfter.FromResponse(response));
             }
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             var payload = await JsonSerializer.DeserializeAsync<CraftingRecipeDto[]>(stream, SerializerOptions, cancellationToken).ConfigureAwait(false);

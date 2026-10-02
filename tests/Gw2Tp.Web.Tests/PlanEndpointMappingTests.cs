@@ -17,6 +17,26 @@ namespace Gw2Tp.Web.Tests;
 
 public sealed class PlanEndpointMappingTests
 {
+    [Theory]
+    [InlineData("start")]
+    [InlineData("complete")]
+    [InlineData("undo")]
+    public async Task Foreground_commands_route_actual_gateway_reads_as_action_validation(string operation)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var gateway = new FixedAccountScopeGateway("A");
+        var portfolio = new FixedPortfolio(new AccountScope("A"), Money.Zero, now);
+        var service = new PlanEndpointService(null!, portfolio, gateway, null!, null!,
+            new FixedPersonalTradingPostRepository(new AccountProfile(1, "other", now, now), now), null!, new PlanOrchestrationService(),
+            new PlanDecisionProjectionStore(DecisionLoopSchedulerSettings.Default));
+        if (operation == "start") await service.StartAsync("plan", CancellationToken.None);
+        else if (operation == "complete") await service.CompleteAsync("plan",
+            new("step", "1", "command", "ReportPerformed", 1, "100"), "view", CancellationToken.None);
+        else await Assert.ThrowsAsync<InvalidOperationException>(() => service.UndoAsync("plan", CancellationToken.None));
+        Assert.Equal(Gw2RequestPurpose.ActionValidation, operation == "complete" ? gateway.LastPurpose : portfolio.LastPurpose);
+        Assert.Equal(Gw2RequestPurpose.AccountRefresh, Gw2RequestPurposeScope.Current);
+    }
+
     [Fact]
     public async Task Portfolio_and_bank_cannot_admit_the_same_ten_units_twice()
     {
@@ -528,8 +548,12 @@ public sealed class PlanEndpointMappingTests
 
     private sealed class FixedAccountScopeGateway(string accountId) : IPersonalTradingPostGateway
     {
-        public Task<Gw2ApiResult<AccountScope>> GetAccountScopeAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(Gw2ApiResult<AccountScope>.Success(new AccountScope(accountId)));
+        public Gw2RequestPurpose? LastPurpose { get; private set; }
+        public Task<Gw2ApiResult<AccountScope>> GetAccountScopeAsync(CancellationToken cancellationToken = default)
+        {
+            LastPurpose = Gw2RequestPurposeScope.Current;
+            return Task.FromResult(Gw2ApiResult<AccountScope>.Success(new AccountScope(accountId)));
+        }
 
         public Task<Gw2ApiResult<PersonalTransactionPage>> GetCurrentBuyOrdersAsync(int page, CancellationToken cancellationToken = default) => Failure();
         public Task<Gw2ApiResult<PersonalTransactionPage>> GetCurrentSellListingsAsync(int page, CancellationToken cancellationToken = default) => Failure();
@@ -547,9 +571,13 @@ public sealed class PlanEndpointMappingTests
 
     private sealed class FixedPortfolio(AccountScope scope, Money cash, DateTimeOffset capturedAtUtc, IReadOnlyDictionary<string, long>? quantities = null) : IAccountPortfolioGateway
     {
-        public Task<Gw2ApiResult<AccountPortfolioSnapshot>> GetSnapshotAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(Gw2ApiResult<AccountPortfolioSnapshot>.Success(new AccountPortfolioSnapshot(scope, cash,
+        public Gw2RequestPurpose? LastPurpose { get; private set; }
+        public Task<Gw2ApiResult<AccountPortfolioSnapshot>> GetSnapshotAsync(CancellationToken cancellationToken = default)
+        {
+            LastPurpose = Gw2RequestPurposeScope.Current;
+            return Task.FromResult(Gw2ApiResult<AccountPortfolioSnapshot>.Success(new AccountPortfolioSnapshot(scope, cash,
                 quantities ?? new Dictionary<string, long>(), capturedAtUtc)));
+        }
     }
 
     private sealed class EmptyCraftingSnapshots : IAccountCraftingSnapshotService

@@ -19,6 +19,23 @@ namespace Gw2Tp.Web.Tests;
 public sealed class AccountWorkBoundaryTests
 {
     [Fact]
+    public async Task Actual_decision_loop_classifies_refresh_and_restores_parent_purpose()
+    {
+        var synchronization = new BlockedSynchronization();
+        var projections = new PlanDecisionProjectionStore(DecisionLoopSchedulerSettings.Default);
+        var plans = new PlanEndpointService(null!, null!, null!, null!, null!, null!, null!,
+            new PlanOrchestrationService(), projections);
+        var loop = new ContinuousDecisionLoopService(synchronization, new NoCrafting(), plans, new FixedClock(), new Lifetime());
+        using var caller = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.ActionValidation);
+        var run = loop.RunNowAsync();
+        await synchronization.Entered.Task;
+        Assert.Equal(Gw2RequestPurpose.AccountRefresh, synchronization.LastPurpose);
+        synchronization.Release.TrySetResult();
+        Assert.False((await run).IsSuccess);
+        Assert.Equal(Gw2RequestPurpose.ActionValidation, Gw2RequestPurposeScope.Current);
+    }
+
+    [Fact]
     public async Task Stale_loop_admission_cannot_begin_or_clear_a_new_generation_projection()
     {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -257,8 +274,10 @@ public sealed class AccountWorkBoundaryTests
     {
         internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Gw2RequestPurpose? LastPurpose { get; private set; }
         public async Task<PersonalTradingPostSynchronizationResult> SynchronizeAsync(CancellationToken cancellationToken = default)
         {
+            LastPurpose = Gw2RequestPurposeScope.Current;
             Entered.TrySetResult(); await Release.Task;
             return PersonalTradingPostSynchronizationResult.GatewayFailed(DateTimeOffset.UtcNow, Gw2ApiErrorCategory.Forbidden);
         }

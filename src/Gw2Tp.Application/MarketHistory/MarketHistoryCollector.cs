@@ -100,6 +100,7 @@ public sealed class MarketHistoryCollector(
 
     private async Task<MarketHistoryCollectionRun> CollectCoreAsync(bool forceAllTargets, CancellationToken cancellationToken)
     {
+        using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.BackgroundResearch);
         await collectionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {

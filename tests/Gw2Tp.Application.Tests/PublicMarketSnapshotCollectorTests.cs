@@ -7,6 +7,22 @@ namespace Gw2Tp.Application.Tests;
 
 public sealed class PublicMarketSnapshotCollectorTests
 {
+    [Fact]
+    public async Task Broad_research_reads_lower_foreground_purpose_and_restore_the_parent_context()
+    {
+        var client = new StubMarketDataClient(prices: ids =>
+        {
+            Assert.Equal(Gw2RequestPurpose.BackgroundResearch, Gw2RequestPurposeScope.Current);
+            return Success(ids.Select(id => new MarketPrice(id, false, new(10, 100), new(10, 200))));
+        });
+        using (Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.ActionValidation))
+        {
+            await CreateCollector(client).CollectAggregatePricesAsync();
+            Assert.Equal(Gw2RequestPurpose.ActionValidation, Gw2RequestPurposeScope.Current);
+        }
+        Assert.Equal(Gw2RequestPurpose.AccountRefresh, Gw2RequestPurposeScope.Current);
+    }
+
     private static readonly DateTimeOffset GeneratedAt = new(2026, 9, 1, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]

@@ -283,6 +283,7 @@ internal sealed class ContinuousDecisionLoopService : IContinuousDecisionLoopSer
 
     private async Task<DecisionLoopRunResult> RunCoreBodyAsync(CancellationToken cancellationToken, long loopGeneration)
     {
+        using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.AccountRefresh);
         var total = Stopwatch.StartNew();
         var synchronizationTimer = Stopwatch.StartNew();
         var synchronizationResult = await synchronization.SynchronizeAsync(cancellationToken).ConfigureAwait(false);

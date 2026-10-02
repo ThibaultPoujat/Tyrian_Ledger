@@ -383,3 +383,85 @@ tags, IDs, URLs or secrets. A bounded scalar snapshot also reports retained entr
 count; it adds no browser payload. Reproduce request-count and policy vectors with
 `dotnet test tests/Gw2Tp.Infrastructure.Tests/Gw2Tp.Infrastructure.Tests.csproj -c Release --filter 'FullyQualifiedName~PublicReferenceCacheTests|FullyQualifiedName~Real_holdings_and_crafting_consumers'`.
 VERIFY-008/013/016/017 remain OPEN; synthetic tests are local policy evidence.
+
+## 14. Request purpose, bounded dispatch and retries (P03B2)
+
+`Gw2RequestPurposeScope` is a trusted Application context propagated through typed
+gateways. It carries only `ActionValidation`, `AccountRefresh` or
+`BackgroundResearch`; unclassified calls default to refresh. Neither HTTP query
+parameters nor React select priority. Purpose does not change request identity,
+account/resource authority or financial admission.
+
+Production caller inventory:
+
+| Caller / outbound boundary | Purpose |
+|---|---|
+| `PlanEndpointService.StartAsync`, `CompleteAsync`, `UndoAsync` | Action validation for account/order/holdings/selected listing reads; nested broad discovery lowers itself to research |
+| `ContinuousDecisionLoopService` synchronization, holdings/crafting refresh and bounded decisions | Account refresh; nested scanner/history/crafting discovery remains research |
+| `PublicMarketSnapshotCollector`, `LiveMarketScanner`, `MarketHistoryCollector` scheduled/manual collection | Background research for index, prices, finalist listings/metadata |
+| `CraftingOpportunityService` account preparation, recipes, input/output listings/metadata | Background research; this discovers candidates rather than validating a committed action |
+| `PersonalTradingPostSynchronizationService`, `AccountHoldingsSnapshotService`, `AccountCraftingSnapshotService` | Inherit action/refresh context; direct unclassified/manual calls default to refresh |
+| `PersonalDashboardService`, `PrimaryRecommendationService` existing holdings/orders, `InvestmentPortfolioService` existing positions | Inherit trusted caller purpose; otherwise refresh; embedded new-market scanner explicitly lowers to research |
+| Account connection/status, watchlist/investment/preferences/explanation supporting endpoints | Ordinary refresh for their scope/status or bounded evidence reads |
+| Typed public item/recipe gateways | Inherit caller purpose on misses; P03B1 completed hits avoid dispatch |
+| Private account/TP/crafting/holdings gateways | Inherit caller purpose; private keys include captured host generation, never credentials |
+
+One `Gw2RequestScheduler` owns logical sharing, attempts, the existing token
+bucket and concurrency. Its fair queue replaces the two FIFO limiter queues.
+Running HTTP is not interrupted for priority. FIFO applies within each class;
+a waiting background class gets a turn after at most eight higher-priority
+dispatches. Refresh gets a turn after eight action dispatches when a background
+turn is not due. Counters reset when their class stops waiting. A single rate
+waiter obtains a token before choosing work, so low-priority work cannot reserve
+the next token or any HTTP concurrency while waiting.
+
+`Gw2Api:RateLimit:MaxQueuedRequests` bounds all pending logical work including
+retry cooldown (default 100). `Gw2Api:Queue:ActionValidationLimit` and
+`AccountRefreshLimit` default to 100 each; `BackgroundResearchLimit` defaults to
+80, leaving capacity for foreground/refresh under a saturated research class.
+The effective limit is the lower of total and class limits. Limits must be
+nonnegative; zero disables waiting for that class/total, while immediately
+available dispatch remains possible. Burst/refill/concurrency/timeout and retry
+attempt validations remain positive. These settings are local policy, not
+ArenaNet quota assertions.
+
+Same-key waiters share one logical slot. A higher-purpose waiter promotes queued
+work only when class capacity allows; a rejected promotion leaves existing work
+intact. Promotion lasts for the shared logical operation even if that waiter
+cancels. Last-waiter cancellation immediately removes waiting work and cancels
+its HTTP/backoff. HTTP retains its active slot until it actually exits. Each
+retry releases HTTP concurrency, reserves bounded pending capacity during its
+private cooldown, then re-enters the same fair/rate queue. Capacity failure maps
+through existing typed gateway degraded results. Server Retry-After (delta/date)
+is honored by the typed readers; a wait above `Retry:MaxServerRetryAfterMs`
+(positive, default 300000 milliseconds) returns the
+original degraded 429 instead of retrying early or retaining an arbitrarily long
+cooldown. No global server cooldown is inferred. Existing max-attempt, HTTP
+timeout and 5xx retry classifications remain in force.
+
+Private work captures the fence generation as part of scheduler identity.
+Credential/account/clear/restore invalidation removes obsolete queued work and
+rejects its waiters with `AccountWorkRejectedException`; private generations never
+share work. Host stopping cancels queued work and retry delay. Captured
+credentials, SQLite commit leases and late-publication checks remain independent
+required authorities. Public references do not confer private freshness.
+
+Safe metrics contain aggregate queue depth, wait duration and dispatch counts,
+without endpoint/ID/account/actor/key tags or payloads. Internal diagnostic
+snapshots expose bounded pending/active/peak depths and counters. No new timer,
+browser payload, completed private cache, research universe, financial fallback,
+UI or production dependency is added. P03C1 still owns removing network work from
+local completion/undo; scheduling priority does not satisfy that outcome.
+
+[Actual bounded local transport trace](../verification/evidence/TKT-M22-P03B2/load-trace.json)
+records two overlapping synthetic 30-item scans and eight action reads separately
+from barrier/controlled-delay policy tests. It proves observed local dispatch,
+sharing and bounds only; it is not an authenticated ArenaNet, Windows or latency
+measurement. Reproduce with:
+
+```sh
+TYRIAN_LEDGER_P03B2_LOAD_TRACE="$PWD/docs/verification/evidence/TKT-M22-P03B2/load-trace.json" dotnet test tests/Gw2Tp.Infrastructure.Tests/Gw2Tp.Infrastructure.Tests.csproj -c Release --filter FullyQualifiedName~Actual_bounded_local_HTTP_load_trace --verbosity quiet
+```
+
+VERIFY-008/013/016/017 remain OPEN. No upstream permission, fee, cache/coherence or
+physical-correlation fact is resolved by these policy tests.

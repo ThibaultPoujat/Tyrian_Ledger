@@ -74,7 +74,7 @@ internal sealed class AccountConnectionStatusService : IAccountConnectionStatusS
                 // The scheduler identity must never include a credential. One
                 // local user has one configured key, so the typed endpoint is
                 // the complete non-secret request identity here.
-                new Gw2RequestKey("account-connection/tokeninfo" + (fence?.Current is { } work ? "/" + work.Generation : "")),
+                new Gw2RequestKey("account-connection/tokeninfo" + (fence?.Current is { } work ? "/" + work.Generation : ""), IsPrivate: true),
                 requestCancellationToken => SendTokenInfoAsync(apiKey, requestCancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
