@@ -1,0 +1,150 @@
+{
+  "environment": {
+    "os": "macOS 26.6.2",
+    "architecture": "Arm64",
+    "runtime": ".NET 10.0.5",
+    "processors": 10,
+    "cpu": "Apple M1 Pro"
+  },
+  "evidence": "Actual TestServer host, production command services/fence/SQLite; synthetic account gateway and actual public HTTP transport barrier",
+  "commandAccountReads": 0,
+  "commandHTTPAttempts": 0,
+  "committedBeforeBothBarrierReleases": true,
+  "samples": [
+    {
+      "operation": "complete",
+      "totalMilliseconds": 27.5922,
+      "phases": "admission;dur=1.772,commit;dur=12.383,invalidation;dur=0.526"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 7.5659,
+      "phases": "admission;dur=0.133,commit;dur=3.744,invalidation;dur=0.008"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 2.3041,
+      "phases": "admission;dur=0.137,commit;dur=1.617,invalidation;dur=0.007"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 1.6609,
+      "phases": "admission;dur=0.053,commit;dur=1.304,invalidation;dur=0.005"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 1.5057,
+      "phases": "admission;dur=0.047,commit;dur=1.151,invalidation;dur=0.004"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 1.501,
+      "phases": "admission;dur=0.055,commit;dur=1.143,invalidation;dur=0.009"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 1.4952,
+      "phases": "admission;dur=0.050,commit;dur=1.143,invalidation;dur=0.006"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 2.0111,
+      "phases": "admission;dur=0.048,commit;dur=1.381,invalidation;dur=0.011"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 2.2782,
+      "phases": "admission;dur=0.063,commit;dur=1.703,invalidation;dur=0.009"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 1.5755,
+      "phases": "admission;dur=0.041,commit;dur=1.227,invalidation;dur=0.007"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 1.8695,
+      "phases": "admission;dur=0.075,commit;dur=1.413,invalidation;dur=0.009"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 1.5668,
+      "phases": "admission;dur=0.029,commit;dur=1.205,invalidation;dur=0.010"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 1.5696,
+      "phases": "admission;dur=0.047,commit;dur=1.181,invalidation;dur=0.004"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 1.5122,
+      "phases": "admission;dur=0.045,commit;dur=1.179,invalidation;dur=0.005"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 1.6555,
+      "phases": "admission;dur=0.060,commit;dur=1.296,invalidation;dur=0.004"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 1.7208,
+      "phases": "admission;dur=0.057,commit;dur=1.333,invalidation;dur=0.006"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 1.6014,
+      "phases": "admission;dur=0.049,commit;dur=1.246,invalidation;dur=0.007"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 1.2239,
+      "phases": "admission;dur=0.031,commit;dur=0.961,invalidation;dur=0.004"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 1.7188,
+      "phases": "admission;dur=0.035,commit;dur=1.381,invalidation;dur=0.004"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 1.2338,
+      "phases": "admission;dur=0.048,commit;dur=0.923,invalidation;dur=0.004"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 1.4796,
+      "phases": "admission;dur=0.049,commit;dur=1.179,invalidation;dur=0.007"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 1.7073,
+      "phases": "admission;dur=0.070,commit;dur=1.253,invalidation;dur=0.007"
+    },
+    {
+      "operation": "complete",
+      "totalMilliseconds": 1.5695,
+      "phases": "admission;dur=0.033,commit;dur=1.268,invalidation;dur=0.008"
+    },
+    {
+      "operation": "undo",
+      "totalMilliseconds": 2.2307,
+      "phases": "admission;dur=0.150,commit;dur=1.616,invalidation;dur=0.003"
+    }
+  ],
+  "runtimeHead": "ac73f75d898c03998e34e440e16ababda3886942",
+  "summary": {
+    "complete": {
+      "samples": 12,
+      "medianMilliseconds": 1.628,
+      "p95Milliseconds": 27.592,
+      "maximumMilliseconds": 27.592
+    },
+    "undo": {
+      "samples": 12,
+      "medianMilliseconds": 1.618,
+      "p95Milliseconds": 7.566,
+      "maximumMilliseconds": 7.566
+    }
+  }
+}
