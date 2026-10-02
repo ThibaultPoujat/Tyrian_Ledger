@@ -25,6 +25,7 @@ public sealed class CraftingOpportunityService(
 {
     public async Task<CraftingPlannerResult> GetAsync(CancellationToken cancellationToken = default)
     {
+        using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.BackgroundResearch);
         var totalTimer = Stopwatch.StartNew();
         var preparationTimer = Stopwatch.StartNew();
         var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);

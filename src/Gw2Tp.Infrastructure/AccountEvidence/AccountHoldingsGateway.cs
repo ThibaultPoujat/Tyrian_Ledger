@@ -381,7 +381,7 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
             Gw2ApiResult<Mapped<T>> result;
             try
             {
-                result = await scheduler.ScheduleAsync(new Gw2RequestKey($"holdings/{refreshId:N}/{operation}", "account-holdings"),
+                result = await scheduler.ScheduleAsync(new Gw2RequestKey($"holdings/{refreshId:N}/{operation}", "account-holdings", IsPrivate: true),
                     cancellation => SendAsync(path, map, cancellation), token).ConfigureAwait(false);
             }
             catch (Gw2RequestSchedulerCapacityExceededException)
@@ -431,7 +431,7 @@ internal sealed class AccountHoldingsGateway : IAccountHoldingsCollector
                         _ => Gw2RetryKind.None,
                     };
                     return new(Gw2ApiResult<Mapped<T>>.Failure(error), retry,
-                        response.Headers.RetryAfter?.Delta is { } delay && delay > TimeSpan.Zero ? delay : null);
+                        Gw2RetryAfter.FromResponse(response));
                 }
                 return new(Gw2ApiResult<Mapped<T>>.Success(await map(response, timeout.Token).ConfigureAwait(false)));
             }

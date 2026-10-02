@@ -39,6 +39,44 @@ namespace Gw2Tp.Web.Tests;
 public sealed class LocalHostIntegrationTests
 {
     [Fact]
+    public async Task Actual_completion_HTTP_route_selects_action_purpose_without_browser_priority_input()
+    {
+        var gateway = new PurposeScopeGateway();
+        await using var app = await StartApplicationAsync("Production", configureServices: services =>
+        {
+            services.RemoveAll<IPersonalTradingPostGateway>();
+            services.AddSingleton<IPersonalTradingPostGateway>(gateway);
+        });
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/plans/plan/complete")
+        {
+            Content = JsonContent.Create(new { stepId = "step", expectedRevision = "1", commandId = "command",
+                operation = "ReportPerformed", quantity = 1, unitPriceCopper = "100" }),
+        };
+        request.Headers.Add("Origin", "http://localhost");
+        request.Headers.Add(LocalRequestOriginProtectionMiddleware.RequestHeader, LocalRequestOriginProtectionMiddleware.RequestHeaderValue);
+        request.Headers.Add(PlanEndpointService.AccountViewScopeHeader, "view");
+        request.Headers.Add("X-Gw2-Request-Purpose", "BackgroundResearch");
+        using var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal(Gw2RequestPurpose.ActionValidation, gateway.Observed);
+    }
+
+    private sealed class PurposeScopeGateway : IPersonalTradingPostGateway
+    {
+        public Gw2RequestPurpose? Observed { get; private set; }
+        public Task<Gw2ApiResult<AccountScope>> GetAccountScopeAsync(CancellationToken token = default)
+        {
+            Observed = Gw2RequestPurposeScope.Current;
+            return Task.FromResult(Gw2ApiResult<AccountScope>.Failure(Gw2ApiErrorCategory.UpstreamUnavailable));
+        }
+        public Task<Gw2ApiResult<PersonalTransactionPage>> GetCurrentBuyOrdersAsync(int page, CancellationToken token = default) => throw new NotSupportedException();
+        public Task<Gw2ApiResult<PersonalTransactionPage>> GetCurrentSellListingsAsync(int page, CancellationToken token = default) => throw new NotSupportedException();
+        public Task<Gw2ApiResult<PersonalTransactionPage>> GetCompletedBuyHistoryAsync(int page, CancellationToken token = default) => throw new NotSupportedException();
+        public Task<Gw2ApiResult<PersonalTransactionPage>> GetCompletedSellHistoryAsync(int page, CancellationToken token = default) => throw new NotSupportedException();
+    }
+
+    [Fact]
     public async Task Plan_completion_requires_explicit_step_revision_and_command_identity_at_the_public_route()
     {
         await using var app = await StartApplicationAsync("Production");

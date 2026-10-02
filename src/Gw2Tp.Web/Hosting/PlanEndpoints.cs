@@ -256,6 +256,7 @@ internal sealed class PlanEndpointService(
 
     public async Task<IResult> StartAsync(string planId, CancellationToken cancellationToken)
     {
+        using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.ActionValidation);
         var context = await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false);
         if (context?.Recommendations?.State != PrimaryRecommendationState.Ready || !context.AccountEvidenceAvailable)
             return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
@@ -281,6 +282,7 @@ internal sealed class PlanEndpointService(
 
     public async Task<IResult> CompleteAsync(string planId, PlanStepCompletion request, string accountViewScope, CancellationToken cancellationToken)
     {
+        using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.ActionValidation);
         if (string.IsNullOrWhiteSpace(accountViewScope)) return Results.BadRequest(new { error = "completion_context_required" });
         if (string.IsNullOrWhiteSpace(planId) ||
             string.IsNullOrWhiteSpace(request.StepId) || string.IsNullOrWhiteSpace(request.CommandId) ||
@@ -344,6 +346,7 @@ internal sealed class PlanEndpointService(
 
     public async Task<IResult> UndoAsync(string planId, CancellationToken cancellationToken)
     {
+        using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.ActionValidation);
         var context = await RequireContextAsync(cancellationToken).ConfigureAwait(false);
         var plan = await FindAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
         if (plan is null) return Results.NotFound(new { error = "plan_not_found" });

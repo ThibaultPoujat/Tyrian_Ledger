@@ -44,6 +44,7 @@ public sealed class LiveMarketScanner : ILiveMarketScanner
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.BackgroundResearch);
         settings.Validate();
 
         PublicMarketAggregateSnapshot snapshot;

@@ -1,0 +1,177 @@
+{
+  "Evidence": "actual local HTTP transport with synthetic public responses; no ArenaNet or quota/latency claim",
+  "Runtime": ".NET 10.0.5",
+  "Bounds": {
+    "TotalPending": 60,
+    "BackgroundPending": 50,
+    "ConcurrentHTTP": 3,
+    "Burst": 5,
+    "RefillPerSecond": 100
+  },
+  "RequestedReads": 68,
+  "OutboundAttempts": 38,
+  "Scheduler": {
+    "Pending": 0,
+    "Active": 0,
+    "PeakPending": 35,
+    "PeakActive": 3,
+    "Dispatches": 38,
+    "Rejections": 0,
+    "Promotions": 0
+  },
+  "PeakObservedHTTP": 3,
+  "Starts": [
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 1
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 2
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 2
+    },
+    {
+      "Purpose": "ActionValidation",
+      "ElapsedMilliseconds": 8
+    },
+    {
+      "Purpose": "ActionValidation",
+      "ElapsedMilliseconds": 8
+    },
+    {
+      "Purpose": "ActionValidation",
+      "ElapsedMilliseconds": 1003
+    },
+    {
+      "Purpose": "ActionValidation",
+      "ElapsedMilliseconds": 1003
+    },
+    {
+      "Purpose": "ActionValidation",
+      "ElapsedMilliseconds": 1003
+    },
+    {
+      "Purpose": "ActionValidation",
+      "ElapsedMilliseconds": 1010
+    },
+    {
+      "Purpose": "ActionValidation",
+      "ElapsedMilliseconds": 1010
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 2000
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 2000
+    },
+    {
+      "Purpose": "ActionValidation",
+      "ElapsedMilliseconds": 2000
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 2007
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 2007
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 3001
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 3001
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 3001
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 3009
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 3009
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 4001
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 4001
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 4001
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 4008
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 4008
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 5000
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 5000
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 5000
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 5006
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 5006
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 6001
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 6001
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 6001
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 6007
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 6007
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 7000
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 7000
+    },
+    {
+      "Purpose": "BackgroundResearch",
+      "ElapsedMilliseconds": 7000
+    }
+  ]
+}

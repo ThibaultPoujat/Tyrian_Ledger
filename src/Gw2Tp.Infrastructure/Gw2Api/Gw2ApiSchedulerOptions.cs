@@ -14,6 +14,8 @@ internal sealed class Gw2ApiSchedulerOptions
 
     public Gw2RetryOptions Retry { get; set; } = new();
 
+    public Gw2QueueOptions Queue { get; set; } = new();
+
     public int RequestTimeoutMs { get; set; } = 10_000;
 
     public bool TryValidate(out string validationError)
@@ -42,9 +44,21 @@ internal sealed class Gw2ApiSchedulerOptions
             return false;
         }
 
+        if (Queue.ActionValidationLimit < 0 || Queue.AccountRefreshLimit < 0 || Queue.BackgroundResearchLimit < 0)
+        {
+            validationError = "Gw2Api:Queue class limits cannot be negative.";
+            return false;
+        }
+
         if (!Retry.On429.IsValid("Gw2Api:Retry:On429", out validationError) ||
             !Retry.On5xx.IsValid("Gw2Api:Retry:On5xx", out validationError))
         {
+            return false;
+        }
+
+        if (Retry.MaxServerRetryAfterMs <= 0)
+        {
+            validationError = "Gw2Api:Retry:MaxServerRetryAfterMs must be greater than zero.";
             return false;
         }
 
@@ -70,6 +84,13 @@ internal sealed class Gw2RateLimitOptions
     public int MaxQueuedRequests { get; set; } = 100;
 }
 
+internal sealed class Gw2QueueOptions
+{
+    public int ActionValidationLimit { get; set; } = 100;
+    public int AccountRefreshLimit { get; set; } = 100;
+    public int BackgroundResearchLimit { get; set; } = 80;
+}
+
 internal sealed class Gw2ApiSchedulerOptionsValidator : IValidateOptions<Gw2ApiSchedulerOptions>
 {
     public ValidateOptionsResult Validate(string? name, Gw2ApiSchedulerOptions options)
@@ -84,6 +105,8 @@ internal sealed class Gw2ApiSchedulerOptionsValidator : IValidateOptions<Gw2ApiS
 
 internal sealed class Gw2RetryOptions
 {
+    public int MaxServerRetryAfterMs { get; set; } = 300_000;
+
     public Gw2BackoffOptions On429 { get; set; } = new()
     {
         InitialBackoffMs = 1_000,

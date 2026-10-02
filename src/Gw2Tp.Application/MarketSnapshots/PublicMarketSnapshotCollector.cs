@@ -27,6 +27,7 @@ public sealed class PublicMarketSnapshotCollector
         Action<PublicMarketSnapshotCollectionProgress>? reportProgress = null,
         CancellationToken cancellationToken = default)
     {
+        using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.BackgroundResearch);
         var aggregateSnapshot = await CollectAggregatePricesAsync(reportProgress, cancellationToken).ConfigureAwait(false);
         var itemIds = aggregateSnapshot.ItemIds;
         var prices = aggregateSnapshot.Prices;
@@ -69,6 +70,7 @@ public sealed class PublicMarketSnapshotCollector
         Action<PublicMarketSnapshotCollectionProgress>? reportProgress = null,
         CancellationToken cancellationToken = default)
     {
+        using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.BackgroundResearch);
         Report(reportProgress, PublicMarketSnapshotCollectionStage.DiscoveringPriceItemIds, finalistCount: null);
         var itemIds = await GetRequiredValueAsync(
             marketDataClient.GetPriceItemIdsAsync(cancellationToken),

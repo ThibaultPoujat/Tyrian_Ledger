@@ -146,7 +146,7 @@ internal sealed class AccountCraftingGateway : IAccountCraftingGateway
         {
             return await requestScheduler.ScheduleAsync(
                 new Gw2RequestKey($"{schedulerKey}/credential-scope-{scope.ToString(CultureInfo.InvariantCulture)}" +
-                    (fence?.Current is { } work ? "/" + work.Generation : "")),
+                    (fence?.Current is { } work ? "/" + work.Generation : ""), IsPrivate: true),
                 requestCancellationToken => SendAsync(apiKey, resourcePath, mapAsync, requestCancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
@@ -344,5 +344,5 @@ internal sealed class AccountCraftingGateway : IAccountCraftingGateway
         _ => Gw2RetryKind.None,
     };
 
-    private static TimeSpan? GetRetryAfter(HttpResponseMessage response) => response.Headers.RetryAfter?.Delta is { } delay && delay > TimeSpan.Zero ? delay : null;
+    private static TimeSpan? GetRetryAfter(HttpResponseMessage response) => Gw2RetryAfter.FromResponse(response);
 }

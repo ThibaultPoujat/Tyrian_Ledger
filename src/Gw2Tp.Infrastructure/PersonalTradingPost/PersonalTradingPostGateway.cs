@@ -228,7 +228,7 @@ internal sealed class PersonalTradingPostGateway : IPersonalTradingPostGateway, 
             // A rotating generation prevents a replacement key from joining
             // an in-flight read made for the previous account.
             new Gw2RequestKey($"{schedulerKey}/credential-scope-{credentialScope.ToString(CultureInfo.InvariantCulture)}" +
-                (_fence?.Current is { } work ? "/" + work.Generation : "")),
+                (_fence?.Current is { } work ? "/" + work.Generation : ""), IsPrivate: true),
             requestCancellationToken => SendAsync(apiKey, requestPath, mapAsync, requestCancellationToken),
             cancellationToken);
 
