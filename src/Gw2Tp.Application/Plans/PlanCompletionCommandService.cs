@@ -1,9 +1,11 @@
+using Gw2Tp.Application.Time;
+
 namespace Gw2Tp.Application.Plans;
 
 /// <summary>Applies typed step commands through the repository's atomic admission boundary.</summary>
 public sealed class PlanCompletionCommandService(
     IPlanRepository repository,
-    IPlanOrchestrationService orchestration) : IPlanCompletionCommandService
+    IPlanOrchestrationService orchestration, IClock? clock = null) : IPlanCompletionCommandService
 {
     public Task<PlanCompletionResult> CompleteAsync(
         long accountProfileId,
@@ -25,7 +27,7 @@ public sealed class PlanCompletionCommandService(
         return repository.CompleteStepAsync(accountProfileId, command, plan => command.Operation switch
         {
             PlanCompletionOperation.ReportPerformed => orchestration.ReportStep(
-                plan, command.Quantity, command.UnitPrice, DateTimeOffset.UtcNow),
+                plan, command.Quantity, command.UnitPrice, clock?.UtcNow ?? DateTimeOffset.UtcNow),
             PlanCompletionOperation.NotPerformed => orchestration.CancelUnperformedStep(plan),
             _ => throw new InvalidOperationException("The completion operation is not supported."),
         }, cancellationToken);

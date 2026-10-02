@@ -28,11 +28,13 @@ internal static class PlanEndpoints
         endpoints.MapGet("/api/plans/context", (PlanEndpointService service, CancellationToken cancellationToken) =>
             service.GetAccountViewContextAsync(cancellationToken));
         endpoints.MapPost("/api/plans/{planId}/complete", (string planId, PlanStepCompletion request, HttpContext context, PlanEndpointService service, CancellationToken cancellationToken) =>
-            service.CompleteAsync(planId, request, context.Request.Headers[PlanEndpointService.AccountViewScopeHeader].ToString(), cancellationToken));
-        endpoints.MapPost("/api/plans/{planId}/undo", (string planId, PlanEndpointService service, CancellationToken cancellationToken) =>
-            service.UndoAsync(planId, cancellationToken));
+            service.CompleteAsync(planId, request, context.Request.Headers[PlanEndpointService.AccountViewScopeHeader].ToString(), cancellationToken, context));
+        endpoints.MapPost("/api/plans/{planId}/undo", (string planId, PlanUndoRequest request, HttpContext context, PlanEndpointService service, CancellationToken cancellationToken) =>
+            service.UndoAsync(planId, request, context.Request.Headers[PlanEndpointService.AccountViewScopeHeader].ToString(), cancellationToken, context));
     }
 }
+
+internal sealed record PlanUndoRequest(string? ExpectedRevision);
 
 internal sealed record PlanStepCompletion(
     string? StepId,
@@ -178,7 +180,8 @@ internal sealed class PlanEndpointService(
     AccountViewScopeTokenService? accountViewScopes = null,
     IPlanCompletionCommandService? completionCommands = null,
     IAccountWorkFence? fence = null,
-    IAccountHoldingsSnapshotService? holdings = null)
+    IAccountHoldingsSnapshotService? holdings = null,
+    IPlanUndoCommandService? undoCommands = null)
 {
     internal const string AccountViewScopeHeader = "X-Tyrian-Ledger-Account-View-Scope";
     private readonly AccountViewScopeTokenService scopeTokens = accountViewScopes ?? new();
@@ -280,8 +283,9 @@ internal sealed class PlanEndpointService(
         return Results.Json(new { state = "started", plan = ToResponse(committed) });
     }
 
-    public async Task<IResult> CompleteAsync(string planId, PlanStepCompletion request, string accountViewScope, CancellationToken cancellationToken)
+    public async Task<IResult> CompleteAsync(string planId, PlanStepCompletion request, string accountViewScope, CancellationToken cancellationToken, HttpContext? httpContext = null)
     {
+        var timer = Stopwatch.StartNew();
         using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.ActionValidation);
         if (string.IsNullOrWhiteSpace(accountViewScope)) return Results.BadRequest(new { error = "completion_context_required" });
         if (string.IsNullOrWhiteSpace(planId) ||
@@ -302,22 +306,21 @@ internal sealed class PlanEndpointService(
             price = new Money(copper);
         }
 
-        var scope = await personalTradingPost.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
-        if (!scope.IsSuccess || scope.Value is null) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
-        if (fence is not null) await fence.BindAccountAsync(scope.Value, cancellationToken).ConfigureAwait(false);
-        var currentAccountViewScope = scopeTokens.GetToken(scope.Value.AccountId);
-        if (!string.Equals(accountViewScope, currentAccountViewScope, StringComparison.Ordinal))
-            return Results.Conflict(new { error = "account_scope_changed" });
-
-        var profile = await profiles.FindAccountProfileAsync(scope.Value.AccountId, cancellationToken).ConfigureAwait(false);
+        var admission = await AdmitLocalCommandAsync(accountViewScope, cancellationToken).ConfigureAwait(false);
+        if (admission.Error is not null) return admission.Error;
+        var profile = await profiles.FindAccountProfileAsync(admission.Account!.AccountId, cancellationToken).ConfigureAwait(false);
         if (profile is null) return Results.NotFound(new { error = "plan_not_found" });
+        var admissionMs = timer.Elapsed.TotalMilliseconds;
+        timer.Restart();
         var command = new PlanCompletionCommand(planId, request.StepId, expectedRevision, request.CommandId,
             operation, request.Quantity, price);
         var result = await commandService.CompleteAsync(profile.Id, command, cancellationToken).ConfigureAwait(false);
+        var commitMs = timer.Elapsed.TotalMilliseconds;
+        timer.Restart();
         if (result.Status is PlanCompletionStatus.Applied or PlanCompletionStatus.AlreadyApplied)
         {
-            if (result.Status == PlanCompletionStatus.Applied)
-                await InvalidateLoopDecisionAsync(scope.Value.AccountId).ConfigureAwait(false);
+            await InvalidateLoopDecisionAsync(admission.Account!.AccountId).ConfigureAwait(false);
+            RecordCommandTiming(httpContext, admissionMs, commitMs, timer.Elapsed.TotalMilliseconds);
             var receipt = result.Receipt!;
             var state = operation == PlanCompletionOperation.NotPerformed ? "cancelled" : "reported";
             return Results.Json(new
@@ -344,18 +347,66 @@ internal sealed class PlanEndpointService(
         };
     }
 
-    public async Task<IResult> UndoAsync(string planId, CancellationToken cancellationToken)
+    public async Task<IResult> UndoAsync(string planId, PlanUndoRequest request, string accountViewScope,
+        CancellationToken cancellationToken, HttpContext? httpContext = null)
     {
-        using var requestPurpose = Gw2RequestPurposeScope.Begin(Gw2RequestPurpose.ActionValidation);
-        var context = await RequireContextAsync(cancellationToken).ConfigureAwait(false);
-        var plan = await FindAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
-        if (plan is null) return Results.NotFound(new { error = "plan_not_found" });
-        var updated = orchestration.UndoLastStep(plan, DateTimeOffset.UtcNow);
-        try { await repository.SaveAsync(context.Profile.Id, updated, cancellationToken).ConfigureAwait(false); }
-        catch (PlanConcurrencyException) { return Results.Conflict(new { error = "plan_changed" }); }
-        await InvalidateLoopDecisionAsync(context.Profile.AccountScopeId).ConfigureAwait(false);
-        var committed = await FindAsync(context.Profile.Id, planId, cancellationToken).ConfigureAwait(false);
-        return Results.Json(new { state = "undone", plan = ToResponse(committed ?? updated with { Revision = updated.Revision + 1 }) });
+        var timer = Stopwatch.StartNew();
+        if (string.IsNullOrWhiteSpace(accountViewScope)) return Results.BadRequest(new { error = "completion_context_required" });
+        if (!long.TryParse(request.ExpectedRevision, NumberStyles.None, CultureInfo.InvariantCulture, out var revision) || revision < 0)
+            return Results.BadRequest(new { error = "undo_identity_required" });
+        var admission = await AdmitLocalCommandAsync(accountViewScope, cancellationToken).ConfigureAwait(false);
+        if (admission.Error is not null) return admission.Error;
+        var profile = await profiles.FindAccountProfileAsync(admission.Account!.AccountId, cancellationToken).ConfigureAwait(false);
+        if (profile is null) return Results.NotFound(new { error = "plan_not_found" });
+        var admissionMs = timer.Elapsed.TotalMilliseconds;
+        timer.Restart();
+        var commands = undoCommands ?? throw new InvalidOperationException("Local undo service is unavailable.");
+        var result = await commands.UndoAsync(profile.Id, planId, revision, cancellationToken).ConfigureAwait(false);
+        var commitMs = timer.Elapsed.TotalMilliseconds;
+        timer.Restart();
+        if (result.Status == PlanUndoStatus.Applied)
+        {
+            await InvalidateLoopDecisionAsync(admission.Account!.AccountId).ConfigureAwait(false);
+            RecordCommandTiming(httpContext, admissionMs, commitMs, timer.Elapsed.TotalMilliseconds);
+            return Results.Json(new { state = "undone", plan = ToResponse(result.Plan!) });
+        }
+        // A retry after a committed undo may carry the old revision. Clear a
+        // potentially missed projection without applying a second reversal.
+        if (result.Status == PlanUndoStatus.Conflict)
+            await InvalidateLoopDecisionAsync(admission.Account!.AccountId).ConfigureAwait(false);
+        return result.Status switch
+        {
+            PlanUndoStatus.NotFound => Results.NotFound(new { error = "plan_not_found" }),
+            PlanUndoStatus.Conflict => Results.Conflict(new { error = "plan_changed" }),
+            _ => Results.BadRequest(new { error = "invalid_undo_command" }),
+        };
+    }
+
+    private async Task<(AccountScope? Account, IResult? Error)> AdmitLocalCommandAsync(string view,
+        CancellationToken cancellationToken)
+    {
+        if (fence is null) return (null, LocalAccountUnavailable());
+        // Native credential observation plus a short generation lease; no remote IO.
+        await using var lease = await fence.AcquireCommitAsync(cancellationToken).ConfigureAwait(false);
+        var account = fence.Current?.AccountScope;
+        if (account is null) return (null, LocalAccountUnavailable());
+        if (!string.Equals(view, scopeTokens.GetToken(account.AccountId), StringComparison.Ordinal))
+            return (null, Results.Conflict(new { error = "account_scope_changed" }));
+        return (account, null);
+    }
+
+    private static IResult LocalAccountUnavailable() => Results.Json(new
+    {
+        error = "account_context_unavailable",
+        message = "Le compte doit être vérifié avant d’enregistrer une action. Actualisez les données du compte.",
+    }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+    private static void RecordCommandTiming(HttpContext? context, double admission, double commit, double invalidation)
+    {
+        if (context is not null) context.Response.Headers["X-Tyrian-Plan-Command-Timing"] = string.Join(",",
+            $"admission;dur={admission.ToString("F3", CultureInfo.InvariantCulture)}",
+            $"commit;dur={commit.ToString("F3", CultureInfo.InvariantCulture)}",
+            $"invalidation;dur={invalidation.ToString("F3", CultureInfo.InvariantCulture)}");
     }
 
     internal async Task<PlanDecisionSnapshot?> GetDecisionSnapshotAsync(CancellationToken cancellationToken)
@@ -667,9 +718,6 @@ internal sealed class PlanEndpointService(
         }
         return updated;
     }
-
-    private async Task<Context> RequireContextAsync(CancellationToken cancellationToken) =>
-        await BuildDecisionContextAsync(cancellationToken).ConfigureAwait(false) ?? throw new InvalidOperationException("Plan account evidence is unavailable.");
 
     private async Task<PlanRecord?> FindAsync(long profileId, string planId, CancellationToken cancellationToken) =>
         (await repository.GetStartedAsync(profileId, cancellationToken).ConfigureAwait(false)).SingleOrDefault(plan => plan.Id == planId);

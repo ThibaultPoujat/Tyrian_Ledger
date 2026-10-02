@@ -123,7 +123,7 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
     }
 
     [Fact]
-    public async Task Synchronization_holds_the_personal_data_operation_gate_for_the_entire_operation()
+    public async Task Synchronization_acquires_the_personal_data_operation_gate_for_commit()
     {
         var gateway = new StubGateway();
         gateway.CurrentBuys[0] = EmptyPage();
@@ -131,7 +131,9 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
         gateway.CompletedBuys[0] = EmptyPage();
         gateway.CompletedSells[0] = EmptyPage();
         var gate = new RecordingOperationGate();
-        var service = CreateService(gateway, new StubMarketDataClient(), new RecordingStore(), gate);
+        var store = new RecordingStore { BeforeCommit = () => Assert.Equal(gate.AcquireCount, gate.DisposeCount + 1) };
+        gateway.BeforeScope = () => Assert.Equal(0, gate.AcquireCount);
+        var service = CreateService(gateway, new StubMarketDataClient(), store, gate);
 
         var result = await service.SynchronizeAsync();
 
@@ -180,14 +182,15 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
 
     private sealed class StubGateway : IPersonalTradingPostGateway
     {
+        public Action? BeforeScope { get; set; }
         public Dictionary<int, Gw2ApiResult<PersonalTransactionPage>> CurrentBuys { get; } = [];
         public Dictionary<int, Gw2ApiResult<PersonalTransactionPage>> CurrentSells { get; } = [];
         public Dictionary<int, Gw2ApiResult<PersonalTransactionPage>> CompletedBuys { get; } = [];
         public Dictionary<int, Gw2ApiResult<PersonalTransactionPage>> CompletedSells { get; } = [];
         public List<int> CurrentBuyPagesRead { get; } = [];
 
-        public Task<Gw2ApiResult<AccountScope>> GetAccountScopeAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(Gw2ApiResult<AccountScope>.Success(new AccountScope("opaque-account-a")));
+        public Task<Gw2ApiResult<AccountScope>> GetAccountScopeAsync(CancellationToken cancellationToken = default)
+        { BeforeScope?.Invoke(); return Task.FromResult(Gw2ApiResult<AccountScope>.Success(new AccountScope("opaque-account-a"))); }
 
         public Task<Gw2ApiResult<PersonalTransactionPage>> GetCurrentBuyOrdersAsync(int page, CancellationToken cancellationToken = default)
         {
@@ -222,12 +225,14 @@ public sealed class PersonalTradingPostSynchronizationServiceTests
 
     private sealed class RecordingStore : IPersonalTradingPostSynchronizationStore
     {
+        public Action? BeforeCommit { get; init; }
         public List<PersonalTradingPostSuccessfulSync> SuccessfulSyncs { get; } = [];
         public List<(string AccountScopeId, DateTimeOffset AttemptedAtUtc, Gw2ApiErrorCategory ErrorCategory)> Failures { get; } = [];
         public PersonalTradingPostHistoryCoverage? EffectiveHistoryCoverage { get; init; }
 
         public Task<PersonalTradingPostHistoryCoverage> CommitSuccessfulSyncAsync(PersonalTradingPostSuccessfulSync sync, CancellationToken cancellationToken = default)
         {
+            BeforeCommit?.Invoke();
             SuccessfulSyncs.Add(sync);
             return Task.FromResult(EffectiveHistoryCoverage ?? new PersonalTradingPostHistoryCoverage(
                 sync.HistoryCoverageStartUtc,

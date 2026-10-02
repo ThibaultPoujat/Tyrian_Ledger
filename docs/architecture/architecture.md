@@ -465,3 +465,31 @@ TYRIAN_LEDGER_P03B2_LOAD_TRACE="$PWD/docs/verification/evidence/TKT-M22-P03B2/lo
 
 VERIFY-008/013/016/017 remain OPEN. No upstream permission, fee, cache/coherence or
 physical-correlation fact is resolved by these policy tests.
+
+
+### 15. Local Completion and Undo (P03C1)
+
+Completion and undo use the captured host work context's already-bound account,
+credential session, generation and store incarnation, with native credential
+observations and guarded SQLite access. Opaque browser view scope only matches
+that authority. Startup/recovery/credential transitions without a bound scope
+return structured local unavailable/scope-changed status before profile/receipt
+lookup; separate existing refresh/context reads bind verified identity.
+
+Command-only Application services invoke atomic repository admission. Completion
+retains logical receipts, step/revision CAS and transaction-time holdings/actor/
+protection/age/global-resource checks. Undo requires the displayed revision and
+same view header, preserves orchestration's descendant/partial policy and returns
+the revalidated transaction result. It never rebuilds recommendations/candidates.
+Both perform zero upstream reads. No database/generation/local operation lease
+spans HTTP. TP read-group serialization remains independent of its short
+operation/persistence leases.
+
+Post-commit current-generation invalidation ignores browser cancellation.
+Completion receipt replay and undo revision conflict can recover missed
+invalidation without a second effect; response buffering still fences obsolete
+payloads. Shared `IClock` drives command event/receipt/source-age decisions;
+`X-Tyrian-Plan-Command-Timing` exposes sanitized admission/commit/invalidation
+milliseconds. [Controlled measurements and acceptance vectors](../verification/evidence/TKT-M22-P03C1/README.md)
+are local synthetic evidence, not Windows/upstream guarantees. Start/decision
+read-model redesign remains P03C2; no financial/permission policy changes.

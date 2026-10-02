@@ -235,3 +235,21 @@ function noPlans() { return { state: 'ready', proposals: [], plans: [], accountC
 function jsonResponse(payload: unknown, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: vi.fn().mockResolvedValue(payload) } as unknown as Response;
 }
+
+
+it('undo sends the displayed revision and account view without an upstream context refresh', async () => {
+  const response = plansFor('step-a', '7');
+  response.plans[0].hasUndoableEvent = true;
+  const calls: { path: string; init?: RequestInit }[] = [];
+  vi.stubGlobal('fetch', vi.fn((path: string, init?: RequestInit) => {
+    calls.push({ path, init });
+    return Promise.resolve(jsonResponse(response));
+  }));
+  render(<PlanPanel />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Annuler la dernière étape' }));
+  await waitFor(() => expect(calls.some(call => call.path.endsWith('/undo'))).toBe(true));
+  const undo = calls.find(call => call.path.endsWith('/undo'))!;
+  expect(JSON.parse(undo.init!.body as string)).toEqual({ expectedRevision: '7' });
+  expect(undo.init!.headers).toMatchObject({ 'X-Tyrian-Ledger-Account-View-Scope': response.accountCacheScope });
+  expect(calls.some(call => call.path.endsWith('/context'))).toBe(false);
+});

@@ -5,6 +5,7 @@ using Gw2Tp.Application.PersonalTradingPost;
 using Gw2Tp.Application.Plans;
 using Gw2Tp.Domain.Finance;
 using Microsoft.Data.Sqlite;
+using Gw2Tp.Application.Time;
 
 namespace Gw2Tp.Infrastructure.Persistence;
 
@@ -12,8 +13,9 @@ namespace Gw2Tp.Infrastructure.Persistence;
 internal sealed class SqlitePlanRepository(
     ISqliteConnectionFactory connectionFactory,
     ISqliteDatabaseGate? databaseGate = null,
-    IAccountWorkFence? fence = null) : IPlanRepository
+    IAccountWorkFence? fence = null, IClock? clock = null) : IPlanRepository
 {
+    private DateTimeOffset Now => clock?.UtcNow ?? DateTimeOffset.UtcNow;
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     private readonly ISqliteDatabaseGate gate = databaseGate ?? new SqliteDatabaseGate();
 
@@ -23,7 +25,7 @@ internal sealed class SqlitePlanRepository(
 
     public async Task<IReadOnlyList<PlanRecord>> GetReconciliationCandidatesAsync(long accountProfileId, CancellationToken cancellationToken = default)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = Now;
         var plans = await ReadPlansAsync(accountProfileId,
             "state IN (2, 3, 4, 5, 6) OR (state = 7 AND json_extract(payload_json, '$.cancellationReconciliationExpiresAtUtc') >= $reconciliationNowUtc)",
             cancellationToken, now).ConfigureAwait(false);
@@ -90,7 +92,7 @@ internal sealed class SqlitePlanRepository(
                 """;
             write.Parameters.AddWithValue("$state", (int)updated.State);
             write.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(updated, SerializerOptions));
-            write.Parameters.AddWithValue("$updatedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(DateTimeOffset.UtcNow, "updatedAtUtc"));
+            write.Parameters.AddWithValue("$updatedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(Now, "updatedAtUtc"));
             write.Parameters.AddWithValue("$planId", stored.Id);
             write.Parameters.AddWithValue("$accountProfileId", accountProfileId);
             write.Parameters.AddWithValue("$expectedRevision", stored.Revision);
@@ -237,7 +239,7 @@ internal sealed class SqlitePlanRepository(
         insert.Parameters.AddWithValue("$state", (int)plan.State);
         var started = plan with { Revision = 1 };
         insert.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(started, SerializerOptions));
-        insert.Parameters.AddWithValue("$updatedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(DateTimeOffset.UtcNow, "updatedAtUtc"));
+        insert.Parameters.AddWithValue("$updatedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(Now, "updatedAtUtc"));
         insert.Parameters.AddWithValue("$revision", 1L);
         await insert.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -351,7 +353,7 @@ internal sealed class SqlitePlanRepository(
                 accountPlans.Where(plan => plan.Id != storedPlan.Id).SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray());
         var committedRevision = checked(storedPlan.Revision + 1);
         var committedPlan = transitioned with { Revision = committedRevision };
-        var updatedAt = SqlitePersistenceValues.ToUtcTimestamp(DateTimeOffset.UtcNow, "updatedAtUtc");
+        var updatedAt = SqlitePersistenceValues.ToUtcTimestamp(Now, "updatedAtUtc");
         await using (var update = connection.CreateCommand())
         {
             update.Transaction = transaction;
@@ -378,7 +380,7 @@ internal sealed class SqlitePlanRepository(
             !storedPlan.Events.Any(previous => string.Equals(previous.Id, value.Id, StringComparison.Ordinal)))?.Id;
         var receipt = new PlanCompletionReceipt(command.PlanId, command.CommandId, command.StepId,
             command.ExpectedRevision, command.Operation, command.Quantity, command.UnitPrice, committedRevision,
-            eventId, DateTimeOffset.UtcNow);
+            eventId, Now);
         await using (var insert = connection.CreateCommand())
         {
             insert.Transaction = transaction;
@@ -405,6 +407,49 @@ internal sealed class SqlitePlanRepository(
 
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new(PlanCompletionStatus.Applied, receipt);
+    }
+
+    public async Task<PlanUndoResult> UndoStepAsync(long accountProfileId, string planId, long expectedRevision,
+        Func<PlanRecord, PlanRecord> transition, CancellationToken cancellationToken = default)
+    {
+        if (accountProfileId <= 0 || string.IsNullOrWhiteSpace(planId) || planId.Length > 256 || expectedRevision < 0)
+            return new(PlanUndoStatus.Invalid);
+        ArgumentNullException.ThrowIfNull(transition);
+        await using var lease = await gate.AcquirePrivateAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = await connectionFactory.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await gate.ValidateAccountProfileAsync(connection, accountProfileId, cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var plans = await ReadAccountPlansAsync(connection, transaction, accountProfileId, cancellationToken).ConfigureAwait(false);
+        var stored = plans.SingleOrDefault(plan => string.Equals(plan.Id, planId, StringComparison.Ordinal));
+        if (stored is null) return new(PlanUndoStatus.NotFound);
+        if (stored.Revision != expectedRevision) return new(PlanUndoStatus.Conflict);
+        PlanRecord updated;
+        try { updated = transition(stored); }
+        catch (InvalidOperationException) { return new(PlanUndoStatus.Invalid); }
+        catch (OverflowException) { return new(PlanUndoStatus.Invalid); }
+        if (updated.Id != stored.Id || updated.Revision != stored.Revision) return new(PlanUndoStatus.Invalid);
+        if (fence is not null || stored.HoldingsAuthority is not null)
+            updated = PlanHoldingsAdmission.Revalidate(updated,
+                await ReadHoldingsAsync(connection, transaction, accountProfileId, cancellationToken).ConfigureAwait(false),
+                plans.Where(plan => plan.Id != planId).SelectMany(plan => plan.Events).Concat(updated.Events).ToArray(),
+                plans.Where(plan => plan.Id != planId).SelectMany(PlanOrchestrationService.OutstandingReservations).ToArray());
+        updated = updated with { Revision = checked(stored.Revision + 1) };
+        await using var write = connection.CreateCommand();
+        write.Transaction = transaction;
+        write.CommandText = """
+            UPDATE execution_plans SET state=$state, payload_json=$payload, revision=$revision, updated_at_utc=$at
+            WHERE account_profile_id=$profile AND plan_id=$plan AND revision=$expected;
+            """;
+        write.Parameters.AddWithValue("$state", (int)updated.State);
+        write.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(updated, SerializerOptions));
+        write.Parameters.AddWithValue("$revision", updated.Revision);
+        write.Parameters.AddWithValue("$at", SqlitePersistenceValues.ToUtcTimestamp(Now, "updatedAtUtc"));
+        write.Parameters.AddWithValue("$profile", accountProfileId);
+        write.Parameters.AddWithValue("$plan", planId);
+        write.Parameters.AddWithValue("$expected", expectedRevision);
+        if (await write.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1) return new(PlanUndoStatus.Conflict);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return new(PlanUndoStatus.Applied, updated);
     }
 
     public async Task SaveAsync(long accountProfileId, PlanRecord plan, CancellationToken cancellationToken = default)
@@ -438,7 +483,7 @@ internal sealed class SqlitePlanRepository(
         command.Parameters.AddWithValue("$accountProfileId", accountProfileId);
         command.Parameters.AddWithValue("$state", (int)updated.State);
         command.Parameters.AddWithValue("$payload", payload);
-        command.Parameters.AddWithValue("$updatedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(DateTimeOffset.UtcNow, "updatedAtUtc"));
+        command.Parameters.AddWithValue("$updatedAtUtc", SqlitePersistenceValues.ToUtcTimestamp(Now, "updatedAtUtc"));
         command.Parameters.AddWithValue("$expectedRevision", plan.Revision);
         command.Parameters.AddWithValue("$nextRevision", nextRevision);
         if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
@@ -473,7 +518,7 @@ internal sealed class SqlitePlanRepository(
         var scopeId = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
         if (scopeId is null) return null;
         var snapshot = await SqliteAccountHoldingsSnapshotRepository.ReadAsync(connection, transaction, new AccountScope(scopeId), cancellationToken).ConfigureAwait(false);
-        return snapshot is null ? null : new AccountHoldingsProjector().Project(snapshot, DateTimeOffset.UtcNow,
+        return snapshot is null ? null : new AccountHoldingsProjector().Project(snapshot, Now,
             fence?.Current?.Generation ?? snapshot.Generation, fence?.Current?.StoreIncarnation ?? snapshot.StoreIncarnation);
     }
 

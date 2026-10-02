@@ -18,6 +18,7 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
     private readonly IClock clock;
     private readonly IPersonalDataOperationGate operationGate;
     private readonly IAccountWorkFence? fence;
+    private readonly SemaphoreSlim readGroups = new(1, 1);
 
     public PersonalTradingPostSynchronizationService(
         IPersonalTradingPostGateway personalTradingPostGateway,
@@ -41,9 +42,14 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
 
     private async Task<PersonalTradingPostSynchronizationResult> SynchronizeCoreAsync(CancellationToken cancellationToken)
     {
-        // Preserve same-generation synchronization/read-group serialization.
-        // This operation lease is not a generation lease; HTTP never holds generation.
-        await using var operationLease = await operationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
+        // Serialize TP read groups independently of local/recovery operation leases.
+        await readGroups.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try { return await ReadAndCommitAsync(cancellationToken).ConfigureAwait(false); }
+        finally { readGroups.Release(); }
+    }
+
+    private async Task<PersonalTradingPostSynchronizationResult> ReadAndCommitAsync(CancellationToken cancellationToken)
+    {
         var attemptedAtUtc = RequireUtc(clock.UtcNow, "clock.UtcNow");
         var accountResult = await personalTradingPostGateway.GetAccountScopeAsync(cancellationToken).ConfigureAwait(false);
         if (!accountResult.IsSuccess || accountResult.Value is null || string.IsNullOrWhiteSpace(accountResult.Value.AccountId))
@@ -73,6 +79,7 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
             var itemMetadata = await ReadItemMetadataAsync(itemIds, observedAtUtc, cancellationToken).ConfigureAwait(false);
             var historyCoverage = GetHistoryCoverage(completedTransactions, observedAtUtc);
 
+            await using var operationLease = await operationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
             var effectiveHistoryCoverage = await synchronizationStore.CommitSuccessfulSyncAsync(
                 new PersonalTradingPostSuccessfulSync(
                     accountScopeId,
@@ -95,6 +102,7 @@ public sealed class PersonalTradingPostSynchronizationService : IPersonalTrading
         {
             try
             {
+                await using var operationLease = await operationGate.AcquireAsync(cancellationToken).ConfigureAwait(false);
                 await synchronizationStore.RecordFailedSyncAsync(
                     accountScopeId,
                     attemptedAtUtc,

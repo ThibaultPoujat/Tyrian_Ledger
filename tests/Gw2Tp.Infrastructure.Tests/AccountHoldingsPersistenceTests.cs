@@ -335,6 +335,72 @@ public sealed class AccountHoldingsPersistenceTests
         Assert.Equal(10, reconciled.SelectMany(PlanOrchestrationService.OutstandingReservations).Sum(value => value.Quantity));
     }
 
+    [Theory]
+    [InlineData("moved")]
+    [InlineData("protected")]
+    [InlineData("stale")]
+    public async Task Local_consuming_completion_preserves_receipt_atomicity_for_moved_protected_or_stale_sources(string reason)
+    {
+        await using var db = await Database.Create();
+        var now = DateTimeOffset.UtcNow;
+        var profile = await db.Run(() => db.Profiles.GetOrCreateAccountProfileAsync(Scope.AccountId, now));
+        await db.Run(async () => Assert.True(await db.Holdings.ReplaceAsync(db.Current(Snapshot(now, [Item(10, 10)])))));
+        var physical = Project((await db.Run(() => db.Holdings.GetLatestAsync(Scope)))!, db);
+        var orchestration = new PlanOrchestrationService();
+        var plan = orchestration.Start(PlanHoldingsAdmission.Authorize(Sale("blocked", 4), physical), now);
+        Assert.Equal(PlanStartResult.Started, await db.Run(() => db.Plans.TryStartAsync(profile.Id, plan, new Money(1000), Money.Zero, physical.Quantities)));
+        var stored = Assert.Single(await db.Run(() => db.Plans.GetStartedAsync(profile.Id)));
+        if (reason != "stale")
+            await db.Run(async () => Assert.True(await db.Holdings.ReplaceAsync(db.Current(Snapshot(now.AddMilliseconds(1),
+                [Item(10, 10, reason == "moved" ? AccountHoldingsSource.MaterialStorage : AccountHoldingsSource.Bank)],
+                floor: reason == "protected" ? new HashSet<int> { 10 } : null)))));
+        var repository = new SqlitePlanRepository(db.Factory, new SqliteDatabaseGate(db.Fence), db.Fence,
+            new Clock(reason == "stale" ? now.AddHours(1) : now));
+        var command = new PlanCompletionCommand(stored.Id, stored.Steps[0].Id, stored.Revision, "safe-retry",
+            PlanCompletionOperation.ReportPerformed, 4, new Money(100));
+        var service = new PlanCompletionCommandService(repository, orchestration, new Clock(now));
+        Assert.Equal(PlanCompletionStatus.Conflict, (await db.Run(() => service.CompleteAsync(profile.Id, command))).Status);
+        var retained = Assert.Single(await db.Run(() => db.Plans.GetStartedAsync(profile.Id)));
+        Assert.Empty(retained.Events); Assert.Equal(stored.Revision, retained.Revision);
+        // A rejected attempt writes no receipt. The conservative protection floor is
+        // retained, so that case must cancel the unperformed action instead.
+        await db.Run(async () => Assert.True(await db.Holdings.ReplaceAsync(db.Current(Snapshot(now.AddSeconds(1), [Item(10, 10)])))));
+        var recovered = new SqlitePlanRepository(db.Factory, new SqliteDatabaseGate(db.Fence), db.Fence, new Clock(now.AddSeconds(1)));
+        var retry = reason == "protected" ? command with { Operation = PlanCompletionOperation.NotPerformed, Quantity = 0, UnitPrice = null } : command;
+        var applied = await db.Run(() => new PlanCompletionCommandService(recovered, orchestration, new Clock(now)).CompleteAsync(profile.Id, retry));
+        Assert.Equal(PlanCompletionStatus.Applied, applied.Status);
+        if (reason != "protected") Assert.Equal(now, Assert.Single((await db.Run(() => db.Plans.GetStartedAsync(profile.Id))).Single().Events).OccurredAtUtc);
+        await db.Migrator.ValidatePersistedDataAsync();
+    }
+
+    [Fact]
+    public async Task Atomic_local_undo_CAS_retains_the_receipt_and_returns_revalidated_current_holdings_state()
+    {
+        await using var db = await Database.Create();
+        var now = DateTimeOffset.UtcNow;
+        var profile = await db.Run(() => db.Profiles.GetOrCreateAccountProfileAsync(Scope.AccountId, now));
+        await db.Run(async () => Assert.True(await db.Holdings.ReplaceAsync(db.Current(Snapshot(now, [Item(10, 10)])))));
+        var physical = Project((await db.Run(() => db.Holdings.GetLatestAsync(Scope)))!, db);
+        var orchestration = new PlanOrchestrationService();
+        var plan = orchestration.Start(PlanHoldingsAdmission.Authorize(Sale("undo", 4), physical), now);
+        Assert.Equal(PlanStartResult.Started, await db.Run(() => db.Plans.TryStartAsync(profile.Id, plan, new Money(1000), Money.Zero, physical.Quantities)));
+        var stored = Assert.Single(await db.Run(() => db.Plans.GetStartedAsync(profile.Id)));
+        var completion = new PlanCompletionCommandService(db.Plans, orchestration, new Clock(now));
+        var command = new PlanCompletionCommand(stored.Id, stored.Steps[0].Id, stored.Revision, "keep-receipt", PlanCompletionOperation.ReportPerformed, 4, new Money(100));
+        var applied = await db.Run(() => completion.CompleteAsync(profile.Id, command));
+        await db.Run(async () => Assert.True(await db.Holdings.ReplaceAsync(db.Current(Snapshot(now.AddMilliseconds(1), [Item(10, 10, AccountHoldingsSource.MaterialStorage)])))));
+        var undo = new PlanUndoCommandService(db.Plans, orchestration, new Clock(now));
+        var attempts = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ => db.Run(() => undo.UndoAsync(profile.Id, stored.Id, applied.Receipt!.CommittedRevision))));
+        var winner = Assert.Single(attempts, result => result.Status == PlanUndoStatus.Applied);
+        Assert.Single(attempts, result => result.Status == PlanUndoStatus.Conflict);
+        Assert.Equal(PlanState.RecheckRequired, winner.Plan!.State);
+        Assert.Equal("holdings_source_changed", winner.Plan.HoldingsEligibilityReason);
+        Assert.Equal(PlanShadowEventState.Reversed, Assert.Single(winner.Plan.Events).State);
+        Assert.Equal(PlanCompletionStatus.AlreadyApplied, (await db.Run(() => completion.CompleteAsync(profile.Id, command))).Status);
+        Assert.Equal(winner.Plan.Revision, Assert.Single(await db.Run(() => db.Plans.GetStartedAsync(profile.Id))).Revision);
+        await db.Migrator.ValidatePersistedDataAsync();
+    }
+
     private static PlanCandidate Sale(string id, int quantity) => new(id, 1, id, PlanAttention.Active,
         [new(id + ":sell", PlanStepAction.SellNow, 10, "Objet", quantity, new Money(100), [], PlanStepState.Pending)],
         [new(PlanResourceKind.Inventory, "10", quantity, Money.Zero)], Money.Zero, Money.Zero, 8000, 0, 1, 1, true, []);
